@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>dev-ide</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header id="toolbar">
+    <div class="toolbar-group brand">dev-ide</div>
+
+    <div class="toolbar-group">
+      <label>Projeto</label>
+      <select id="project-select" title="Projeto ativo"></select>
+      <button id="btn-new-project" title="Criar novo projeto">＋ projeto</button>
+    </div>
+
+    <div class="toolbar-group">
+      <button id="btn-new-file" title="Novo arquivo no projeto">novo</button>
+      <button id="btn-open-file" title="Abrir arquivo por caminho">abrir</button>
+      <button id="btn-save" title="Salvar (Ctrl+S)">salvar</button>
+    </div>
+
+    <div class="toolbar-group">
+      <label>Tipo</label>
+      <select id="language-select" title="Tipo do arquivo (highlight)">
+        <option value="javascript">JavaScript</option>
+        <option value="typescript">TypeScript</option>
+        <option value="python">Python</option>
+        <option value="php">PHP</option>
+        <option value="c">C</option>
+        <option value="csharp">C#</option>
+        <option value="sql">SQL</option>
+        <option value="json">JSON</option>
+        <option value="html">HTML</option>
+        <option value="css">CSS</option>
+        <option value="plain">Texto</option>
+      </select>
+    </div>
+
+    <div class="toolbar-group run-group">
+      <button id="btn-run-file" class="run" title="Executar o arquivo inteiro (Ctrl+Enter)">▶ arquivo</button>
+      <button id="btn-run-block" class="run" title="Executar o trecho selecionado">▶ seleção</button>
+      <select id="function-select" title="Função do arquivo atual"></select>
+      <input id="function-args" type="text" placeholder='args JSON: [1, "a"]' title="Argumentos como array JSON" />
+      <button id="btn-run-function" class="run" title="Executar a função escolhida">▶ função</button>
+    </div>
+  </header>
+
+  <main id="layout">
+    <aside id="sidebar">
+      <div class="sidebar-tabs">
+        <button data-panel="files" class="active">Arquivos</button>
+        <button data-panel="symbols">Símbolos</button>
+        <button data-panel="database">Database</button>
+        <button data-panel="service">Service</button>
+      </div>
+      <div id="panel-files" class="sidebar-panel" data-panel="files"></div>
+      <div id="panel-symbols" class="sidebar-panel hidden" data-panel="symbols"></div>
+      <div id="panel-database" class="sidebar-panel hidden" data-panel="database"></div>
+      <div id="panel-service" class="sidebar-panel hidden" data-panel="service"></div>
+    </aside>
+
+    <div id="sidebar-resizer" role="separator" aria-orientation="vertical"
+      title="Arraste para redimensionar · duplo clique restaura"></div>
+
+    <section id="editor-area">
+      <div id="tab-bar"></div>
+      <div id="tab-panels">
+        <div id="editor-wrap" class="tab-panel">
+          <div id="line-numbers"></div>
+          <div id="editor-scroller">
+            <pre id="highlight-layer" aria-hidden="true"><code id="highlight-code"></code></pre>
+            <textarea id="editor" spellcheck="false" autocomplete="off"
+              placeholder="Abra ou crie um arquivo para começar..."></textarea>
+          </div>
+        </div>
+        <div id="tab-empty" class="tab-panel empty-state">
+          Nenhuma aba aberta — abra um arquivo pela árvore lateral.
+        </div>
+      </div>
+      <div id="output-panel">
+        <div id="output-header">
+          <span>Saída</span>
+          <span id="output-status"></span>
+          <button id="btn-clear-output">limpar</button>
+        </div>
+        <pre id="output"></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer id="statusbar">
+    <span id="status-file">nenhum arquivo</span>
+    <span id="status-dirty"></span>
+    <span id="status-cursor">Ln 1, Col 1</span>
+  </footer>
+
+  <script src="js/languages.js"></script>
+  <script src="js/highlighter.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/tabs.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/tabbar.js"></script>
+  <script src="js/grid.js"></script>
+  <script src="js/sidebar.js"></script>
+  <script src="js/connections.js"></script>
+  <script src="js/resizer.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+
+# Projetos do usuário são dados, não código
+projects/
+
+# Artefatos locais
+*.zip
+.DS_Store
