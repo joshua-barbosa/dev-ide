@@ -77,11 +77,18 @@ export const ICONES_USADOS: readonly string[] = [
 ];
 
 /**
- * Traduz o nome vindo do servidor para o ícone do conjunto. Nome desconhecido
- * cai no genérico: um driver mais novo que a interface não pode abrir buraco
- * na árvore.
+ * Traduz o nome para o ícone do conjunto.
+ *
+ * Aceita duas formas: um nome do contrato (`database`) ou um já qualificado
+ * (`lucide:x`), que é como a própria interface pede ícones que não vêm de
+ * nenhum nó. Nos dois casos, o que não estiver empacotado cai no genérico —
+ * um driver mais novo que a interface, ou um erro de digitação, não pode abrir
+ * buraco na tela.
  */
 export function resolverIcone(nome: string): string {
+  if (nome.includes(':')) {
+    return ICONES_USADOS.includes(nome) ? nome : ICONE_GENERICO;
+  }
   return Object.prototype.hasOwnProperty.call(MAPA, nome)
     ? MAPA[nome as Icone]
     : ICONE_GENERICO;

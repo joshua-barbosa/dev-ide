@@ -6,6 +6,7 @@ import { useState } from 'react';
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
+import { FilesPanel } from './files/FilesPanel';
 
 const PAINEIS = [
   { id: 'files', label: 'Arquivos' },
@@ -18,9 +19,11 @@ type PainelId = (typeof PAINEIS)[number]['id'];
 
 export interface SidebarProps {
   readonly width: number;
+  readonly onAbrirArquivo: (caminho: string) => Promise<void>;
+  readonly caminhoAtivo?: string | null;
 }
 
-export function Sidebar({ width }: SidebarProps) {
+export function Sidebar({ width, onAbrirArquivo, caminhoAtivo = null }: SidebarProps) {
   const [ativo, setAtivo] = useState<PainelId>('files');
 
   return (
@@ -53,10 +56,14 @@ export function Sidebar({ width }: SidebarProps) {
         ))}
       </Tabs>
 
-      <Box sx={{ flex: 1, overflow: 'auto', py: 0.75 }}>
-        <Box sx={{ px: 1.25, color: 'text.secondary', fontSize: 11 }}>
-          {PAINEIS.find((p) => p.id === ativo)?.label}
-        </Box>
+      <Box sx={{ flex: 1, overflow: 'auto', py: 0.75, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {ativo === 'files' ? (
+          <FilesPanel onAbrirArquivo={onAbrirArquivo} caminhoAtivo={caminhoAtivo} />
+        ) : (
+          <Box sx={{ px: 1.25, color: 'text.secondary', fontSize: 11 }}>
+            {PAINEIS.find((p) => p.id === ativo)?.label} — em construção
+          </Box>
+        )}
       </Box>
     </Box>
   );

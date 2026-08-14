@@ -33,6 +33,20 @@ test('nome desconhecido devolve o genérico, não vazio', () => {
   assert.equal(resolverIcone(''), ICONE_GENERICO);
 });
 
+test('nome já qualificado passa direto, se estiver empacotado', () => {
+  // É assim que a interface pede ícones próprios (fechar aba, cadeado do cofre),
+  // que não vêm de nenhum nó do servidor.
+  assert.equal(resolverIcone('lucide:x'), 'lucide:x');
+  assert.equal(resolverIcone('lucide:lock'), 'lucide:lock');
+});
+
+test('nome qualificado fora do pacote cai no genérico', () => {
+  // Renderizar um ícone que o pacote não tem deixaria um espaço em branco sem
+  // erro nenhum — pior que mostrar o círculo.
+  assert.equal(resolverIcone('lucide:nao-empacotado'), ICONE_GENERICO);
+  assert.equal(resolverIcone('outroconjunto:database'), ICONE_GENERICO);
+});
+
 test('todo ícone do contrato tem correspondente', () => {
   for (const nome of [...NODE_ICONS, ...TAB_ICONS]) {
     const icone = resolverIcone(nome);
