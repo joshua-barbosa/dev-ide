@@ -8,9 +8,25 @@ import { tokens } from './theme';
 import { Sidebar } from './Sidebar';
 import { Resizer } from './Resizer';
 import { useSidebarWidth } from './useSidebarWidth';
+import { useEffect, useRef, useState } from 'react';
+import { EditorHost, type EditorHandle } from './editor/EditorHost';
+
+const EXEMPLO = `-- realce de SQL, sem diferenciar caixa
+SELECT id, codigo FROM servidor-2.alunos WHERE ano_prova = 2026;
+
+/* bloco */
+select count(*) from \`provas\` where titulo like '%Enac%';
+`;
 
 export function App() {
   const lateral = useSidebarWidth();
+  const editor = useRef<EditorHandle>(null);
+  const [cursor, setCursor] = useState({ linha: 1, coluna: 1 });
+
+  useEffect(() => {
+    editor.current?.setLanguage('sql');
+    editor.current?.setValue(EXEMPLO);
+  }, []);
 
   return (
     <Box
@@ -54,19 +70,11 @@ export function App() {
           component="section"
           sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}
         >
-          <Box
-            sx={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              bgcolor: tokens.bgEditor,
-              color: 'text.secondary',
-              fontSize: 13,
-            }}
-          >
-            Nenhuma aba aberta — abra um arquivo pela árvore lateral.
-          </Box>
+          <EditorHost
+            ref={editor}
+            onChange={() => undefined}
+            onCursor={(linha, coluna) => setCursor({ linha, coluna })}
+          />
         </Box>
       </Box>
 
@@ -86,7 +94,10 @@ export function App() {
           fontSize: 11,
         }}
       >
-        <span>nenhum arquivo</span>
+        <span>exemplo.sql</span>
+        <span style={{ marginLeft: 'auto' }}>
+          Ln {cursor.linha}, Col {cursor.coluna}
+        </span>
       </Box>
     </Box>
   );
