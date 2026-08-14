@@ -11,7 +11,7 @@
 //    guarda engolir o evento de fechar a última, e a barra de status fica presa
 //    no arquivo anterior.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Tab } from '../shared/tabs';
+import type { Tab, TabStore } from '../shared/tabs';
 import type { EditorHandle, ViewState } from './editor/EditorHost';
 import { EXT_TO_LANG } from '../shared/editor/languages';
 import { Api } from './api';
@@ -37,6 +37,7 @@ export function linguagemDe(caminho: string): string {
 }
 
 export interface Workspace {
+  readonly store: TabStore;
   readonly tabs: readonly Tab[];
   readonly activeId: string | null;
   readonly active: Tab | null;
@@ -177,6 +178,7 @@ export function useWorkspace(): Workspace {
   }, [active, store]);
 
   return {
+    store,
     tabs,
     activeId,
     active,

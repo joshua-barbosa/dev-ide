@@ -3,7 +3,7 @@
 // A estrutura é a mesma de antes — barra de ferramentas, lateral, divisória,
 // área de editor com abas e saída, barra de status — porque o critério desta
 // migração é paridade, não redesenho.
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
 import { tokens } from './theme';
 import { Sidebar } from './Sidebar';
@@ -15,12 +15,43 @@ import { TabBar } from './tabs/TabBar';
 import { useConnections } from './connections/useConnections';
 import { useContextMenu } from './ContextMenu';
 import { Api } from './api';
+import { Toolbar } from './Toolbar';
+import { ResultGrid } from './grid/ResultGrid';
+import { OutputPanel } from './OutputPanel';
+import { useExecution } from './useExecution';
 
 export function App() {
   const lateral = useSidebarWidth();
   const ws = useWorkspace();
   const conexoes = useConnections();
   const menu = useContextMenu();
+  const exec = useExecution(ws);
+  const [linguagem, setLinguagem] = useState('javascript');
+
+  // O seletor de tipo acompanha a aba ativa.
+  useEffect(() => {
+    const atual = ws.editorRef.current?.getLanguage();
+    if (atual !== undefined) setLinguagem(atual);
+  }, [ws.activeId, ws.editorRef]);
+
+  const trocarLinguagem = (lang: string): void => {
+    ws.editorRef.current?.setLanguage(lang);
+    setLinguagem(lang);
+  };
+
+  const executar = (modo: 'file' | 'block'): void => {
+    void exec.executar(modo, linguagem).catch((e: Error) => window.alert(e.message));
+  };
+
+  const novoArquivo = (): void => {
+    window.alert('Criar arquivo pela interface — ainda não migrado.');
+  };
+
+  const abrirPorCaminho = (): void => {
+    const caminho = window.prompt('Caminho do arquivo para abrir (absoluto):');
+    if (caminho === null || caminho.trim() === '') return;
+    ws.abrirArquivo(caminho.trim()).catch((e: Error) => window.alert(e.message));
+  };
 
   const copiar = (texto: string): void => {
     void navigator.clipboard?.writeText(texto);
@@ -31,6 +62,7 @@ export function App() {
     const objeto = typeof no.meta?.object === 'string' ? no.meta.object : no.label;
     const schema = typeof no.meta?.schema === 'string' ? no.meta.schema : null;
     const alvo = schema === null ? objeto : `${schema}.${objeto}`;
+    exec.definirConexaoAtiva(id);
     ws.abrirQuery(`sql:${id}:${alvo}`, `${objeto}.sql`, `SELECT * FROM ${alvo} LIMIT 100;`, id);
   };
 
@@ -40,6 +72,9 @@ export function App() {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         void ws.salvar().catch((err: Error) => window.alert(err.message));
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        executar('file');
       }
     };
     document.addEventListener('keydown', aoTeclar);
@@ -47,6 +82,7 @@ export function App() {
   }, [ws]);
 
   const semAbas = ws.tabs.length === 0;
+  const mostrarEditor = !semAbas && ws.active?.type !== 'grid';
 
   return (
     <Box
@@ -60,24 +96,15 @@ export function App() {
         ...(lateral.dragging ? { cursor: 'col-resize', userSelect: 'none' } : {}),
       }}
     >
-      <Box
-        component="header"
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5,
-          px: 1.25,
-          py: 0.75,
-          bgcolor: 'background.paper',
-          borderBottom: 1,
-          borderColor: 'divider',
-          flexWrap: 'wrap',
-        }}
-      >
-        <Box sx={{ fontFamily: tokens.fontMono, fontWeight: 700, color: 'primary.main' }}>
-          dev-ide
-        </Box>
-      </Box>
+      <Toolbar
+        linguagem={linguagem}
+        onLinguagem={trocarLinguagem}
+        onNovo={novoArquivo}
+        onAbrir={abrirPorCaminho}
+        onSalvar={() => void ws.salvar().catch((e: Error) => window.alert(e.message))}
+        onExecutar={executar}
+        ehSql={ws.active?.type === 'sql'}
+      />
 
       <Box component="main" sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <Sidebar
@@ -131,9 +158,13 @@ export function App() {
 
           {/* O editor fica montado sempre: desmontá-lo ao ficar sem abas perderia
               a instância e a ref imperativa. Some de vista, não do DOM. */}
-          <Box sx={{ flex: 1, display: semAbas ? 'none' : 'flex', minHeight: 0 }}>
+          <Box sx={{ flex: 1, display: mostrarEditor ? 'flex' : 'none', minHeight: 0 }}>
             <EditorHost ref={ws.editorRef} onChange={ws.marcarSujo} onCursor={ws.aoMoverCursor} />
           </Box>
+
+          {ws.active?.type === 'grid' && (
+            <ResultGrid {...(exec.grades.get(ws.active.id) ?? { resultado: null })} />
+          )}
 
           {semAbas && (
             <Box
@@ -150,6 +181,12 @@ export function App() {
               Nenhuma aba aberta — abra um arquivo pela árvore lateral.
             </Box>
           )}
+
+          <OutputPanel
+            linhas={exec.saida}
+            status={exec.status}
+            onLimpar={exec.limparSaida}
+          />
         </Box>
       </Box>
 
