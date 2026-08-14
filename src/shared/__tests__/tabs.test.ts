@@ -1,34 +1,10 @@
 // Testes do store de abas.
 //
-// O store vive em public/js/tabs.js como JS puro (o frontend não tem bundler),
-// mas é lógica de estado sem DOM — então roda em node normalmente.
+// O store é lógica de estado sem DOM, então roda em node:test direto — é a
+// razão de ele viver em `shared` e não junto dos componentes.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import * as path from 'node:path';
-
-interface Tab {
-  readonly id: string;
-  readonly type: string;
-  readonly title: string;
-  readonly icon?: string;
-  readonly dirty: boolean;
-  readonly meta: Record<string, unknown>;
-}
-
-interface TabStore {
-  list(): Tab[];
-  activeId(): string | null;
-  active(): Tab | null;
-  get(id: string): Tab | null;
-  open(input: Partial<Tab> & { id: string; type: string; title: string }): Tab;
-  close(id: string): void;
-  activate(id: string): void;
-  update(id: string, patch: Partial<Tab>): Tab | null;
-  onChange(listener: (tabs: Tab[], activeId: string | null) => void): () => void;
-}
-
-const TABS_JS = path.join(__dirname, '..', '..', '..', 'public', 'js', 'tabs.js');
-const { createTabStore } = require(TABS_JS) as { createTabStore: () => TabStore };
+import { createTabStore, type TabStore } from '../tabs';
 
 function comTres(): TabStore {
   const store = createTabStore();

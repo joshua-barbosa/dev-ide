@@ -7,3 +7,4 @@ projects/
 # Artefatos locais
 *.zip
 .DS_Store
+src/ui/generated/

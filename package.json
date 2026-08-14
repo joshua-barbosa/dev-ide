@@ -4,22 +4,38 @@
   "description": "IDE simples estilo Sublime construída com Node/TypeScript",
   "main": "dist/server/index.js",
   "scripts": {
-    "build": "tsc",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build:server": "tsc",
+    "build:ui": "vite build",
+    "build": "npm run clean && npm run build:server && npm run build:icons && npm run build:ui",
     "start": "npm run build && node dist/server/index.js",
-    "test": "npm run build && node --test 'dist/**/__tests__/*.test.js'"
+    "dev": "vite",
+    "test": "npm run clean && npm run build:server && node --test 'dist/**/__tests__/*.test.js'",
+    "build:icons": "node scripts/build-icons.mjs"
   },
   "license": "MIT",
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@iconify/react": "^6.0.2",
+    "@mui/material": "^9.3.1",
     "express": "^4.21.2",
     "mysql2": "^3.23.3",
     "pg": "^8.23.0",
     "pg-cursor": "^2.22.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "typescript": "^5.8.3"
   },
   "devDependencies": {
+    "@iconify/json": "^2.2.516",
     "@types/express": "^4.17.21",
     "@types/node": "^22.15.0",
     "@types/pg": "^8.21.0",
-    "@types/pg-cursor": "^2.7.2"
+    "@types/pg-cursor": "^2.7.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "vite": "^8.2.1"
   }
 }

@@ -33,10 +33,13 @@ const pool = new SessionPool(async (connectionId) => {
   return registry.get(config.type).connect(config);
 });
 
+// A interface é compilada pelo Vite de src/ui para dist/ui.
+const UI_DIR = path.join(ROOT, 'dist', 'ui');
+
 const app = express();
 app.use(localhostOnly);
 app.use(express.json({ limit: '4mb' }));
-app.use(express.static(path.join(ROOT, 'public')));
+app.use(express.static(UI_DIR));
 app.use('/api/connections', createConnectionsRouter({ registry, vault, pool }));
 
 function validateFilePath(raw: string): string {
@@ -145,6 +148,10 @@ if (require.main === module) {
   const server = app.listen(PORT, HOST, () => {
     console.log(`dev-ide rodando em http://localhost:${PORT} (apenas ${HOST})`);
     console.log(`Projetos em: ${PROJECTS_DIR}`);
+    if (!fs.existsSync(path.join(UI_DIR, 'index.html'))) {
+      // Acontece depois de `npm test`, que limpa dist/ e recompila só o servidor.
+      console.warn('Interface não compilada. Rode "npm run build:ui" (ou "npm run dev").');
+    }
   });
 
   const sweeper = setInterval(() => {

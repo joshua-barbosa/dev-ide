@@ -22,11 +22,13 @@ export type ConnectionKind = 'sql' | 'kv' | 'document' | 'files' | 'shell' | 've
  */
 export type DriverPanel = 'database' | 'service';
 
-/** Ícone do nó, resolvido para um glifo pelo frontend. */
-export type NodeIcon =
-  | 'server' | 'database' | 'schema' | 'table' | 'view' | 'column'
-  | 'function' | 'procedure' | 'index' | 'collection' | 'key'
-  | 'folder' | 'file' | 'link' | 'query';
+/**
+ * Ícone do nó. A lista vive em `shared/icons.ts`, que é também de onde a
+ * interface tira o desenho — assim um ícone novo no contrato não compila
+ * enquanto não tiver correspondente, em vez de sumir da tela em silêncio.
+ */
+import type { NodeIcon } from '../../shared/icons';
+export type { NodeIcon };
 
 // ---------------------------------------------------------------------------
 // Configuração de conexão
