@@ -7,6 +7,7 @@ import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
 import { FilesPanel } from './files/FilesPanel';
+import { ConnectionsPanel, type ConnectionsPanelProps } from './connections/ConnectionsPanel';
 
 const PAINEIS = [
   { id: 'files', label: 'Arquivos' },
@@ -21,9 +22,10 @@ export interface SidebarProps {
   readonly width: number;
   readonly onAbrirArquivo: (caminho: string) => Promise<void>;
   readonly caminhoAtivo?: string | null;
+  readonly conexoes: Omit<ConnectionsPanelProps, 'painel'>;
 }
 
-export function Sidebar({ width, onAbrirArquivo, caminhoAtivo = null }: SidebarProps) {
+export function Sidebar({ width, onAbrirArquivo, caminhoAtivo = null, conexoes }: SidebarProps) {
   const [ativo, setAtivo] = useState<PainelId>('files');
 
   return (
@@ -57,11 +59,15 @@ export function Sidebar({ width, onAbrirArquivo, caminhoAtivo = null }: SidebarP
       </Tabs>
 
       <Box sx={{ flex: 1, overflow: 'auto', py: 0.75, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {ativo === 'files' ? (
+        {ativo === 'files' && (
           <FilesPanel onAbrirArquivo={onAbrirArquivo} caminhoAtivo={caminhoAtivo} />
-        ) : (
+        )}
+        {(ativo === 'database' || ativo === 'service') && (
+          <ConnectionsPanel painel={ativo} {...conexoes} />
+        )}
+        {ativo === 'symbols' && (
           <Box sx={{ px: 1.25, color: 'text.secondary', fontSize: 11 }}>
-            {PAINEIS.find((p) => p.id === ativo)?.label} — em construção
+            Símbolos — em construção
           </Box>
         )}
       </Box>

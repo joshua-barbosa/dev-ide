@@ -12,10 +12,27 @@ import { useSidebarWidth } from './useSidebarWidth';
 import { useWorkspace } from './useWorkspace';
 import { EditorHost } from './editor/EditorHost';
 import { TabBar } from './tabs/TabBar';
+import { useConnections } from './connections/useConnections';
+import { useContextMenu } from './ContextMenu';
+import { Api } from './api';
 
 export function App() {
   const lateral = useSidebarWidth();
   const ws = useWorkspace();
+  const conexoes = useConnections();
+  const menu = useContextMenu();
+
+  const copiar = (texto: string): void => {
+    void navigator.clipboard?.writeText(texto);
+  };
+
+  /** Monta o SELECT de um objeto, qualificando com o schema quando houver. */
+  const abrirQueryDoNo = (id: string, no: { label: string; meta?: Record<string, unknown> }) => {
+    const objeto = typeof no.meta?.object === 'string' ? no.meta.object : no.label;
+    const schema = typeof no.meta?.schema === 'string' ? no.meta.schema : null;
+    const alvo = schema === null ? objeto : `${schema}.${objeto}`;
+    ws.abrirQuery(`sql:${id}:${alvo}`, `${objeto}.sql`, `SELECT * FROM ${alvo} LIMIT 100;`, id);
+  };
 
   // Ctrl+S salva a aba ativa.
   useEffect(() => {
@@ -63,7 +80,42 @@ export function App() {
       </Box>
 
       <Box component="main" sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <Sidebar width={lateral.width} onAbrirArquivo={ws.abrirArquivo} />
+        <Sidebar
+          width={lateral.width}
+          onAbrirArquivo={ws.abrirArquivo}
+          conexoes={{
+            ctrl: conexoes,
+            onAbrirQuery: abrirQueryDoNo,
+            onMenuNo: (e, id, caminho, no) =>
+              menu.abrir(e, [
+                { label: 'Copiar nome', onClick: () => copiar(no.label) },
+                ...(no.actions === undefined || no.actions.length === 0 ? [] : [null]),
+                ...(no.actions ?? []).map((acao) => ({
+                  label: acao.label,
+                  danger: acao.danger,
+                  onClick: async () => {
+                    if (acao.danger === true) {
+                      const ok = window.confirm(`"${acao.label}" em ${no.label}.\n\nConfirmar?`);
+                      if (!ok) return;
+                    }
+                    const r = await Api.runAction(id, { nodePath: caminho, actionId: acao.id });
+                    ws.abrirQuery(`acao:${id}:${r.title}`, r.title, r.content, id);
+                  },
+                })),
+              ]),
+            onMenuConexao: (e, conexao) =>
+              menu.abrir(e, [
+                { label: 'Copiar nome', onClick: () => copiar(conexao.label) },
+                conexoes.estado?.openIds.includes(conexao.id) === true
+                  ? { label: 'Desconectar', onClick: () => conexoes.desconectar(conexao.id) }
+                  : { label: 'Conectar', onClick: () => conexoes.abrirConexao(conexao) },
+                { label: 'Recarregar metadados', onClick: () => conexoes.recarregarMetadados(conexao.id) },
+                null,
+                { label: 'Editar conexão…', onClick: () => window.alert('Formulário de conexão — próxima spec.') },
+                { label: 'Excluir conexão', danger: true, onClick: () => conexoes.excluir(conexao) },
+              ]),
+          }}
+        />
         <Resizer dragging={lateral.dragging} onStart={lateral.startDrag} onReset={lateral.reset} />
 
         <Box
@@ -127,6 +179,8 @@ export function App() {
           Ln {ws.cursor.linha}, Col {ws.cursor.coluna}
         </Box>
       </Box>
+
+      {menu.elemento}
     </Box>
   );
 }
