@@ -1,0 +1,93 @@
+// Esqueleto da interface: a moldura que os painéis preenchem.
+//
+// A estrutura é a mesma de antes — barra de ferramentas, lateral, divisória,
+// área de editor com abas e saída, barra de status — porque o critério desta
+// migração é paridade, não redesenho.
+import Box from '@mui/material/Box';
+import { tokens } from './theme';
+import { Sidebar } from './Sidebar';
+import { Resizer } from './Resizer';
+import { useSidebarWidth } from './useSidebarWidth';
+
+export function App() {
+  const lateral = useSidebarWidth();
+
+  return (
+    <Box
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        bgcolor: 'background.default',
+        color: 'text.primary',
+        // Durante o arraste o cursor não pode mudar ao passar sobre o editor.
+        ...(lateral.dragging ? { cursor: 'col-resize', userSelect: 'none' } : {}),
+      }}
+    >
+      <Box
+        component="header"
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+          px: 1.25,
+          py: 0.75,
+          bgcolor: 'background.paper',
+          borderBottom: 1,
+          borderColor: 'divider',
+          flexWrap: 'wrap',
+        }}
+      >
+        <Box sx={{ fontFamily: tokens.fontMono, fontWeight: 700, color: 'primary.main' }}>
+          dev-ide
+        </Box>
+      </Box>
+
+      <Box component="main" sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
+        <Sidebar width={lateral.width} />
+        <Resizer
+          dragging={lateral.dragging}
+          onStart={lateral.startDrag}
+          onReset={lateral.reset}
+        />
+        <Box
+          component="section"
+          sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}
+        >
+          <Box
+            sx={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              bgcolor: tokens.bgEditor,
+              color: 'text.secondary',
+              fontSize: 13,
+            }}
+          >
+            Nenhuma aba aberta — abra um arquivo pela árvore lateral.
+          </Box>
+        </Box>
+      </Box>
+
+      <Box
+        component="footer"
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+          px: 1.25,
+          py: 0.4,
+          bgcolor: 'background.paper',
+          borderTop: 1,
+          borderColor: 'divider',
+          color: 'text.secondary',
+          fontFamily: tokens.fontMono,
+          fontSize: 11,
+        }}
+      >
+        <span>nenhum arquivo</span>
+      </Box>
+    </Box>
+  );
+}

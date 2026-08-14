@@ -1,97 +1,58 @@
 // Contratos da camada de conexões.
 //
 // A ideia central: cada serviço (MySQL, Redis, SFTP, Pinecone...) implementa um
-// `Driver`, e tudo que a UI conhece são os tipos deste arquivo. Isso é o que
-// permite um painel lateral e um grid escritos UMA vez servirem a todos, e um
-// driver novo entrar sem tocar no frontend.
-
-// ---------------------------------------------------------------------------
-// Classificação
-// ---------------------------------------------------------------------------
-
-/** Família do serviço. Define o que a UI oferece por padrão para a conexão. */
-export type ConnectionKind = 'sql' | 'kv' | 'document' | 'files' | 'shell' | 'vector';
-
-/**
- * Painel da barra lateral em que o driver aparece.
- *
- * É declarado por driver, e não derivado de `kind`, porque a divisão é por
- * finalidade e não por protocolo: Redis (`kv`) e Pinecone (`vector`) são
- * armazenamento de dados e ficam em Database, enquanto SSH e FTP são
- * infraestrutura e ficam em Service.
- */
-export type DriverPanel = 'database' | 'service';
-
-/**
- * Ícone do nó. A lista vive em `shared/icons.ts`, que é também de onde a
- * interface tira o desenho — assim um ícone novo no contrato não compila
- * enquanto não tiver correspondente, em vez de sumir da tela em silêncio.
- */
+// `Driver`, e tudo que a UI conhece são tipos — o que permite um painel lateral
+// e uma grade escritos UMA vez servirem a todos, e um driver novo entrar sem
+// tocar na interface.
+//
+// As formas que ATRAVESSAM a fronteira HTTP moram em `shared/contracts.ts`,
+// porque a interface também precisa delas e duplicá-las abriria espaço para
+// divergência silenciosa. Aqui ficam apenas os tipos do lado do servidor —
+// `Driver`, `Session` e suas capacidades — mais o reexporte dos compartilhados,
+// para os drivers continuarem importando de um lugar só.
+import type {
+  ActionRequest,
+  ActionResult,
+  CellValue,
+  ColumnInfo,
+  ConnectionInput,
+  ConnectionKind,
+  DriverPanel,
+  ExecuteRequest,
+  FieldOption,
+  FieldSpec,
+  FieldType,
+  FieldValue,
+  NodeAction,
+  PublicConnection,
+  QueryResult,
+  TreeNode,
+} from '../../shared/contracts';
 import type { NodeIcon } from '../../shared/icons';
-export type { NodeIcon };
+
+export type {
+  ActionRequest,
+  ActionResult,
+  CellValue,
+  ColumnInfo,
+  ConnectionInput,
+  ConnectionKind,
+  DriverPanel,
+  ExecuteRequest,
+  FieldOption,
+  FieldSpec,
+  FieldType,
+  FieldValue,
+  NodeAction,
+  NodeIcon,
+  PublicConnection,
+  QueryResult,
+  TreeNode,
+};
 
 // ---------------------------------------------------------------------------
 // Configuração de conexão
 // ---------------------------------------------------------------------------
-
-export type FieldValue = string | number | boolean;
-
-export type FieldType =
-  | 'string'
-  | 'number'
-  | 'boolean'
-  | 'password'
-  | 'path'
-  | 'textarea'
-  | 'select';
-
-export interface FieldOption {
-  readonly value: string;
-  readonly label: string;
-}
-
-/**
- * Descreve um campo do formulário de conexão. É o que torna a UI dirigida a
- * dados: o driver declara seus campos e o frontend renderiza o formulário
- * sozinho.
- */
-export interface FieldSpec {
-  readonly name: string;
-  readonly label: string;
-  readonly type: FieldType;
-  readonly required?: boolean;
-  /** Campo sensível: vai cifrado para o cofre e nunca sai numa resposta da API. */
-  readonly secret?: boolean;
-  readonly default?: FieldValue;
-  readonly placeholder?: string;
-  readonly help?: string;
-  /** Valores aceitos quando `type` é 'select'. */
-  readonly options?: readonly FieldOption[];
-}
-
-/** Conexão como o usuário a informa (ainda com os segredos em claro). */
-export interface ConnectionInput {
-  readonly type: string;
-  readonly label: string;
-  /** Caminho de grupo aninhado, ex.: "ACME/Bancos". Vazio = raiz. */
-  readonly group: string;
-  readonly readOnly: boolean;
-  readonly fields: Readonly<Record<string, FieldValue>>;
-}
-
-/**
- * Conexão como a API a devolve. Nunca contém segredos — apenas os NOMES dos
- * campos secretos preenchidos, para a UI conseguir mostrar "••••".
- */
-export interface PublicConnection {
-  readonly id: string;
-  readonly type: string;
-  readonly label: string;
-  readonly group: string;
-  readonly readOnly: boolean;
-  readonly fields: Readonly<Record<string, FieldValue>>;
-  readonly secretFields: readonly string[];
-}
 
 /** Conexão com os segredos decifrados. Só existe do lado do servidor. */
 export interface ResolvedConfig {
@@ -105,85 +66,6 @@ export interface ResolvedConfig {
 // ---------------------------------------------------------------------------
 // Árvore de navegação
 // ---------------------------------------------------------------------------
-
-export interface NodeAction {
-  readonly id: string;
-  readonly label: string;
-  /** Ação destrutiva (DROP, TRUNCATE, rm): a UI confirma antes. */
-  readonly danger?: boolean;
-}
-
-/**
- * Um nó da árvore lateral. Schema do MySQL, chave do Redis, pasta do SFTP e
- * índice do Pinecone viram todos isto.
- */
-export interface TreeNode {
-  /** Identificador opaco definido pelo driver; compõe o caminho do nó. */
-  readonly id: string;
-  readonly label: string;
-  readonly icon: NodeIcon;
-  /** Texto secundário em cinza: "92", "8.0.40", "64.1G". */
-  readonly detail?: string;
-  readonly hasChildren: boolean;
-  readonly actions?: readonly NodeAction[];
-  /** Contexto do driver (ex.: { schema, table }) para montar comandos. */
-  readonly meta?: Readonly<Record<string, unknown>>;
-}
-
-// ---------------------------------------------------------------------------
-// Execução de comandos
-// ---------------------------------------------------------------------------
-
-export type CellValue = string | number | boolean | null;
-
-export interface ColumnInfo {
-  readonly name: string;
-  /** Tipo declarado, quando o driver souber: "varchar(64)", "int". */
-  readonly type?: string;
-}
-
-export interface ExecuteRequest {
-  readonly statement: string;
-  /** Nó ativo, para o driver saber o schema/banco de contexto. */
-  readonly nodePath?: readonly string[];
-  readonly rowLimit?: number;
-  readonly timeoutMs?: number;
-}
-
-export interface QueryResult {
-  readonly columns: readonly ColumnInfo[];
-  readonly rows: readonly (readonly CellValue[])[];
-  readonly rowCount: number;
-  readonly durationMs: number;
-  /** true quando o limite de linhas cortou o resultado. */
-  readonly truncated: boolean;
-  /** Mensagem para comandos sem linhas: "3 linhas afetadas". */
-  readonly message?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Ações de nó (menu de contexto)
-// ---------------------------------------------------------------------------
-
-export interface ActionRequest {
-  readonly nodePath: readonly string[];
-  readonly actionId: string;
-}
-
-/**
- * Resultado de uma ação do menu de contexto.
- *
- * As duas formas abrem uma aba de editor; a diferença é o que o usuário faz
- * com ela: `statement` é SQL pronto para rodar (o SELECT de uma tabela),
- * `text` é conteúdo para ler (o DDL de um objeto).
- */
-export interface ActionResult {
-  readonly kind: 'statement' | 'text';
-  readonly title: string;
-  readonly content: string;
-  /** Linguagem para o highlight; por padrão, 'sql'. */
-  readonly language?: string;
-}
 
 // ---------------------------------------------------------------------------
 // Capacidades opcionais da sessão

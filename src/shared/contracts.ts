@@ -1,0 +1,167 @@
+// Contratos que atravessam a fronteira HTTP.
+//
+// Ficam em `shared` porque servidor e interface precisam concordar sobre eles.
+// Antes viviam só em connections/types.ts, mas a interface não compila `src/server`
+// — e duplicar as formas dos dois lados é exatamente a divergência silenciosa que
+// o resto do projeto evita.
+//
+// O que NÃO entra aqui: `Driver`, `Session` e o que só existe no servidor.
+
+// ---------------------------------------------------------------------------
+// Classificação
+// ---------------------------------------------------------------------------
+
+export type ConnectionKind = 'sql' | 'kv' | 'document' | 'files' | 'shell' | 'vector';
+
+/** Painel da barra lateral em que o driver aparece. */
+export type DriverPanel = 'database' | 'service';
+
+// ---------------------------------------------------------------------------
+// Campos de conexão
+// ---------------------------------------------------------------------------
+
+export type FieldValue = string | number | boolean;
+
+export type FieldType =
+  | 'string' | 'number' | 'boolean' | 'password' | 'path' | 'textarea' | 'select';
+
+export interface FieldOption {
+  readonly value: string;
+  readonly label: string;
+}
+
+/** Descreve um campo do formulário; é o que torna a UI dirigida a dados. */
+export interface FieldSpec {
+  readonly name: string;
+  readonly label: string;
+  readonly type: FieldType;
+  readonly required?: boolean;
+  /** Vai cifrado para o cofre e nunca sai numa resposta. */
+  readonly secret?: boolean;
+  readonly default?: FieldValue;
+  readonly placeholder?: string;
+  readonly help?: string;
+  readonly options?: readonly FieldOption[];
+}
+
+export interface ConnectionInput {
+  readonly type: string;
+  readonly label: string;
+  /** Caminho de grupo aninhado, ex.: "ACME/Bancos". Vazio = raiz. */
+  readonly group: string;
+  readonly readOnly: boolean;
+  readonly fields: Readonly<Record<string, FieldValue>>;
+}
+
+/** Conexão como a API devolve: sem segredos, só os nomes dos campos secretos. */
+export interface PublicConnection {
+  readonly id: string;
+  readonly type: string;
+  readonly label: string;
+  readonly group: string;
+  readonly readOnly: boolean;
+  readonly fields: Readonly<Record<string, FieldValue>>;
+  readonly secretFields: readonly string[];
+}
+
+// ---------------------------------------------------------------------------
+// Árvore
+// ---------------------------------------------------------------------------
+
+export interface NodeAction {
+  readonly id: string;
+  readonly label: string;
+  /** Ação destrutiva: a UI confirma antes. */
+  readonly danger?: boolean;
+}
+
+export interface TreeNode {
+  readonly id: string;
+  readonly label: string;
+  readonly icon: string;
+  /** Texto secundário em cinza: "92", "8.0.40", "64.1G". */
+  readonly detail?: string;
+  readonly hasChildren: boolean;
+  readonly actions?: readonly NodeAction[];
+  readonly meta?: Readonly<Record<string, unknown>>;
+}
+
+/** Grupos são derivados dos caminhos, não persistidos como entidade. */
+export interface GroupNode {
+  readonly name: string;
+  readonly path: string;
+  readonly groups: readonly GroupNode[];
+  readonly connections: readonly PublicConnection[];
+}
+
+// ---------------------------------------------------------------------------
+// Execução
+// ---------------------------------------------------------------------------
+
+export type CellValue = string | number | boolean | null;
+
+export interface ColumnInfo {
+  readonly name: string;
+  /** Tipo declarado, quando o driver souber: "varchar(64)", "int". */
+  readonly type?: string;
+}
+
+export interface ExecuteRequest {
+  readonly statement: string;
+  readonly nodePath?: readonly string[];
+  readonly rowLimit?: number;
+  readonly timeoutMs?: number;
+}
+
+export interface QueryResult {
+  readonly columns: readonly ColumnInfo[];
+  readonly rows: readonly (readonly CellValue[])[];
+  readonly rowCount: number;
+  readonly durationMs: number;
+  /** true quando o limite de linhas cortou o resultado. */
+  readonly truncated: boolean;
+  /** Mensagem para comandos sem linhas: "3 linhas afetadas". */
+  readonly message?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Ações de menu
+// ---------------------------------------------------------------------------
+
+export interface ActionRequest {
+  readonly nodePath: readonly string[];
+  readonly actionId: string;
+}
+
+/** `statement` é SQL pronto para rodar; `text` é conteúdo para ler (DDL). */
+export interface ActionResult {
+  readonly kind: 'statement' | 'text';
+  readonly title: string;
+  readonly content: string;
+  readonly language?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Estado e capacidades
+// ---------------------------------------------------------------------------
+
+export interface VaultState {
+  readonly exists: boolean;
+  readonly unlocked: boolean;
+}
+
+/** O que a rota de conectar devolve; a UI liga as abas conforme o que existir. */
+export interface SessionCapabilities {
+  readonly kind: ConnectionKind;
+  readonly execute: boolean;
+  readonly files: boolean;
+  readonly shell: boolean;
+  readonly monitor: boolean;
+  readonly forwarding: boolean;
+}
+
+export interface ConnectionsState {
+  readonly vault: VaultState;
+  readonly tree: GroupNode;
+  readonly openIds: readonly string[];
+}
