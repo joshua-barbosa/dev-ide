@@ -21,6 +21,7 @@ import { useConnections } from './connections/useConnections';
 import { VaultDialog } from './connections/VaultDialog';
 import { ConnectionForm } from './connections/ConnectionForm';
 import { useContextMenu } from './ContextMenu';
+import { useDialogs } from './useDialogs';
 import { Api } from './api';
 import { MenuBar } from './MenuBar';
 import { StatusBar } from './StatusBar';
@@ -38,9 +39,10 @@ import { useProject } from './files/useProject';
 
 export function App() {
   const lateral = useSidebarWidth();
-  const ws = useWorkspace();
-  const conexoes = useConnections();
-  const menu = useContextMenu();
+  const dialogs = useDialogs();
+  const ws = useWorkspace({ confirmar: dialogs.confirmar });
+  const conexoes = useConnections({ confirmar: dialogs.confirmar });
+  const menu = useContextMenu(dialogs.aoFalhar);
   const exec = useExecution(ws);
   const projeto = useProject();
   const qi = useQuickInput();
@@ -59,7 +61,7 @@ export function App() {
   };
 
   const executar = (modo: 'file' | 'block'): void => {
-    void exec.executar(modo, linguagem).catch((e: Error) => window.alert(e.message));
+    void exec.executar(modo, linguagem).catch(dialogs.aoFalhar);
   };
 
   /** Abre o arquivo do símbolo, se preciso, e pula para a linha. */
@@ -70,7 +72,7 @@ export function App() {
       pular();
       return;
     }
-    ws.abrirArquivo(arquivo).then(pular).catch((e: Error) => window.alert(e.message));
+    ws.abrirArquivo(arquivo).then(pular).catch(dialogs.aoFalhar);
   };
 
   /**
@@ -186,7 +188,7 @@ export function App() {
   };
 
   const avisar = (p: Promise<unknown>): void => {
-    void p.catch((e: Error) => window.alert(e.message));
+    void p.catch(dialogs.aoFalhar);
   };
 
   /**
@@ -233,7 +235,10 @@ export function App() {
     },
 
     'help.commands': () => avisar(abrirPaleta()),
-    'help.about': () => window.alert('dev-ide — IDE local com painéis de banco e serviço.'),
+    'help.about': () => void dialogs.avisar(
+      'IDE local com painéis de banco e serviço, sem licença e sem limite de conexões.',
+      'dev-ide'
+    ),
   };
 
   const executarComando = (id: string): void => {
@@ -264,8 +269,32 @@ export function App() {
     return () => document.removeEventListener('keydown', aoTeclar);
   }, []);
 
-  const abrirFormulario = (conexao: PublicConnection | null): void => {
-    ws.abrirFormulario(conexao?.id ?? null, conexao === null ? 'Nova conexão' : conexao.label);
+  const abrirFormulario = (conexao: PublicConnection | null, grupo?: string): void => {
+    ws.abrirFormulario(
+      conexao?.id ?? null,
+      conexao === null ? 'Nova conexão' : conexao.label,
+      grupo
+    );
+  };
+
+  /**
+   * Renomeia um grupo, arrastando os descendentes junto.
+   *
+   * A rota já reescreve o prefixo de todos os caminhos, então renomear "ACME"
+   * move "ACME/Bancos" junto — é o que o usuário espera de uma pasta.
+   */
+  const renomearGrupo = async (caminho: string): Promise<void> => {
+    const atual = caminho.split('/').pop() ?? caminho;
+    const novo = await qi.pedir({
+      titulo: `Renomear "${caminho}"`,
+      placeholder: 'Novo nome do grupo',
+      valorInicial: atual,
+    });
+    if (novo === null || novo.trim() === '' || novo.trim() === atual) return;
+
+    const pai = caminho.includes('/') ? `${caminho.slice(0, caminho.lastIndexOf('/'))}/` : '';
+    await Api.renameGroup(caminho, `${pai}${novo.trim()}`);
+    await conexoes.recarregar();
   };
   const abaAtual = ws.activeId ?? '';
 
@@ -292,6 +321,7 @@ export function App() {
           painelAtivo={painelLateral}
           onPainelAtivo={setPainelLateral}
           onNovoProjeto={() => avisar(novoProjeto())}
+          onErro={dialogs.aoFalhar}
           onAbrirArquivo={ws.abrirArquivo}
           projeto={projeto}
           onIrParaSimbolo={irParaSimbolo}
@@ -299,7 +329,9 @@ export function App() {
           conexoes={{
             ctrl: conexoes,
             onAbrirQuery: abrirQueryDoNo,
-            onNovaConexao: () => abrirFormulario(null),
+            onNovaConexao: (grupo?: string) => abrirFormulario(null, grupo),
+            onRenomearGrupo: (caminho: string) => avisar(renomearGrupo(caminho)),
+            onErro: dialogs.aoFalhar,
             onMenuNo: (e, id, caminho, no) =>
               menu.abrir(e, [
                 { label: 'Copiar nome', onClick: () => copiar(no.label) },
@@ -309,7 +341,12 @@ export function App() {
                   danger: acao.danger,
                   onClick: async () => {
                     if (acao.danger === true) {
-                      const ok = window.confirm(`"${acao.label}" em ${no.label}.\n\nConfirmar?`);
+                      const ok = await dialogs.confirmar({
+                        titulo: acao.label,
+                        mensagem: `"${acao.label}" em ${no.label}.\n\nEsta ação altera o servidor.`,
+                        rotuloConfirmar: acao.label.toLowerCase(),
+                        destrutivo: true,
+                      });
                       if (!ok) return;
                     }
                     const r = await Api.runAction(id, { nodePath: caminho, actionId: acao.id });
@@ -363,6 +400,9 @@ export function App() {
               drivers={[...conexoes.drivers.values()]}
               gruposConhecidos={conexoes.grupos}
               conexao={conexoes.acharConexao(ws.active.meta.connectionId)}
+              grupoInicial={
+                typeof ws.active.meta.grupoInicial === 'string' ? ws.active.meta.grupoInicial : ''
+              }
               onSujar={(sujo) => ws.marcarAbaSuja(abaAtual, sujo)}
               onCancelar={() => ws.fechar(abaAtual)}
               onSalvar={async (input, conectar) => {
@@ -429,6 +469,7 @@ export function App() {
         onCancelar={conexoes.cancelarSenha}
       />
 
+      {dialogs.elemento}
       {menu.elemento}
     </Box>
   );

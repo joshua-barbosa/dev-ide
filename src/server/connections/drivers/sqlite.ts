@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { DatabaseSync } from 'node:sqlite';
+import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import type {
   ActionRequest,
   ActionResult,
@@ -262,7 +263,7 @@ export const sqliteDriver: Driver = {
   label: 'SQLite',
   kind: 'sql',
   panel: 'database',
-  icon: 'database',
+  icon: ICONES_DE_SERVICO.sqlite,
   fields: [
     {
       name: 'file',

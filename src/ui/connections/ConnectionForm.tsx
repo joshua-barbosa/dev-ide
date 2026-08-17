@@ -35,19 +35,21 @@ export interface ConnectionFormProps {
   readonly gruposConhecidos: readonly string[];
   /** Nula ao criar. */
   readonly conexao: PublicConnection | null;
+  /** Preenchido quando o formulário vem do botão "+" de uma pasta. */
+  readonly grupoInicial?: string;
   readonly onSalvar: (input: ConnectionInput, conectar: boolean) => Promise<void>;
   readonly onCancelar: () => void;
   readonly onSujar: (sujo: boolean) => void;
 }
 
 export function ConnectionForm({
-  drivers, gruposConhecidos, conexao, onSalvar, onCancelar, onSujar,
+  drivers, gruposConhecidos, conexao, grupoInicial = '', onSalvar, onCancelar, onSujar,
 }: ConnectionFormProps) {
   const editando = conexao !== null;
 
   const [tipo, setTipo] = useState<string | null>(conexao?.type ?? null);
   const [rotulo, setRotulo] = useState(conexao?.label ?? '');
-  const [grupo, setGrupo] = useState(conexao?.group ?? '');
+  const [grupo, setGrupo] = useState(conexao?.group ?? grupoInicial);
   const [somenteLeitura, setSomenteLeitura] = useState(conexao?.readOnly ?? false);
   const [valores, setValores] = useState<ValoresDoFormulario>({});
   const [erros, setErros] = useState<ErrosDoFormulario>({});

@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Tab, TabStore } from '../shared/tabs';
 import { proximoSemTitulo } from '../shared/untitled';
+import { ICONE_DE_ARQUIVO, iconeDeArquivo } from '../shared/editor/arquivos';
 import type { EditorHandle, ViewState } from './editor/EditorHost';
 import { EXT_TO_LANG } from '../shared/editor/languages';
 import { Api } from './api';
@@ -47,18 +48,28 @@ export interface Workspace {
   aoMoverCursor(linha: number, coluna: number): void;
   abrirArquivo(caminho: string): Promise<void>;
   abrirQuery(id: string, titulo: string, conteudo: string, connectionId: string): void;
-  abrirFormulario(connectionId: string | null, titulo: string): void;
+  abrirFormulario(connectionId: string | null, titulo: string, grupoInicial?: string): void;
   novoSemTitulo(): void;
   adotarArquivo(idAntigo: string, caminho: string): void;
   /** Devolve o caminho gravado, ou `null` se não havia o que salvar. */
   salvar(): Promise<string | null>;
   marcarAbaSuja(id: string, sujo: boolean): void;
   ativar(id: string): void;
-  fechar(id: string): void;
+  fechar(id: string): Promise<void>;
   marcarSujo(): void;
 }
 
-export function useWorkspace(): Workspace {
+/** A confirmação vem de fora: `shared` e este gancho não desenham diálogo. */
+export interface WorkspaceDeps {
+  confirmar(opcoes: {
+    titulo?: string;
+    mensagem: string;
+    rotuloConfirmar?: string;
+    destrutivo?: boolean;
+  }): Promise<boolean>;
+}
+
+export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   const { store, tabs, activeId, active } = useTabs();
   const editorRef = useRef<EditorHandle>(null);
   const [cursor, setCursor] = useState({ linha: 1, coluna: 1 });
@@ -131,6 +142,7 @@ export function useWorkspace(): Workspace {
         id: `file:${dados.path}`,
         type: language === 'sql' ? 'sql' : 'editor',
         title: dados.path.split('/').pop() ?? dados.path,
+        icon: iconeDeArquivo(dados.path, language),
         meta: { path: dados.path, content: dados.content, language, view: null },
       });
     },
@@ -157,14 +169,14 @@ export function useWorkspace(): Workspace {
    * em vez de duplicar — regra que o store já tem e que já tem teste.
    */
   const abrirFormulario = useCallback(
-    (connectionId: string | null, titulo: string) => {
+    (connectionId: string | null, titulo: string, grupoInicial?: string) => {
       if (ultimaAtiva.current !== null) salvarNaAba(ultimaAtiva.current);
       store.open({
         id: connectionId === null ? 'conexao:nova' : `conexao:${connectionId}`,
         type: 'conexao',
         title: titulo,
         icon: 'lucide:plug',
-        meta: { connectionId },
+        meta: { connectionId, grupoInicial: grupoInicial ?? null },
       });
     },
     [salvarNaAba, store]
@@ -194,21 +206,27 @@ export function useWorkspace(): Workspace {
       type: 'editor',
       title: titulo,
       dirty: true,
+      icon: ICONE_DE_ARQUIVO,
       meta: { path: null, content: '', language: 'plain', view: null },
     });
   }, [salvarNaAba, store]);
 
   const fechar = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const aba = store.get(id);
       if (aba !== null && aba.dirty) {
-        const ok = window.confirm(`"${aba.title}" tem alterações não salvas. Fechar mesmo assim?`);
+        const ok = await confirmar({
+          titulo: 'Alterações não salvas',
+          mensagem: `"${aba.title}" tem alterações não salvas.\n\nFechar mesmo assim?`,
+          rotuloConfirmar: 'fechar sem salvar',
+          destrutivo: true,
+        });
         if (!ok) return;
       }
       // (2) NÃO zera `ultimaAtiva` aqui — ver o comentário do topo.
       store.close(id);
     },
-    [store]
+    [confirmar, store]
   );
 
   const marcarSujo = useCallback(() => {
@@ -256,6 +274,7 @@ export function useWorkspace(): Workspace {
         id: `file:${caminho}`,
         type: language === 'sql' ? 'sql' : 'editor',
         title: caminho.split('/').pop() ?? caminho,
+        icon: iconeDeArquivo(caminho, language),
         dirty: false,
         meta: { ...metaDe(aba), path: caminho, language },
       });

@@ -9,6 +9,7 @@
 // o mesmo mecanismo do comando `db`; não há filtro de texto no SQL.
 import * as fs from 'fs';
 import mysql, { Connection, FieldPacket, Types } from 'mysql2';
+import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import type {
   ActionRequest,
   ActionResult,
@@ -477,7 +478,7 @@ export const mysqlDriver: Driver = {
   label: 'MySQL / MariaDB',
   kind: 'sql',
   panel: 'database',
-  icon: 'database',
+  icon: ICONES_DE_SERVICO.mysql,
   defaultPort: 3306,
   fields: [
     { name: 'host', label: 'Host', type: 'string', required: true, default: '127.0.0.1' },

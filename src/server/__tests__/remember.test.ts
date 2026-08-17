@@ -4,6 +4,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { RememberedKey, diasDeLembranca, restaurarCofre } from '../connections/remember';
+import { Vault } from '../connections/vault';
+import { homeDeDados } from '../paths';
 
 const CHAVE = Buffer.from('0123456789abcdef0123456789abcdef', 'utf8'); // 32 bytes
 const MAQUINA = () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -232,4 +234,37 @@ test('lembrança corrompida não derruba a subida', () => {
   const file = tempPath();
   fs.writeFileSync(file, 'lixo que não é json');
   assert.doesNotThrow(() => restaurarCofre(cofreFalso(CHAVE), nova(file)));
+});
+
+// ---- isolamento dos caminhos (defeito real da spec 007) ----
+
+test('uma raiz só governa todo o estado gravado', () => {
+  // Nasceu de um defeito real: a suíte de ponta a ponta isolava o cofre por
+  // `DEV_IDE_VAULT`, mas a lembrança tinha variável própria e ficou de fora —
+  // rodar os testes apagava o `session.json` DO USUÁRIO.
+  const anterior = process.env.DEV_IDE_HOME;
+  process.env.DEV_IDE_HOME = '/tmp/dev-ide-raiz-de-teste';
+  try {
+    const raiz = homeDeDados();
+    assert.equal(raiz, '/tmp/dev-ide-raiz-de-teste');
+
+    // Todo caminho padrão precisa cair sob a raiz. Um arquivo novo que não
+    // caia aqui vaza para o diretório do usuário, calado.
+    for (const caminho of [Vault.defaultPath(), RememberedKey.defaultPath()]) {
+      assert.ok(caminho.startsWith(`${raiz}/`), `fora da raiz de dados: ${caminho}`);
+    }
+  } finally {
+    if (anterior === undefined) delete process.env.DEV_IDE_HOME;
+    else process.env.DEV_IDE_HOME = anterior;
+  }
+});
+
+test('sem a variável, a raiz é a pasta do usuário', () => {
+  const anterior = process.env.DEV_IDE_HOME;
+  delete process.env.DEV_IDE_HOME;
+  try {
+    assert.equal(homeDeDados(), path.join(os.homedir(), '.dev-ide'));
+  } finally {
+    if (anterior !== undefined) process.env.DEV_IDE_HOME = anterior;
+  }
 });

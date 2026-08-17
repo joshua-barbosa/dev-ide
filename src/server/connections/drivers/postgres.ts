@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import { Client, type ClientConfig, type FieldDef } from 'pg';
 import Cursor from 'pg-cursor';
+import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import type {
   ActionRequest,
   ActionResult,
@@ -544,7 +545,7 @@ export const postgresDriver: Driver = {
   label: 'PostgreSQL',
   kind: 'sql',
   panel: 'database',
-  icon: 'database',
+  icon: ICONES_DE_SERVICO.postgres,
   defaultPort: 5432,
   fields: [
     { name: 'host', label: 'Host', type: 'string', required: true, default: '127.0.0.1' },

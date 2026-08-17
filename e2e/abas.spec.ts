@@ -1,6 +1,6 @@
 // Estado das abas — a área onde os dois piores defeitos deste projeto nasceram.
 import { expect, test } from '@playwright/test';
-import { aba, abrirArquivo, digitar, editor, responderDialogo, rodape } from './fixtures';
+import { aba, abrirArquivo, confirmar, digitar, editor, rodape } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -40,8 +40,8 @@ test('recusar a confirmação mantém a aba não salva', async ({ page }) => {
   await digitar(page, '\n// sujo');
   await expect(aba(page, 'utils.ts')).toHaveAttribute('data-tab-dirty', 'true');
 
-  responderDialogo(page, false); // registrado ANTES do clique que abre o diálogo
   await aba(page, 'utils.ts').locator('button').click();
+  await confirmar(page, false);
 
   await expect(aba(page, 'utils.ts')).toBeVisible();
 });
@@ -52,7 +52,8 @@ test('fechar a última aba limpa a barra de status', async ({ page }) => {
   await abrirArquivo(page, 'utils.ts');
   await expect(rodape(page)).toContainText('utils.ts');
 
-  responderDialogo(page, true);
+  // Aba limpa fecha direto: não há confirmação a responder. A versão anterior
+  // registrava um tratador que nunca disparava — parecia significar algo.
   await aba(page, 'utils.ts').locator('button').click();
 
   await expect(page.locator('[data-tab]')).toHaveCount(0);

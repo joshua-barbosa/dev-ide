@@ -57,7 +57,10 @@ export default defineConfig({
     timeout: 60_000,
     env: {
       PORT: PORTA,
-      DEV_IDE_VAULT: path.join(DADOS, 'vault.json'),
+      // Uma raiz só isola TUDO que a IDE grava — inclusive o que for
+      // acrescentado depois. Antes eram variáveis por arquivo, e a
+      // lembrança do cofre ficou de fora: a suíte apagava a do usuário.
+      DEV_IDE_HOME: DADOS,
       DEV_IDE_PROJECTS: path.join(DADOS, 'projects'),
     },
   },

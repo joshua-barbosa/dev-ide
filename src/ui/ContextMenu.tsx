@@ -22,7 +22,7 @@ export interface ContextMenuControl {
   abrir(e: React.MouseEvent, entradas: readonly EntradaMenu[]): void;
 }
 
-export function useContextMenu(): ContextMenuControl {
+export function useContextMenu(onErro: (erro: unknown) => void): ContextMenuControl {
   const [posicao, setPosicao] = useState<{ x: number; y: number } | null>(null);
   const [entradas, setEntradas] = useState<readonly EntradaMenu[]>([]);
 
@@ -51,7 +51,7 @@ export function useContextMenu(): ContextMenuControl {
             key={entrada.label}
             onClick={() => {
               fechar();
-              Promise.resolve(entrada.onClick()).catch((err: Error) => window.alert(err.message));
+              Promise.resolve(entrada.onClick()).catch(onErro);
             }}
             sx={{
               fontSize: 12,

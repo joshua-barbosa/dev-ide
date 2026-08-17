@@ -193,7 +193,13 @@ export interface Driver {
   readonly label: string;
   readonly kind: ConnectionKind;
   readonly panel: DriverPanel;
-  readonly icon: NodeIcon;
+  /**
+   * Ícone da conexão. Aceita nome do contrato (`database`) ou qualificado
+   * (`devicon:mysql`), porque a marca de cada serviço não cabe no conjunto
+   * fechado de `NodeIcon` — que descreve tipos de OBJETO, não de produto.
+   * Nome não empacotado cai no genérico; ver `resolverIcone`.
+   */
+  readonly icon: NodeIcon | string;
   readonly defaultPort?: number;
   readonly fields: readonly FieldSpec[];
   connect(config: ResolvedConfig): Promise<Session>;

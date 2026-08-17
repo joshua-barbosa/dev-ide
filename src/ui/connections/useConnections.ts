@@ -35,6 +35,7 @@ export interface ConnectionsController {
   destrancar(): Promise<void>;
   trancar(): Promise<void>;
   alternarGrupo(caminho: string): void;
+  recolherTudo(): void;
   abrirConexao(conexao: PublicConnection): Promise<void>;
   desconectar(id: string): Promise<void>;
   alternarNo(id: string, caminho: readonly string[]): Promise<void>;
@@ -46,7 +47,17 @@ export interface ConnectionsController {
   chaveDe(id: string, caminho: readonly string[]): string;
 }
 
-export function useConnections(): ConnectionsController {
+/** Mesma injeção do workspace: quem desenha o diálogo é o App. */
+export interface ConnectionsDeps {
+  confirmar(opcoes: {
+    titulo?: string;
+    mensagem: string;
+    rotuloConfirmar?: string;
+    destrutivo?: boolean;
+  }): Promise<boolean>;
+}
+
+export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsController {
   const [estado, setEstado] = useState<ConnectionsState | null>(null);
   const [drivers, setDrivers] = useState<ReadonlyMap<string, DriverInfo>>(new Map());
   const [erro, setErro] = useState<string | null>(null);
@@ -143,6 +154,16 @@ export function useConnections(): ConnectionsController {
     setFilhos(new Map());
     await recarregar();
   }, [recarregar]);
+
+  /**
+   * Recolhe grupos, conexões e nós de uma vez.
+   *
+   * O cache de filhos é preservado: recolher é gesto de arrumação, não de
+   * descarte — reabrir não deve custar outra ida ao servidor.
+   */
+  const recolherTudo = useCallback(() => {
+    setExpandidos(new Set());
+  }, []);
 
   const alternarGrupo = useCallback(
     (caminho: string) => {
@@ -252,9 +273,14 @@ export function useConnections(): ConnectionsController {
 
   const excluir = useCallback(
     async (conexao: PublicConnection) => {
-      const ok = window.confirm(
-        `Excluir a conexão "${conexao.label}"?\n\nA credencial cifrada será removida do cofre.`
-      );
+      const ok = await confirmar({
+        titulo: 'Excluir conexão',
+        mensagem:
+          `Excluir a conexão "${conexao.label}"?\n\n` +
+          'A credencial cifrada será removida do cofre.',
+        rotuloConfirmar: 'excluir',
+        destrutivo: true,
+      });
       if (!ok) return;
       await Api.deleteConnection(conexao.id);
       await recarregar();
@@ -303,6 +329,7 @@ export function useConnections(): ConnectionsController {
       destrancar,
       trancar,
       alternarGrupo,
+      recolherTudo,
       abrirConexao,
       desconectar,
       alternarNo,

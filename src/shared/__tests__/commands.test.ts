@@ -12,6 +12,11 @@ import {
   type ContextoDeComandos,
 } from '../commands';
 import { ehSemTitulo, proximoSemTitulo } from '../untitled';
+import {
+  ICONE_DE_ARQUIVO, ICONES_DE_ARQUIVO, iconeDeArquivo,
+} from '../editor/arquivos';
+import { iconeDaLinguagem } from '../editor/idiomas';
+import { ICONES_DE_SERVICO, resolverIcone } from '../icons';
 
 const NADA: ContextoDeComandos = {
   temEditor: false,
@@ -185,4 +190,39 @@ test('reconhece o que é aba sem título', () => {
   assert.equal(ehSemTitulo('untitled'), false);
   assert.equal(ehSemTitulo('meu-untitled-1'), false);
   assert.equal(ehSemTitulo('utils.ts'), false);
+});
+
+// ---- ícone por extensão (spec 007) ----
+
+test('extensão sem linguagem própria tem ícone próprio', () => {
+  assert.equal(iconeDeArquivo('LEIAME.md'), 'vscode-icons:file-type-markdown');
+  assert.equal(iconeDeArquivo('/a/b/deploy.yml'), 'vscode-icons:file-type-yaml');
+  assert.equal(iconeDeArquivo('escola.db'), 'vscode-icons:file-type-db');
+});
+
+test('arquivo de linguagem cai no ícone da linguagem', () => {
+  assert.equal(iconeDeArquivo('utils.ts', 'typescript'), iconeDaLinguagem('typescript'));
+  assert.equal(iconeDeArquivo('app.py', 'python'), iconeDaLinguagem('python'));
+});
+
+test('arquivo sem extensão reconhecida cai no papel em branco', () => {
+  assert.equal(iconeDeArquivo('LICENSE'), ICONE_DE_ARQUIVO);
+  assert.equal(iconeDeArquivo('dados.xyz', 'plain'), ICONE_DE_ARQUIVO);
+});
+
+test('nome inteiro também casa, não só a extensão', () => {
+  assert.equal(iconeDeArquivo('.gitignore'), 'vscode-icons:file-type-git');
+});
+
+test('todo ícone de arquivo declarado está no pacote offline', () => {
+  // Um ícone fora da lista cairia no genérico em tempo de execução, calado.
+  for (const icone of ICONES_DE_ARQUIVO) {
+    assert.equal(resolverIcone(icone), icone, `fora do pacote: ${icone}`);
+  }
+});
+
+test('todo ícone de serviço declarado está no pacote offline', () => {
+  for (const icone of Object.values(ICONES_DE_SERVICO)) {
+    assert.equal(resolverIcone(icone), icone, `fora do pacote: ${icone}`);
+  }
 });

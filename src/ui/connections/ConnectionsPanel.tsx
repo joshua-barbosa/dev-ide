@@ -5,7 +5,8 @@
 // derivar do protocolo, já que Redis é chave-valor e Pinecone é vetorial, mas
 // os dois são armazenamento e vão para Database.
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 import type { DriverPanel, GroupNode, PublicConnection, TreeNode } from '../../shared/contracts';
 import { Icon } from '../Icon';
 import { TreeRow } from '../tree/TreeRow';
@@ -17,7 +18,64 @@ export interface ConnectionsPanelProps {
   readonly onMenuNo: (e: React.MouseEvent, id: string, caminho: string[], no: TreeNode) => void;
   readonly onMenuConexao: (e: React.MouseEvent, conexao: PublicConnection) => void;
   readonly onAbrirQuery: (id: string, no: TreeNode) => void;
-  readonly onNovaConexao: () => void;
+  /** Recebe o grupo quando vem do botão de uma pasta, para já vir preenchido. */
+  readonly onNovaConexao: (grupo?: string) => void;
+  readonly onRenomearGrupo: (caminho: string) => void;
+  readonly onErro: (erro: unknown) => void;
+}
+
+/** Botão de ação do cabeçalho: só ícone, com dica. */
+function AcaoDoPainel({
+  icone, rotulo, onClick, desabilitada = false,
+}: {
+  readonly icone: string;
+  readonly rotulo: string;
+  readonly onClick: () => void;
+  readonly desabilitada?: boolean;
+}) {
+  return (
+    <Tooltip title={rotulo} placement="bottom">
+      {/* O `span` existe porque um botão desabilitado não dispara eventos, e sem
+          ele a dica sumiria justo quando explica por que a ação não está ativa. */}
+      <Box component="span" sx={{ display: 'flex' }}>
+        <IconButton
+          size="small"
+          disabled={desabilitada}
+          onClick={onClick}
+          aria-label={rotulo}
+          sx={{ p: 0.5, borderRadius: 0.5 }}
+        >
+          <Icon name={icone} size={13} />
+        </IconButton>
+      </Box>
+    </Tooltip>
+  );
+}
+
+/** Ação que aparece na linha da árvore ao passar o mouse. */
+function AcaoDaLinha({
+  icone, rotulo, onClick,
+}: {
+  readonly icone: string;
+  readonly rotulo: string;
+  readonly onClick: () => void;
+}) {
+  return (
+    <Tooltip title={rotulo} placement="bottom">
+      <IconButton
+        size="small"
+        aria-label={rotulo}
+        onClick={(e) => {
+          // Sem isto, o clique também abriria ou fecharia a pasta.
+          e.stopPropagation();
+          onClick();
+        }}
+        sx={{ p: 0.25, borderRadius: 0.5 }}
+      >
+        <Icon name={icone} size={12} />
+      </IconButton>
+    </Tooltip>
+  );
 }
 
 /** Data curta e local — o horário exato não ajuda em nada aqui. */
@@ -34,6 +92,8 @@ export function ConnectionsPanel({
   onMenuConexao,
   onAbrirQuery,
   onNovaConexao,
+  onRenomearGrupo,
+  onErro,
 }: ConnectionsPanelProps) {
   const aceita = (tipo: string): boolean => {
     const driver = ctrl.drivers.get(tipo);
@@ -50,7 +110,7 @@ export function ConnectionsPanel({
     grupo.connections.some((c) => aceita(c.type)) || grupo.groups.some(temConteudo);
 
   const comErro = (acao: () => Promise<void>) => () => {
-    acao().catch((e: Error) => window.alert(e.message));
+    acao().catch(onErro);
   };
 
   const renderNos = (id: string, caminho: string[], nivel: number): React.ReactNode => {
@@ -106,7 +166,8 @@ export function ConnectionsPanel({
         <TreeRow
           nivel={nivel}
           rotulo={conexao.label}
-          icone={viva ? 'lucide:plug' : (driver?.icon ?? 'connection')}
+          icone={driver?.icon ?? 'connection'}
+          conectado={viva}
           detalhe={conexao.readOnly ? 'RO' : undefined}
           titulo={`${conexao.type}${conexao.fields.host === undefined ? '' : ` · ${String(conexao.fields.host)}`}`}
           expansivel
@@ -114,6 +175,20 @@ export function ConnectionsPanel({
           ativo={viva}
           onClick={comErro(() => ctrl.abrirConexao(conexao))}
           onContextMenu={(e) => onMenuConexao(e, conexao)}
+          acoes={
+            <>
+              <AcaoDaLinha
+                icone="lucide:refresh-cw"
+                rotulo="Recarregar metadados"
+                onClick={comErro(() => ctrl.recarregarMetadados(conexao.id))}
+              />
+              <AcaoDaLinha
+                icone="lucide:trash-2"
+                rotulo="Excluir conexão"
+                onClick={comErro(() => ctrl.excluir(conexao))}
+              />
+            </>
+          }
         />
         {aberto && renderNos(conexao.id, [], nivel + 1)}
       </Box>
@@ -133,6 +208,20 @@ export function ConnectionsPanel({
               expansivel
               aberto={aberto}
               onClick={() => ctrl.alternarGrupo(sub.path)}
+              acoes={
+                <>
+                  <AcaoDaLinha
+                    icone="lucide:pencil"
+                    rotulo={`Renomear "${sub.name}"`}
+                    onClick={() => onRenomearGrupo(sub.path)}
+                  />
+                  <AcaoDaLinha
+                    icone="lucide:plus"
+                    rotulo={`Nova conexão em "${sub.path}"`}
+                    onClick={() => onNovaConexao(sub.path)}
+                  />
+                </>
+              }
             />
             {aberto && renderGrupo(sub, nivel + 1)}
           </Box>
@@ -154,41 +243,57 @@ export function ConnectionsPanel({
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Cabeçalho no padrão do VS Code: título à esquerda, ações só de ícone à
+          direita. Ação indisponível fica desabilitada em vez de sumir — some o
+          "pisca-pisca" de botões aparecendo e desaparecendo conforme o cofre. */}
       <Box
         sx={{
-          display: 'flex',
-          gap: 0.5,
-          px: 0.75,
-          pb: 0.75,
-          borderBottom: 1,
-          borderColor: 'divider',
-          flexWrap: 'wrap',
+          display: 'flex', alignItems: 'center', gap: 0.25,
+          px: 1, pb: 0.5, borderBottom: 1, borderColor: 'divider',
         }}
       >
-        {!vault.exists && (
-          <Button onClick={comErro(ctrl.criarCofre)} startIcon={<Icon name="lucide:lock" size={12} />}>
-            Criar cofre
-          </Button>
-        )}
-        {vault.exists && !vault.unlocked && (
-          <Button onClick={comErro(ctrl.destrancar)} startIcon={<Icon name="lucide:unlock" size={12} />}>
-            Destrancar
-          </Button>
-        )}
-        {vault.unlocked && (
-          <>
-            <Button onClick={onNovaConexao} startIcon={<Icon name="lucide:plus" size={12} />}>
-              conexão
-            </Button>
-            <Button onClick={comErro(ctrl.recarregar)} title="Recarregar">
-              <Icon name="lucide:refresh-cw" size={12} />
-            </Button>
-            <Button onClick={comErro(ctrl.trancar)} title="Trancar o cofre (fecha as sessões)">
-              <Icon name="lucide:lock" size={12} />
-            </Button>
-          </>
-        )}
+        <Box
+          sx={{
+            flex: 1, minWidth: 0, fontSize: 11, letterSpacing: 0.5,
+            textTransform: 'uppercase', color: 'text.secondary',
+          }}
+        >
+          {painel === 'database' ? 'Database' : 'Service'}
+        </Box>
+
+        <AcaoDoPainel
+          icone="lucide:refresh-cw"
+          rotulo="Recarregar"
+          desabilitada={!vault.exists}
+          onClick={comErro(ctrl.recarregar)}
+        />
+        <AcaoDoPainel
+          icone="lucide:chevrons-down-up"
+          rotulo="Recolher tudo"
+          desabilitada={!vault.unlocked}
+          onClick={() => ctrl.recolherTudo()}
+        />
+        <AcaoDoPainel
+          icone="lucide:plus"
+          rotulo="Nova conexão"
+          desabilitada={!vault.unlocked}
+          onClick={onNovaConexao}
+        />
+        <AcaoDoPainel
+          icone={vault.unlocked ? 'lucide:lock' : 'lucide:unlock'}
+          rotulo={
+            !vault.exists
+              ? 'Criar cofre'
+              : vault.unlocked
+                ? 'Trancar o cofre (fecha as sessões)'
+                : 'Destrancar o cofre'
+          }
+          onClick={comErro(
+            !vault.exists ? ctrl.criarCofre : vault.unlocked ? ctrl.trancar : ctrl.destrancar
+          )}
+        />
       </Box>
+
 
       {vault.exists && !vault.unlocked && (
         <Box sx={{ px: 1.25, py: 1, color: 'text.secondary', fontSize: 11, lineHeight: 1.5 }}>

@@ -19,6 +19,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { arquivoDeDados } from '../paths';
 
 const VERSION = 1 as const;
 const CIPHER = 'aes-256-gcm';
@@ -102,7 +103,7 @@ export class RememberedKey {
   ) {}
 
   static defaultPath(): string {
-    return path.join(os.homedir(), '.dev-ide', 'session.json');
+    return arquivoDeDados('session.json');
   }
 
   /** Falso quando a máquina não tem identificador — aí só resta a senha. */

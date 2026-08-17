@@ -4,13 +4,15 @@
 // a suíte rodar com um worker só.
 import { expect, test } from '@playwright/test';
 import { bancoDeTeste, CONEXAO, SENHA_MESTRA, TABELA } from './global-setup';
-import { aba, destrancarCofre, editor, expandir, linhaArvore, painelLateral } from './fixtures';
+import {
+  aba, confirmar, destrancarCofre, editor, expandir, linhaArvore, painelLateral,
+} from './fixtures';
 
 /** Deixa o cofre trancado, que é o estado com que a IDE sempre inicia de fato. */
 async function trancarCofre(page: import('@playwright/test').Page): Promise<void> {
-  const trancar = page.getByTitle(/Trancar o cofre/);
+  const trancar = page.getByRole('button', { name: /Trancar o cofre/ });
   if (await trancar.isVisible()) await trancar.click();
-  await expect(page.getByRole('button', { name: 'Destrancar' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Destrancar o cofre' })).toBeVisible();
 }
 
 /**
@@ -26,9 +28,9 @@ function formulario(page: import('@playwright/test').Page) {
 
 /** Destranca pelo botão da barra — os testes de formulário não passam pela árvore. */
 async function destrancarPeloBotao(page: import('@playwright/test').Page): Promise<void> {
-  await page.getByRole('button', { name: 'Destrancar' }).click();
+  await page.getByRole('button', { name: 'Destrancar o cofre' }).click();
   await destrancarCofre(page, SENHA_MESTRA);
-  await expect(page.getByRole('button', { name: 'conexão' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Nova conexão', exact: true })).toBeVisible();
 }
 
 test.beforeEach(async ({ page }) => {
@@ -113,7 +115,7 @@ test('menu do botão direito oferece as ações do nó e abre o DDL', async ({ p
 
 test('cadastra uma conexão pelo formulário e ela aparece na árvore', async ({ page }) => {
   await destrancarPeloBotao(page);
-  await page.getByRole('button', { name: 'conexão' }).click();
+  await page.getByRole('button', { name: 'Nova conexão', exact: true }).click();
 
   await expect(aba(page, 'Nova conexão')).toBeVisible();
   await formulario(page).getByLabel('Nome', { exact: true }).fill('biblioteca');
@@ -129,6 +131,14 @@ test('cadastra uma conexão pelo formulário e ela aparece na árvore', async ({
   await expect(aba(page, 'Nova conexão')).toHaveCount(0);
   await expandir(page, 'ACME', 'Bancos');
   await expect(linhaArvore(page, 'biblioteca')).toBeVisible();
+
+  // Desfaz: deixar a conexão criada faz os testes seguintes verem duas onde
+  // esperavam uma, e a falha aparece longe da causa.
+  const criada = linhaArvore(page, 'biblioteca');
+  await criada.hover();
+  await criada.getByRole('button', { name: 'Excluir conexão' }).click();
+  await confirmar(page, true);
+  await expect(linhaArvore(page, 'biblioteca')).toHaveCount(0);
 });
 
 test('editar não pede a senha de novo e mantém a conexão funcionando', async ({ page }) => {
@@ -169,7 +179,7 @@ test('o tipo não pode ser trocado ao editar', async ({ page }) => {
 
 test('campo obrigatório vazio é recusado sem ida ao servidor', async ({ page }) => {
   await destrancarPeloBotao(page);
-  await page.getByRole('button', { name: 'conexão' }).click();
+  await page.getByRole('button', { name: 'Nova conexão', exact: true }).click();
 
   await formulario(page).getByLabel('Nome', { exact: true }).fill('sem-arquivo');
   await formulario(page).getByRole('button', { name: 'SQLite', exact: true }).click();
@@ -177,4 +187,90 @@ test('campo obrigatório vazio é recusado sem ida ao servidor', async ({ page }
 
   await expect(formulario(page).getByText('Campo obrigatório.')).toBeVisible();
   await expect(aba(page, 'Nova conexão')).toBeVisible();
+});
+
+test('o cabeçalho traz as ações como ícone, desabilitadas com o cofre trancado', async ({ page }) => {
+  // Trancado: recarregar continua valendo (a árvore renderiza sem senha), mas
+  // recolher e adicionar não têm o que fazer.
+  await expect(page.getByRole('button', { name: 'Recarregar' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Recolher tudo' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Nova conexão', exact: true })).toBeDisabled();
+
+  await destrancarPeloBotao(page);
+  await expect(page.getByRole('button', { name: 'Recolher tudo' })).toBeEnabled();
+});
+
+test('recolher tudo fecha os grupos abertos', async ({ page }) => {
+  await destrancarPeloBotao(page);
+  await expandir(page, 'ACME', 'Bancos');
+  await expect(linhaArvore(page, CONEXAO)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Recolher tudo' }).click();
+  await expect(linhaArvore(page, CONEXAO)).toHaveCount(0);
+  await expect(linhaArvore(page, 'ACME')).toBeVisible();
+});
+
+test('o "+" da pasta abre o formulário com o grupo já preenchido', async ({ page }) => {
+  await destrancarPeloBotao(page);
+  await expandir(page, 'ACME');
+
+  await linhaArvore(page, 'Bancos').hover();
+  await page.getByRole('button', { name: 'Nova conexão em "ACME/Bancos"' }).click();
+
+  await expect(formulario(page).getByLabel('Grupo')).toHaveValue('ACME/Bancos');
+});
+
+test('renomear a pasta leva os descendentes junto', async ({ page }) => {
+  await destrancarPeloBotao(page);
+
+  await linhaArvore(page, 'ACME').hover();
+  await page.getByRole('button', { name: 'Renomear "ACME"' }).click();
+
+  const campo = page.getByRole('dialog').getByRole('textbox');
+  await campo.fill('ACME SA');
+  await page.keyboard.press('Enter');
+
+  await expect(linhaArvore(page, 'ACME SA')).toBeVisible();
+  // O subgrupo acompanhou: a conexão continua alcançável por baixo do novo nome.
+  await expandir(page, 'ACME SA', 'Bancos');
+  await expect(linhaArvore(page, CONEXAO)).toBeVisible();
+
+  // Desfaz: o cofre é estado compartilhado entre os testes desta suíte.
+  await linhaArvore(page, 'ACME SA').hover();
+  await page.getByRole('button', { name: 'Renomear "ACME SA"' }).click();
+  await page.getByRole('dialog').getByRole('textbox').fill('ACME');
+  await page.keyboard.press('Enter');
+  await expect(linhaArvore(page, 'ACME')).toBeVisible();
+});
+
+test('a linha da conexão oferece recarregar e excluir no hover', async ({ page }) => {
+  await destrancarPeloBotao(page);
+  await expandir(page, 'ACME', 'Bancos');
+
+  const linha = linhaArvore(page, CONEXAO);
+  const acoes = linha.locator('.linha-acoes');
+
+  // `toBeVisible()` NÃO serve aqui: para o Playwright, opacity 0 continua
+  // visível. Só medir a opacidade prova que as ações estavam escondidas.
+  const opacidade = () => acoes.evaluate((el) => getComputedStyle(el).opacity);
+  expect(Number(await opacidade())).toBe(0);
+
+  await linha.hover();
+  await expect.poll(async () => Number(await opacidade())).toBe(1);
+  await expect(linha.getByRole('button', { name: 'Recarregar metadados' })).toBeVisible();
+  await expect(linha.getByRole('button', { name: 'Excluir conexão' })).toBeVisible();
+});
+
+test('excluir pela linha pede confirmação e recusar mantém a conexão', async ({ page }) => {
+  await destrancarPeloBotao(page);
+  await expandir(page, 'ACME', 'Bancos');
+
+  const linha = linhaArvore(page, CONEXAO);
+  await linha.hover();
+  await linha.getByRole('button', { name: 'Excluir conexão' }).click();
+
+  // Diálogo do projeto, não do navegador — e destrutivo precisa de confirmação.
+  await expect(page.getByRole('dialog')).toContainText(CONEXAO);
+  await confirmar(page, false);
+  await expect(linhaArvore(page, CONEXAO)).toBeVisible();
 });

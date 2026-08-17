@@ -31,6 +31,7 @@ export interface SidebarProps {
   readonly projeto: Project;
   readonly onIrParaSimbolo: (arquivo: string, linha: number) => void;
   readonly onNovoProjeto: () => void;
+  readonly onErro: (erro: unknown) => void;
   /** Controlado por fora: o menu View também troca de painel. */
   readonly painelAtivo: string;
   readonly onPainelAtivo: (id: string) => void;
@@ -39,6 +40,7 @@ export interface SidebarProps {
 export function Sidebar({
   width, onAbrirArquivo, caminhoAtivo = null, conexoes, projeto, onIrParaSimbolo,
   onNovoProjeto,
+  onErro,
   painelAtivo,
   onPainelAtivo,
 }: SidebarProps) {
@@ -96,6 +98,7 @@ export function Sidebar({
             onAbrirArquivo={onAbrirArquivo}
             caminhoAtivo={caminhoAtivo}
             onNovoProjeto={onNovoProjeto}
+            onErro={onErro}
           />
         )}
         {(ativo === 'database' || ativo === 'service') && (

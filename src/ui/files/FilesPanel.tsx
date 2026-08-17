@@ -7,6 +7,10 @@
 // projeto de uma vez, diferente da árvore de conexões, onde cada nível custa
 // uma consulta ao banco.
 import { useCallback, useState } from 'react';
+import {
+  ICONE_DE_PASTA, ICONE_DE_PASTA_ABERTA, iconeDeArquivo,
+} from '../../shared/editor/arquivos';
+import { linguagemDe } from '../useWorkspace';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import MenuItem from '@mui/material/MenuItem';
@@ -21,10 +25,11 @@ export interface FilesPanelProps {
   readonly caminhoAtivo: string | null;
   /** Sobe para o App: quem pergunta o nome é a entrada rápida. */
   readonly onNovoProjeto: () => void;
+  readonly onErro: (erro: unknown) => void;
 }
 
 export function FilesPanel({
-  projeto, onAbrirArquivo, caminhoAtivo, onNovoProjeto,
+  projeto, onAbrirArquivo, caminhoAtivo, onNovoProjeto, onErro,
 }: FilesPanelProps) {
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
 
@@ -39,7 +44,7 @@ export function FilesPanel({
 
   const abrir = useCallback(
     (caminho: string) => {
-      onAbrirArquivo(caminho).catch((e: Error) => window.alert(e.message));
+      onAbrirArquivo(caminho).catch(onErro);
     },
     [onAbrirArquivo]
   );
@@ -52,7 +57,11 @@ export function FilesPanel({
           <TreeRow
             nivel={nivel}
             rotulo={no.name}
-            icone={no.type === 'dir' ? 'folder' : 'file'}
+            icone={
+              no.type === 'dir'
+                ? (aberta ? ICONE_DE_PASTA_ABERTA : ICONE_DE_PASTA)
+                : iconeDeArquivo(no.path, linguagemDe(no.path))
+            }
             expansivel={no.type === 'dir'}
             aberto={aberta}
             ativo={no.path === caminhoAtivo}

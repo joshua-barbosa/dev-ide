@@ -15,8 +15,8 @@
 //   nenhuma em disco: quem faz isso é `remember.ts`.
 import * as crypto from 'crypto';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
+import { arquivoDeDados } from '../paths';
 import type { ConnectionInput, FieldValue, PublicConnection, ResolvedConfig } from './types';
 
 const VERSION = 1 as const;
@@ -131,7 +131,7 @@ export class Vault {
   constructor(private readonly filePath: string) {}
 
   static defaultPath(): string {
-    return path.join(os.homedir(), '.dev-ide', 'vault.json');
+    return arquivoDeDados('vault.json');
   }
 
   exists(): boolean {

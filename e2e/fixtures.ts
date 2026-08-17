@@ -75,3 +75,14 @@ export async function menu(page: Page, nome: string): Promise<void> {
 export function entradaRapida(page: Page): Locator {
   return page.getByRole('dialog').getByRole('textbox');
 }
+
+/**
+ * Responde ao diálogo de confirmação do projeto.
+ *
+ * Roda DEPOIS da ação que o abre — é componente da página, não do navegador.
+ * Foi o que substituiu `responderDialogo` na spec 007.
+ */
+export async function confirmar(page: Page, aceitar: boolean): Promise<void> {
+  const caixa = page.getByRole('dialog');
+  await caixa.getByRole('button', { name: aceitar ? /fechar sem salvar|excluir|confirmar|ok/i : /cancelar/i }).click();
+}
