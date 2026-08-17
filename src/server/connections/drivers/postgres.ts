@@ -135,9 +135,18 @@ type ClienteDe = (banco: string) => Promise<Client>;
 function criarPool(base: ClientConfig, config: ResolvedConfig, startupSql: string) {
   const clientes = new Map<string, Client>();
   const abrindo = new Map<string, Promise<Client>>();
+  const ouvintes: Array<(motivo: string) => void> = [];
 
   const abrir = async (banco: string): Promise<Client> => {
     const client = new Client({ ...base, database: banco });
+
+    // Mesmo motivo do MySQL: um Client do pg é EventEmitter, e erro sem ouvinte
+    // derruba o processo. O cliente morto sai do mapa para não ser reentregue.
+    client.on('error', (err: Error) => {
+      clientes.delete(banco);
+      for (const ouvinte of ouvintes) ouvinte(err.message);
+    });
+
     await client.connect();
     if (config.readOnly) {
       await client.query('SET default_transaction_read_only = on');
@@ -166,7 +175,11 @@ function criarPool(base: ClientConfig, config: ResolvedConfig, startupSql: strin
     await Promise.all(abertos.map((client) => client.end().catch(() => undefined)));
   };
 
-  return { clienteDe, fecharTudo };
+  const aoMorrer = (listener: (motivo: string) => void): void => {
+    ouvintes.push(listener);
+  };
+
+  return { clienteDe, fecharTudo, aoMorrer };
 }
 
 // ---------------------------------------------------------------------------
@@ -502,7 +515,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     statement_timeout: resolveTimeout(undefined),
   };
 
-  const { clienteDe, fecharTudo } = criarPool(base, config, String(f.startup_sql ?? '').trim());
+  const { clienteDe, fecharTudo, aoMorrer } = criarPool(base, config, String(f.startup_sql ?? '').trim());
   const principalClient = await clienteDe(principal);
 
   // SHOW não aceita alias; current_setting devolve o mesmo valor como coluna nomeada.
@@ -514,6 +527,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
 
   return {
     kind: 'sql',
+    onClosed: aoMorrer,
     children: (nodePath) => navegar(clienteDe, rotulo, versao, exibicao, nodePath),
     execute: async (request) => {
       // O banco do nó ativo manda; sem ele, cai no principal.

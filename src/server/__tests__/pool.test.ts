@@ -138,6 +138,36 @@ test('acquire renova a ociosidade', async () => {
   assert.deepEqual(pool.openIds(), ['conn-1']);
 });
 
+test('sessão que morre sozinha é despejada, e a próxima abre uma nova', async () => {
+  // O servidor de banco fecha conexões ociosas por conta própria (wait_timeout).
+  // Se o pool continuar entregando a sessão morta, toda operação seguinte falha
+  // até alguém reiniciar a IDE — foi assim que uma queda de conexão derrubou o
+  // processo inteiro.
+  let aberturas = 0;
+  const avisar: Array<(motivo: string) => void> = [];
+
+  const pool = new SessionPool(async () => {
+    aberturas += 1;
+    return {
+      kind: 'sql',
+      children: async () => [],
+      close: async () => {},
+      onClosed: (listener: (motivo: string) => void) => avisar.push(listener),
+    };
+  });
+
+  await pool.acquire('conn-1');
+  assert.deepEqual(pool.openIds(), ['conn-1']);
+
+  // o driver avisa que a conexão subjacente morreu
+  avisar[0]('wait_timeout');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(pool.openIds(), [], 'a sessão morta precisa sair do pool');
+
+  await pool.acquire('conn-1');
+  assert.equal(aberturas, 2, 'a próxima chamada deve abrir uma sessão nova');
+});
+
 test('closeAll fecha tudo, mesmo se um close falhar', async () => {
   const boa = sessionFake();
   const pool = new SessionPool(async (id) => {

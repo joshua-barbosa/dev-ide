@@ -416,6 +416,18 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     conn.connect((err) => (err ? reject(new Error(err.message)) : resolve()));
   });
 
+  // OBRIGATÓRIO, não defensivo: uma Connection do mysql2 é um EventEmitter, e
+  // erro sem ouvinte vira exceção não tratada que MATA O PROCESSO. O servidor
+  // encerra conexões ociosas por conta própria (wait_timeout), então isso
+  // acontece em uso normal — e já derrubou a IDE inteira uma vez.
+  const ouvintes: Array<(motivo: string) => void> = [];
+  let morta = false;
+
+  conn.on('error', (err: NodeJS.ErrnoException) => {
+    morta = true;
+    for (const ouvinte of ouvintes) ouvinte(err.message);
+  });
+
   if (config.readOnly) {
     // Enforcement no servidor, igual ao --init-command do comando `db`.
     await query(conn, 'SET SESSION TRANSACTION READ ONLY');
@@ -430,12 +442,30 @@ async function connect(config: ResolvedConfig): Promise<Session> {
   const versao = info?.versao ?? '';
   const rotulo = socket === '' ? `${f.host}:${f.port}` : socket;
 
+  /** Falha cedo e com mensagem clara, em vez de estourar dentro do driver. */
+  const exigirViva = (): void => {
+    if (morta) {
+      throw new Error(
+        `A conexão com ${rotulo} foi encerrada pelo servidor. Expanda a conexão de novo para reabrir.`
+      );
+    }
+  };
+
   return {
     kind: 'sql',
-    children: (nodePath) => navegar(conn, rotulo, versao, exibicao, nodePath),
-    execute: (request) =>
-      executar(conn, { ...request, rowLimit: request.rowLimit ?? exibicao.rowLimit }),
-    runAction: (request) => acao(conn, request),
+    onClosed: (listener) => ouvintes.push(listener),
+    children: (nodePath) => {
+      exigirViva();
+      return navegar(conn, rotulo, versao, exibicao, nodePath);
+    },
+    execute: (request) => {
+      exigirViva();
+      return executar(conn, { ...request, rowLimit: request.rowLimit ?? exibicao.rowLimit });
+    },
+    runAction: (request) => {
+      exigirViva();
+      return acao(conn, request);
+    },
     close: async () => {
       await new Promise<void>((resolve) => conn.end(() => resolve()));
     },

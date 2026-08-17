@@ -176,6 +176,13 @@ export interface Session {
   readonly shell?: RemoteShell;
   readonly monitor?: HostMonitor;
   readonly forwarding?: PortForwarding;
+  /**
+   * Avisa que a conexão subjacente morreu por conta própria — o servidor de
+   * banco encerrou por ociosidade, a rede caiu, o processo remoto foi morto.
+   * O pool usa isto para despejar a sessão em vez de continuar entregando uma
+   * conexão inútil. Um driver que não implementa fica preso à sessão morta.
+   */
+  readonly onClosed?: (listener: (motivo: string) => void) => void;
   close(): Promise<void>;
 }
 

@@ -59,6 +59,15 @@ export class SessionPool {
     const abertura = this.factory(connectionId)
       .then((session) => {
         this.entries.set(connectionId, { session, lastUsedAt: this.now() });
+
+        // O servidor do outro lado pode encerrar a conexão sem avisar ninguém.
+        // Sem despejar aqui, o pool seguiria entregando uma sessão morta até a
+        // IDE ser reiniciada.
+        session.onClosed?.(() => {
+          const atual = this.entries.get(connectionId);
+          if (atual?.session === session) this.entries.delete(connectionId);
+        });
+
         return session;
       })
       .finally(() => {
