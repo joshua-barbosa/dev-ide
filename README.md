@@ -1,6 +1,6 @@
 # dev-ide
 
-IDE de desenvolvimento simples, estilo Sublime, construída com **Node.js + TypeScript** — sem extensões nem plugins. O backend serve uma interface web com editor, highlight próprio, painel de símbolos e execução de código.
+IDE de desenvolvimento própria, construída com **Node.js + TypeScript** no servidor e **React + Vite** na interface — sem extensões nem plugins. Editor com realce próprio, painel de símbolos, execução de código e conexão a bancos de dados.
 
 Pensada para futuramente ser integrada a uma engine de criação de ambientes 3D com three.js: a engine pode consumir a mesma API REST (arquivos, símbolos, execução) ou ser embutida como painel adicional.
 
@@ -8,9 +8,14 @@ Pensada para futuramente ser integrada a uma engine de criação de ambientes 3D
 
 ```bash
 npm install
-npm start          # compila e sobe em http://localhost:4321
-npm test           # roda a suíte de testes do backend
+npm start          # compila tudo e sobe em http://localhost:4321
+npm run dev        # servidor de desenvolvimento da interface (exige o npm start em outro terminal)
+npm test           # roda a suíte
 ```
+
+O `npm test` compila só o servidor, sem passar pelo build da interface — a suíte
+não paga o custo do Vite. Se você rodar `npm test` e depois `node dist/server/index.js`
+direto, a interface não estará compilada; use `npm start` ou `npm run build:ui`.
 
 Porta configurável via `PORT`; pasta raiz dos projetos via `DEV_IDE_PROJECTS` (padrão: `./projects`).
 
@@ -18,7 +23,7 @@ Porta configurável via `PORT`; pasta raiz dos projetos via `DEV_IDE_PROJECTS` (
 
 - **Projetos** — crie pastas de projeto com nome próprio (botão "＋ projeto"); os arquivos ficam em `projects/<nome>/`.
 - **Abrir / salvar / criar arquivos** — pela árvore lateral, por caminho absoluto ("abrir") ou "novo" (Ctrl+S salva).
-- **Tipo de arquivo** — seletor que troca o highlight (JavaScript, TypeScript, Python, PHP, C, C#, JSON, HTML, CSS, texto). Cada tipo tem paleta de cores própria para classes, funções, constantes, variáveis etc. (variáveis CSS `--tok-*` em `public/styles.css`, fáceis de customizar).
+- **Tipo de arquivo** — seletor que troca o highlight (JavaScript, TypeScript, Python, PHP, C, C#, JSON, HTML, CSS, texto). Cada tipo tem paleta de cores própria para classes, funções, constantes, variáveis etc. (as cores por tipo ficam em `src/ui/theme.ts` e no tokenizador).
 - **Execução**:
   - **▶ arquivo** — executa o arquivo inteiro (Ctrl+Enter). Se houver alterações não salvas, executa o conteúdo do editor.
   - **▶ seleção** — executa apenas o bloco de código selecionado.
@@ -39,20 +44,13 @@ Porta configurável via `PORT`; pasta raiz dos projetos via `DEV_IDE_PROJECTS` (
 ## Arquitetura
 
 ```
-src/server/
-  index.ts     # servidor Express + API REST
-  projects.ts  # criação/listagem de projetos e árvore de arquivos
-  symbols.ts   # extração de símbolos (AST TypeScript + regex Python)
-  runner.ts    # execução de arquivo/função/bloco em processo Node isolado
-  __tests__/   # testes (node:test)
-public/
-  index.html, styles.css
-  js/languages.js    # definições léxicas por linguagem
-  js/highlighter.js  # tokenizador + classificação de identificadores
-  js/editor.js       # editor (textarea + camada de highlight + linhas)
-  js/sidebar.js      # árvore de arquivos + painel de símbolos
-  js/api.js, js/main.js
+src/server/       # Express + API REST, drivers de conexão, cofre, runner
+src/shared/       # lógica pura testável em node: abas, ícones, contratos, tokenizador
+src/ui/           # interface em React (Vite compila para dist/ui)
 ```
+
+A pasta `specs/` é a fonte da verdade do desenvolvimento; veja `specs/structure.md`
+para o mapa completo.
 
 ### API REST (para integração com a engine 3D)
 
@@ -84,6 +82,7 @@ Todas as respostas usam o envelope `{success, data, error}`.
 | POST | `/api/connections/:id/connect` \| `/disconnect` | abre/fecha sessão; `connect` devolve as capacidades |
 | GET | `/api/connections/:id/children?path=a&path=b` | filhos do nó (navegação lazy) |
 | POST | `/api/connections/:id/execute` | executa `{statement, nodePath?, rowLimit?, timeoutMs?}` |
+| POST | `/api/connections/:id/action` | roda uma ação do menu `{nodePath, actionId}` — ex.: ver DDL |
 
 ### Serviços suportados
 

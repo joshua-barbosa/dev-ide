@@ -1,6 +1,6 @@
 // Tema da interface.
 //
-// As cores não são escolhidas aqui: são as que a IDE já usava (public/styles.css).
+// As cores não são escolhidas aqui: são as que a IDE já usava antes da migração.
 // Sem isso, o Material entra com o azul padrão e a identidade de editor se perde.
 //
 // A densidade é definida uma vez, como padrão global. Material é desenhado para

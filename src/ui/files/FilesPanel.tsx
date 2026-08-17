@@ -1,43 +1,28 @@
 // Painel de arquivos: seletor de projeto e árvore.
 //
-// Pastas guardam o estado de aberta/fechada localmente; não há carregamento
-// preguiçoso aqui porque o servidor já devolve a árvore inteira do projeto —
-// diferente da árvore de conexões, onde cada nível custa uma consulta.
-import { useCallback, useEffect, useState } from 'react';
+// Puramente de apresentação — o estado do projeto vive em useProject, porque a
+// árvore, os símbolos e o botão de criar arquivo compartilham a mesma verdade.
+//
+// Não há carregamento preguiçoso aqui: o servidor devolve a árvore inteira do
+// projeto de uma vez, diferente da árvore de conexões, onde cada nível custa
+// uma consulta ao banco.
+import { useCallback, useState } from 'react';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
-import { Api, type FileNode } from '../api';
-import { Icon } from '../Icon';
+import type { FileNode } from '../api';
+import type { Project } from './useProject';
 import { TreeRow } from '../tree/TreeRow';
 
 export interface FilesPanelProps {
+  readonly projeto: Project;
   readonly onAbrirArquivo: (caminho: string) => Promise<void>;
   readonly caminhoAtivo: string | null;
 }
 
-export function FilesPanel({ onAbrirArquivo, caminhoAtivo }: FilesPanelProps) {
-  const [projetos, setProjetos] = useState<readonly string[]>([]);
-  const [projeto, setProjeto] = useState('');
-  const [arvore, setArvore] = useState<readonly FileNode[]>([]);
+export function FilesPanel({ projeto, onAbrirArquivo, caminhoAtivo }: FilesPanelProps) {
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
-  const [erro, setErro] = useState<string | null>(null);
-
-  useEffect(() => {
-    Api.listProjects()
-      .then((lista) => {
-        setProjetos(lista);
-        setProjeto((atual) => (atual === '' ? (lista[0] ?? '') : atual));
-      })
-      .catch((e: Error) => setErro(e.message));
-  }, []);
-
-  useEffect(() => {
-    if (projeto === '') return;
-    Api.fileTree(projeto)
-      .then(setArvore)
-      .catch((e: Error) => setErro(e.message));
-  }, [projeto]);
 
   const alternar = useCallback((caminho: string) => {
     setAbertas((atual) => {
@@ -74,10 +59,8 @@ export function FilesPanel({ onAbrirArquivo, caminhoAtivo }: FilesPanelProps) {
       );
     });
 
-  if (erro !== null) {
-    return (
-      <Box sx={{ p: 1.25, color: 'error.main', fontSize: 11 }}>{erro}</Box>
-    );
+  if (projeto.erro !== null) {
+    return <Box sx={{ p: 1.25, color: 'error.main', fontSize: 11 }}>{projeto.erro}</Box>;
   }
 
   return (
@@ -86,31 +69,34 @@ export function FilesPanel({ onAbrirArquivo, caminhoAtivo }: FilesPanelProps) {
         <TextField
           select
           fullWidth
-          value={projeto}
-          onChange={(e) => setProjeto(e.target.value)}
+          value={projeto.projeto}
+          onChange={(e) => projeto.selecionar(e.target.value)}
           slotProps={{ select: { displayEmpty: true } }}
           sx={{ '& .MuiInputBase-input': { fontSize: 12, py: 0.5 } }}
         >
-          {projetos.length === 0 && (
-            <MenuItem value="" disabled>
-              (sem projetos)
-            </MenuItem>
+          {projeto.projetos.length === 0 && (
+            <MenuItem value="" disabled>(sem projetos)</MenuItem>
           )}
-          {projetos.map((nome) => (
-            <MenuItem key={nome} value={nome}>
-              {nome}
-            </MenuItem>
+          {projeto.projetos.map((nome) => (
+            <MenuItem key={nome} value={nome}>{nome}</MenuItem>
           ))}
         </TextField>
+        <Button
+          onClick={() => void projeto.criarProjeto().catch((e: Error) => window.alert(e.message))}
+          title="Criar novo projeto"
+          sx={{ minWidth: 32 }}
+        >
+          ＋
+        </Button>
       </Box>
 
       <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {arvore.length === 0 ? (
+        {projeto.arvore.length === 0 ? (
           <Box sx={{ px: 1.25, color: 'text.secondary', fontSize: 11 }}>
-            <Icon name="folder" size={11} /> projeto vazio — crie um arquivo
+            projeto vazio — crie um arquivo
           </Box>
         ) : (
-          renderizar(arvore, 0)
+          renderizar(projeto.arvore, 0)
         )}
       </Box>
     </Box>

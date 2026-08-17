@@ -8,6 +8,8 @@ import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
 import { FilesPanel } from './files/FilesPanel';
 import { ConnectionsPanel, type ConnectionsPanelProps } from './connections/ConnectionsPanel';
+import { SymbolsPanel } from './files/SymbolsPanel';
+import type { Project } from './files/useProject';
 
 const PAINEIS = [
   { id: 'files', label: 'Arquivos' },
@@ -23,9 +25,13 @@ export interface SidebarProps {
   readonly onAbrirArquivo: (caminho: string) => Promise<void>;
   readonly caminhoAtivo?: string | null;
   readonly conexoes: Omit<ConnectionsPanelProps, 'painel'>;
+  readonly projeto: Project;
+  readonly onIrParaSimbolo: (arquivo: string, linha: number) => void;
 }
 
-export function Sidebar({ width, onAbrirArquivo, caminhoAtivo = null, conexoes }: SidebarProps) {
+export function Sidebar({
+  width, onAbrirArquivo, caminhoAtivo = null, conexoes, projeto, onIrParaSimbolo,
+}: SidebarProps) {
   const [ativo, setAtivo] = useState<PainelId>('files');
 
   return (
@@ -60,15 +66,13 @@ export function Sidebar({ width, onAbrirArquivo, caminhoAtivo = null, conexoes }
 
       <Box sx={{ flex: 1, overflow: 'auto', py: 0.75, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {ativo === 'files' && (
-          <FilesPanel onAbrirArquivo={onAbrirArquivo} caminhoAtivo={caminhoAtivo} />
+          <FilesPanel projeto={projeto} onAbrirArquivo={onAbrirArquivo} caminhoAtivo={caminhoAtivo} />
         )}
         {(ativo === 'database' || ativo === 'service') && (
           <ConnectionsPanel painel={ativo} {...conexoes} />
         )}
         {ativo === 'symbols' && (
-          <Box sx={{ px: 1.25, color: 'text.secondary', fontSize: 11 }}>
-            Símbolos — em construção
-          </Box>
+          <SymbolsPanel simbolos={projeto.simbolos} onIr={onIrParaSimbolo} />
         )}
       </Box>
     </Box>

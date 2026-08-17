@@ -19,6 +19,7 @@ import { Toolbar } from './Toolbar';
 import { ResultGrid } from './grid/ResultGrid';
 import { OutputPanel } from './OutputPanel';
 import { useExecution } from './useExecution';
+import { useProject } from './files/useProject';
 
 export function App() {
   const lateral = useSidebarWidth();
@@ -26,6 +27,7 @@ export function App() {
   const conexoes = useConnections();
   const menu = useContextMenu();
   const exec = useExecution(ws);
+  const projeto = useProject();
   const [linguagem, setLinguagem] = useState('javascript');
 
   // O seletor de tipo acompanha a aba ativa.
@@ -44,7 +46,22 @@ export function App() {
   };
 
   const novoArquivo = (): void => {
-    window.alert('Criar arquivo pela interface — ainda não migrado.');
+    const conteudo = ws.active === null ? '' : (ws.editorRef.current?.getValue() ?? '');
+    projeto
+      .criarArquivo(conteudo)
+      .then((caminho) => (caminho === null ? undefined : ws.abrirArquivo(caminho)))
+      .catch((e: Error) => window.alert(e.message));
+  };
+
+  /** Abre o arquivo do símbolo, se preciso, e pula para a linha. */
+  const irParaSimbolo = (arquivo: string, linha: number): void => {
+    const atual = (ws.active?.meta as { path?: string | null } | undefined)?.path ?? null;
+    const pular = () => window.setTimeout(() => ws.editorRef.current?.goToLine(linha), 0);
+    if (arquivo === atual) {
+      pular();
+      return;
+    }
+    ws.abrirArquivo(arquivo).then(pular).catch((e: Error) => window.alert(e.message));
   };
 
   const abrirPorCaminho = (): void => {
@@ -101,7 +118,12 @@ export function App() {
         onLinguagem={trocarLinguagem}
         onNovo={novoArquivo}
         onAbrir={abrirPorCaminho}
-        onSalvar={() => void ws.salvar().catch((e: Error) => window.alert(e.message))}
+        onSalvar={() =>
+          void ws
+            .salvar()
+            .then(() => projeto.recarregar())
+            .catch((e: Error) => window.alert(e.message))
+        }
         onExecutar={executar}
         ehSql={ws.active?.type === 'sql'}
       />
@@ -110,6 +132,9 @@ export function App() {
         <Sidebar
           width={lateral.width}
           onAbrirArquivo={ws.abrirArquivo}
+          projeto={projeto}
+          onIrParaSimbolo={irParaSimbolo}
+          caminhoAtivo={(ws.active?.meta as { path?: string | null } | undefined)?.path ?? null}
           conexoes={{
             ctrl: conexoes,
             onAbrirQuery: abrirQueryDoNo,
