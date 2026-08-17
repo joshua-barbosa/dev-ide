@@ -46,6 +46,8 @@ export interface Workspace {
   aoMoverCursor(linha: number, coluna: number): void;
   abrirArquivo(caminho: string): Promise<void>;
   abrirQuery(id: string, titulo: string, conteudo: string, connectionId: string): void;
+  abrirFormulario(connectionId: string | null, titulo: string): void;
+  marcarAbaSuja(id: string, sujo: boolean): void;
   ativar(id: string): void;
   fechar(id: string): void;
   marcarSujo(): void;
@@ -144,6 +146,33 @@ export function useWorkspace(): Workspace {
     [salvarNaAba, store]
   );
 
+  /**
+   * Abre a aba do formulário de conexão.
+   *
+   * O `id` inclui a conexão, então reabrir a mesma edição foca a aba existente
+   * em vez de duplicar — regra que o store já tem e que já tem teste.
+   */
+  const abrirFormulario = useCallback(
+    (connectionId: string | null, titulo: string) => {
+      if (ultimaAtiva.current !== null) salvarNaAba(ultimaAtiva.current);
+      store.open({
+        id: connectionId === null ? 'conexao:nova' : `conexao:${connectionId}`,
+        type: 'conexao',
+        title: titulo,
+        icon: 'lucide:plug',
+        meta: { connectionId },
+      });
+    },
+    [salvarNaAba, store]
+  );
+
+  const marcarAbaSuja = useCallback(
+    (id: string, sujo: boolean) => {
+      store.update(id, { dirty: sujo });
+    },
+    [store]
+  );
+
   const fechar = useCallback(
     (id: string) => {
       const aba = store.get(id);
@@ -186,6 +215,8 @@ export function useWorkspace(): Workspace {
     cursor,
     abrirArquivo,
     abrirQuery,
+    abrirFormulario,
+    marcarAbaSuja,
     ativar: (id) => store.activate(id),
     fechar,
     marcarSujo,

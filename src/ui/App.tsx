@@ -12,8 +12,10 @@ import { useSidebarWidth } from './useSidebarWidth';
 import { useWorkspace } from './useWorkspace';
 import { EditorHost } from './editor/EditorHost';
 import { TabBar } from './tabs/TabBar';
+import type { PublicConnection } from '../shared/contracts';
 import { useConnections } from './connections/useConnections';
 import { VaultDialog } from './connections/VaultDialog';
+import { ConnectionForm } from './connections/ConnectionForm';
 import { useContextMenu } from './ContextMenu';
 import { Api } from './api';
 import { Toolbar } from './Toolbar';
@@ -99,8 +101,13 @@ export function App() {
     return () => document.removeEventListener('keydown', aoTeclar);
   }, [ws]);
 
+  const abrirFormulario = (conexao: PublicConnection | null): void => {
+    ws.abrirFormulario(conexao?.id ?? null, conexao === null ? 'Nova conexão' : conexao.label);
+  };
+  const abaAtual = ws.activeId ?? '';
+
   const semAbas = ws.tabs.length === 0;
-  const mostrarEditor = !semAbas && ws.active?.type !== 'grid';
+  const mostrarEditor = !semAbas && ws.active?.type !== 'grid' && ws.active?.type !== 'conexao';
 
   return (
     <Box
@@ -139,6 +146,7 @@ export function App() {
           conexoes={{
             ctrl: conexoes,
             onAbrirQuery: abrirQueryDoNo,
+            onNovaConexao: () => abrirFormulario(null),
             onMenuNo: (e, id, caminho, no) =>
               menu.abrir(e, [
                 { label: 'Copiar nome', onClick: () => copiar(no.label) },
@@ -164,7 +172,7 @@ export function App() {
                   : { label: 'Conectar', onClick: () => conexoes.abrirConexao(conexao) },
                 { label: 'Recarregar metadados', onClick: () => conexoes.recarregarMetadados(conexao.id) },
                 null,
-                { label: 'Editar conexão…', onClick: () => window.alert('Formulário de conexão — próxima spec.') },
+                { label: 'Editar conexão…', onClick: () => abrirFormulario(conexao) },
                 { label: 'Excluir conexão', danger: true, onClick: () => conexoes.excluir(conexao) },
               ]),
           }}
@@ -190,6 +198,25 @@ export function App() {
 
           {ws.active?.type === 'grid' && (
             <ResultGrid {...(exec.grades.get(ws.active.id) ?? { resultado: null })} />
+          )}
+
+          {ws.active?.type === 'conexao' && (
+            <ConnectionForm
+              // Remonta ao trocar de conexão: o formulário guarda estado próprio,
+              // e reaproveitar a instância misturaria os campos de duas conexões.
+              key={ws.active.id}
+              drivers={[...conexoes.drivers.values()]}
+              gruposConhecidos={conexoes.grupos}
+              conexao={conexoes.acharConexao(ws.active.meta.connectionId)}
+              onSujar={(sujo) => ws.marcarAbaSuja(abaAtual, sujo)}
+              onCancelar={() => ws.fechar(abaAtual)}
+              onSalvar={async (input, conectar) => {
+                const id = ws.active?.meta.connectionId;
+                await conexoes.salvarConexao(input, typeof id === 'string' ? id : null, conectar);
+                ws.marcarAbaSuja(abaAtual, false);
+                ws.fechar(abaAtual);
+              }}
+            />
           )}
 
           {semAbas && (

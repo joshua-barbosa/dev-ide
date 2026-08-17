@@ -17,6 +17,7 @@ export interface ConnectionsPanelProps {
   readonly onMenuNo: (e: React.MouseEvent, id: string, caminho: string[], no: TreeNode) => void;
   readonly onMenuConexao: (e: React.MouseEvent, conexao: PublicConnection) => void;
   readonly onAbrirQuery: (id: string, no: TreeNode) => void;
+  readonly onNovaConexao: () => void;
 }
 
 /** Data curta e local — o horário exato não ajuda em nada aqui. */
@@ -32,6 +33,7 @@ export function ConnectionsPanel({
   onMenuNo,
   onMenuConexao,
   onAbrirQuery,
+  onNovaConexao,
 }: ConnectionsPanelProps) {
   const aceita = (tipo: string): boolean => {
     const driver = ctrl.drivers.get(tipo);
@@ -175,10 +177,7 @@ export function ConnectionsPanel({
         )}
         {vault.unlocked && (
           <>
-            <Button
-              onClick={() => window.alert('Formulário de conexão — próxima spec.')}
-              startIcon={<Icon name="lucide:plus" size={12} />}
-            >
+            <Button onClick={onNovaConexao} startIcon={<Icon name="lucide:plus" size={12} />}>
               conexão
             </Button>
             <Button onClick={comErro(ctrl.recarregar)} title="Recarregar">

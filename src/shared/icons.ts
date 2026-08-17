@@ -65,6 +65,7 @@ const ICONES_DA_INTERFACE = [
   'lucide:copy',
   'lucide:trash-2',
   'lucide:play',
+  'lucide:save',
   'lucide:x',
 ] as const;
 

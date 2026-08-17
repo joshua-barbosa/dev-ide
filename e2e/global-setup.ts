@@ -11,6 +11,18 @@ import { DatabaseSync } from 'node:sqlite';
 export const SENHA_MESTRA = 'senha-de-teste';
 export const CONEXAO = 'escola';
 export const TABELA = 'alunos';
+/**
+ * Caminho do banco semeado, para o teste do formulário cadastrar uma conexão
+ * apontando para um arquivo que existe de verdade.
+ *
+ * Vai por variável de ambiente porque o `globalSetup` roda em outro processo:
+ * estado de módulo não chega aos workers, variável de ambiente chega.
+ */
+export function bancoDeTeste(): string {
+  const caminho = process.env.E2E_BANCO;
+  if (caminho === undefined) throw new Error('E2E_BANCO não foi definido pelo global-setup.');
+  return caminho;
+}
 
 async function esperarServidor(base: string): Promise<void> {
   for (let i = 0; i < 60; i += 1) {
@@ -57,6 +69,7 @@ export default async function globalSetup(): Promise<void> {
   );
 
   const banco = path.join(dados, 'escola.db');
+  process.env.E2E_BANCO = banco;
   const db = new DatabaseSync(banco);
   db.exec(`CREATE TABLE ${TABELA} (id INTEGER PRIMARY KEY, nome TEXT NOT NULL, nota REAL)`);
   const inserir = db.prepare(`INSERT INTO ${TABELA}(nome, nota) VALUES (?, ?)`);

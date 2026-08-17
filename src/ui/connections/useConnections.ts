@@ -5,7 +5,10 @@
 // compartilhados de propósito — as duas árvores nunca mostram a mesma conexão,
 // então não há como uma confundir a outra.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ConnectionsState, PublicConnection, TreeNode } from '../../shared/contracts';
+import type {
+  ConnectionInput, ConnectionsState, GroupNode, PublicConnection, TreeNode,
+} from '../../shared/contracts';
+import { gruposExistentes } from '../../shared/connections/form';
 import { Api, type DriverInfo } from '../api';
 
 /** Chave de cache: id da conexão mais o caminho do nó. */
@@ -37,6 +40,9 @@ export interface ConnectionsController {
   alternarNo(id: string, caminho: readonly string[]): Promise<void>;
   recarregarMetadados(id: string): Promise<void>;
   excluir(conexao: PublicConnection): Promise<void>;
+  salvarConexao(input: ConnectionInput, id: string | null, conectar: boolean): Promise<void>;
+  readonly grupos: readonly string[];
+  acharConexao(id: unknown): PublicConnection | null;
   chaveDe(id: string, caminho: readonly string[]): string;
 }
 
@@ -222,6 +228,28 @@ export function useConnections(): ConnectionsController {
     [buscarFilhos]
   );
 
+  /**
+   * Grava a conexão e, opcionalmente, já abre a sessão.
+   *
+   * Destrancar vem antes de gravar porque é aí que o segredo precisa ser
+   * cifrado — abrir o formulário com o cofre trancado é legítimo.
+   */
+  const salvarConexao = useCallback(
+    async (input: ConnectionInput, id: string | null, conectar: boolean) => {
+      if (!(await garantirDestrancado())) {
+        throw new Error('O cofre precisa estar destrancado para salvar.');
+      }
+
+      const salva = id === null
+        ? await Api.createConnection(input)
+        : await Api.updateConnection(id, input);
+      await recarregar();
+
+      if (conectar) await abrirConexao(salva);
+    },
+    [abrirConexao, garantirDestrancado, recarregar]
+  );
+
   const excluir = useCallback(
     async (conexao: PublicConnection) => {
       const ok = window.confirm(
@@ -232,6 +260,31 @@ export function useConnections(): ConnectionsController {
       await recarregar();
     },
     [recarregar]
+  );
+
+  // Vem da árvore que o servidor já manda: sugerir grupo existente evita que o
+  // usuário crie "ACME/bancos" ao lado de "ACME/Bancos" por descuido.
+  const grupos = useMemo(
+    () => (estado === null ? [] : gruposExistentes(estado.tree)),
+    [estado]
+  );
+
+  /** Conexão por id, achatando a árvore. Aceita `unknown` porque a origem é o
+   *  `meta` da aba, que é um registro sem tipo. */
+  const acharConexao = useCallback(
+    (id: unknown): PublicConnection | null => {
+      if (typeof id !== 'string' || estado === null) return null;
+      const procurar = (grupo: GroupNode): PublicConnection | null => {
+        for (const c of grupo.connections) if (c.id === id) return c;
+        for (const sub of grupo.groups) {
+          const achada = procurar(sub);
+          if (achada !== null) return achada;
+        }
+        return null;
+      };
+      return procurar(estado.tree);
+    },
+    [estado]
   );
 
   return useMemo(
@@ -255,12 +308,16 @@ export function useConnections(): ConnectionsController {
       alternarNo,
       recarregarMetadados,
       excluir,
+      salvarConexao,
+      grupos,
+      acharConexao,
       chaveDe,
     }),
     [
-      abrirConexao, alternarGrupo, alternarNo, cancelarSenha, carregando, criarCofre,
+      abrirConexao, acharConexao, alternarGrupo, alternarNo, cancelarSenha, carregando, criarCofre,
       desconectar, destrancar, drivers, erro, estado, excluir, expandidos, filhos,
-      pedidoDeSenha, recarregar, recarregarMetadados, responderSenha, trancar,
+      grupos, pedidoDeSenha, recarregar, recarregarMetadados, responderSenha,
+      salvarConexao, trancar,
     ]
   );
 }
