@@ -19,9 +19,13 @@ export interface FilesPanelProps {
   readonly projeto: Project;
   readonly onAbrirArquivo: (caminho: string) => Promise<void>;
   readonly caminhoAtivo: string | null;
+  /** Sobe para o App: quem pergunta o nome é a entrada rápida. */
+  readonly onNovoProjeto: () => void;
 }
 
-export function FilesPanel({ projeto, onAbrirArquivo, caminhoAtivo }: FilesPanelProps) {
+export function FilesPanel({
+  projeto, onAbrirArquivo, caminhoAtivo, onNovoProjeto,
+}: FilesPanelProps) {
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
 
   const alternar = useCallback((caminho: string) => {
@@ -82,7 +86,7 @@ export function FilesPanel({ projeto, onAbrirArquivo, caminhoAtivo }: FilesPanel
           ))}
         </TextField>
         <Button
-          onClick={() => void projeto.criarProjeto().catch((e: Error) => window.alert(e.message))}
+          onClick={onNovoProjeto}
           title="Criar novo projeto"
           sx={{ minWidth: 32 }}
         >

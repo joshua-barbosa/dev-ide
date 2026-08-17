@@ -27,7 +27,8 @@ export interface Execution {
   readonly saida: readonly LinhaSaida[];
   readonly status: { readonly texto: string; readonly erro: boolean };
   /** Conexão contra a qual uma aba SQL sem vínculo será executada. */
-  definirConexaoAtiva(id: string): void;
+  readonly conexaoAtiva: string | null;
+  definirConexaoAtiva(id: string | null): void;
   executar(modo: ModoExecucao, linguagem: string): Promise<void>;
   limparSaida(): void;
 }
@@ -37,6 +38,9 @@ export function useExecution(ws: Workspace): Execution {
   const [saida, setSaida] = useState<readonly LinhaSaida[]>([]);
   const [status, setStatus] = useState({ texto: '', erro: false });
   const conexaoAtiva = useRef<string | null>(null);
+  // Espelho em estado: o ref não provoca render, e o menu precisa saber
+  // agora se há conexão para desconectar.
+  const [conexaoVisivel, setConexaoVisivel] = useState<string | null>(null);
 
   const escrever = useCallback((texto: string, erro: boolean) => {
     setSaida((atual) => [...atual, { texto, erro }]);
@@ -151,8 +155,10 @@ export function useExecution(ws: Workspace): Execution {
     grades,
     saida,
     status,
-    definirConexaoAtiva: (id) => {
+    conexaoAtiva: conexaoVisivel,
+    definirConexaoAtiva: (id: string | null) => {
       conexaoAtiva.current = id;
+      setConexaoVisivel(id);
     },
     executar,
     limparSaida: () => {

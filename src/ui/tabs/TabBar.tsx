@@ -12,9 +12,15 @@ export interface TabBarProps {
   readonly activeId: string | null;
   readonly onActivate: (id: string) => void;
   readonly onClose: (id: string) => void;
+  /** Ausente quando não há o que executar; aí o botão não aparece. */
+  readonly onExecutar?: () => void;
+  /** Numa aba SQL o mesmo botão manda para o banco. */
+  readonly ehSql?: boolean;
 }
 
-export function TabBar({ tabs, activeId, onActivate, onClose }: TabBarProps) {
+export function TabBar({
+  tabs, activeId, onActivate, onClose, onExecutar, ehSql = false,
+}: TabBarProps) {
   if (tabs.length === 0) return null;
 
   return (
@@ -116,6 +122,23 @@ export function TabBar({ tabs, activeId, onActivate, onClose }: TabBarProps) {
           </Box>
         );
       })}
+
+      {onExecutar !== undefined && (
+        <Box
+          component="button"
+          type="button"
+          onClick={onExecutar}
+          title={ehSql ? 'Executar consulta (Ctrl+Enter)' : 'Executar arquivo (Ctrl+Enter)'}
+          aria-label={ehSql ? 'Executar consulta' : 'Executar arquivo'}
+          sx={{
+            ml: 'auto', border: 0, bgcolor: 'transparent', cursor: 'pointer',
+            color: 'success.main', px: 1.25, display: 'flex', alignItems: 'center',
+            '&:hover': { bgcolor: 'action.hover' },
+          }}
+        >
+          <Icon name="lucide:play" size={13} />
+        </Box>
+      )}
     </Box>
   );
 }

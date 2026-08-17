@@ -16,12 +16,12 @@ async function trancarCofre(page: import('@playwright/test').Page): Promise<void
 /**
  * Restringe à área do formulário.
  *
- * A barra de ferramentas também tem um botão "salvar" (o do editor), e sem
- * qualificar a busca casa nos dois. Seletor ambíguo é semente de falha
- * intermitente — a mesma lição da spec 003.
+ * Precisa ser a região do próprio formulário, e não `main`: `main` engloba a
+ * lateral, e o rótulo "Arquivos" da aba de painel casa com o campo "Arquivo"
+ * do SQLite. Seletor amplo demais é a mesma armadilha do seletor ambíguo.
  */
 function formulario(page: import('@playwright/test').Page) {
-  return page.getByRole('main');
+  return page.getByRole('form', { name: 'Formulário de conexão' });
 }
 
 /** Destranca pelo botão da barra — os testes de formulário não passam pela árvore. */

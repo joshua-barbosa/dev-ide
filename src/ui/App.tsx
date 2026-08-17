@@ -1,9 +1,13 @@
 // Esqueleto da interface: a moldura que os painéis preenchem.
 //
-// A estrutura é a mesma de antes — barra de ferramentas, lateral, divisória,
-// área de editor com abas e saída, barra de status — porque o critério desta
-// migração é paridade, não redesenho.
-import { useEffect, useState } from 'react';
+// Estrutura: barra de menu, lateral, divisória, área de editor com abas e saída,
+// barra de status.
+//
+// É aqui que o registro de comandos ganha corpo: `ACOES` liga cada id declarado
+// em `shared/commands.ts` à função que o executa, e `contexto` diz o que está
+// disponível agora. Menu, paleta e atalhos leem essa mesma dupla — por isso um
+// comando novo entra numa linha e aparece nos três lugares.
+import { useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import { tokens } from './theme';
 import { Sidebar } from './Sidebar';
@@ -18,7 +22,15 @@ import { VaultDialog } from './connections/VaultDialog';
 import { ConnectionForm } from './connections/ConnectionForm';
 import { useContextMenu } from './ContextMenu';
 import { Api } from './api';
-import { Toolbar } from './Toolbar';
+import { MenuBar } from './MenuBar';
+import { StatusBar } from './StatusBar';
+import { QuickInput } from './QuickInput';
+import { pedirComRetentativa, useQuickInput } from './useQuickInput';
+import { LINGUAGENS } from '../shared/editor/idiomas';
+import {
+  comandoDoAtalho, filtrarComandos, formatarAtalho,
+  type ContextoDeComandos, type IdImplementado,
+} from '../shared/commands';
 import { ResultGrid } from './grid/ResultGrid';
 import { OutputPanel } from './OutputPanel';
 import { useExecution } from './useExecution';
@@ -31,6 +43,8 @@ export function App() {
   const menu = useContextMenu();
   const exec = useExecution(ws);
   const projeto = useProject();
+  const qi = useQuickInput();
+  const [painelLateral, setPainelLateral] = useState('files');
   const [linguagem, setLinguagem] = useState('javascript');
 
   // O seletor de tipo acompanha a aba ativa.
@@ -48,14 +62,6 @@ export function App() {
     void exec.executar(modo, linguagem).catch((e: Error) => window.alert(e.message));
   };
 
-  const novoArquivo = (): void => {
-    const conteudo = ws.active === null ? '' : (ws.editorRef.current?.getValue() ?? '');
-    projeto
-      .criarArquivo(conteudo)
-      .then((caminho) => (caminho === null ? undefined : ws.abrirArquivo(caminho)))
-      .catch((e: Error) => window.alert(e.message));
-  };
-
   /** Abre o arquivo do símbolo, se preciso, e pula para a linha. */
   const irParaSimbolo = (arquivo: string, linha: number): void => {
     const atual = (ws.active?.meta as { path?: string | null } | undefined)?.path ?? null;
@@ -67,10 +73,93 @@ export function App() {
     ws.abrirArquivo(arquivo).then(pular).catch((e: Error) => window.alert(e.message));
   };
 
-  const abrirPorCaminho = (): void => {
-    const caminho = window.prompt('Caminho do arquivo para abrir (absoluto):');
-    if (caminho === null || caminho.trim() === '') return;
-    ws.abrirArquivo(caminho.trim()).catch((e: Error) => window.alert(e.message));
+  /**
+   * Cria um arquivo sem título. Não pergunta nada — o nome vem no salvar.
+   *
+   * É o defeito que motivou esta spec: exigir a extensão antes da primeira
+   * linha obriga a decidir a linguagem antes de saber o que se vai escrever.
+   */
+  const novoArquivo = (): void => {
+    ws.novoSemTitulo();
+  };
+
+  /** Grava a aba ativa, pedindo o nome se ela ainda não tem arquivo. */
+  const salvarArquivo = async (): Promise<void> => {
+    const caminho = await ws.salvar();
+    if (caminho !== null) {
+      await projeto.recarregar();
+      return;
+    }
+    const aba = ws.active;
+    if (aba === null || aba.type === 'grid' || aba.type === 'conexao') return;
+
+    const conteudo = ws.editorRef.current?.getValue() ?? '';
+    const criado = await pedirComRetentativa(
+      qi,
+      { titulo: 'Nome do arquivo', placeholder: 'ex.: utils.ts, script.py' },
+      (nome) => projeto.criarArquivo(nome, conteudo)
+    );
+    // Cancelar mantém a aba como está, com o conteúdo intacto (AC-18).
+    if (criado === null) return;
+    ws.adotarArquivo(aba.id, criado);
+  };
+
+  const novoProjeto = async (): Promise<void> => {
+    await pedirComRetentativa(
+      qi,
+      { titulo: 'Nome do projeto', placeholder: 'ex.: meu-projeto' },
+      (nome) => projeto.criarProjeto(nome)
+    );
+  };
+
+  const escolherProjeto = async (): Promise<void> => {
+    const escolhido = await qi.pedir({
+      titulo: 'Abrir workspace',
+      placeholder: 'Escolha um projeto',
+      opcoes: projeto.projetos.map((nome) => ({
+        valor: nome,
+        rotulo: nome,
+        icone: 'folder',
+      })),
+    });
+    if (escolhido !== null) projeto.selecionar(escolhido);
+  };
+
+  const abrirPorCaminho = async (): Promise<void> => {
+    const caminho = await qi.pedir({
+      titulo: 'Abrir arquivo',
+      placeholder: 'Caminho absoluto do arquivo',
+    });
+    if (caminho !== null) await ws.abrirArquivo(caminho);
+  };
+
+  const escolherLinguagem = async (): Promise<void> => {
+    const escolhida = await qi.pedir({
+      titulo: 'Selecionar linguagem',
+      placeholder: 'Linguagem',
+      opcoes: LINGUAGENS.map(([valor, rotulo, icone]) => ({ valor, rotulo, icone })),
+    });
+    if (escolhida !== null) trocarLinguagem(escolhida);
+  };
+
+  const irParaLinha = async (): Promise<void> => {
+    const alvo = await qi.pedir({ titulo: 'Ir para a linha', placeholder: 'Número da linha' });
+    const numero = Number(alvo);
+    if (alvo !== null && Number.isInteger(numero) && numero > 0) {
+      ws.editorRef.current?.goToLine(numero);
+    }
+  };
+
+  const abrirPaleta = async (): Promise<void> => {
+    const escolhido = await qi.pedir({
+      placeholder: 'Digite um comando',
+      opcoes: filtrarComandos('', contexto).map((c) => ({
+        valor: c.id,
+        rotulo: c.label,
+        sufixo: c.keybinding,
+      })),
+    });
+    if (escolhido !== null) executarComando(escolhido);
   };
 
   const copiar = (texto: string): void => {
@@ -86,20 +175,94 @@ export function App() {
     ws.abrirQuery(`sql:${id}:${alvo}`, `${objeto}.sql`, `SELECT * FROM ${alvo} LIMIT 100;`, id);
   };
 
-  // Ctrl+S salva a aba ativa.
+  const contexto: ContextoDeComandos = {
+    temEditor: ws.active !== null && ws.active.type !== 'grid' && ws.active.type !== 'conexao',
+    temProjeto: projeto.projeto !== '',
+    abaSuja: ws.active?.dirty === true,
+    temAba: ws.active !== null,
+    temSelecao: true,
+    temConexaoAtiva: exec.conexaoAtiva !== null,
+    cofreDestrancado: conexoes.estado?.vault.unlocked === true,
+  };
+
+  const avisar = (p: Promise<unknown>): void => {
+    void p.catch((e: Error) => window.alert(e.message));
+  };
+
+  /**
+   * Liga cada id declarado à função que o executa.
+   *
+   * Um comando não pendente sem entrada aqui vira clique morto — por isso há
+   * teste de completude cruzando as duas listas.
+   */
+  const ACOES: Readonly<Record<IdImplementado, () => void>> = {
+    'file.new': novoArquivo,
+    'file.newProject': () => avisar(novoProjeto()),
+    'file.open': () => avisar(abrirPorCaminho()),
+    'file.openWorkspace': () => avisar(escolherProjeto()),
+    'file.save': () => avisar(salvarArquivo()),
+    'file.saveAs': () => avisar(salvarArquivo()),
+    'file.closeEditor': () => { if (ws.activeId !== null) ws.fechar(ws.activeId); },
+
+    'edit.undo': () => document.execCommand('undo'),
+    'edit.redo': () => document.execCommand('redo'),
+    'edit.cut': () => document.execCommand('cut'),
+    'edit.copy': () => document.execCommand('copy'),
+    'edit.paste': () => avisar(navigator.clipboard.readText().then((t) => {
+      document.execCommand('insertText', false, t);
+    })),
+
+    'selection.all': () => document.execCommand('selectAll'),
+
+    'view.commandPalette': () => avisar(abrirPaleta()),
+    'view.explorer': () => setPainelLateral('files'),
+    'view.symbols': () => setPainelLateral('symbols'),
+    'view.database': () => setPainelLateral('database'),
+    'view.service': () => setPainelLateral('service'),
+    'view.output': () => exec.limparSaida(),
+
+    'go.file': () => avisar(abrirPorCaminho()),
+    'go.symbol': () => setPainelLateral('symbols'),
+    'go.line': () => avisar(irParaLinha()),
+
+    'run.file': () => executar('file'),
+    'run.selection': () => executar('block'),
+    'run.disconnect': () => {
+      const id = exec.conexaoAtiva;
+      if (id !== null) avisar(conexoes.desconectar(id));
+    },
+
+    'help.commands': () => avisar(abrirPaleta()),
+    'help.about': () => window.alert('dev-ide — IDE local com painéis de banco e serviço.'),
+  };
+
+  const executarComando = (id: string): void => {
+    (ACOES as Record<string, (() => void) | undefined>)[id]?.();
+  };
+
+  /**
+   * Atalhos de teclado, despachados pelo mesmo registro do menu e da paleta.
+   *
+   * O ouvinte é registrado uma vez, mas lê o despacho por `ref`. Sem isso ele
+   * capturaria o `contexto` do primeiro render e passaria a decidir
+   * disponibilidade com estado velho — um Ctrl+S deixaria de funcionar depois
+   * de trocar de aba.
+   */
+  const despacho = useRef<(e: KeyboardEvent) => void>(() => {});
+  despacho.current = (e: KeyboardEvent) => {
+    const cmd = comandoDoAtalho(formatarAtalho(e), contexto);
+    if (cmd === null) return;
+    // Só engole a tecla quando há comando disponível — caso contrário o editor
+    // perderia atalhos que ele próprio trata.
+    e.preventDefault();
+    executarComando(cmd.id);
+  };
+
   useEffect(() => {
-    const aoTeclar = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        void ws.salvar().catch((err: Error) => window.alert(err.message));
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        executar('file');
-      }
-    };
+    const aoTeclar = (e: KeyboardEvent): void => despacho.current(e);
     document.addEventListener('keydown', aoTeclar);
     return () => document.removeEventListener('keydown', aoTeclar);
-  }, [ws]);
+  }, []);
 
   const abrirFormulario = (conexao: PublicConnection | null): void => {
     ws.abrirFormulario(conexao?.id ?? null, conexao === null ? 'Nova conexão' : conexao.label);
@@ -121,24 +284,14 @@ export function App() {
         ...(lateral.dragging ? { cursor: 'col-resize', userSelect: 'none' } : {}),
       }}
     >
-      <Toolbar
-        linguagem={linguagem}
-        onLinguagem={trocarLinguagem}
-        onNovo={novoArquivo}
-        onAbrir={abrirPorCaminho}
-        onSalvar={() =>
-          void ws
-            .salvar()
-            .then(() => projeto.recarregar())
-            .catch((e: Error) => window.alert(e.message))
-        }
-        onExecutar={executar}
-        ehSql={ws.active?.type === 'sql'}
-      />
+      <MenuBar contexto={contexto} onComando={executarComando} />
 
       <Box component="main" sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <Sidebar
           width={lateral.width}
+          painelAtivo={painelLateral}
+          onPainelAtivo={setPainelLateral}
+          onNovoProjeto={() => avisar(novoProjeto())}
           onAbrirArquivo={ws.abrirArquivo}
           projeto={projeto}
           onIrParaSimbolo={irParaSimbolo}
@@ -188,6 +341,8 @@ export function App() {
             activeId={ws.activeId}
             onActivate={ws.ativar}
             onClose={ws.fechar}
+            onExecutar={contexto.temEditor ? () => executar('file') : undefined}
+            ehSql={ws.active?.type === 'sql'}
           />
 
           {/* O editor fica montado sempre: desmontá-lo ao ficar sem abas perderia
@@ -243,32 +398,27 @@ export function App() {
         </Box>
       </Box>
 
-      <Box
-        component="footer"
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5,
-          px: 1.25,
-          py: 0.4,
-          bgcolor: 'background.paper',
-          borderTop: 1,
-          borderColor: 'divider',
-          color: 'text.secondary',
-          fontFamily: tokens.fontMono,
-          fontSize: 11,
-        }}
-      >
-        <span>{ws.active === null ? 'nenhum arquivo' : ws.active.title}</span>
-        {ws.active?.dirty === true && (
-          <Box component="span" sx={{ color: 'primary.main' }}>
-            ● não salvo
-          </Box>
-        )}
-        <Box component="span" sx={{ ml: 'auto' }}>
-          Ln {ws.cursor.linha}, Col {ws.cursor.coluna}
-        </Box>
-      </Box>
+      <StatusBar
+        titulo={ws.active?.title ?? null}
+        sujo={ws.active?.dirty === true}
+        linha={ws.cursor.linha}
+        coluna={ws.cursor.coluna}
+        linguagem={linguagem}
+        onTrocarLinguagem={
+          contexto.temEditor ? () => avisar(escolherLinguagem()) : undefined
+        }
+      />
+
+      <QuickInput
+        aberto={qi.pedido !== null}
+        titulo={qi.pedido?.titulo}
+        placeholder={qi.pedido?.placeholder ?? ''}
+        opcoes={qi.pedido?.opcoes}
+        valorInicial={qi.pedido?.valorInicial}
+        erro={qi.pedido?.erro ?? null}
+        onConfirmar={qi.confirmar}
+        onCancelar={qi.cancelar}
+      />
 
       {/* Fora da lateral de propósito: o pedido de senha precisa sobreviver a
           trocar de painel enquanto o diálogo está aberto. */}

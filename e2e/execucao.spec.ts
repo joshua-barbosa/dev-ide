@@ -6,7 +6,7 @@ test('executar código mostra a saída e o término no painel', async ({ page })
   await page.goto('/');
   await abrirArquivo(page, 'utils.ts');
 
-  await page.getByRole('button', { name: /▶ arquivo/ }).click();
+  await page.getByRole('button', { name: 'Executar arquivo' }).click();
 
   const saida = page.locator('pre').last();
   await expect(saida).toContainText('ola do utils');

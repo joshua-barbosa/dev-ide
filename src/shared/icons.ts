@@ -8,6 +8,8 @@
 // não compila se um nome ficar sem correspondente. O que precisa de teste é o
 // caminho de fuga — nome que o servidor manda e esta versão não conhece.
 
+import { ICONES_DE_LINGUAGEM } from './editor/idiomas';
+
 /** Ícones que um nó da árvore pode pedir. `NodeIcon` do contrato deriva daqui. */
 export const NODE_ICONS = [
   'server', 'database', 'schema', 'table', 'view', 'column',
@@ -56,6 +58,10 @@ const MAPA: Record<Icone, string> = {
 
 /** Ícones da própria interface, que não vêm de nenhum nó. */
 const ICONES_DA_INTERFACE = [
+  'lucide:files',
+  'lucide:boxes',
+  'lucide:layers',
+  'lucide:chevron-left',
   'lucide:chevron-right',
   'lucide:chevron-down',
   'lucide:lock',
@@ -74,7 +80,12 @@ const ICONES_DA_INTERFACE = [
  * some da tela sem erro nenhum — por isso há teste amarrando as duas coisas.
  */
 export const ICONES_USADOS: readonly string[] = [
-  ...new Set<string>([...Object.values(MAPA), ...ICONES_DA_INTERFACE, ICONE_GENERICO]),
+  ...new Set<string>([
+    ...Object.values(MAPA),
+    ...ICONES_DA_INTERFACE,
+    ...ICONES_DE_LINGUAGEM,
+    ICONE_GENERICO,
+  ]),
 ];
 
 /**

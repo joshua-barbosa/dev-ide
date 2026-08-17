@@ -113,7 +113,11 @@ export function ConnectionForm({
   };
 
   return (
-    <Box sx={{ flex: 1, overflow: 'auto', p: 2.5, minHeight: 0 }}>
+    <Box
+      role="form"
+      aria-label="Formulário de conexão"
+      sx={{ flex: 1, overflow: 'auto', p: 2.5, minHeight: 0 }}
+    >
       <Box sx={{ maxWidth: 720, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: 18 }}>
           <Icon name={driver?.icon ?? 'connection'} size={22} />

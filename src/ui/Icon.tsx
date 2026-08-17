@@ -7,7 +7,9 @@ import { Icon as IconifyIcon, addCollection, type IconifyJSON } from '@iconify/r
 import pacotes from './generated/icons.json';
 import { resolverIcone } from '../shared/icons';
 
-for (const pacote of pacotes as IconifyJSON[]) {
+// O JSON gerado tem um formato literal por conjunto; a asserção direta deixa de
+// valer quando há mais de um, porque o TS infere uma união. O dado é o mesmo.
+for (const pacote of pacotes as unknown as IconifyJSON[]) {
   addCollection(pacote);
 }
 

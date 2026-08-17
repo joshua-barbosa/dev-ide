@@ -65,3 +65,13 @@ export async function destrancarCofre(
   }
   await page.getByRole('button', { name: 'destrancar' }).click();
 }
+
+/** Abre um menu da barra superior. */
+export async function menu(page: Page, nome: string): Promise<void> {
+  await page.getByRole('button', { name: nome, exact: true }).click();
+}
+
+/** O campo da entrada rápida (paleta, nome de arquivo, escolha de linguagem). */
+export function entradaRapida(page: Page): Locator {
+  return page.getByRole('dialog').getByRole('textbox');
+}

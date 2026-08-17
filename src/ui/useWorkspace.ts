@@ -12,6 +12,7 @@
 //    no arquivo anterior.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Tab, TabStore } from '../shared/tabs';
+import { proximoSemTitulo } from '../shared/untitled';
 import type { EditorHandle, ViewState } from './editor/EditorHost';
 import { EXT_TO_LANG } from '../shared/editor/languages';
 import { Api } from './api';
@@ -47,11 +48,14 @@ export interface Workspace {
   abrirArquivo(caminho: string): Promise<void>;
   abrirQuery(id: string, titulo: string, conteudo: string, connectionId: string): void;
   abrirFormulario(connectionId: string | null, titulo: string): void;
+  novoSemTitulo(): void;
+  adotarArquivo(idAntigo: string, caminho: string): void;
+  /** Devolve o caminho gravado, ou `null` se não havia o que salvar. */
+  salvar(): Promise<string | null>;
   marcarAbaSuja(id: string, sujo: boolean): void;
   ativar(id: string): void;
   fechar(id: string): void;
   marcarSujo(): void;
-  salvar(): Promise<void>;
 }
 
 export function useWorkspace(): Workspace {
@@ -173,6 +177,27 @@ export function useWorkspace(): Workspace {
     [store]
   );
 
+  /**
+   * Abre uma aba sem título, sem perguntar nada.
+   *
+   * O nome só é pedido ao salvar — antes disso, exigir a extensão obrigaria a
+   * decidir a linguagem antes de escrever a primeira linha.
+   *
+   * Nasce suja porque conteúdo que não está em disco é exatamente o que a marca
+   * de não salvo significa.
+   */
+  const novoSemTitulo = useCallback(() => {
+    if (ultimaAtiva.current !== null) salvarNaAba(ultimaAtiva.current);
+    const titulo = proximoSemTitulo(store.list().map((t) => t.title));
+    store.open({
+      id: `untitled:${titulo}`,
+      type: 'editor',
+      title: titulo,
+      dirty: true,
+      meta: { path: null, content: '', language: 'plain', view: null },
+    });
+  }, [salvarNaAba, store]);
+
   const fechar = useCallback(
     (id: string) => {
       const aba = store.get(id);
@@ -194,17 +219,50 @@ export function useWorkspace(): Workspace {
     if (aba !== null && !aba.dirty) store.update(id, { dirty: true });
   }, [store]);
 
-  const salvar = useCallback(async () => {
+  /**
+   * Grava a aba ativa e devolve o caminho.
+   *
+   * Devolve `null` quando não há arquivo conhecido — aba sem título ou aba de
+   * query. Quem chama decide o que fazer: no caso do sem-título, pedir o nome.
+   * Este gancho não pergunta nada, para continuar sem depender de interface.
+   */
+  const salvar = useCallback(async (): Promise<string | null> => {
     const aba = active;
     const editor = editorRef.current;
-    if (aba === null || editor === null || !ehEditavel(aba)) return;
+    if (aba === null || editor === null || !ehEditavel(aba)) return null;
 
     const meta = metaDe(aba);
-    if (meta.path === null) return; // aba de query não tem arquivo para salvar
+    if (meta.path === null) return null;
 
     await Api.saveFile(meta.path, editor.getValue());
     store.update(aba.id, { dirty: false });
+    return meta.path;
   }, [active, store]);
+
+  /**
+   * Liga a aba sem título ao arquivo recém-criado.
+   *
+   * Troca o id junto com o caminho: o id `untitled:...` deixaria a aba
+   * invisível para `abrirArquivo`, que procura por `file:<caminho>` — e abrir o
+   * mesmo arquivo pela árvore criaria uma segunda aba do mesmo conteúdo.
+   */
+  const adotarArquivo = useCallback(
+    (idAntigo: string, caminho: string) => {
+      const aba = store.get(idAntigo);
+      if (aba === null) return;
+      const language = linguagemDe(caminho);
+      store.close(idAntigo);
+      store.open({
+        id: `file:${caminho}`,
+        type: language === 'sql' ? 'sql' : 'editor',
+        title: caminho.split('/').pop() ?? caminho,
+        dirty: false,
+        meta: { ...metaDe(aba), path: caminho, language },
+      });
+      editorRef.current?.setLanguage(language);
+    },
+    [store]
+  );
 
   return {
     store,
@@ -216,6 +274,8 @@ export function useWorkspace(): Workspace {
     abrirArquivo,
     abrirQuery,
     abrirFormulario,
+    novoSemTitulo,
+    adotarArquivo,
     marcarAbaSuja,
     ativar: (id) => store.activate(id),
     fechar,

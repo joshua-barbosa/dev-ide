@@ -14,9 +14,9 @@ export interface Project {
   readonly erro: string | null;
   selecionar(nome: string): void;
   recarregar(): Promise<void>;
-  criarProjeto(): Promise<void>;
+  criarProjeto(nome: string): Promise<void>;
   /** Devolve o caminho do arquivo criado, ou null se o usuário desistiu. */
-  criarArquivo(conteudo: string): Promise<string | null>;
+  criarArquivo(nome: string, conteudo: string): Promise<string>;
 }
 
 export function useProject(): Project {
@@ -51,22 +51,26 @@ export function useProject(): Project {
     recarregar().catch((e: Error) => setErro(e.message));
   }, [recarregar]);
 
-  const criarProjeto = useCallback(async () => {
-    const nome = window.prompt('Nome do novo projeto:');
-    if (nome === null || nome.trim() === '') return;
-    await Api.createProject(nome.trim());
-    await carregarLista(nome.trim());
-  }, [carregarLista]);
+  /** Cria com o nome já escolhido; quem pergunta é a entrada rápida, no App. */
+  const criarProjeto = useCallback(
+    async (nome: string) => {
+      await Api.createProject(nome.trim());
+      await carregarLista(nome.trim());
+    },
+    [carregarLista]
+  );
 
+  /**
+   * Grava um arquivo novo no projeto e devolve o caminho.
+   *
+   * Deixa o erro subir: a entrada rápida reabre com a mensagem e o nome
+   * digitado, para "já existe" não custar redigitar.
+   */
   const criarArquivo = useCallback(
-    async (conteudo: string): Promise<string | null> => {
+    async (nome: string, conteudo: string): Promise<string> => {
       if (projeto === '') {
-        window.alert('Crie ou selecione um projeto primeiro.');
-        return null;
+        throw new Error('Crie ou selecione um projeto primeiro.');
       }
-      const nome = window.prompt('Nome do novo arquivo (ex.: utils.ts, script.py):');
-      if (nome === null || nome.trim() === '') return null;
-
       const criado = await Api.createFile(projeto, nome.trim(), conteudo);
       await recarregar();
       return criado.path;
