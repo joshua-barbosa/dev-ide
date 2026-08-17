@@ -8,3 +8,7 @@ projects/
 *.zip
 .DS_Store
 src/ui/generated/
+
+# Playwright
+e2e-report/
+test-results/
