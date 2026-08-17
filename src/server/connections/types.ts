@@ -30,6 +30,9 @@ import type {
   VaultState,
 } from '../../shared/contracts';
 import type { NodeIcon } from '../../shared/icons';
+import type { ClienteDeLinhaDeComando } from '../../shared/terminal/comando';
+
+export type { ClienteDeLinhaDeComando };
 
 export type {
   ActionRequest,
@@ -202,5 +205,10 @@ export interface Driver {
   readonly icon: NodeIcon | string;
   readonly defaultPort?: number;
   readonly fields: readonly FieldSpec[];
+  /**
+   * Cliente de linha de comando, se houver. Ausente significa que a ação
+   * "abrir no terminal" nem aparece — é o caso do SQLite.
+   */
+  readonly cli?: ClienteDeLinhaDeComando;
   connect(config: ResolvedConfig): Promise<Session>;
 }

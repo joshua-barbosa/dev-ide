@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import mysql, { Connection, FieldPacket, Types } from 'mysql2';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
+import { CLI_MYSQL } from '../../../shared/terminal/clientes/mysql';
 import type {
   ActionRequest,
   ActionResult,
@@ -480,6 +481,7 @@ export const mysqlDriver: Driver = {
   panel: 'database',
   icon: ICONES_DE_SERVICO.mysql,
   defaultPort: 3306,
+  cli: CLI_MYSQL,
   fields: [
     { name: 'host', label: 'Host', type: 'string', required: true, default: '127.0.0.1' },
     { name: 'port', label: 'Porta', type: 'number', required: true, default: 3306 },

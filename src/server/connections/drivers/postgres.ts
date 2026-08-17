@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import { Client, type ClientConfig, type FieldDef } from 'pg';
 import Cursor from 'pg-cursor';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
+import { CLI_POSTGRES } from '../../../shared/terminal/clientes/postgres';
 import type {
   ActionRequest,
   ActionResult,
@@ -547,6 +548,7 @@ export const postgresDriver: Driver = {
   panel: 'database',
   icon: ICONES_DE_SERVICO.postgres,
   defaultPort: 5432,
+  cli: CLI_POSTGRES,
   fields: [
     { name: 'host', label: 'Host', type: 'string', required: true, default: '127.0.0.1' },
     { name: 'port', label: 'Porta', type: 'number', required: true, default: 5432 },

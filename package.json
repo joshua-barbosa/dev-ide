@@ -21,13 +21,17 @@
     "@emotion/styled": "^11.14.1",
     "@iconify/react": "^6.0.2",
     "@mui/material": "^9.3.1",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "express": "^4.21.2",
     "mysql2": "^3.23.3",
+    "node-pty": "^1.1.0",
     "pg": "^8.23.0",
     "pg-cursor": "^2.22.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@iconify/json": "^2.2.516",
@@ -38,6 +42,7 @@
     "@types/pg-cursor": "^2.7.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.0.5",
     "vite": "^8.2.1"
   }
