@@ -8,6 +8,7 @@ import type { AddressInfo } from 'node:net';
 import { SessionPool } from '../connections/pool';
 import { DriverRegistry } from '../connections/registry';
 import { Vault } from '../connections/vault';
+import { RememberedKey } from '../connections/remember';
 import { errorEnvelope } from '../http/handlers';
 import { createConnectionsRouter } from '../routes/connections';
 import type { Driver, Session } from '../connections/types';
@@ -74,10 +75,12 @@ async function bootstrap() {
   registry.register(driverSemExecute());
   const vault = new Vault(vaultPath);
   const pool = new SessionPool(async (id) => registry.get(vault.resolve(id).type).connect(vault.resolve(id)));
+  const rememberPath = path.join(path.dirname(vaultPath), 'session.json');
+  const remember = new RememberedKey(rememberPath, () => 'maquina-de-teste-aaaaaaaaaaaaaaaa');
 
   const app = express();
   app.use(express.json());
-  app.use('/api/connections', createConnectionsRouter({ registry, vault, pool }));
+  app.use('/api/connections', createConnectionsRouter({ registry, vault, pool, remember }));
   app.use(errorEnvelope);
 
   const server = app.listen(0, '127.0.0.1');
@@ -94,7 +97,7 @@ async function bootstrap() {
     return { status: res.status, payload: (await res.json()) as { success: boolean; data: any; error: string } };
   };
 
-  return { call, vaultPath, pool, close: () => new Promise((r) => server.close(() => r(null))) };
+  return { call, vaultPath, rememberPath, pool, close: () => new Promise((r) => server.close(() => r(null))) };
 }
 
 const CONEXAO = {
@@ -106,7 +109,7 @@ const CONEXAO = {
 };
 
 test('rotas de conexão', async (t) => {
-  const { call, vaultPath, pool, close } = await bootstrap();
+  const { call, vaultPath, rememberPath, pool, close } = await bootstrap();
   t.after(close);
 
   await t.test('lista drivers para a UI montar o formulário', async () => {
@@ -118,7 +121,9 @@ test('rotas de conexão', async (t) => {
   await t.test('cofre inexistente devolve árvore vazia, não erro', async () => {
     const { status, payload } = await call('GET', '/');
     assert.equal(status, 200);
-    assert.deepEqual(payload.data.vault, { exists: false, unlocked: false });
+    assert.deepEqual(payload.data.vault, {
+      exists: false, unlocked: false, rememberedUntil: null, canRemember: true,
+    });
     assert.deepEqual(payload.data.tree.connections, []);
   });
 
@@ -236,6 +241,50 @@ test('rotas de conexão', async (t) => {
     const { payload } = await call('GET', '/');
     const nomes = JSON.stringify(payload.data.tree);
     assert.ok(!nomes.includes('servidor-2-prod'));
+  });
+
+
+  await t.test('destrancar sem pedir para lembrar não deixa rastro em disco', async () => {
+    await call('POST', '/vault/lock');
+    const { payload } = await call('POST', '/vault/unlock', { password: SENHA });
+    assert.equal(payload.data.unlocked, true);
+    assert.equal(payload.data.rememberedUntil, null);
+    assert.equal(fs.existsSync(rememberPath), false, 'não deveria haver lembrança');
+  });
+
+  await t.test('destrancar pedindo para lembrar grava e informa a validade', async () => {
+    await call('POST', '/vault/lock');
+    const { payload } = await call('POST', '/vault/unlock', { password: SENHA, remember: true });
+
+    assert.ok(payload.data.rememberedUntil, 'deveria informar até quando vale');
+    assert.ok(Date.parse(payload.data.rememberedUntil) > Date.now());
+    assert.equal(fs.existsSync(rememberPath), true);
+    assert.equal(fs.statSync(rememberPath).mode & 0o777, 0o600);
+  });
+
+  await t.test('a senha mestra não aparece no arquivo de lembrança', () => {
+    assert.ok(!fs.readFileSync(rememberPath, 'utf8').includes(SENHA), 'senha vazou');
+  });
+
+  await t.test('o estado geral também informa a lembrança', async () => {
+    const { payload } = await call('GET', '/');
+    assert.ok(payload.data.vault.rememberedUntil);
+    assert.equal(payload.data.vault.canRemember, true);
+  });
+
+  await t.test('trancar apaga a lembrança', async () => {
+    const { payload } = await call('POST', '/vault/lock');
+    assert.equal(payload.data.rememberedUntil, null);
+    assert.equal(fs.existsSync(rememberPath), false, 'trancar deve apagar a lembrança');
+    await call('POST', '/vault/unlock', { password: SENHA });
+  });
+
+  await t.test('senha errada não grava lembrança', async () => {
+    await call('POST', '/vault/lock');
+    const { payload } = await call('POST', '/vault/unlock', { password: 'errada', remember: true });
+    assert.match(payload.error, /senha/i);
+    assert.equal(fs.existsSync(rememberPath), false);
+    await call('POST', '/vault/unlock', { password: SENHA });
   });
 
   await t.test('o arquivo do cofre nunca teve a senha em claro', () => {

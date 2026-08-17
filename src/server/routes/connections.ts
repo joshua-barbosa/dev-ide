@@ -9,13 +9,15 @@ import { applyGroupRename, buildGroupTree, normalizeGroupPath } from '../connect
 import type { DriverRegistry } from '../connections/registry';
 import type { SessionPool } from '../connections/pool';
 import type { Vault } from '../connections/vault';
-import type { ConnectionInput, FieldValue, Session } from '../connections/types';
+import { diasDeLembranca, type RememberedKey } from '../connections/remember';
+import type { ConnectionInput, FieldValue, Session, VaultState } from '../connections/types';
 import { queryList, requireString, wrap } from '../http/handlers';
 
 export interface ConnectionsDeps {
   readonly registry: DriverRegistry;
   readonly vault: Vault;
   readonly pool: SessionPool;
+  readonly remember: RememberedKey;
 }
 
 /** Capacidades da sessão — é o que liga as sub-abas (terminal, SFTP, monitor...) na UI. */
@@ -43,10 +45,33 @@ function readInput(body: unknown, registry: DriverRegistry): ConnectionInput {
   };
 }
 
-export function createConnectionsRouter({ registry, vault, pool }: ConnectionsDeps): Router {
+export function createConnectionsRouter({ registry, vault, pool, remember }: ConnectionsDeps): Router {
   const router = Router();
 
   const ok = (data: unknown) => ({ success: true, data, error: null });
+
+  const estadoDoCofre = (): VaultState => ({
+    exists: vault.exists(),
+    unlocked: vault.isUnlocked(),
+    rememberedUntil: remember.validUntil(),
+    canRemember: remember.available(),
+  });
+
+  /**
+   * Guarda a chave se o usuário pediu para lembrar.
+   *
+   * Falhar aqui não pode derrubar o destrancamento: o cofre já abriu, e não
+   * conseguir lembrar é um aborrecimento, não um erro que valha recusar a
+   * operação que o usuário pediu.
+   */
+  const talvezLembrar = (pedido: unknown): void => {
+    if (pedido !== true) return;
+    try {
+      remember.save(vault.exportKey(), diasDeLembranca(process.env));
+    } catch {
+      remember.clear();
+    }
+  };
 
   // ---- catálogo e cofre (antes de /:id, para não colidir) ----
 
@@ -56,25 +81,30 @@ export function createConnectionsRouter({ registry, vault, pool }: ConnectionsDe
 
   router.post('/vault', wrap((req, res) => {
     vault.create(requireString(req.body?.password, 'password'));
-    res.status(201).json(ok({ exists: true, unlocked: true }));
+    talvezLembrar(req.body?.remember);
+    res.status(201).json(ok(estadoDoCofre()));
   }));
 
   router.post('/vault/unlock', wrap((req, res) => {
     vault.unlock(requireString(req.body?.password, 'password'));
-    res.json(ok({ exists: true, unlocked: true }));
+    talvezLembrar(req.body?.remember);
+    res.json(ok(estadoDoCofre()));
   }));
 
   router.post('/vault/lock', wrap(async (_req, res) => {
     vault.lock();
+    // Trancar é um pedido explícito de fechar: a lembrança some junto, senão o
+    // próximo início desfaria o que o usuário acabou de mandar fazer.
+    remember.clear();
     // Sessões abertas seguram credenciais resolvidas: trancar o cofre fecha tudo.
     await pool.closeAll();
-    res.json(ok({ exists: vault.exists(), unlocked: false }));
+    res.json(ok(estadoDoCofre()));
   }));
 
   // ---- CRUD de conexões ----
 
   router.get('/', wrap((_req, res) => {
-    const estado = { exists: vault.exists(), unlocked: vault.isUnlocked() };
+    const estado = estadoDoCofre();
     // Cofre ainda não criado é estado normal no primeiro uso, não erro.
     const conexoes = estado.exists ? vault.list() : [];
     res.json(ok({ vault: estado, tree: buildGroupTree(conexoes), openIds: pool.openIds() }));

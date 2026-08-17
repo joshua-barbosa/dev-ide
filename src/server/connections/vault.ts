@@ -9,7 +9,10 @@
 //   `id:campo` como dado autenticado (AAD). Isso amarra o texto cifrado à
 //   conexão e ao campo: quem tiver acesso de escrita ao arquivo não consegue
 //   mover a senha de uma conexão para outra.
-// - A chave derivada vive apenas em memória, nunca em disco.
+// - A senha mestra nunca sai daqui, em forma alguma. A chave derivada dela pode
+//   ser exportada por `exportKey()` para a lembrança de 15 dias (spec 004)
+//   guardá-la cifrada e com prazo — este módulo, porém, não escreve chave
+//   nenhuma em disco: quem faz isso é `remember.ts`.
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -180,6 +183,41 @@ export class Vault {
 
   lock(): void {
     this.key = null;
+  }
+
+  /**
+   * Devolve a chave derivada, para a lembrança guardá-la cifrada (spec 004).
+   *
+   * Exporta a CHAVE, nunca a senha: é o que permite lembrar sem que a senha
+   * mestra exista fora da memória em forma alguma. Cópia defensiva porque um
+   * `Buffer` compartilhado deixaria quem chama zerar a chave do cofre.
+   */
+  exportKey(): Buffer {
+    if (this.key === null) throw new Error('O cofre está trancado.');
+    return Buffer.from(this.key);
+  }
+
+  /**
+   * Destranca com uma chave já derivada, validando-a contra o verificador.
+   *
+   * A validação é o que faz a troca da senha mestra invalidar uma lembrança
+   * antiga de graça: senha nova, verificador novo, chave velha não abre.
+   */
+  unlockWithKey(key: Buffer): void {
+    if (key.length !== KEY_BYTES) {
+      throw new Error('Chave de cofre inválida.');
+    }
+    const file = this.load();
+    let verified: string;
+    try {
+      verified = decrypt(file.verifier, key, VERIFIER_AAD);
+    } catch {
+      throw new Error('Chave de cofre inválida.');
+    }
+    if (verified !== VERIFIER_PLAINTEXT) {
+      throw new Error('Chave de cofre inválida.');
+    }
+    this.key = Buffer.from(key);
   }
 
   /** Funciona com o cofre trancado — é o que permite desenhar a árvore sem senha. */

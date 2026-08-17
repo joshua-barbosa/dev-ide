@@ -5,6 +5,7 @@ import { registerBuiltinDrivers } from './connections/drivers';
 import { SessionPool } from './connections/pool';
 import { DriverRegistry } from './connections/registry';
 import { Vault } from './connections/vault';
+import { RememberedKey, restaurarCofre } from './connections/remember';
 import { errorEnvelope, requireString, wrap } from './http/handlers';
 import { localhostOnly } from './http/security';
 import { ProjectStore } from './projects';
@@ -33,6 +34,11 @@ const pool = new SessionPool(async (connectionId) => {
   return registry.get(config.type).connect(config);
 });
 
+const remember = new RememberedKey(
+  process.env.DEV_IDE_SESSION ?? RememberedKey.defaultPath()
+);
+restaurarCofre(vault, remember);
+
 // A interface é compilada pelo Vite de src/ui para dist/ui.
 const UI_DIR = path.join(ROOT, 'dist', 'ui');
 
@@ -40,7 +46,7 @@ const app = express();
 app.use(localhostOnly);
 app.use(express.json({ limit: '4mb' }));
 app.use(express.static(UI_DIR));
-app.use('/api/connections', createConnectionsRouter({ registry, vault, pool }));
+app.use('/api/connections', createConnectionsRouter({ registry, vault, pool, remember }));
 
 function validateFilePath(raw: string): string {
   const resolved = path.resolve(raw);

@@ -148,6 +148,10 @@ export interface ActionResult {
 export interface VaultState {
   readonly exists: boolean;
   readonly unlocked: boolean;
+  /** Até quando o destrancamento está lembrado, em ISO. `null` quando não há. */
+  readonly rememberedUntil: string | null;
+  /** Falso quando a máquina não pode ser identificada: aí só a senha resolve. */
+  readonly canRemember: boolean;
 }
 
 /** O que a rota de conectar devolve; a UI liga as abas conforme o que existir. */

@@ -27,6 +27,7 @@ import type {
   PublicConnection,
   QueryResult,
   TreeNode,
+  VaultState,
 } from '../../shared/contracts';
 import type { NodeIcon } from '../../shared/icons';
 
@@ -48,6 +49,7 @@ export type {
   PublicConnection,
   QueryResult,
   TreeNode,
+  VaultState,
 };
 
 // ---------------------------------------------------------------------------

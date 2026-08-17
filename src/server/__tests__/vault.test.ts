@@ -220,3 +220,51 @@ test('grava o cofre como 600 dentro de um diretório 700', () => {
   assert.equal(fs.statSync(file).mode & 0o777, 0o600, 'vault.json deve ser 600');
   assert.equal(fs.statSync(path.dirname(file)).mode & 0o777, 0o700, 'diretório deve ser 700');
 });
+
+// ---- chave exportada (base da lembrança, spec 004) ----
+
+test('exporta a chave só com o cofre destrancado', () => {
+  const file = tempVaultPath();
+  new Vault(file).create(SENHA);
+
+  const trancado = new Vault(file);
+  assert.throws(() => trancado.exportKey(), /trancad/i);
+
+  const aberto = new Vault(file);
+  aberto.unlock(SENHA);
+  assert.equal(aberto.exportKey().length, 32);
+});
+
+test('destranca com a chave exportada, sem a senha', () => {
+  const file = tempVaultPath();
+  const origem = new Vault(file);
+  origem.create(SENHA);
+  origem.add(CONEXAO, SEGREDOS);
+  const chave = origem.exportKey();
+
+  const destino = new Vault(file);
+  destino.unlockWithKey(chave);
+  assert.equal(destino.isUnlocked(), true);
+  // Precisa decifrar de verdade, não só marcar como destrancado.
+  assert.equal(destino.resolve(destino.list()[0]!.id).fields.password, 'p4ssw0rd-secreta');
+});
+
+test('recusa chave que não pertence ao cofre', () => {
+  const outro = tempVaultPath();
+  const alheio = new Vault(outro);
+  alheio.create('outra-senha-mestra');
+
+  const file = tempVaultPath();
+  new Vault(file).create(SENHA);
+
+  const alvo = new Vault(file);
+  assert.throws(() => alvo.unlockWithKey(alheio.exportKey()), /chave/i);
+  assert.equal(alvo.isUnlocked(), false);
+});
+
+test('recusa chave com tamanho errado', () => {
+  const file = tempVaultPath();
+  new Vault(file).create(SENHA);
+  const alvo = new Vault(file);
+  assert.throws(() => alvo.unlockWithKey(Buffer.alloc(16)), /chave/i);
+});
