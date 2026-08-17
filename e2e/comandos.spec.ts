@@ -114,3 +114,19 @@ test('as abas da lateral ficam só com ícone, mantendo o nome acessível', asyn
     await expect(tab).not.toContainText(nome);
   }
 });
+
+test('a aba de painel ativa fica destacada', async ({ page }) => {
+  // Regressão real: envolver o Tab num Tooltip fez o MUI parar de injetar a
+  // seleção, e o indicador ficou com largura zero — nenhuma aba parecia ativa.
+  await expect(page.getByRole('tab', { name: 'Arquivos' })).toHaveAttribute('aria-selected', 'true');
+
+  await page.getByRole('tab', { name: 'Database' }).click();
+  await expect(page.getByRole('tab', { name: 'Database' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Arquivos' })).toHaveAttribute('aria-selected', 'false');
+
+  // O indicador precisa ter largura de verdade, não só existir no DOM.
+  const largura = await page.locator('.MuiTabs-indicator').evaluate(
+    (el) => Number.parseFloat(getComputedStyle(el).width)
+  );
+  expect(largura).toBeGreaterThan(0);
+});

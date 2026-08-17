@@ -70,13 +70,22 @@ export function Sidebar({
         }}
       >
         {PAINEIS.map((painel) => (
-          <Tooltip key={painel.id} title={painel.label} placement="bottom">
-            <Tab
-              value={painel.id}
-              icon={<Icon name={painel.icone} size={16} />}
-              aria-label={painel.label}
-            />
-          </Tooltip>
+          // O Tooltip fica DENTRO do Tab, envolvendo só o ícone. Envolver o
+          // próprio Tab quebra a seleção: o MUI injeta `selected` clonando os
+          // filhos DIRETOS de `Tabs`, e um invólucro no meio engole isso — o
+          // indicador fica com largura zero e nada aparece marcado.
+          <Tab
+            key={painel.id}
+            value={painel.id}
+            aria-label={painel.label}
+            icon={
+              <Tooltip title={painel.label} placement="bottom">
+                <Box sx={{ display: 'flex' }}>
+                  <Icon name={painel.icone} size={16} />
+                </Box>
+              </Tooltip>
+            }
+          />
         ))}
       </Tabs>
 
