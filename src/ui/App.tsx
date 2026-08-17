@@ -415,16 +415,30 @@ export function App() {
             <ResultGrid {...(exec.grades.get(ws.active.id) ?? { resultado: null })} />
           )}
 
-          {ws.active?.type === 'terminal' && (
-            <TerminalHost
-              // Remonta por aba: cada terminal é um processo próprio, e
-              // reaproveitar a instância ligaria a aba nova ao processo velho.
-              key={ws.active.id}
-              connectionId={
-                typeof ws.active.meta.connectionId === 'string' ? ws.active.meta.connectionId : null
-              }
-            />
-          )}
+          {/* Cada terminal aberto fica MONTADO, e apenas some de vista.
+              Renderizar só o ativo desmontaria o componente ao trocar de aba —
+              o que mataria o processo e jogaria fora o que estava na tela.
+              É a mesma regra do editor, algumas linhas acima. Desmontar só
+              acontece quando a aba é fechada, e aí matar é o certo. */}
+          {ws.tabs
+            .filter((t) => t.type === 'terminal')
+            .map((t) => (
+              <Box
+                key={t.id}
+                sx={{
+                  flex: 1,
+                  minHeight: 0,
+                  display: ws.activeId === t.id ? 'flex' : 'none',
+                }}
+              >
+                <TerminalHost
+                  ativo={ws.activeId === t.id}
+                  connectionId={
+                    typeof t.meta.connectionId === 'string' ? t.meta.connectionId : null
+                  }
+                />
+              </Box>
+            ))}
 
           {ws.active?.type === 'conexao' && (
             <ConnectionForm

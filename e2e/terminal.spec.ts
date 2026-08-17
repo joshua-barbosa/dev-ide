@@ -73,3 +73,33 @@ test('a ação de terminal não aparece em driver sem cliente', async ({ page })
   await expect(linha.getByRole('button', { name: 'Excluir conexão' })).toBeVisible();
   await expect(linha.getByRole('button', { name: 'Abrir no terminal' })).toHaveCount(0);
 });
+
+test('trocar de aba e voltar preserva a sessão e o que já foi escrito', async ({ page }) => {
+  // Regressão real: a aba de terminal era renderizada condicionalmente, então
+  // sair dela DESMONTAVA o componente — matando o processo e jogando fora o
+  // buffer. Voltar dava um terminal novo, e o histórico da sessão sumia.
+  await menu(page, 'Terminal');
+  await page.getByRole('menuitem', { name: 'New Terminal' }).click();
+
+  const terminal = page.locator('[data-terminal="shell"]');
+  await expect(terminal).toContainText(/\$|%|#/, { timeout: 15_000 });
+
+  await terminal.click();
+  await page.keyboard.type('echo MARCA-DA-SESSAO');
+  await page.keyboard.press('Enter');
+  await expect(terminal).toContainText('MARCA-DA-SESSAO', { timeout: 15_000 });
+
+  // Sai para outra aba e volta.
+  await menu(page, 'File');
+  await page.getByRole('menuitem', { name: 'New Text File' }).click();
+  await expect(page.locator('[data-tab="untitled-1"]')).toBeVisible();
+
+  await page.locator('[data-tab="Terminal"]').click();
+
+  // O que estava na tela precisa continuar lá, e o shell precisa ser o MESMO.
+  await expect(terminal).toContainText('MARCA-DA-SESSAO');
+  await terminal.click();
+  await page.keyboard.type('echo AINDA-VIVO');
+  await page.keyboard.press('Enter');
+  await expect(terminal).toContainText('AINDA-VIVO', { timeout: 15_000 });
+});

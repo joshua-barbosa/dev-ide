@@ -18,13 +18,39 @@ import { tokens } from '../theme';
 export interface TerminalHostProps {
   /** Ausente = shell do usuário; presente = cliente daquela conexão. */
   readonly connectionId?: string | null;
+  /**
+   * Falso quando a aba está aberta mas escondida.
+   *
+   * O componente continua montado — é isso que preserva o processo e o buffer —
+   * e só o foco e o reajuste de tamanho dependem de estar à vista.
+   */
+  readonly ativo?: boolean;
   readonly onFim?: (exitCode: number) => void;
 }
 
-export function TerminalHost({ connectionId = null, onFim }: TerminalHostProps) {
+export function TerminalHost({ connectionId = null, ativo = true, onFim }: TerminalHostProps) {
   const caixa = useRef<HTMLDivElement>(null);
   const aoFim = useRef(onFim);
   aoFim.current = onFim;
+  const emUso = useRef<{
+    term: Terminal;
+    fit: FitAddon;
+    enviar: (msg: unknown) => void;
+  } | null>(null);
+
+  // Ao voltar para a aba: refaz a medida e devolve o foco. Enquanto escondida a
+  // caixa mede zero, então o tamanho guardado é o de antes de sumir.
+  useEffect(() => {
+    if (!ativo || emUso.current === null) return;
+    const { term, fit, enviar } = emUso.current;
+    try {
+      fit.fit();
+      enviar({ tipo: 'tamanho', cols: term.cols, rows: term.rows });
+    } catch {
+      // A aba pode ainda não ter medida no primeiro quadro.
+    }
+    term.focus();
+  }, [ativo]);
 
   useEffect(() => {
     const alvo = caixa.current;
@@ -91,10 +117,11 @@ export function TerminalHost({ connectionId = null, onFim }: TerminalHostProps) 
       }
     });
     observador.observe(alvo);
-    term.focus();
+    emUso.current = { term, fit, enviar };
 
     return () => {
       observador.disconnect();
+      emUso.current = null;
       ws.close();
       term.dispose();
     };
