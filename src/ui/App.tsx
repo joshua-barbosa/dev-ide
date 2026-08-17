@@ -20,6 +20,7 @@ import type { PublicConnection } from '../shared/contracts';
 import { useConnections } from './connections/useConnections';
 import { VaultDialog } from './connections/VaultDialog';
 import { ConnectionForm } from './connections/ConnectionForm';
+import { TerminalHost } from './terminal/TerminalHost';
 import { useContextMenu } from './ContextMenu';
 import { useDialogs } from './useDialogs';
 import { Api } from './api';
@@ -234,6 +235,12 @@ export function App() {
       if (id !== null) avisar(conexoes.desconectar(id));
     },
 
+    'terminal.new': () => ws.abrirTerminal(null, 'Terminal'),
+    'terminal.connection': () => {
+      const conexao = conexoes.acharConexao(exec.conexaoAtiva);
+      if (conexao !== null) avisar(abrirTerminalDaConexao(conexao));
+    },
+
     'help.commands': () => avisar(abrirPaleta()),
     'help.about': () => void dialogs.avisar(
       'IDE local com painéis de banco e serviço, sem licença e sem limite de conexões.',
@@ -278,6 +285,17 @@ export function App() {
   };
 
   /**
+   * Abre o terminal de uma conexão.
+   *
+   * Destranca o cofre antes: a credencial precisa ser resolvida do lado do
+   * servidor para virar o arquivo temporário. Sem isso a aba abriria e falharia.
+   */
+  const abrirTerminalDaConexao = async (conexao: PublicConnection): Promise<void> => {
+    if (!(await conexoes.garantirDestrancado())) return;
+    ws.abrirTerminal(conexao.id, conexao.label);
+  };
+
+  /**
    * Renomeia um grupo, arrastando os descendentes junto.
    *
    * A rota já reescreve o prefixo de todos os caminhos, então renomear "ACME"
@@ -299,7 +317,11 @@ export function App() {
   const abaAtual = ws.activeId ?? '';
 
   const semAbas = ws.tabs.length === 0;
-  const mostrarEditor = !semAbas && ws.active?.type !== 'grid' && ws.active?.type !== 'conexao';
+  const mostrarEditor =
+    !semAbas &&
+    ws.active?.type !== 'grid' &&
+    ws.active?.type !== 'conexao' &&
+    ws.active?.type !== 'terminal';
 
   return (
     <Box
@@ -331,6 +353,7 @@ export function App() {
             onAbrirQuery: abrirQueryDoNo,
             onNovaConexao: (grupo?: string) => abrirFormulario(null, grupo),
             onRenomearGrupo: (caminho: string) => avisar(renomearGrupo(caminho)),
+            onAbrirTerminal: (conexao: PublicConnection) => avisar(abrirTerminalDaConexao(conexao)),
             onErro: dialogs.aoFalhar,
             onMenuNo: (e, id, caminho, no) =>
               menu.abrir(e, [
@@ -390,6 +413,17 @@ export function App() {
 
           {ws.active?.type === 'grid' && (
             <ResultGrid {...(exec.grades.get(ws.active.id) ?? { resultado: null })} />
+          )}
+
+          {ws.active?.type === 'terminal' && (
+            <TerminalHost
+              // Remonta por aba: cada terminal é um processo próprio, e
+              // reaproveitar a instância ligaria a aba nova ao processo velho.
+              key={ws.active.id}
+              connectionId={
+                typeof ws.active.meta.connectionId === 'string' ? ws.active.meta.connectionId : null
+              }
+            />
           )}
 
           {ws.active?.type === 'conexao' && (

@@ -157,7 +157,7 @@ test('Cmd do Mac conta como Ctrl', () => {
 
 test('todo atalho declarado bate com o que a formatação produz', () => {
   // Sem isto, uma declaração como "Ctrl+shift+P" nunca dispararia e ninguém veria.
-  const validas = /^(Ctrl\+)?(Shift\+)?(Alt\+)?([A-Z]|Enter|Tab|Escape|\/)$/;
+  const validas = /^(Ctrl\+)?(Shift\+)?(Alt\+)?([A-Z]|Enter|Tab|Escape|\/|`)$/;
   for (const cmd of COMMANDS) {
     if (cmd.keybinding === undefined) continue;
     assert.match(cmd.keybinding, validas, `atalho fora do formato em ${cmd.id}`);

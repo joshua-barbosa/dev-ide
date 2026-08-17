@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
-import { TerminalSession } from '../terminal/session';
+import { MARCADOR_DE_CREDENCIAL, TerminalSession } from '../terminal/session';
 import type { ComandoDeTerminal } from '../../shared/terminal/comando';
 
 const SEM_CREDENCIAL: ComandoDeTerminal = {
@@ -196,6 +196,31 @@ test('executável inexistente vira mensagem, e não deixa o segredo em disco', (
     const dir = `${process.env.DEV_IDE_HOME}/terminal`;
     const emDisco = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
     assert.deepEqual(emDisco, [], 'o segredo ficou em disco sem processo para apagá-lo');
+  } finally {
+    if (anterior === undefined) delete process.env.DEV_IDE_HOME;
+    else process.env.DEV_IDE_HOME = anterior;
+  }
+});
+
+test('o marcador vira o caminho real do arquivo, em args e no ambiente', async () => {
+  const anterior = process.env.DEV_IDE_HOME;
+  process.env.DEV_IDE_HOME = fs.mkdtempSync(`${os.tmpdir()}/dev-ide-term-`);
+  try {
+    // Imprime o argumento e a variável, para provar que os dois foram trocados.
+    const sessao = new TerminalSession({
+      comando: {
+        exec: '/bin/sh',
+        args: ['-c', `echo ARG=$1; echo ENV=$PGPASSFILE; echo FIM`, 'sh', MARCADOR_DE_CREDENCIAL],
+        env: { PGPASSFILE: MARCADOR_DE_CREDENCIAL },
+        credencial: 'segredo\n',
+      },
+    });
+    const saida = await esperarSaida(sessao, /FIM/);
+    sessao.close();
+
+    assert.ok(!saida.includes(MARCADOR_DE_CREDENCIAL), 'o marcador chegou cru ao processo');
+    assert.match(saida, /ARG=.*\.cred/, 'o argumento não recebeu o caminho');
+    assert.match(saida, /ENV=.*\.cred/, 'a variável não recebeu o caminho');
   } finally {
     if (anterior === undefined) delete process.env.DEV_IDE_HOME;
     else process.env.DEV_IDE_HOME = anterior;

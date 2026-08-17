@@ -21,6 +21,7 @@ export interface ConnectionsPanelProps {
   /** Recebe o grupo quando vem do botão de uma pasta, para já vir preenchido. */
   readonly onNovaConexao: (grupo?: string) => void;
   readonly onRenomearGrupo: (caminho: string) => void;
+  readonly onAbrirTerminal: (conexao: PublicConnection) => void;
   readonly onErro: (erro: unknown) => void;
 }
 
@@ -93,6 +94,7 @@ export function ConnectionsPanel({
   onAbrirQuery,
   onNovaConexao,
   onRenomearGrupo,
+  onAbrirTerminal,
   onErro,
 }: ConnectionsPanelProps) {
   const aceita = (tipo: string): boolean => {
@@ -182,6 +184,14 @@ export function ConnectionsPanel({
                 rotulo="Recarregar metadados"
                 onClick={comErro(() => ctrl.recarregarMetadados(conexao.id))}
               />
+              {/* Só aparece onde o driver declara cliente — SQLite não tem. */}
+              {driver?.hasCli === true && (
+                <AcaoDaLinha
+                  icone="lucide:square-terminal"
+                  rotulo="Abrir no terminal"
+                  onClick={() => onAbrirTerminal(conexao)}
+                />
+              )}
               <AcaoDaLinha
                 icone="lucide:trash-2"
                 rotulo="Excluir conexão"

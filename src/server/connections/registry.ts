@@ -14,6 +14,7 @@ export interface DriverInfo {
   readonly icon: Driver['icon'];
   readonly defaultPort?: number;
   readonly fields: readonly FieldSpec[];
+  readonly hasCli: boolean;
 }
 
 function coerce(spec: FieldSpec, raw: FieldValue): FieldValue {
@@ -79,6 +80,9 @@ export class DriverRegistry {
       icon: driver.icon,
       defaultPort: driver.defaultPort,
       fields: driver.fields,
+      // Booleano, e não o objeto: `cli` carrega funções, que não
+      // atravessam JSON. A interface só precisa saber se existe.
+      hasCli: driver.cli !== undefined,
     }));
   }
 

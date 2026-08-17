@@ -86,3 +86,20 @@ export async function confirmar(page: Page, aceitar: boolean): Promise<void> {
   const caixa = page.getByRole('dialog');
   await caixa.getByRole('button', { name: aceitar ? /fechar sem salvar|excluir|confirmar|ok/i : /cancelar/i }).click();
 }
+
+/**
+ * Deixa o cofre aberto, esteja ele como estiver.
+ *
+ * A suíte compartilha um servidor, e o cofre é estado global: depender do que o
+ * arquivo anterior deixou é receita de falha por ordem de execução.
+ */
+export async function garantirCofreAberto(page: Page, senha: string): Promise<void> {
+  const destrancar = page.getByRole('button', { name: 'Destrancar o cofre' });
+  if (await destrancar.isVisible()) {
+    await destrancar.click();
+    const campo = page.getByLabel('Senha mestra');
+    await campo.fill(senha);
+    await page.getByRole('button', { name: 'destrancar' }).click();
+  }
+  await page.getByRole('button', { name: 'Recolher tudo' }).and(page.locator(':not([disabled])')).waitFor();
+}

@@ -86,6 +86,7 @@ const ICONES_DA_INTERFACE = [
   'lucide:chevron-left',
   'lucide:chevrons-down-up',
   'lucide:pencil',
+  'lucide:square-terminal',
   'lucide:chevron-right',
   'lucide:chevron-down',
   'lucide:lock',

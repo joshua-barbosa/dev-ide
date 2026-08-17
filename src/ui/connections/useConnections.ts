@@ -44,6 +44,8 @@ export interface ConnectionsController {
   salvarConexao(input: ConnectionInput, id: string | null, conectar: boolean): Promise<void>;
   readonly grupos: readonly string[];
   acharConexao(id: unknown): PublicConnection | null;
+  /** Garante o cofre aberto, pedindo a senha se preciso. Falso = cancelado. */
+  garantirDestrancado(): Promise<boolean>;
   chaveDe(id: string, caminho: readonly string[]): string;
 }
 
@@ -338,11 +340,13 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
       salvarConexao,
       grupos,
       acharConexao,
+      garantirDestrancado,
       chaveDe,
     }),
     [
       abrirConexao, acharConexao, alternarGrupo, alternarNo, cancelarSenha, carregando, criarCofre,
       desconectar, destrancar, drivers, erro, estado, excluir, expandidos, filhos,
+      garantirDestrancado,
       grupos, pedidoDeSenha, recarregar, recarregarMetadados, responderSenha,
       salvarConexao, trancar,
     ]

@@ -10,6 +10,9 @@ import { errorEnvelope, requireString, wrap } from './http/handlers';
 import { localhostOnly } from './http/security';
 import { ProjectStore } from './projects';
 import { createConnectionsRouter } from './routes/connections';
+import { TerminalRegistry } from './terminal/registry';
+import { montarSocketDeTerminal } from './terminal/socket';
+import { criarResolvedorDeAbertura } from './terminal/abertura';
 import { runCode, RunRequest } from './runner';
 import { extractSymbols, SymbolInfo } from './symbols';
 
@@ -38,6 +41,14 @@ const remember = new RememberedKey(
   process.env.DEV_IDE_SESSION ?? RememberedKey.defaultPath()
 );
 restaurarCofre(vault, remember);
+
+// ---- Terminal ----
+const terminais = new TerminalRegistry();
+const resolverAbertura = criarResolvedorDeAbertura({
+  registry,
+  vault,
+  cwdPadrao: () => PROJECTS_DIR,
+});
 
 // A interface é compilada pelo Vite de src/ui para dist/ui.
 const UI_DIR = path.join(ROOT, 'dist', 'ui');
@@ -160,6 +171,9 @@ if (require.main === module) {
     }
   });
 
+  // O socket compartilha o servidor HTTP: mesma porta, mesma guarda de origem.
+  montarSocketDeTerminal(server, { registry: terminais, resolverAbertura });
+
   const sweeper = setInterval(() => {
     pool.sweep().catch((err: Error) => console.error('Falha ao fechar sessões ociosas:', err.message));
   }, IDLE_SWEEP_MS);
@@ -168,6 +182,9 @@ if (require.main === module) {
   for (const sinal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(sinal, () => {
       clearInterval(sweeper);
+      // Terminais primeiro: são processos de fora, e ficariam órfãos com o
+      // arquivo de credencial ainda em disco.
+      terminais.fecharTodos();
       pool.closeAll().finally(() => server.close(() => process.exit(0)));
     });
   }

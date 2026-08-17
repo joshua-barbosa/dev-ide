@@ -18,6 +18,15 @@ import * as pty from 'node-pty';
 import { arquivoDeDados } from '../paths';
 import type { ComandoDeTerminal } from '../../shared/terminal/comando';
 
+/**
+ * Marcador que quem monta o comando usa no lugar do caminho do arquivo.
+ *
+ * Mora aqui porque é esta classe que escreve o arquivo e conhece o caminho —
+ * escrever o arquivo do outro lado espalharia a responsabilidade do segredo
+ * por dois módulos.
+ */
+export const MARCADOR_DE_CREDENCIAL = '__ARQUIVO_DE_CREDENCIAL__';
+
 /** Espera antes de matar à força quem ignorou o pedido de encerrar. */
 const PRAZO_ATE_MATAR_MS = 2_000;
 
@@ -54,13 +63,21 @@ export class TerminalSession {
 
     this.credencial = comando.credencial === null ? null : escreverCredencial(comando.credencial);
 
+    // O nome do arquivo só pode ser sorteado na hora de escrever, mas os
+    // argumentos precisam citá-lo. Quem monta o comando deixa um marcador, e é
+    // aqui — no único lugar que conhece o caminho real — que ele é trocado.
+    const args = comando.args.map((a) => this.trocarMarcador(a));
+    const env = Object.fromEntries(
+      Object.entries(comando.env).map(([k, v]) => [k, this.trocarMarcador(v)])
+    );
+
     try {
-      this.proc = pty.spawn(comando.exec, [...comando.args], {
+      this.proc = pty.spawn(comando.exec, args, {
         name: 'xterm-256color',
         cols: opcoes.cols ?? 80,
         rows: opcoes.rows ?? 24,
         cwd: opcoes.cwd ?? os.homedir(),
-        env: { ...process.env, ...comando.env } as Record<string, string>,
+        env: { ...process.env, ...env } as Record<string, string>,
       });
     } catch (e) {
       // Qualquer outra falha de lançamento: o arquivo já existe neste ponto e
@@ -127,6 +144,11 @@ export class TerminalSession {
     }, PRAZO_ATE_MATAR_MS);
     // Não segura o processo do servidor no encerramento.
     forcar.unref();
+  }
+
+  private trocarMarcador(valor: string): string {
+    if (this.credencial === null) return valor;
+    return valor.split(MARCADOR_DE_CREDENCIAL).join(this.credencial);
   }
 
   private apagarCredencial(): void {

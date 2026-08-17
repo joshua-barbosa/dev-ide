@@ -24,6 +24,8 @@ export interface DriverInfo {
   readonly icon: string;
   readonly defaultPort?: number;
   readonly fields: readonly FieldSpec[];
+  /** Se o driver tem cliente de linha de comando (habilita "abrir no terminal"). */
+  readonly hasCli: boolean;
 }
 
 export interface FileNode {

@@ -49,6 +49,7 @@ export interface Workspace {
   abrirArquivo(caminho: string): Promise<void>;
   abrirQuery(id: string, titulo: string, conteudo: string, connectionId: string): void;
   abrirFormulario(connectionId: string | null, titulo: string, grupoInicial?: string): void;
+  abrirTerminal(connectionId: string | null, titulo: string): void;
   novoSemTitulo(): void;
   adotarArquivo(idAntigo: string, caminho: string): void;
   /** Devolve o caminho gravado, ou `null` se não havia o que salvar. */
@@ -182,6 +183,28 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     [salvarNaAba, store]
   );
 
+  /**
+   * Abre uma aba de terminal.
+   *
+   * O id inclui um contador porque dois terminais da mesma conexão são
+   * legítimos — ao contrário do formulário, onde reabrir deve focar o existente.
+   */
+  const proximoTerminal = useRef(0);
+  const abrirTerminal = useCallback(
+    (connectionId: string | null, titulo: string) => {
+      if (ultimaAtiva.current !== null) salvarNaAba(ultimaAtiva.current);
+      proximoTerminal.current += 1;
+      store.open({
+        id: `terminal:${proximoTerminal.current}`,
+        type: 'terminal',
+        title: titulo,
+        icon: 'terminal',
+        meta: { connectionId },
+      });
+    },
+    [salvarNaAba, store]
+  );
+
   const marcarAbaSuja = useCallback(
     (id: string, sujo: boolean) => {
       store.update(id, { dirty: sujo });
@@ -293,6 +316,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     abrirArquivo,
     abrirQuery,
     abrirFormulario,
+    abrirTerminal,
     novoSemTitulo,
     adotarArquivo,
     marcarAbaSuja,
