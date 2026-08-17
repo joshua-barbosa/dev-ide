@@ -4,7 +4,7 @@
 // a suíte rodar com um worker só.
 import { expect, test } from '@playwright/test';
 import { CONEXAO, SENHA_MESTRA, TABELA } from './global-setup';
-import { aba, editor, expandir, linhaArvore, painelLateral, responderDialogo } from './fixtures';
+import { aba, destrancarCofre, editor, expandir, linhaArvore, painelLateral } from './fixtures';
 
 /** Deixa o cofre trancado, que é o estado com que a IDE sempre inicia de fato. */
 async function trancarCofre(page: import('@playwright/test').Page): Promise<void> {
@@ -24,20 +24,41 @@ test('cofre trancado pede a senha ao clicar na conexão e abre a árvore', async
   await expect(page.getByText(/Cofre trancado/)).toBeVisible();
 
   await expandir(page, 'ACME', 'Bancos');
-  responderDialogo(page, SENHA_MESTRA); // antes do clique que abre o prompt
   await linhaArvore(page, CONEXAO).click();
+  await destrancarCofre(page, SENHA_MESTRA);
 
   await expect(linhaArvore(page, 'escola.db')).toBeVisible();
   await expandir(page, 'escola.db', 'Tables');
   await expect(linhaArvore(page, TABELA)).toBeVisible();
 });
 
+test('senha errada mantém o diálogo aberto, com o aviso', async ({ page }) => {
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+
+  await destrancarCofre(page, 'senha-que-nao-e-a-certa');
+  await expect(page.getByText(/Senha mestra incorreta/i)).toBeVisible();
+  // O diálogo continua de pé: errar não pode custar recomeçar do zero.
+  await expect(page.getByLabel('Senha mestra')).toBeVisible();
+
+  await destrancarCofre(page, SENHA_MESTRA);
+  await expect(linhaArvore(page, 'escola.db')).toBeVisible();
+});
+
+test('a caixa de lembrar nasce desmarcada', async ({ page }) => {
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+
+  // Lembrar é escolha consciente por sessão, nunca o padrão silencioso.
+  await expect(page.getByRole('checkbox', { name: /Lembrar neste computador/ })).not.toBeChecked();
+});
+
 test('executar consulta abre a grade com colunas tipadas e as linhas', async ({ page }) => {
   // Fecha a pendência que a spec 001 deixou declarada: a grade nunca tinha sido
   // vista com dados reais.
   await expandir(page, 'ACME', 'Bancos');
-  responderDialogo(page, SENHA_MESTRA);
   await linhaArvore(page, CONEXAO).click();
+  await destrancarCofre(page, SENHA_MESTRA);
   await expandir(page, 'escola.db', 'Tables');
 
   await linhaArvore(page, TABELA).dblclick();
@@ -58,8 +79,8 @@ test('executar consulta abre a grade com colunas tipadas e as linhas', async ({ 
 
 test('menu do botão direito oferece as ações do nó e abre o DDL', async ({ page }) => {
   await expandir(page, 'ACME', 'Bancos');
-  responderDialogo(page, SENHA_MESTRA);
   await linhaArvore(page, CONEXAO).click();
+  await destrancarCofre(page, SENHA_MESTRA);
   await expandir(page, 'escola.db', 'Tables');
 
   await linhaArvore(page, TABELA).click({ button: 'right' });

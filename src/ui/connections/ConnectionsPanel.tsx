@@ -19,6 +19,13 @@ export interface ConnectionsPanelProps {
   readonly onAbrirQuery: (id: string, no: TreeNode) => void;
 }
 
+/** Data curta e local — o horário exato não ajuda em nada aqui. */
+function formatarData(iso: string): string {
+  return new Date(iso).toLocaleDateString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  });
+}
+
 export function ConnectionsPanel({
   painel,
   ctrl,
@@ -187,6 +194,12 @@ export function ConnectionsPanel({
       {vault.exists && !vault.unlocked && (
         <Box sx={{ px: 1.25, py: 1, color: 'text.secondary', fontSize: 11, lineHeight: 1.5 }}>
           🔒 Cofre trancado — clicar numa conexão pede a senha mestra.
+        </Box>
+      )}
+      {vault.unlocked && vault.rememberedUntil !== null && (
+        // Avisar antes é o que impede o vencimento de chegar como surpresa.
+        <Box sx={{ px: 1.25, py: 0.75, color: 'text.secondary', fontSize: 11 }}>
+          Destrancamento lembrado até {formatarData(vault.rememberedUntil)}.
         </Box>
       )}
       {!vault.exists && (

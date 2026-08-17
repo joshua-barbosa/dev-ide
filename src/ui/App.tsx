@@ -13,6 +13,7 @@ import { useWorkspace } from './useWorkspace';
 import { EditorHost } from './editor/EditorHost';
 import { TabBar } from './tabs/TabBar';
 import { useConnections } from './connections/useConnections';
+import { VaultDialog } from './connections/VaultDialog';
 import { useContextMenu } from './ContextMenu';
 import { Api } from './api';
 import { Toolbar } from './Toolbar';
@@ -241,6 +242,15 @@ export function App() {
           Ln {ws.cursor.linha}, Col {ws.cursor.coluna}
         </Box>
       </Box>
+
+      {/* Fora da lateral de propósito: o pedido de senha precisa sobreviver a
+          trocar de painel enquanto o diálogo está aberto. */}
+      <VaultDialog
+        pedido={conexoes.pedidoDeSenha}
+        podeLembrar={conexoes.estado?.vault.canRemember !== false}
+        onResponder={conexoes.responderSenha}
+        onCancelar={conexoes.cancelarSenha}
+      />
 
       {menu.elemento}
     </Box>

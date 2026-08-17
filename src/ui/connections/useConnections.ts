@@ -4,7 +4,7 @@
 // filtro de painel, declarado por cada driver. Expansão e cache de filhos são
 // compartilhados de propósito — as duas árvores nunca mostram a mesma conexão,
 // então não há como uma confundir a outra.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConnectionsState, PublicConnection, TreeNode } from '../../shared/contracts';
 import { Api, type DriverInfo } from '../api';
 
@@ -12,7 +12,15 @@ import { Api, type DriverInfo } from '../api';
 const chaveDe = (id: string, caminho: readonly string[]): string =>
   [id, ...caminho].join('\u0000');
 
+/** Um pedido de senha em aberto — o que o diálogo precisa saber para se desenhar. */
+export interface PedidoDeSenha {
+  readonly modo: 'criar' | 'destrancar';
+}
+
 export interface ConnectionsController {
+  readonly pedidoDeSenha: PedidoDeSenha | null;
+  responderSenha(senha: string, lembrar: boolean): Promise<void>;
+  cancelarSenha(): void;
   readonly estado: ConnectionsState | null;
   readonly drivers: ReadonlyMap<string, DriverInfo>;
   readonly erro: string | null;
@@ -53,6 +61,50 @@ export function useConnections(): ConnectionsController {
       .catch((e: Error) => setErro(e.message));
   }, []);
 
+  const [pedidoDeSenha, setPedidoDeSenha] = useState<PedidoDeSenha | null>(null);
+  const respostaPendente = useRef<((destrancou: boolean) => void) | null>(null);
+
+  /**
+   * Abre o diálogo de senha e só resolve quando o usuário responde.
+   *
+   * Existe porque clicar numa conexão com o cofre trancado precisa ESPERAR o
+   * destrancamento antes de seguir — era o que o `prompt()` do navegador dava de
+   * graça, e o que um diálogo desenhado precisa recriar à mão.
+   */
+  const pedirSenha = useCallback((modo: PedidoDeSenha['modo']): Promise<boolean> => {
+    return new Promise<boolean>((resolve) => {
+      // Um pedido em aberto por vez: quem chegar depois herda o mesmo resultado.
+      respostaPendente.current?.(false);
+      respostaPendente.current = resolve;
+      setPedidoDeSenha({ modo });
+    });
+  }, []);
+
+  /**
+   * Responde ao diálogo. O erro de senha errada sobe de propósito: quem mostra é
+   * o diálogo, que precisa continuar aberto com o que foi digitado.
+   */
+  const responderSenha = useCallback(
+    async (senha: string, lembrar: boolean) => {
+      const pedido = pedidoDeSenha;
+      if (pedido === null) return;
+      if (pedido.modo === 'criar') await Api.createVault(senha, lembrar);
+      else await Api.unlockVault(senha, lembrar);
+
+      setPedidoDeSenha(null);
+      await recarregar();
+      respostaPendente.current?.(true);
+      respostaPendente.current = null;
+    },
+    [pedidoDeSenha, recarregar]
+  );
+
+  const cancelarSenha = useCallback(() => {
+    setPedidoDeSenha(null);
+    respostaPendente.current?.(false);
+    respostaPendente.current = null;
+  }, []);
+
   const marcar = useCallback((conjunto: ReadonlySet<string>, chave: string, ligado: boolean) => {
     const proximo = new Set(conjunto);
     if (ligado) proximo.add(chave);
@@ -67,28 +119,16 @@ export function useConnections(): ConnectionsController {
    */
   const garantirDestrancado = useCallback(async (): Promise<boolean> => {
     if (estado?.vault.unlocked === true) return true;
-    const senha = window.prompt('O cofre está trancado.\nSenha mestra para destrancar:');
-    if (senha === null || senha === '') return false;
-    await Api.unlockVault(senha);
-    await recarregar();
-    return true;
-  }, [estado, recarregar]);
+    return pedirSenha('destrancar');
+  }, [estado, pedirSenha]);
 
   const criarCofre = useCallback(async () => {
-    const senha = window.prompt(
-      'Defina a senha mestra do cofre.\nEla protege as credenciais e NÃO tem recuperação:'
-    );
-    if (senha === null || senha === '') return;
-    await Api.createVault(senha);
-    await recarregar();
-  }, [recarregar]);
+    await pedirSenha('criar');
+  }, [pedirSenha]);
 
   const destrancar = useCallback(async () => {
-    const senha = window.prompt('Senha mestra:');
-    if (senha === null || senha === '') return;
-    await Api.unlockVault(senha);
-    await recarregar();
-  }, [recarregar]);
+    await pedirSenha('destrancar');
+  }, [pedirSenha]);
 
   const trancar = useCallback(async () => {
     await Api.lockVault();
@@ -203,6 +243,9 @@ export function useConnections(): ConnectionsController {
       filhos,
       carregando,
       recarregar,
+      pedidoDeSenha,
+      responderSenha,
+      cancelarSenha,
       criarCofre,
       destrancar,
       trancar,
@@ -215,9 +258,9 @@ export function useConnections(): ConnectionsController {
       chaveDe,
     }),
     [
-      abrirConexao, alternarGrupo, alternarNo, carregando, criarCofre, desconectar,
-      destrancar, drivers, erro, estado, excluir, expandidos, filhos, recarregar,
-      recarregarMetadados, trancar,
+      abrirConexao, alternarGrupo, alternarNo, cancelarSenha, carregando, criarCofre,
+      desconectar, destrancar, drivers, erro, estado, excluir, expandidos, filhos,
+      pedidoDeSenha, recarregar, recarregarMetadados, responderSenha, trancar,
     ]
   );
 }

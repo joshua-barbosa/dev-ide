@@ -45,3 +45,23 @@ export async function digitar(page: Page, texto: string): Promise<void> {
   await editor(page).press('End');
   await editor(page).pressSequentially(texto);
 }
+
+/**
+ * Responde ao diálogo da senha mestra.
+ *
+ * Ao contrário de `responderDialogo`, este roda DEPOIS da ação que abre o
+ * diálogo: é um componente da página, não um diálogo do navegador, então
+ * precisa existir no DOM para ser preenchido.
+ */
+export async function destrancarCofre(
+  page: Page,
+  senha: string,
+  opcoes: { readonly lembrar?: boolean } = {}
+): Promise<void> {
+  const campo = page.getByLabel('Senha mestra');
+  await campo.fill(senha);
+  if (opcoes.lembrar === true) {
+    await page.getByRole('checkbox', { name: /Lembrar neste computador/ }).check();
+  }
+  await page.getByRole('button', { name: 'destrancar' }).click();
+}

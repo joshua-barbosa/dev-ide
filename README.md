@@ -77,8 +77,8 @@ Todas as respostas usam o envelope `{success, data, error}`.
 | PATCH | `/api/connections/:id` | atualiza (sem `fields`, preserva os segredos) |
 | DELETE | `/api/connections/:id` | remove |
 | POST | `/api/connections/groups/rename` | renomeia grupo `{from, to}` e os descendentes |
-| POST | `/api/connections/vault` | cria o cofre `{password}` |
-| POST | `/api/connections/vault/unlock` \| `/lock` | destranca / tranca (trancar fecha as sessões) |
+| POST | `/api/connections/vault` | cria o cofre `{password, remember?}` |
+| POST | `/api/connections/vault/unlock` \| `/lock` | destranca `{password, remember?}` / tranca (trancar fecha as sessões e apaga a lembrança) |
 | POST | `/api/connections/:id/connect` \| `/disconnect` | abre/fecha sessão; `connect` devolve as capacidades |
 | GET | `/api/connections/:id/children?path=a&path=b` | filhos do nó (navegação lazy) |
 | POST | `/api/connections/:id/execute` | executa `{statement, nodePath?, rowLimit?, timeoutMs?}` |
@@ -130,6 +130,26 @@ DEV_IDE_TEST_POSTGRES="postgres://user:senha@host:5432/banco" npm test
 sob uma chave derivada da senha mestra por scrypt. Campos não-secretos ficam em claro de propósito —
 a árvore de grupos renderiza com o cofre trancado, e só conectar exige a senha. Segredo **nunca** sai
 numa resposta da API. Caminho configurável via `DEV_IDE_VAULT`.
+
+**Lembrar o destrancamento.** Marcar "lembrar neste computador" ao destrancar guarda a *chave*
+derivada — nunca a senha — em `~/.dev-ide/session.json` (600), cifrada e com prazo. Enquanto vale,
+a IDE sobe já destrancada. Prazo em `DEV_IDE_VAULT_REMEMBER_DAYS` (padrão **15 dias**, contados a
+partir do destrancamento e sem renovação por uso); caminho em `DEV_IDE_SESSION`.
+
+Seja claro sobre o que isso protege e o que não protege:
+
+- **Protege** contra `vault.json` que vaza sozinho — num backup, num `rsync`, numa pasta
+  sincronizada. O cofre continua inútil sem a lembrança.
+- **Protege** contra a pasta `~/.dev-ide/` inteira copiada para outra máquina: a lembrança é presa
+  ao `machine-id` + uid, então lá a senha volta a ser exigida.
+- **Protege** contra esticar o prazo à mão: a data de validade é autenticada pelo GCM, então editá-la
+  no arquivo faz a decifra falhar em vez de passar.
+- **Não protege** contra quem já está logado na sua conta durante o prazo — essa pessoa
+  simplesmente abre a IDE. Se isso importa, não marque a caixa, ou use "Trancar", que apaga a
+  lembrança na hora.
+
+Reinstalar o sistema ou clonar a VM muda o `machine-id` e invalida a lembrança; a senha volta a ser
+pedida, que é o comportamento correto.
 
 > ⚠️ A IDE executa código arbitrário localmente por design e guarda credenciais de conexão. Use apenas em máquina de desenvolvimento.
 >

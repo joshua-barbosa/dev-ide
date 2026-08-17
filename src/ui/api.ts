@@ -112,8 +112,10 @@ export const Api = {
   drivers: () => request<DriverInfo[]>('GET', `${conexoes}/drivers`),
   connections: () => request<ConnectionsState>('GET', conexoes),
 
-  createVault: (password: string) => request('POST', `${conexoes}/vault`, { password }),
-  unlockVault: (password: string) => request('POST', `${conexoes}/vault/unlock`, { password }),
+  createVault: (password: string, remember = false) =>
+    request('POST', `${conexoes}/vault`, { password, remember }),
+  unlockVault: (password: string, remember = false) =>
+    request('POST', `${conexoes}/vault/unlock`, { password, remember }),
   lockVault: () => request('POST', `${conexoes}/vault/lock`),
 
   createConnection: (input: ConnectionInput) =>
