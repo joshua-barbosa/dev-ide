@@ -559,13 +559,13 @@ export const postgresDriver: Driver = {
       help: 'Banco da conexão inicial. Expandir outro banco abre uma conexão nova — o Postgres não faz consulta cross-database.',
     },
 
-    // --- Árvore ---
     {
       name: 'show_databases',
       label: 'Bancos visíveis',
       type: 'textarea',
       placeholder: 'ex.: nuntius, bussola',
       help: 'Lista branca separada por vírgula ou quebra de linha. Vazio mostra todos.',
+      section: 'Árvore',
     },
     {
       name: 'exclude_databases',
@@ -573,6 +573,7 @@ export const postgresDriver: Driver = {
       type: 'string',
       placeholder: 'regex, ex.: _bkp$',
       help: 'Expressão regular. Regex inválida é ignorada.',
+      section: 'Árvore',
     },
     {
       name: 'exclude_schemas',
@@ -580,6 +581,7 @@ export const postgresDriver: Driver = {
       type: 'string',
       placeholder: 'regex, ex.: ^_timescaledb',
       help: 'Expressão regular aplicada aos schemas de cada banco.',
+      section: 'Árvore',
     },
     {
       name: 'hide_system_schemas',
@@ -587,15 +589,16 @@ export const postgresDriver: Driver = {
       type: 'boolean',
       default: true,
       help: 'pg_catalog e information_schema (pg_toast e pg_temp já ficam fora).',
+      section: 'Árvore',
     },
 
-    // --- SQL ---
     {
       name: 'default_row_limit',
       label: 'Limite padrão de linhas',
       type: 'number',
       default: 500,
       help: 'Aplicado quando a query não pede um limite explícito.',
+      section: 'SQL',
     },
     {
       name: 'startup_sql',
@@ -603,9 +606,9 @@ export const postgresDriver: Driver = {
       type: 'textarea',
       placeholder: "ex.: SET search_path TO public",
       help: 'Roda em cada banco ao abrir a conexão, depois do somente-leitura.',
+      section: 'SQL',
     },
 
-    // --- TLS ---
     {
       name: 'ssl_mode',
       label: 'SSL Mode',
@@ -617,12 +620,14 @@ export const postgresDriver: Driver = {
         { value: 'verify-ca', label: 'verify-ca — exige TLS e valida a CA' },
         { value: 'verify-full', label: 'verify-full — valida CA e hostname' },
       ],
+      section: 'TLS',
     },
     {
       name: 'ssl_ca',
       label: 'Certificado da CA',
       type: 'path',
       help: 'Usado por verify-ca e verify-full.',
+      section: 'TLS',
     },
   ],
   connect,

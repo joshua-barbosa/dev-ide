@@ -493,13 +493,13 @@ export const mysqlDriver: Driver = {
     },
     { name: 'socket_path', label: 'Socket', type: 'path', placeholder: '/var/run/mysqld/mysqld.sock' },
 
-    // --- Árvore ---
     {
       name: 'show_databases',
       label: 'Bancos visíveis',
       type: 'textarea',
       placeholder: 'ex.: servidor-2, servidor-1',
       help: 'Lista branca separada por vírgula ou quebra de linha. Vazio mostra todos.',
+      section: 'Árvore',
     },
     {
       name: 'exclude_databases',
@@ -507,6 +507,7 @@ export const mysqlDriver: Driver = {
       type: 'string',
       placeholder: 'regex, ex.: _bkp$|^teste_',
       help: 'Expressão regular. Regex inválida é ignorada.',
+      section: 'Árvore',
     },
     {
       name: 'hide_system_schemas',
@@ -514,15 +515,16 @@ export const mysqlDriver: Driver = {
       type: 'boolean',
       default: true,
       help: 'information_schema, performance_schema, mysql e sys.',
+      section: 'Árvore',
     },
 
-    // --- SQL ---
     {
       name: 'default_row_limit',
       label: 'Limite padrão de linhas',
       type: 'number',
       default: 500,
       help: 'Aplicado quando a query não pede um limite explícito.',
+      section: 'SQL',
     },
     {
       name: 'startup_sql',
@@ -530,9 +532,9 @@ export const mysqlDriver: Driver = {
       type: 'textarea',
       placeholder: "ex.: SET NAMES utf8mb4",
       help: 'Roda ao abrir a sessão, depois do somente-leitura.',
+      section: 'SQL',
     },
 
-    // --- TLS ---
     {
       name: 'ssl_mode',
       label: 'SSL Mode',
@@ -545,12 +547,14 @@ export const mysqlDriver: Driver = {
         { value: 'VERIFY_CA', label: 'VERIFY_CA — exige TLS e valida a CA' },
         { value: 'VERIFY_IDENTITY', label: 'VERIFY_IDENTITY — valida CA e hostname' },
       ],
+      section: 'TLS',
     },
     {
       name: 'ssl_ca',
       label: 'Certificado da CA',
       type: 'path',
       help: 'Usado por VERIFY_CA e VERIFY_IDENTITY.',
+      section: 'TLS',
     },
   ],
   connect,

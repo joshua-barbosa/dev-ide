@@ -42,6 +42,15 @@ export interface FieldSpec {
   readonly placeholder?: string;
   readonly help?: string;
   readonly options?: readonly FieldOption[];
+  /**
+   * Seção do formulário. Ausente = a principal, que vem aberta; as demais vêm
+   * recolhidas, na ordem em que aparecem aqui.
+   *
+   * Mora no driver, e não na interface, porque decidir o que é "principal" exige
+   * saber o que o campo faz — conhecimento que só quem declara o campo tem. É a
+   * mesma regra do ícone e do painel.
+   */
+  readonly section?: string;
 }
 
 export interface ConnectionInput {
