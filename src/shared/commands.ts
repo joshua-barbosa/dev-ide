@@ -95,13 +95,19 @@ const DECLARADOS = [
 
   // ---- Selection ----
   { id: 'selection.all', label: 'Select All', menu: 'selection', group: 1, keybinding: 'Ctrl+A', when: 'temEditor' },
-  { id: 'selection.expand', label: 'Expand Selection', menu: 'selection', group: 1, pending: true },
-  { id: 'selection.copyLineUp', label: 'Copy Line Up', menu: 'selection', group: 2, pending: true },
-  { id: 'selection.copyLineDown', label: 'Copy Line Down', menu: 'selection', group: 2, pending: true },
-  { id: 'selection.moveLineUp', label: 'Move Line Up', menu: 'selection', group: 2, pending: true },
-  { id: 'selection.moveLineDown', label: 'Move Line Down', menu: 'selection', group: 2, pending: true },
-  { id: 'selection.addCursorAbove', label: 'Add Cursor Above', menu: 'selection', group: 3, pending: true },
-  { id: 'selection.addCursorBelow', label: 'Add Cursor Below', menu: 'selection', group: 3, pending: true },
+  { id: 'selection.expand', label: 'Expand Selection', menu: 'selection', group: 1, keybinding: 'Shift+Alt+ArrowRight', pending: true },
+  { id: 'selection.shrink', label: 'Shrink Selection', menu: 'selection', group: 1, keybinding: 'Shift+Alt+ArrowLeft', pending: true },
+  { id: 'selection.copyLineUp', label: 'Copy Line Up', menu: 'selection', group: 2, keybinding: 'Ctrl+Shift+Alt+ArrowUp', pending: true },
+  { id: 'selection.copyLineDown', label: 'Copy Line Down', menu: 'selection', group: 2, keybinding: 'Ctrl+Shift+Alt+ArrowDown', pending: true },
+  { id: 'selection.moveLineUp', label: 'Move Line Up', menu: 'selection', group: 2, keybinding: 'Alt+ArrowUp', pending: true },
+  { id: 'selection.moveLineDown', label: 'Move Line Down', menu: 'selection', group: 2, keybinding: 'Alt+ArrowDown', pending: true },
+  { id: 'selection.duplicate', label: 'Duplicate Selection', menu: 'selection', group: 2, pending: true },
+  { id: 'selection.addCursorAbove', label: 'Add Cursor Above', menu: 'selection', group: 3, keybinding: 'Shift+Alt+ArrowUp', pending: true },
+  { id: 'selection.addCursorBelow', label: 'Add Cursor Below', menu: 'selection', group: 3, keybinding: 'Shift+Alt+ArrowDown', pending: true },
+  { id: 'selection.cursorsToLineEnds', label: 'Add Cursors to Line Ends', menu: 'selection', group: 3, keybinding: 'Shift+Alt+I', pending: true },
+  { id: 'selection.addNextOccurrence', label: 'Add Next Occurrence', menu: 'selection', group: 3, keybinding: 'Ctrl+D', pending: true },
+  { id: 'selection.addPrevOccurrence', label: 'Add Previous Occurrence', menu: 'selection', group: 3, pending: true },
+  { id: 'selection.allOccurrences', label: 'Select All Occurrences', menu: 'selection', group: 3, pending: true },
 
   // ---- View ----
   { id: 'view.commandPalette', label: 'Command Palette…', menu: 'view', group: 1, keybinding: 'Ctrl+Shift+P' },

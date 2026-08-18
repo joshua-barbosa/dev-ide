@@ -157,7 +157,7 @@ test('Cmd do Mac conta como Ctrl', () => {
 
 test('todo atalho declarado bate com o que a formatação produz', () => {
   // Sem isto, uma declaração como "Ctrl+shift+P" nunca dispararia e ninguém veria.
-  const validas = /^(Ctrl\+)?(Shift\+)?(Alt\+)?([A-Z]|Enter|Tab|Escape|\/|`)$/;
+  const validas = /^(Ctrl\+)?(Shift\+)?(Alt\+)?([A-Z]|Enter|Tab|Escape|Arrow(Up|Down|Left|Right)|\/|`)$/;
   for (const cmd of COMMANDS) {
     if (cmd.keybinding === undefined) continue;
     assert.match(cmd.keybinding, validas, `atalho fora do formato em ${cmd.id}`);
@@ -225,4 +225,19 @@ test('todo ícone de serviço declarado está no pacote offline', () => {
   for (const icone of Object.values(ICONES_DE_SERVICO)) {
     assert.equal(resolverIcone(icone), icone, `fora do pacote: ${icone}`);
   }
+});
+
+test('atalho com seta é formatado como as declarações esperam', () => {
+  // As setas entraram com o menu Selection; sem isto, `Alt+ArrowUp` nunca
+  // dispararia e ninguém notaria — o comando existiria só no menu.
+  const base = { ctrlKey: false, shiftKey: false, altKey: false, metaKey: false };
+  assert.equal(formatarAtalho({ ...base, altKey: true, key: 'ArrowUp' }), 'Alt+ArrowUp');
+  assert.equal(
+    formatarAtalho({ ...base, ctrlKey: true, shiftKey: true, altKey: true, key: 'ArrowDown' }),
+    'Ctrl+Shift+Alt+ArrowDown'
+  );
+  assert.equal(
+    formatarAtalho({ ...base, shiftKey: true, altKey: true, key: 'ArrowRight' }),
+    'Shift+Alt+ArrowRight'
+  );
 });
