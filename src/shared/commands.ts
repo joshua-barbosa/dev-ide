@@ -112,6 +112,9 @@ const DECLARADOS = [
   // ---- View ----
   { id: 'view.commandPalette', label: 'Command Palette…', menu: 'view', group: 1, keybinding: 'Ctrl+Shift+P' },
   { id: 'view.explorer', label: 'Explorer', menu: 'view', group: 2, keybinding: 'Ctrl+Shift+E' },
+  // Mesma feature que `edit.findInFiles`, vista da lateral em vez do menu Edit —
+  // por isso compartilham o atalho. Ver a nota sobre atalhos repetidos abaixo.
+  { id: 'view.search', label: 'Search', menu: 'view', group: 2, keybinding: 'Ctrl+Shift+F', pending: true },
   { id: 'view.symbols', label: 'Symbols', menu: 'view', group: 2 },
   { id: 'view.database', label: 'Database', menu: 'view', group: 2 },
   { id: 'view.service', label: 'Service', menu: 'view', group: 2 },
@@ -238,7 +241,15 @@ export function formatarAtalho(e: TeclaPressionada): string {
   return partes.join('+');
 }
 
-/** O comando de um atalho, se houver um disponível. */
+/**
+ * O comando de um atalho, se houver um disponível.
+ *
+ * **Atalho repetido devolve o primeiro declarado.** Isso é aceitável apenas
+ * porque as repetições existentes são APELIDOS — o mesmo comando alcançado de
+ * dois menus (`view.commandPalette` e `help.commands`; `view.search` e
+ * `edit.findInFiles`). Se um dia duas ações diferentes dividirem um atalho, uma
+ * delas nunca dispara, e em silêncio.
+ */
 export function comandoDoAtalho(
   atalho: string,
   ctx: ContextoDeComandos,

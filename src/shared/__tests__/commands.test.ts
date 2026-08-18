@@ -241,3 +241,34 @@ test('atalho com seta é formatado como as declarações esperam', () => {
     'Shift+Alt+ArrowRight'
   );
 });
+
+test('atalho repetido só existe entre comandos que são apelidos', () => {
+  // `comandoDoAtalho` devolve o primeiro declarado. Isso é seguro enquanto as
+  // repetições forem o MESMO comando alcançado de dois menus. No dia em que
+  // duas ações diferentes dividirem um atalho, uma delas para de disparar — e
+  // em silêncio, que é o pior jeito de quebrar.
+  const APELIDOS_CONHECIDOS: ReadonlyArray<readonly string[]> = [
+    ['view.commandPalette', 'help.commands'],
+    ['edit.findInFiles', 'view.search'],
+  ];
+
+  const porAtalho = new Map<string, string[]>();
+  for (const cmd of COMMANDS) {
+    if (cmd.keybinding === undefined) continue;
+    const lista = porAtalho.get(cmd.keybinding) ?? [];
+    lista.push(cmd.id);
+    porAtalho.set(cmd.keybinding, lista);
+  }
+
+  for (const [atalho, ids] of porAtalho) {
+    if (ids.length === 1) continue;
+    const conhecido = APELIDOS_CONHECIDOS.some(
+      (par) => par.length === ids.length && par.every((id) => ids.includes(id))
+    );
+    assert.ok(
+      conhecido,
+      `"${atalho}" é dividido por ${ids.join(', ')}. Se forem apelidos, declare em ` +
+        'APELIDOS_CONHECIDOS; se não, um deles nunca vai disparar.'
+    );
+  }
+});
