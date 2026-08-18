@@ -130,8 +130,13 @@ export const Api = {
 
   connect: (id: string) => request<SessionCapabilities>('POST', `${conexoes}/${id}/connect`),
   disconnect: (id: string) => request('POST', `${conexoes}/${id}/disconnect`),
-  children: (id: string, nodePath: readonly string[]) =>
-    request<TreeNode[]>('GET', comCaminho(`${conexoes}/${id}/children`, nodePath)),
+  children: (id: string, nodePath: readonly string[], filtro?: string | null) => {
+    const base = comCaminho(`${conexoes}/${id}/children`, nodePath);
+    const url = filtro === null || filtro === undefined || filtro === ''
+      ? base
+      : `${base}${base.includes('?') ? '&' : '?'}filter=${encodeURIComponent(filtro)}`;
+    return request<TreeNode[]>('GET', url);
+  },
   execute: (id: string, payload: ExecuteRequest) =>
     request<QueryResult>('POST', `${conexoes}/${id}/execute`, payload),
   runAction: (id: string, payload: ActionRequest) =>

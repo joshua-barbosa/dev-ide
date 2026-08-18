@@ -12,6 +12,7 @@ import mysql, { Connection, FieldPacket, Types } from 'mysql2';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import { CLI_MYSQL } from '../../../shared/terminal/clientes/mysql';
 import type {
+  OpcoesDeNavegacao,
   ActionRequest,
   ActionResult,
   CellValue,
@@ -153,16 +154,34 @@ async function listarCategorias(conn: Connection, schema: string): Promise<TreeN
   }));
 }
 
-async function listarObjetos(conn: Connection, schema: string, categoria: string): Promise<TreeNode[]> {
+/**
+ * Cláusula opcional de filtro, com o padrão LIGADO.
+ *
+ * Devolve o pedaço de SQL e o parâmetro juntos, para não haver como acrescentar
+ * um sem o outro — que é o descuido que vira injeção.
+ */
+function clausulaDeFiltro(coluna: string, filtro?: string | null): { sql: string; params: unknown[] } {
+  return filtro === null || filtro === undefined
+    ? { sql: '', params: [] }
+    : { sql: ` AND ${coluna} LIKE ?`, params: [filtro] };
+}
+
+async function listarObjetos(
+  conn: Connection,
+  schema: string,
+  categoria: string,
+  filtro?: string | null
+): Promise<TreeNode[]> {
   if (categoria === 'tables' || categoria === 'views') {
     const tipo = categoria === 'tables' ? 'BASE TABLE' : 'VIEW';
+    const f = clausulaDeFiltro('TABLE_NAME', filtro);
     const linhas = await query<{ TABLE_NAME: string; TABLE_ROWS: number | null }>(
       conn,
       `SELECT TABLE_NAME, TABLE_ROWS
          FROM information_schema.TABLES
-        WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = ?
+        WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = ?${f.sql}
         ORDER BY TABLE_NAME`,
-      [schema, tipo]
+      [schema, tipo, ...f.params]
     );
     return linhas.map((linha) => ({
       id: linha.TABLE_NAME,
@@ -181,13 +200,14 @@ async function listarObjetos(conn: Connection, schema: string, categoria: string
   }
 
   const tipo = categoria === 'functions' ? 'FUNCTION' : 'PROCEDURE';
+  const f = clausulaDeFiltro('ROUTINE_NAME', filtro);
   const linhas = await query<{ ROUTINE_NAME: string; DTD_IDENTIFIER: string | null }>(
     conn,
     `SELECT ROUTINE_NAME, DTD_IDENTIFIER
        FROM information_schema.ROUTINES
-      WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = ?
+      WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = ?${f.sql}
       ORDER BY ROUTINE_NAME`,
-    [schema, tipo]
+    [schema, tipo, ...f.params]
   );
   return linhas.map((linha) => ({
     id: linha.ROUTINE_NAME,
@@ -233,7 +253,8 @@ async function navegar(
   rotulo: string,
   versao: string,
   exibicao: Exibicao,
-  nodePath: readonly string[]
+  nodePath: readonly string[],
+  opcoes?: OpcoesDeNavegacao
 ): Promise<TreeNode[]> {
   if (nodePath.length === 0) {
     return [
@@ -243,7 +264,7 @@ async function navegar(
   if (nodePath[0] !== SERVER_ID) return [];
   if (nodePath.length === 1) return listarBancos(conn, exibicao);
   if (nodePath.length === 2) return listarCategorias(conn, nodePath[1]);
-  if (nodePath.length === 3) return listarObjetos(conn, nodePath[1], nodePath[2]);
+  if (nodePath.length === 3) return listarObjetos(conn, nodePath[1], nodePath[2], opcoes?.filtro);
   if (nodePath.length === 4 && (nodePath[2] === 'tables' || nodePath[2] === 'views')) {
     return listarColunas(conn, nodePath[1], nodePath[3]);
   }
@@ -456,9 +477,9 @@ async function connect(config: ResolvedConfig): Promise<Session> {
   return {
     kind: 'sql',
     onClosed: (listener) => ouvintes.push(listener),
-    children: (nodePath) => {
+    children: (nodePath, opcoes) => {
       exigirViva();
-      return navegar(conn, rotulo, versao, exibicao, nodePath);
+      return navegar(conn, rotulo, versao, exibicao, nodePath, opcoes);
     },
     execute: (request) => {
       exigirViva();

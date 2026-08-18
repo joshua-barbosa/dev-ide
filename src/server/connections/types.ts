@@ -173,7 +173,7 @@ export interface PortForwarding {
 export interface Session {
   readonly kind: ConnectionKind;
   /** Filhos do nó no caminho dado; `[]` de caminho vazio = raiz. Navegação lazy. */
-  children(nodePath: readonly string[]): Promise<TreeNode[]>;
+  children(nodePath: readonly string[], opcoes?: OpcoesDeNavegacao): Promise<TreeNode[]>;
   readonly execute?: (request: ExecuteRequest) => Promise<QueryResult>;
   /** Executa uma das `actions` que o nó declarou (menu do botão direito). */
   readonly runAction?: (request: ActionRequest) => Promise<ActionResult>;
@@ -189,6 +189,17 @@ export interface Session {
    */
   readonly onClosed?: (listener: (motivo: string) => void) => void;
   close(): Promise<void>;
+}
+
+/** O que modula a listagem de filhos. */
+export interface OpcoesDeNavegacao {
+  /**
+   * Padrão de `LIKE` já traduzido por `padraoDeFiltro`.
+   *
+   * Vai LIGADO na consulta, jamais concatenado: o valor vem do usuário, e é o
+   * que separa um filtro de uma injeção.
+   */
+  readonly filtro?: string | null;
 }
 
 export interface Driver {

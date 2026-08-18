@@ -171,3 +171,64 @@ test('arquivo inexistente dá erro claro', async () => {
     /não encontrado|cannot open|unable to open/i
   );
 });
+
+// ---- filtro por nome (spec 009) ----
+
+test('o filtro reduz a lista pelo padrão de LIKE', async () => {
+  const { session } = await abrir();
+  const caminho = ['main', 'tables'];
+
+  const tudo = await session.children(caminho);
+  assert.deepEqual(tudo.map((n) => n.label).sort(), ['alunos', 'notas']);
+
+  const filtradas = await session.children(caminho, { filtro: '%alun%' });
+  assert.deepEqual(filtradas.map((n) => n.label), ['alunos']);
+
+  await session.close();
+});
+
+test('filtro nulo lista tudo, como se não houvesse filtro', async () => {
+  const { session } = await abrir();
+  const caminho = ['main', 'tables'];
+
+  assert.equal((await session.children(caminho, { filtro: null })).length, 2);
+  assert.equal((await session.children(caminho, {})).length, 2);
+
+  await session.close();
+});
+
+test('padrão hostil vira busca vazia, e NÃO vira sintaxe', async () => {
+  // O teste que carrega a spec 009. Se o padrão fosse concatenado, isto
+  // lançaria erro de sintaxe — ou pior, executaria. Zero linhas é a prova de
+  // que o texto chegou LIGADO, como valor.
+  const { session, file } = await abrir();
+  const caminho = ['main', 'tables'];
+
+  for (const hostil of ["'; DROP TABLE alunos; --", "%'--", "' OR '1'='1"]) {
+    const achados = await session.children(caminho, { filtro: hostil });
+    assert.deepEqual(achados, [], `padrão deveria não achar nada: ${hostil}`);
+  }
+
+  // E a tabela continua lá.
+  assert.deepEqual(
+    (await session.children(caminho)).map((n) => n.label).sort(),
+    ['alunos', 'notas'],
+    'uma tabela sumiu — o padrão foi executado'
+  );
+
+  await session.close();
+  const db = new DatabaseSync(file);
+  const restantes = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+  db.close();
+  assert.equal(restantes.length, 2, 'o banco foi alterado pelo padrão');
+});
+
+test('o filtro não vaza para a listagem seguinte', async () => {
+  const { session } = await abrir();
+  const caminho = ['main', 'tables'];
+
+  await session.children(caminho, { filtro: '%alun%' });
+  assert.equal((await session.children(caminho)).length, 2, 'o filtro ficou grudado');
+
+  await session.close();
+});

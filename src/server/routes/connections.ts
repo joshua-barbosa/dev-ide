@@ -168,7 +168,11 @@ export function createConnectionsRouter({ registry, vault, pool, remember }: Con
 
   router.get('/:id/children', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
-    res.json(ok(await session.children(queryList(req.query.path))));
+    // O padrão vem do usuário e desce até a consulta LIGADO — ver os drivers.
+    const filtro = typeof req.query.filter === 'string' && req.query.filter !== ''
+      ? req.query.filter
+      : null;
+    res.json(ok(await session.children(queryList(req.query.path), { filtro })));
   }));
 
   router.post('/:id/action', wrap(async (req, res) => {

@@ -14,6 +14,7 @@ import Cursor from 'pg-cursor';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import { CLI_POSTGRES } from '../../../shared/terminal/clientes/postgres';
 import type {
+  OpcoesDeNavegacao,
   ActionRequest,
   ActionResult,
   CellValue,
@@ -94,7 +95,7 @@ const TABELAS_SQL = `
          CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END AS linhas
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
-   WHERE n.nspname = $1 AND c.relkind = ANY($2)
+   WHERE n.nspname = $1 AND c.relkind = ANY($2){FILTRO}
    ORDER BY c.relname
 `;
 
@@ -115,7 +116,7 @@ const FUNCOES_SQL = `
   SELECT p.proname AS nome, pg_get_function_result(p.oid) AS retorno
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname = $1 AND p.prokind = 'f'
+   WHERE n.nspname = $1 AND p.prokind = 'f'{FILTRO}
    ORDER BY p.proname
 `;
 
@@ -229,9 +230,34 @@ async function listarCategorias(client: Client, schema: string): Promise<TreeNod
   }));
 }
 
-async function listarObjetos(client: Client, schema: string, categoria: string): Promise<TreeNode[]> {
+/**
+ * Cláusula opcional de filtro, com o padrão LIGADO.
+ *
+ * Recebe a posição do parâmetro porque o PostgreSQL numera (`$1`, `$2`) — o
+ * pedaço de SQL e o valor saem juntos, para não haver como pôr um sem o outro.
+ */
+function clausulaDeFiltro(
+  coluna: string,
+  posicao: number,
+  filtro?: string | null
+): { sql: string; params: unknown[] } {
+  return filtro === null || filtro === undefined
+    ? { sql: '', params: [] }
+    : { sql: ` AND ${coluna} LIKE $${posicao}`, params: [filtro] };
+}
+
+async function listarObjetos(
+  client: Client,
+  schema: string,
+  categoria: string,
+  filtro?: string | null
+): Promise<TreeNode[]> {
   if (categoria === 'functions') {
-    const { rows } = await client.query<{ nome: string; retorno: string }>(FUNCOES_SQL, [schema]);
+    const f = clausulaDeFiltro('p.proname', 2, filtro);
+    const { rows } = await client.query<{ nome: string; retorno: string }>(
+      FUNCOES_SQL.replace('{FILTRO}', f.sql),
+      [schema, ...f.params]
+    );
     return rows.map((linha) => ({
       id: linha.nome,
       label: linha.nome,
@@ -244,7 +270,11 @@ async function listarObjetos(client: Client, schema: string, categoria: string):
 
   // 'r' tabela, 'p' particionada, 'v' view, 'm' view materializada.
   const kinds = categoria === 'tables' ? ['r', 'p'] : ['v', 'm'];
-  const { rows } = await client.query<{ nome: string; linhas: string | null }>(TABELAS_SQL, [schema, kinds]);
+  const f = clausulaDeFiltro('c.relname', 3, filtro);
+  const { rows } = await client.query<{ nome: string; linhas: string | null }>(
+    TABELAS_SQL.replace('{FILTRO}', f.sql),
+    [schema, kinds, ...f.params]
+  );
   return rows.map((linha) => ({
     id: linha.nome,
     label: linha.nome,
@@ -288,7 +318,8 @@ async function navegar(
   rotulo: string,
   versao: string,
   exibicao: Exibicao,
-  nodePath: readonly string[]
+  nodePath: readonly string[],
+  opcoes?: OpcoesDeNavegacao
 ): Promise<TreeNode[]> {
   if (nodePath.length === 0) {
     return [{ id: SERVER_ID, label: rotulo, icon: 'server', detail: versao, hasChildren: true }];
@@ -303,7 +334,7 @@ async function navegar(
   const client = await clienteDe(nodePath[1]);
   if (nodePath.length === 2) return listarSchemas(client, exibicao);
   if (nodePath.length === 3) return listarCategorias(client, nodePath[2]);
-  if (nodePath.length === 4) return listarObjetos(client, nodePath[2], nodePath[3]);
+  if (nodePath.length === 4) return listarObjetos(client, nodePath[2], nodePath[3], opcoes?.filtro);
   if (nodePath.length === 5 && nodePath[3] !== 'functions') {
     return listarColunas(client, nodePath[2], nodePath[4]);
   }
@@ -530,7 +561,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
   return {
     kind: 'sql',
     onClosed: aoMorrer,
-    children: (nodePath) => navegar(clienteDe, rotulo, versao, exibicao, nodePath),
+    children: (nodePath, opcoes) => navegar(clienteDe, rotulo, versao, exibicao, nodePath, opcoes),
     execute: async (request) => {
       // O banco do nó ativo manda; sem ele, cai no principal.
       const banco = request.nodePath?.[1] ?? principal;

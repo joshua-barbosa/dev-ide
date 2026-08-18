@@ -8,6 +8,7 @@ import * as path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import type {
+  OpcoesDeNavegacao,
   ActionRequest,
   ActionResult,
   CellValue,
@@ -47,6 +48,18 @@ const OBJETOS_SQL = `
   ORDER BY name
 `;
 
+/**
+ * Mesma consulta, com o filtro do usuário.
+ *
+ * O padrão entra como TERCEIRO parâmetro ligado — nunca no texto. Um padrão com
+ * aspas ou ponto e vírgula vira busca sem resultado, e não sintaxe.
+ */
+const OBJETOS_FILTRADOS_SQL = `
+  SELECT name FROM sqlite_master
+  WHERE type = ? AND name NOT LIKE 'sqlite_%' AND name LIKE ?
+  ORDER BY name
+`;
+
 function contarLinhas(db: DatabaseSync, tabela: string): string | undefined {
   try {
     const row = db.prepare(`SELECT count(*) AS n FROM ${quote(tabela)}`).get() as { n: number } | undefined;
@@ -80,8 +93,16 @@ function colunasDe(db: DatabaseSync, objeto: string): TreeNode[] {
   });
 }
 
-function listarObjetos(db: DatabaseSync, categoria: Categoria): TreeNode[] {
-  const linhas = db.prepare(OBJETOS_SQL).all(categoria.sqliteType) as Array<{ name: string }>;
+function listarObjetos(
+  db: DatabaseSync,
+  categoria: Categoria,
+  filtro?: string | null
+): TreeNode[] {
+  const linhas = (
+    filtro === null || filtro === undefined
+      ? db.prepare(OBJETOS_SQL).all(categoria.sqliteType)
+      : db.prepare(OBJETOS_FILTRADOS_SQL).all(categoria.sqliteType, filtro)
+  ) as Array<{ name: string }>;
   return linhas.map((linha) => ({
     id: linha.name,
     label: linha.name,
@@ -103,7 +124,12 @@ function listarObjetos(db: DatabaseSync, categoria: Categoria): TreeNode[] {
   }));
 }
 
-function navegar(db: DatabaseSync, file: string, nodePath: readonly string[]): TreeNode[] {
+function navegar(
+  db: DatabaseSync,
+  file: string,
+  nodePath: readonly string[],
+  opcoes?: OpcoesDeNavegacao
+): TreeNode[] {
   if (nodePath.length === 0) {
     return [
       {
@@ -131,7 +157,7 @@ function navegar(db: DatabaseSync, file: string, nodePath: readonly string[]): T
 
   if (nodePath.length === 2 && nodePath[0] === ROOT_ID) {
     const categoria = CATEGORIAS.find((item) => item.id === nodePath[1]);
-    return categoria === undefined ? [] : listarObjetos(db, categoria);
+    return categoria === undefined ? [] : listarObjetos(db, categoria, opcoes?.filtro);
   }
 
   if (nodePath.length === 3 && nodePath[0] === ROOT_ID && nodePath[1] !== 'indexes') {
@@ -249,7 +275,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
 
   return {
     kind: 'sql',
-    children: async (nodePath) => navegar(db, file, nodePath),
+    children: async (nodePath, opcoes) => navegar(db, file, nodePath, opcoes),
     execute: async (request) => executar(db, request),
     runAction: async (request) => acao(db, request),
     close: async () => {
