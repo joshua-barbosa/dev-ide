@@ -88,7 +88,10 @@ const DECLARADOS = [
   { id: 'edit.find', label: 'Find', menu: 'edit', group: 3, keybinding: 'Ctrl+F', pending: true },
   { id: 'edit.replace', label: 'Replace', menu: 'edit', group: 3, keybinding: 'Ctrl+H', pending: true },
   { id: 'edit.findInFiles', label: 'Find in Files', menu: 'edit', group: 4, keybinding: 'Ctrl+Shift+F', pending: true },
+  { id: 'edit.replaceInFiles', label: 'Replace in Files', menu: 'edit', group: 4, keybinding: 'Ctrl+Shift+H', pending: true },
   { id: 'edit.toggleComment', label: 'Toggle Line Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+/', pending: true },
+  { id: 'edit.toggleBlockComment', label: 'Toggle Block Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+Shift+A', pending: true },
+  { id: 'edit.emmet', label: 'Emmet: Expand Abbreviation', menu: 'edit', group: 5, keybinding: 'Tab', pending: true },
 
   // ---- Selection ----
   { id: 'selection.all', label: 'Select All', menu: 'selection', group: 1, keybinding: 'Ctrl+A', when: 'temEditor' },
