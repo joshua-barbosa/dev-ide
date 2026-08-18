@@ -1,4 +1,9 @@
-// Painel de saída da execução de código.
+// Painel inferior: saída da execução de código.
+//
+// O rótulo é "Output", em inglês, para acompanhar a barra de menu — que é
+// File/Edit/View e não Arquivo/Editar. A regra do projeto: **nome de painel e de
+// aba segue o vocabulário do VS Code**; o texto corrido e as ações pequenas
+// ("limpar") ficam em português.
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import type { LinhaSaida } from './useExecution';
@@ -20,7 +25,7 @@ export function OutputPanel({ linhas, status, onLimpar }: OutputPanelProps) {
           color: 'text.secondary', fontSize: 11,
         }}
       >
-        <Box sx={{ textTransform: 'uppercase', letterSpacing: '0.5px' }}>Saída</Box>
+        <Box sx={{ textTransform: 'uppercase', letterSpacing: '0.5px' }}>Output</Box>
         <Box sx={{ color: status.erro ? 'error.main' : 'success.main' }}>{status.texto}</Box>
         <Button sx={{ ml: 'auto' }} onClick={onLimpar}>limpar</Button>
       </Box>
