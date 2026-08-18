@@ -22,6 +22,8 @@ export interface ConnectionsPanelProps {
   readonly onNovaConexao: (grupo?: string) => void;
   readonly onRenomearGrupo: (caminho: string) => void;
   readonly onAbrirTerminal: (conexao: PublicConnection) => void;
+  readonly onFiltrar: (id: string, caminho: readonly string[], atual: string | null) => void;
+  readonly onNovoObjeto: (id: string, caminho: readonly string[], no: TreeNode) => void;
   readonly onErro: (erro: unknown) => void;
 }
 
@@ -55,17 +57,21 @@ function AcaoDoPainel({
 
 /** Ação que aparece na linha da árvore ao passar o mouse. */
 function AcaoDaLinha({
-  icone, rotulo, onClick,
+  icone, rotulo, onClick, ativa = false,
 }: {
   readonly icone: string;
   readonly rotulo: string;
   readonly onClick: () => void;
+  /** Destaca a ação quando ela está em vigor — hoje, só o filtro. */
+  readonly ativa?: boolean;
 }) {
   return (
     <Tooltip title={rotulo} placement="bottom">
       <IconButton
         size="small"
         aria-label={rotulo}
+        aria-pressed={ativa}
+        color={ativa ? 'primary' : 'default'}
         onClick={(e) => {
           // Sem isto, o clique também abriria ou fecharia a pasta.
           e.stopPropagation();
@@ -95,6 +101,8 @@ export function ConnectionsPanel({
   onNovaConexao,
   onRenomearGrupo,
   onAbrirTerminal,
+  onFiltrar,
+  onNovoObjeto,
   onErro,
 }: ConnectionsPanelProps) {
   const aceita = (tipo: string): boolean => {
@@ -151,6 +159,32 @@ export function ConnectionsPanel({
             }
             onDoubleClick={() => onAbrirQuery(id, no)}
             onContextMenu={(e) => onMenuNo(e, id, filho, no)}
+            acoes={
+              // Só nas categorias: bancos e schemas já são controlados pelos
+              // campos "Bancos visíveis" e "excluídos" da conexão.
+              no.meta?.categoria === true ? (
+                <>
+                  <AcaoDaLinha
+                    icone="lucide:refresh-cw"
+                    rotulo={`Recarregar ${no.label}`}
+                    onClick={comErro(() => ctrl.recarregarNo(id, filho))}
+                  />
+                  <AcaoDaLinha
+                    icone="lucide:list-filter"
+                    rotulo={`Filtrar ${no.label}`}
+                    ativa={ctrl.filtroDe(id, filho) !== null}
+                    onClick={() => onFiltrar(id, filho, ctrl.filtroDe(id, filho))}
+                  />
+                  {typeof no.meta?.template === 'string' && (
+                    <AcaoDaLinha
+                      icone="lucide:plus"
+                      rotulo={`Criar em ${no.label}`}
+                      onClick={() => onNovoObjeto(id, filho, no)}
+                    />
+                  )}
+                </>
+              ) : undefined
+            }
           />
           {aberto && renderNos(id, filho, nivel + 1)}
         </Box>

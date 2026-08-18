@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import { Client, type ClientConfig, type FieldDef } from 'pg';
 import Cursor from 'pg-cursor';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
+import { TEMPLATES_POSTGRES } from '../../../shared/tree/templates';
 import { CLI_POSTGRES } from '../../../shared/terminal/clientes/postgres';
 import type {
   OpcoesDeNavegacao,
@@ -226,7 +227,13 @@ async function listarCategorias(client: Client, schema: string): Promise<TreeNod
     icon: categoria.icon,
     detail: contagem(contagens[categoria.id]),
     hasChildren: true,
-    meta: { schema },
+    // `categoria: true` liga as ações na interface; o esqueleto já vem com o
+    // schema aplicado, para o `CREATE` nascer no lugar certo.
+    meta: {
+      schema,
+      categoria: true,
+      template: TEMPLATES_POSTGRES[categoria.id]?.replaceAll('{schema}', schema),
+    },
   }));
 }
 

@@ -274,3 +274,60 @@ test('excluir pela linha pede confirmação e recusar mantém a conexão', async
   await confirmar(page, false);
   await expect(linhaArvore(page, CONEXAO)).toBeVisible();
 });
+
+test('a categoria oferece recarregar, filtrar e criar', async ({ page }) => {
+  await destrancarPeloBotao(page);
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+  await expandir(page, 'escola.db');
+
+  const categoria = linhaArvore(page, 'Tables');
+  await categoria.hover();
+  await expect(categoria.getByRole('button', { name: /Recarregar Tables/ })).toBeVisible();
+  await expect(categoria.getByRole('button', { name: /Filtrar Tables/ })).toBeVisible();
+  await expect(categoria.getByRole('button', { name: /Criar em Tables/ })).toBeVisible();
+});
+
+test('filtrar reduz a lista e some quando o filtro é apagado', async ({ page }) => {
+  await destrancarPeloBotao(page);
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+  await expandir(page, 'escola.db', 'Tables');
+  await expect(linhaArvore(page, TABELA)).toBeVisible();
+
+  const categoria = linhaArvore(page, 'Tables');
+  await categoria.hover();
+  await categoria.getByRole('button', { name: /Filtrar Tables/ }).click();
+
+  await page.getByRole('dialog').getByRole('textbox').fill('zzz-nao-existe');
+  await page.keyboard.press('Enter');
+  await expect(linhaArvore(page, TABELA)).toHaveCount(0);
+
+  // O botão fica destacado: filtro invisível faria parecer que a tabela sumiu.
+  await categoria.hover();
+  await expect(categoria.getByRole('button', { name: /Filtrar Tables/ })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+
+  await categoria.getByRole('button', { name: /Filtrar Tables/ }).click();
+  await page.getByRole('dialog').getByRole('textbox').fill('');
+  await page.keyboard.press('Enter');
+  await expect(linhaArvore(page, TABELA)).toBeVisible();
+});
+
+test('criar abre o esqueleto numa aba, sem executar', async ({ page }) => {
+  await destrancarPeloBotao(page);
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+  await expandir(page, 'escola.db');
+
+  const categoria = linhaArvore(page, 'Tables');
+  await categoria.hover();
+  await categoria.getByRole('button', { name: /Criar em Tables/ }).click();
+
+  await expect(aba(page, 'novo_tables.sql')).toBeVisible();
+  await expect(editor(page)).toHaveValue(/CREATE TABLE nova_tabela/);
+  // Nada foi executado: não há grade de resultado.
+  await expect(page.getByText(/linha\(s\)/)).toHaveCount(0);
+});

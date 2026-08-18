@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import mysql, { Connection, FieldPacket, Types } from 'mysql2';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
+import { TEMPLATES_MYSQL } from '../../../shared/tree/templates';
 import { CLI_MYSQL } from '../../../shared/terminal/clientes/mysql';
 import type {
   OpcoesDeNavegacao,
@@ -150,7 +151,9 @@ async function listarCategorias(conn: Connection, schema: string): Promise<TreeN
     icon: categoria.icon,
     detail: contagem(contagens[categoria.id]),
     hasChildren: true,
-    meta: { schema },
+    // `categoria: true` é o que liga as ações de recarregar/filtrar/criar na
+    // interface, sem que ela precise saber quais nomes são categorias.
+    meta: { schema, categoria: true, template: TEMPLATES_MYSQL[categoria.id] },
   }));
 }
 

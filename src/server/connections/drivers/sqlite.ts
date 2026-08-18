@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
+import { TEMPLATES_SQLITE } from '../../../shared/tree/templates';
 import type {
   OpcoesDeNavegacao,
   ActionRequest,
@@ -152,6 +153,7 @@ function navegar(
         (db.prepare(OBJETOS_SQL).all(categoria.sqliteType) as unknown[]).length
       ),
       hasChildren: true,
+      meta: { categoria: true, template: TEMPLATES_SQLITE[categoria.id] },
     }));
   }
 

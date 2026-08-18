@@ -16,7 +16,7 @@ import { useSidebarWidth } from './useSidebarWidth';
 import { useWorkspace } from './useWorkspace';
 import { EditorHost } from './editor/EditorHost';
 import { TabBar } from './tabs/TabBar';
-import type { PublicConnection } from '../shared/contracts';
+import type { PublicConnection, TreeNode } from '../shared/contracts';
 import { useConnections } from './connections/useConnections';
 import { VaultDialog } from './connections/VaultDialog';
 import { ConnectionForm } from './connections/ConnectionForm';
@@ -295,6 +295,32 @@ export function App() {
     ws.abrirTerminal(conexao.id, conexao.label);
   };
 
+  /** Pede o padrão e aplica o filtro naquela categoria. */
+  const filtrarCategoria = async (
+    id: string,
+    caminho: readonly string[],
+    atual: string | null
+  ): Promise<void> => {
+    const padrao = await qi.pedir({
+      titulo: 'Filtrar por nome',
+      placeholder: 'ex.: alunos, tiraduvidas_%, %_2024',
+      valorInicial: atual ?? '',
+      // Vazio aqui é resposta, não desistência: é como se limpa o filtro.
+      permiteVazio: true,
+    });
+    // Cancelar não mexe no filtro; apagar o texto é o que limpa (AC-9).
+    if (padrao === null) return;
+    await conexoes.definirFiltro(id, caminho, padrao);
+  };
+
+  /** Abre o esqueleto de criação numa aba de query, sem executar nada. */
+  const novoObjeto = (id: string, caminho: readonly string[], no: TreeNode): void => {
+    const template = typeof no.meta?.template === 'string' ? no.meta.template : '';
+    if (template === '') return;
+    exec.definirConexaoAtiva(id);
+    ws.abrirQuery(`novo:${id}:${caminho.join('/')}`, `novo_${no.id}.sql`, template, id);
+  };
+
   /**
    * Renomeia um grupo, arrastando os descendentes junto.
    *
@@ -354,6 +380,8 @@ export function App() {
             onNovaConexao: (grupo?: string) => abrirFormulario(null, grupo),
             onRenomearGrupo: (caminho: string) => avisar(renomearGrupo(caminho)),
             onAbrirTerminal: (conexao: PublicConnection) => avisar(abrirTerminalDaConexao(conexao)),
+            onFiltrar: (id, caminho, atual) => avisar(filtrarCategoria(id, caminho, atual)),
+            onNovoObjeto: novoObjeto,
             onErro: dialogs.aoFalhar,
             onMenuNo: (e, id, caminho, no) =>
               menu.abrir(e, [
@@ -504,6 +532,7 @@ export function App() {
         opcoes={qi.pedido?.opcoes}
         valorInicial={qi.pedido?.valorInicial}
         erro={qi.pedido?.erro ?? null}
+        permiteVazio={qi.pedido?.permiteVazio === true}
         onConfirmar={qi.confirmar}
         onCancelar={qi.cancelar}
       />

@@ -9,6 +9,7 @@ import type {
   ConnectionInput, ConnectionsState, GroupNode, PublicConnection, TreeNode,
 } from '../../shared/contracts';
 import { gruposExistentes } from '../../shared/connections/form';
+import { padraoDeFiltro } from '../../shared/tree/filtro';
 import { Api, type DriverInfo } from '../api';
 
 /** Chave de cache: id da conexão mais o caminho do nó. */
@@ -44,6 +45,11 @@ export interface ConnectionsController {
   salvarConexao(input: ConnectionInput, id: string | null, conectar: boolean): Promise<void>;
   readonly grupos: readonly string[];
   acharConexao(id: unknown): PublicConnection | null;
+  /** Filtro em vigor num nó de categoria, ou `null`. */
+  filtroDe(id: string, caminho: readonly string[]): string | null;
+  definirFiltro(id: string, caminho: readonly string[], bruto: string): Promise<void>;
+  /** Recarrega só este nó, preservando o resto da árvore. */
+  recarregarNo(id: string, caminho: readonly string[]): Promise<void>;
   /** Garante o cofre aberto, pedindo a senha se preciso. Falso = cancelado. */
   garantirDestrancado(): Promise<boolean>;
   chaveDe(id: string, caminho: readonly string[]): string;
@@ -175,12 +181,20 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
     [marcar]
   );
 
+  // Filtros por `conexão + caminho`: filtrar as tabelas de um schema não pode
+  // mexer noutro (AC-10).
+  const [filtros, setFiltros] = useState<ReadonlyMap<string, string>>(new Map());
+  const filtrosRef = useRef(filtros);
+  filtrosRef.current = filtros;
+
   const buscarFilhos = useCallback(
     async (id: string, caminho: readonly string[]) => {
       const chave = chaveDe(id, caminho);
       setCarregando((atual) => marcar(atual, chave, true));
       try {
-        const nos = await Api.children(id, caminho);
+        // Lido por ref: `buscarFilhos` é chamado de dentro de outros callbacks,
+        // e depender do valor capturado buscaria com o filtro de um render atrás.
+        const nos = await Api.children(id, caminho, padraoDeFiltro(filtrosRef.current.get(chave) ?? ''));
         setFilhos((atual) => new Map(atual).set(chave, nos));
       } finally {
         setCarregando((atual) => marcar(atual, chave, false));
@@ -241,6 +255,36 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
       }
     },
     [buscarFilhos, expandidos, filhos, marcar]
+  );
+
+  const filtroDe = useCallback(
+    (id: string, caminho: readonly string[]): string | null =>
+      filtros.get(chaveDe(id, caminho)) ?? null,
+    [filtros]
+  );
+
+  /** Recarrega um nó só. O resto da árvore nem percebe. */
+  const recarregarNo = useCallback(
+    async (id: string, caminho: readonly string[]) => {
+      await buscarFilhos(id, caminho);
+    },
+    [buscarFilhos]
+  );
+
+  const definirFiltro = useCallback(
+    async (id: string, caminho: readonly string[], bruto: string) => {
+      const chave = chaveDe(id, caminho);
+      const proximo = new Map(filtrosRef.current);
+      if (bruto.trim() === '') proximo.delete(chave);
+      else proximo.set(chave, bruto.trim());
+
+      // Atualiza a ref antes de buscar: `buscarFilhos` lê dela, e o `setState`
+      // ainda não teria surtido efeito.
+      filtrosRef.current = proximo;
+      setFiltros(proximo);
+      await buscarFilhos(id, caminho);
+    },
+    [buscarFilhos]
   );
 
   const recarregarMetadados = useCallback(
@@ -340,6 +384,9 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
       salvarConexao,
       grupos,
       acharConexao,
+      filtroDe,
+      definirFiltro,
+      recarregarNo,
       garantirDestrancado,
       chaveDe,
     }),

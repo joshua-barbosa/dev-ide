@@ -19,6 +19,14 @@ export interface PedidoRapido {
   readonly opcoes?: readonly OpcaoRapida[];
   readonly valorInicial?: string;
   readonly erro?: string;
+  /**
+   * Aceita texto vazio como resposta válida.
+   *
+   * Existe por uma colisão real: para nome de arquivo, vazio é ausência de
+   * resposta e precisa ser recusado; para o filtro, vazio SIGNIFICA "limpar".
+   * Sem esta distinção, apagar o filtro não fazia nada.
+   */
+  readonly permiteVazio?: boolean;
 }
 
 export interface QuickInputController {

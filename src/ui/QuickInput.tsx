@@ -29,13 +29,14 @@ export interface QuickInputProps {
   readonly opcoes?: readonly OpcaoRapida[];
   readonly valorInicial?: string;
   readonly erro?: string | null;
+  readonly permiteVazio?: boolean;
   readonly onConfirmar: (valor: string) => void;
   readonly onCancelar: () => void;
 }
 
 export function QuickInput({
   aberto, titulo, placeholder, opcoes, valorInicial = '', erro = null,
-  onConfirmar, onCancelar,
+  permiteVazio = false, onConfirmar, onCancelar,
 }: QuickInputProps) {
   const [texto, setTexto] = useState(valorInicial);
   const [indice, setIndice] = useState(0);
@@ -75,7 +76,7 @@ export function QuickInput({
 
   const confirmar = (): void => {
     if (!modoLista) {
-      if (texto.trim() === '') return;
+      if (texto.trim() === '' && !permiteVazio) return;
       onConfirmar(texto.trim());
       return;
     }
