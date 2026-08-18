@@ -11,7 +11,34 @@ export const linhaArvore = (page: Page, rotulo: string): Locator =>
 export const aba = (page: Page, titulo: string): Locator =>
   page.locator(`[data-tab="${titulo}"]`);
 
-export const editor = (page: Page): Locator => page.locator('textarea');
+/**
+ * A área do editor.
+ *
+ * Desde a spec 010 é o Monaco, e não uma `textarea` — então `toHaveValue` não
+ * serve mais: o conteúdo vive no modelo do editor, não num atributo do DOM.
+ * Para ler o texto, use `textoDoEditor`. Para digitar, clique aqui e use o
+ * teclado; o Monaco tem uma textarea escondida que recebe as teclas.
+ */
+export const editor = (page: Page): Locator => page.locator('[data-editor]');
+
+/**
+ * O texto visível no editor. Substitui as asserções de `value`.
+ *
+ * O `replace` não é enfeite: o Monaco renderiza espaços como **espaço
+ * inquebrável** (U+00A0). O texto lido parece idêntico ao esperado e não casa
+ * com `/SELECT \* FROM alunos/` — uma falha que gasta um bom tempo até alguém
+ * comparar os códigos dos caracteres.
+ */
+export async function textoDoEditor(page: Page): Promise<string> {
+  const bruto = await page.locator('[data-editor] .view-lines').innerText();
+  return bruto.replace(/\u00a0/g, ' ');
+}
+
+/** Posição do cursor, como linha e coluna — é o que o rodapé mostra. */
+export async function cursorDoEditor(page: Page): Promise<string> {
+  const texto = (await rodape(page).innerText()).match(/Ln \d+, Col \d+/);
+  return texto === null ? '' : texto[0];
+}
 
 export const rodape = (page: Page): Locator => page.locator('footer');
 
@@ -39,11 +66,16 @@ export function responderDialogo(page: Page, resposta: string | boolean): void {
   });
 }
 
-/** Digita no editor sem salvar, deixando a aba suja. */
+/**
+ * Digita no editor sem salvar, deixando a aba suja.
+ *
+ * `Ctrl+End` em vez de `End`: o Monaco leva ao fim do documento, e não ao fim
+ * da linha — que é o que os testes esperam ao acrescentar conteúdo.
+ */
 export async function digitar(page: Page, texto: string): Promise<void> {
   await editor(page).click();
-  await editor(page).press('End');
-  await editor(page).pressSequentially(texto);
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type(texto);
 }
 
 /**
@@ -102,4 +134,22 @@ export async function garantirCofreAberto(page: Page, senha: string): Promise<vo
     await page.getByRole('button', { name: 'destrancar' }).click();
   }
   await page.getByRole('button', { name: 'Recolher tudo' }).and(page.locator(':not([disabled])')).waitFor();
+}
+
+/**
+ * Espera o editor estar montado e pronto para receber teclas.
+ *
+ * O Monaco monta em etapas, e digitar antes de a área de texto existir manda as
+ * teclas para lugar nenhum — sem erro, e com o teste falhando por "nada foi
+ * digitado". Foi a causa de instabilidade nos testes da spec 010.
+ */
+export async function esperarEditorPronto(page: Page): Promise<void> {
+  await editor(page).locator('.monaco-editor').waitFor();
+  await editor(page).locator('textarea').waitFor({ state: 'attached' });
+  await editor(page).click();
+}
+
+/** Quantos cursores há agora. É como se verifica multi-cursor de fato. */
+export function cursores(page: Page): Locator {
+  return editor(page).locator('.cursor');
 }

@@ -15,6 +15,7 @@ import { Resizer } from './Resizer';
 import { useSidebarWidth } from './useSidebarWidth';
 import { useWorkspace } from './useWorkspace';
 import { EditorHost } from './editor/EditorHost';
+import { ACAO_DO_MONACO } from '../shared/editor/acoes-monaco';
 import { TabBar } from './tabs/TabBar';
 import type { PublicConnection, TreeNode } from '../shared/contracts';
 import { useConnections } from './connections/useConnections';
@@ -249,6 +250,13 @@ export function App() {
   };
 
   const executarComando = (id: string): void => {
+    // Comando atendido pelo editor não tem entrada em `ACOES`: quem o executa é
+    // o Monaco. Sem este desvio, o item de menu ficaria ativo e inerte.
+    const doEditor = ACAO_DO_MONACO[id];
+    if (doEditor !== undefined) {
+      ws.editorRef.current?.executarAcao(doEditor);
+      return;
+    }
     (ACOES as Record<string, (() => void) | undefined>)[id]?.();
   };
 

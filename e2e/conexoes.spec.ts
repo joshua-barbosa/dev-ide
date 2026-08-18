@@ -5,7 +5,7 @@
 import { expect, test } from '@playwright/test';
 import { bancoDeTeste, CONEXAO, SENHA_MESTRA, TABELA } from './global-setup';
 import {
-  aba, confirmar, destrancarCofre, editor, expandir, linhaArvore, painelLateral,
+  aba, confirmar, destrancarCofre, expandir, linhaArvore, painelLateral, textoDoEditor,
 } from './fixtures';
 
 /** Deixa o cofre trancado, que é o estado com que a IDE sempre inicia de fato. */
@@ -82,7 +82,7 @@ test('executar consulta abre a grade com colunas tipadas e as linhas', async ({ 
   await expandir(page, 'escola.db', 'Tables');
 
   await linhaArvore(page, TABELA).dblclick();
-  await expect(editor(page)).toHaveValue(new RegExp(`SELECT \\* FROM ${TABELA}`));
+  await expect.poll(() => textoDoEditor(page)).toMatch(new RegExp(`SELECT \\* FROM ${TABELA}`));
 
   await page.getByRole('button', { name: /consulta|arquivo/ }).first().click();
 
@@ -110,7 +110,7 @@ test('menu do botão direito oferece as ações do nó e abre o DDL', async ({ p
 
   await page.getByRole('menuitem', { name: 'Ver DDL' }).click();
   await expect(aba(page, `${TABELA} (DDL)`)).toBeVisible();
-  await expect(editor(page)).toHaveValue(new RegExp(`CREATE TABLE ${TABELA}`));
+  await expect.poll(() => textoDoEditor(page)).toMatch(new RegExp(`CREATE TABLE ${TABELA}`));
 });
 
 test('cadastra uma conexão pelo formulário e ela aparece na árvore', async ({ page }) => {
@@ -327,7 +327,7 @@ test('criar abre o esqueleto numa aba, sem executar', async ({ page }) => {
   await categoria.getByRole('button', { name: /Criar em Tables/ }).click();
 
   await expect(aba(page, 'novo_tables.sql')).toBeVisible();
-  await expect(editor(page)).toHaveValue(/CREATE TABLE nova_tabela/);
+  await expect.poll(() => textoDoEditor(page)).toMatch(/CREATE TABLE nova_tabela/);
   // Nada foi executado: não há grade de resultado.
   await expect(page.getByText(/linha\(s\)/)).toHaveCount(0);
 });

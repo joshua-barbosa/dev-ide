@@ -85,29 +85,29 @@ const DECLARADOS = [
   { id: 'edit.cut', label: 'Cut', menu: 'edit', group: 2, keybinding: 'Ctrl+X', when: 'temEditor' },
   { id: 'edit.copy', label: 'Copy', menu: 'edit', group: 2, keybinding: 'Ctrl+C', when: 'temEditor' },
   { id: 'edit.paste', label: 'Paste', menu: 'edit', group: 2, keybinding: 'Ctrl+V', when: 'temEditor' },
-  { id: 'edit.find', label: 'Find', menu: 'edit', group: 3, keybinding: 'Ctrl+F', pending: true },
-  { id: 'edit.replace', label: 'Replace', menu: 'edit', group: 3, keybinding: 'Ctrl+H', pending: true },
+  { id: 'edit.find', label: 'Find', menu: 'edit', group: 3, keybinding: 'Ctrl+F' },
+  { id: 'edit.replace', label: 'Replace', menu: 'edit', group: 3, keybinding: 'Ctrl+H' },
   { id: 'edit.findInFiles', label: 'Find in Files', menu: 'edit', group: 4, keybinding: 'Ctrl+Shift+F', pending: true },
   { id: 'edit.replaceInFiles', label: 'Replace in Files', menu: 'edit', group: 4, keybinding: 'Ctrl+Shift+H', pending: true },
-  { id: 'edit.toggleComment', label: 'Toggle Line Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+/', pending: true },
-  { id: 'edit.toggleBlockComment', label: 'Toggle Block Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+Shift+A', pending: true },
+  { id: 'edit.toggleComment', label: 'Toggle Line Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+/' },
+  { id: 'edit.toggleBlockComment', label: 'Toggle Block Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+Shift+A' },
   { id: 'edit.emmet', label: 'Emmet: Expand Abbreviation', menu: 'edit', group: 5, keybinding: 'Tab', pending: true },
 
   // ---- Selection ----
   { id: 'selection.all', label: 'Select All', menu: 'selection', group: 1, keybinding: 'Ctrl+A', when: 'temEditor' },
-  { id: 'selection.expand', label: 'Expand Selection', menu: 'selection', group: 1, keybinding: 'Shift+Alt+ArrowRight', pending: true },
-  { id: 'selection.shrink', label: 'Shrink Selection', menu: 'selection', group: 1, keybinding: 'Shift+Alt+ArrowLeft', pending: true },
-  { id: 'selection.copyLineUp', label: 'Copy Line Up', menu: 'selection', group: 2, keybinding: 'Ctrl+Shift+Alt+ArrowUp', pending: true },
-  { id: 'selection.copyLineDown', label: 'Copy Line Down', menu: 'selection', group: 2, keybinding: 'Ctrl+Shift+Alt+ArrowDown', pending: true },
-  { id: 'selection.moveLineUp', label: 'Move Line Up', menu: 'selection', group: 2, keybinding: 'Alt+ArrowUp', pending: true },
-  { id: 'selection.moveLineDown', label: 'Move Line Down', menu: 'selection', group: 2, keybinding: 'Alt+ArrowDown', pending: true },
-  { id: 'selection.duplicate', label: 'Duplicate Selection', menu: 'selection', group: 2, pending: true },
-  { id: 'selection.addCursorAbove', label: 'Add Cursor Above', menu: 'selection', group: 3, keybinding: 'Shift+Alt+ArrowUp', pending: true },
-  { id: 'selection.addCursorBelow', label: 'Add Cursor Below', menu: 'selection', group: 3, keybinding: 'Shift+Alt+ArrowDown', pending: true },
-  { id: 'selection.cursorsToLineEnds', label: 'Add Cursors to Line Ends', menu: 'selection', group: 3, keybinding: 'Shift+Alt+I', pending: true },
-  { id: 'selection.addNextOccurrence', label: 'Add Next Occurrence', menu: 'selection', group: 3, keybinding: 'Ctrl+D', pending: true },
-  { id: 'selection.addPrevOccurrence', label: 'Add Previous Occurrence', menu: 'selection', group: 3, pending: true },
-  { id: 'selection.allOccurrences', label: 'Select All Occurrences', menu: 'selection', group: 3, pending: true },
+  { id: 'selection.expand', label: 'Expand Selection', menu: 'selection', group: 1, keybinding: 'Shift+Alt+ArrowRight' },
+  { id: 'selection.shrink', label: 'Shrink Selection', menu: 'selection', group: 1, keybinding: 'Shift+Alt+ArrowLeft' },
+  { id: 'selection.copyLineUp', label: 'Copy Line Up', menu: 'selection', group: 2, keybinding: 'Ctrl+Shift+Alt+ArrowUp' },
+  { id: 'selection.copyLineDown', label: 'Copy Line Down', menu: 'selection', group: 2, keybinding: 'Ctrl+Shift+Alt+ArrowDown' },
+  { id: 'selection.moveLineUp', label: 'Move Line Up', menu: 'selection', group: 2, keybinding: 'Alt+ArrowUp' },
+  { id: 'selection.moveLineDown', label: 'Move Line Down', menu: 'selection', group: 2, keybinding: 'Alt+ArrowDown' },
+  { id: 'selection.duplicate', label: 'Duplicate Selection', menu: 'selection', group: 2 },
+  { id: 'selection.addCursorAbove', label: 'Add Cursor Above', menu: 'selection', group: 3, keybinding: 'Shift+Alt+ArrowUp' },
+  { id: 'selection.addCursorBelow', label: 'Add Cursor Below', menu: 'selection', group: 3, keybinding: 'Shift+Alt+ArrowDown' },
+  { id: 'selection.cursorsToLineEnds', label: 'Add Cursors to Line Ends', menu: 'selection', group: 3, keybinding: 'Shift+Alt+I' },
+  { id: 'selection.addNextOccurrence', label: 'Add Next Occurrence', menu: 'selection', group: 3, keybinding: 'Ctrl+D' },
+  { id: 'selection.addPrevOccurrence', label: 'Add Previous Occurrence', menu: 'selection', group: 3 },
+  { id: 'selection.allOccurrences', label: 'Select All Occurrences', menu: 'selection', group: 3 },
 
   // ---- View ----
   { id: 'view.commandPalette', label: 'Command Palette…', menu: 'view', group: 1, keybinding: 'Ctrl+Shift+P' },
@@ -120,7 +120,7 @@ const DECLARADOS = [
   { id: 'view.service', label: 'Service', menu: 'view', group: 2 },
   { id: 'view.output', label: 'Output', menu: 'view', group: 3 },
   { id: 'view.appearance', label: 'Appearance', menu: 'view', group: 4, pending: true },
-  { id: 'view.wordWrap', label: 'Word Wrap', menu: 'view', group: 4, keybinding: 'Alt+Z', pending: true },
+  { id: 'view.wordWrap', label: 'Word Wrap', menu: 'view', group: 4, keybinding: 'Alt+Z' },
 
   // ---- Go ----
   { id: 'go.file', label: 'Go to File…', menu: 'go', group: 1, keybinding: 'Ctrl+P' },
@@ -150,6 +150,26 @@ const DECLARADOS = [
 export const COMMANDS: readonly Command[] = DECLARADOS;
 
 /**
+ * Comandos atendidos pelo editor, e não pelo mapa de ações do App.
+ *
+ * Desde a spec 010 o editor é o Monaco, e ele já implementa busca, multi-cursor
+ * e operações de linha — com os mesmos atalhos. Declará-los aqui é o que os tira
+ * de "pendente" sem exigir uma entrada em `ACOES`: quem os executa é o editor,
+ * quando a tecla chega nele.
+ */
+const ATENDIDOS = [
+  'edit.find', 'edit.replace', 'edit.toggleComment', 'edit.toggleBlockComment',
+  'selection.expand', 'selection.shrink',
+  'selection.copyLineUp', 'selection.copyLineDown',
+  'selection.moveLineUp', 'selection.moveLineDown', 'selection.duplicate',
+  'selection.addCursorAbove', 'selection.addCursorBelow', 'selection.cursorsToLineEnds',
+  'selection.addNextOccurrence', 'selection.addPrevOccurrence', 'selection.allOccurrences',
+  'view.wordWrap',
+] as const;
+
+export const ATENDIDOS_PELO_EDITOR: ReadonlySet<string> = new Set(ATENDIDOS);
+
+/**
  * Ids que precisam de implementação — todos menos os pendentes.
  *
  * Existe para o COMPILADOR provar a completude, em vez de um teste: o mapa de
@@ -159,9 +179,9 @@ export const COMMANDS: readonly Command[] = DECLARADOS;
  * teste porque falha antes de rodar.
  */
 export type IdImplementado = Exclude<
-  (typeof DECLARADOS)[number],
-  { readonly pending: true }
->['id'];
+  Exclude<(typeof DECLARADOS)[number], { readonly pending: true }>['id'],
+  (typeof ATENDIDOS)[number]
+>;
 
 // ---------------------------------------------------------------------------
 // Consultas

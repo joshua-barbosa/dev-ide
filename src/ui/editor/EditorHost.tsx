@@ -1,17 +1,47 @@
-// Editor de código.
+// Editor de código, sobre o Monaco.
 //
-// Este é o componente que a constituição isenta do React de propósito: uma
-// textarea transparente sobreposta a uma camada de realce, com rolagem
-// sincronizada e numeração de linhas. É DOM imperativo por natureza — deixar o
-// React reconciliar o conteúdo a cada tecla brigaria com o cursor e a seleção.
+// **A fachada imperativa é a mesma de antes da spec 010**, de propósito:
+// `useWorkspace` consome `getValue`, `setValue`, `setLanguage`, `getViewState` e
+// companhia, e manter essa interface é o que faz a troca do editor não vazar
+// para o resto da interface — nem para os testes de aba, que cobrem as duas
+// piores regressões da história do projeto.
 //
-// O React monta a estrutura uma vez; daí em diante o componente se comporta como
-// um controle não-controlado, e quem precisa mexer nele usa a ref imperativa.
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
+// O que mudou por dentro:
+//
+// - Era uma `textarea` transparente sobre camada de realce, com rolagem
+//   sincronizada à mão. Isso tinha um teto: `textarea` tem UM cursor, por
+//   definição do HTML, e o usuário usa multi-cursor.
+// - O realce era do nosso tokenizador. Agora é análise de verdade do Monaco.
+//
+// O `ViewState` continua sendo o nosso formato simples, e não o do Monaco: ele é
+// guardado no `meta` da aba, que atravessa o store — e amarrar o store ao
+// formato interno de uma biblioteca seria trocar um acoplamento por outro pior.
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import Box from '@mui/material/Box';
-import { Highlighter } from '../../shared/editor/highlighter';
-import { LANGUAGES } from '../../shared/editor/languages';
+import * as monaco from 'monaco-editor';
+import editorWorker from 'monaco-editor/editor/editor.worker?worker';
+import tsWorker from 'monaco-editor/language/typescript/ts.worker?worker';
+import jsonWorker from 'monaco-editor/language/json/json.worker?worker';
+import cssWorker from 'monaco-editor/language/css/css.worker?worker';
+import htmlWorker from 'monaco-editor/language/html/html.worker?worker';
+import { idDoMonaco } from '../../shared/editor/monaco-ids';
 import { tokens } from '../theme';
+import { NOME_DO_TEMA, registrarTema } from './tema';
+
+// O caminho destes imports NÃO é o que a documentação sugere: o `exports` do
+// pacote remapeia `./*` para `./esm/vs/*`, então `monaco-editor/esm/vs/...`
+// duplica o prefixo e não resolve. Descoberto no spike da spec 010.
+self.MonacoEnvironment = {
+  getWorker(_id: string, label: string) {
+    if (label === 'typescript' || label === 'javascript') return new tsWorker();
+    if (label === 'json') return new jsonWorker();
+    if (label === 'css' || label === 'scss' || label === 'less') return new cssWorker();
+    if (label === 'html' || label === 'handlebars' || label === 'razor') return new htmlWorker();
+    return new editorWorker();
+  },
+};
+
+registrarTema();
 
 /** Cursor e rolagem, guardados por aba para voltar onde estava. */
 export interface ViewState {
@@ -31,6 +61,8 @@ export interface EditorHandle {
   getViewState(): ViewState;
   setViewState(view: ViewState | null): void;
   focus(): void;
+  /** Roda uma ação do próprio editor, pelo id do Monaco. */
+  executarAcao(idMonaco: string): void;
 }
 
 export interface EditorHostProps {
@@ -44,205 +76,139 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
   { onChange, onCursor },
   ref
 ) {
-  const textarea = useRef<HTMLTextAreaElement>(null);
-  const camada = useRef<HTMLPreElement>(null);
-  const codigo = useRef<HTMLElement>(null);
-  const linhas = useRef<HTMLDivElement>(null);
-  const idioma = useRef('javascript');
-
-  // Guardadas em ref para o efeito de montagem não depender delas: os handlers
-  // são registrados uma vez só, e sempre chamam a versão atual.
+  const caixa = useRef<HTMLDivElement>(null);
+  const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  // Callbacks por ref: o editor é criado uma vez, e capturar a versão do
+  // primeiro render faria a barra de status congelar depois de trocar de aba.
   const aoMudar = useRef(onChange);
+  const aoMoverCursor = useRef(onCursor);
   aoMudar.current = onChange;
-  const aoCursor = useRef(onCursor);
-  aoCursor.current = onCursor;
+  aoMoverCursor.current = onCursor;
 
-  const sincronizarRolagem = useCallback(() => {
-    const area = textarea.current;
-    if (area === null) return;
-    if (camada.current !== null) {
-      camada.current.scrollTop = area.scrollTop;
-      camada.current.scrollLeft = area.scrollLeft;
-    }
-    if (linhas.current !== null) linhas.current.scrollTop = area.scrollTop;
-  }, []);
+  useEffect(() => {
+    if (caixa.current === null) return;
 
-  const desenhar = useCallback(() => {
-    const area = textarea.current;
-    if (area === null || codigo.current === null || linhas.current === null) return;
+    const ed = monaco.editor.create(caixa.current, {
+      value: '',
+      language: 'plaintext',
+      theme: NOME_DO_TEMA,
+      fontFamily: tokens.fontMono,
+      fontSize: 13,
+      lineHeight: 20,
+      tabSize: TAMANHO_TAB,
+      insertSpaces: true,
+      automaticLayout: true,
+      minimap: { enabled: true },
+      scrollBeyondLastLine: false,
+      renderWhitespace: 'selection',
+      // A IDE tem barra de status própria; a do Monaco duplicaria a informação.
+      contextmenu: true,
+      fixedOverflowWidgets: true,
+    });
+    editor.current = ed;
 
-    const texto = area.value;
-    // "\n" extra para a camada de realce acompanhar a última linha vazia.
-    codigo.current.innerHTML = Highlighter.highlight(`${texto}\n`, idioma.current);
-    const total = texto.split('\n').length;
-    linhas.current.textContent = Array.from({ length: total }, (_, i) => i + 1).join('\n');
-    sincronizarRolagem();
-  }, [sincronizarRolagem]);
+    const mudou = ed.onDidChangeModelContent(() => aoMudar.current());
+    const moveu = ed.onDidChangeCursorPosition((e) =>
+      aoMoverCursor.current(e.position.lineNumber, e.position.column)
+    );
 
-  const relatarCursor = useCallback(() => {
-    const area = textarea.current;
-    if (area === null) return;
-    const antes = area.value.slice(0, area.selectionStart);
-    aoCursor.current(antes.split('\n').length, area.selectionStart - antes.lastIndexOf('\n'));
+    return () => {
+      mudou.dispose();
+      moveu.dispose();
+      ed.getModel()?.dispose();
+      ed.dispose();
+      editor.current = null;
+    };
   }, []);
 
   useImperativeHandle(
     ref,
     (): EditorHandle => ({
-      getValue: () => textarea.current?.value ?? '',
-      setValue(valor) {
-        if (textarea.current === null) return;
-        textarea.current.value = valor;
-        desenhar();
-        relatarCursor();
+      getValue: () => editor.current?.getValue() ?? '',
+
+      setValue: (valor) => {
+        const ed = editor.current;
+        if (ed === undefined || ed === null) return;
+        // `setValue` do modelo, e não `pushEditOperations`: trocar de aba não
+        // deve deixar a troca no histórico de desfazer da aba anterior.
+        ed.getModel()?.setValue(valor);
       },
-      getSelection() {
-        const area = textarea.current;
-        return area === null ? '' : area.value.slice(area.selectionStart, area.selectionEnd);
+
+      getSelection: () => {
+        const ed = editor.current;
+        const sel = ed?.getSelection();
+        if (ed === null || sel === undefined || sel === null) return '';
+        return ed.getModel()?.getValueInRange(sel) ?? '';
       },
-      setLanguage(lang) {
-        idioma.current = LANGUAGES[lang] === undefined ? 'plain' : lang;
-        document.body.dataset.lang = idioma.current;
-        desenhar();
+
+      setLanguage: (lang) => {
+        const modelo = editor.current?.getModel();
+        if (modelo === undefined || modelo === null) return;
+        monaco.editor.setModelLanguage(modelo, idDoMonaco(lang));
       },
-      getLanguage: () => idioma.current,
-      goToLine(linha) {
-        const area = textarea.current;
-        if (area === null) return;
-        const todas = area.value.split('\n');
-        let pos = 0;
-        for (let i = 0; i < Math.min(linha - 1, todas.length); i += 1) pos += todas[i].length + 1;
-        area.focus();
-        area.setSelectionRange(pos, pos + (todas[linha - 1]?.length ?? 0));
-        const altura = parseFloat(getComputedStyle(area).lineHeight) || 19;
-        area.scrollTop = Math.max(0, (linha - 5) * altura);
-        sincronizarRolagem();
-        relatarCursor();
+
+      getLanguage: () => editor.current?.getModel()?.getLanguageId() ?? 'plaintext',
+
+      goToLine: (linha) => {
+        const ed = editor.current;
+        if (ed === null) return;
+        ed.revealLineInCenter(linha);
+        ed.setPosition({ lineNumber: linha, column: 1 });
+        ed.focus();
       },
-      getViewState: () => ({
-        selectionStart: textarea.current?.selectionStart ?? 0,
-        selectionEnd: textarea.current?.selectionEnd ?? 0,
-        scrollTop: textarea.current?.scrollTop ?? 0,
-        scrollLeft: textarea.current?.scrollLeft ?? 0,
-      }),
-      setViewState(view) {
-        const area = textarea.current;
-        if (area === null || view === null) return;
-        area.setSelectionRange(view.selectionStart, view.selectionEnd);
-        area.scrollTop = view.scrollTop;
-        area.scrollLeft = view.scrollLeft;
-        sincronizarRolagem();
-        relatarCursor();
+
+      // O nosso `ViewState` é por deslocamento em caracteres, e não por
+      // linha/coluna: é o formato que as abas já guardam, e mudá-lo obrigaria a
+      // migrar o que está salvo no store.
+      getViewState: () => {
+        const ed = editor.current;
+        const modelo = ed?.getModel();
+        const sel = ed?.getSelection();
+        if (ed === null || modelo === undefined || modelo === null || sel === undefined || sel === null) {
+          return { selectionStart: 0, selectionEnd: 0, scrollTop: 0, scrollLeft: 0 };
+        }
+        return {
+          selectionStart: modelo.getOffsetAt(sel.getStartPosition()),
+          selectionEnd: modelo.getOffsetAt(sel.getEndPosition()),
+          scrollTop: ed.getScrollTop(),
+          scrollLeft: ed.getScrollLeft(),
+        };
       },
-      focus: () => textarea.current?.focus(),
+
+      setViewState: (view) => {
+        const ed = editor.current;
+        const modelo = ed?.getModel();
+        if (ed === null || modelo === undefined || modelo === null) return;
+        if (view === null) {
+          ed.setPosition({ lineNumber: 1, column: 1 });
+          ed.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
+          return;
+        }
+        const inicio = modelo.getPositionAt(view.selectionStart);
+        const fim = modelo.getPositionAt(view.selectionEnd);
+        ed.setSelection(monaco.Selection.fromPositions(inicio, fim));
+        ed.setScrollPosition({ scrollTop: view.scrollTop, scrollLeft: view.scrollLeft });
+      },
+
+      focus: () => editor.current?.focus(),
+
+      executarAcao: (idMonaco) => {
+        const ed = editor.current;
+        if (ed === null) return;
+        // O foco precisa estar no editor: várias ações do Monaco não fazem
+        // nada sem ele, e o clique veio de um item de menu.
+        ed.focus();
+        ed.getAction(idMonaco)?.run();
+      },
     }),
-    [desenhar, relatarCursor, sincronizarRolagem]
+    []
   );
 
-  useEffect(() => {
-    const area = textarea.current;
-    if (area === null) return;
-
-    const aoDigitar = () => {
-      desenhar();
-      relatarCursor();
-      aoMudar.current();
-    };
-    const aoTeclar = (e: KeyboardEvent) => {
-      // Tab indenta em vez de sair do editor.
-      if (e.key !== 'Tab') return;
-      e.preventDefault();
-      const { selectionStart: inicio, selectionEnd: fim, value } = area;
-      area.value = value.slice(0, inicio) + ' '.repeat(TAMANHO_TAB) + value.slice(fim);
-      area.selectionStart = area.selectionEnd = inicio + TAMANHO_TAB;
-      aoDigitar();
-    };
-
-    area.addEventListener('input', aoDigitar);
-    area.addEventListener('keydown', aoTeclar);
-    area.addEventListener('scroll', sincronizarRolagem);
-    area.addEventListener('keyup', relatarCursor);
-    area.addEventListener('click', relatarCursor);
-    desenhar();
-
-    return () => {
-      area.removeEventListener('input', aoDigitar);
-      area.removeEventListener('keydown', aoTeclar);
-      area.removeEventListener('scroll', sincronizarRolagem);
-      area.removeEventListener('keyup', relatarCursor);
-      area.removeEventListener('click', relatarCursor);
-    };
-  }, [desenhar, relatarCursor, sincronizarRolagem]);
-
-  const fonte = {
-    fontFamily: tokens.fontMono,
-    fontSize: 13,
-    lineHeight: 1.5,
-    tabSize: TAMANHO_TAB,
-  } as const;
-
   return (
-    <Box sx={{ flex: 1, display: 'flex', minHeight: 0, bgcolor: tokens.bgEditor }}>
-      <Box
-        ref={linhas}
-        sx={{
-          ...fonte,
-          // mesmo padding da versão anterior: 8px em cima/baixo, 4px à direita
-          p: '8px 4px 8px 0',
-          minWidth: 42,
-          textAlign: 'right',
-          color: 'text.secondary',
-          borderRight: 1,
-          borderColor: 'divider',
-          userSelect: 'none',
-          overflow: 'hidden',
-          whiteSpace: 'pre',
-        }}
-      />
-      <Box sx={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
-        <Box
-          component="pre"
-          ref={camada}
-          aria-hidden
-          sx={{
-            ...fonte,
-            position: 'absolute',
-            inset: 0,
-            m: 0,
-            p: '8px 12px',
-            pointerEvents: 'none',
-            overflow: 'hidden',
-            whiteSpace: 'pre',
-            color: 'text.primary',
-          }}
-        >
-          <Box component="code" ref={codigo} />
-        </Box>
-        <Box
-          component="textarea"
-          ref={textarea}
-          spellCheck={false}
-          autoComplete="off"
-          placeholder="Abra ou crie um arquivo para começar..."
-          sx={{
-            ...fonte,
-            position: 'absolute',
-            inset: 0,
-            m: 0,
-            p: '8px 12px',
-            border: 'none',
-            outline: 'none',
-            resize: 'none',
-            overflow: 'auto',
-            whiteSpace: 'pre',
-            background: 'transparent',
-            // O texto real fica invisível: quem se vê é a camada de realce.
-            color: 'transparent',
-            caretColor: tokens.fg,
-            '&::selection': { background: 'rgba(232,168,56,0.28)' },
-          }}
-        />
-      </Box>
-    </Box>
+    <Box
+      ref={caixa}
+      data-editor
+      sx={{ flex: 1, minHeight: 0, minWidth: 0, bgcolor: tokens.bgEditor }}
+    />
   );
 });

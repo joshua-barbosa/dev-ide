@@ -1,6 +1,8 @@
 // Estado das abas — a área onde os dois piores defeitos deste projeto nasceram.
 import { expect, test } from '@playwright/test';
-import { aba, abrirArquivo, confirmar, digitar, editor, rodape } from './fixtures';
+import {
+  aba, abrirArquivo, confirmar, cursorDoEditor, digitar, rodape, textoDoEditor,
+} from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -13,17 +15,19 @@ test('trocar de aba preserva conteúdo, cursor e a marca de não salvo', async (
   await expect(aba(page, 'utils.ts')).toHaveAttribute('data-tab-dirty', 'true');
   await expect(rodape(page)).toContainText('não salvo');
 
-  const posicao = await editor(page).evaluate((el: HTMLTextAreaElement) => el.selectionStart);
+  // A posição vem do rodapé: desde a spec 010 o editor é o Monaco, e o cursor
+  // não está mais num atributo do DOM. O rodapé é o que o usuário vê, então
+  // afirmar sobre ele é até mais próximo do que importa.
+  const posicao = await cursorDoEditor(page);
 
   await abrirArquivo(page, 'consulta.sql');
-  await expect(editor(page)).not.toHaveValue(/editado/);
+  await expect.poll(() => textoDoEditor(page)).not.toMatch(/editado/);
 
   await aba(page, 'utils.ts').click();
-  await expect(editor(page)).toHaveValue(/\/\/ editado/);
+  await expect.poll(() => textoDoEditor(page)).toMatch(/\/\/ editado/);
   await expect(aba(page, 'utils.ts')).toHaveAttribute('data-tab-dirty', 'true');
 
-  const restaurada = await editor(page).evaluate((el: HTMLTextAreaElement) => el.selectionStart);
-  expect(restaurada).toBe(posicao);
+  await expect.poll(() => cursorDoEditor(page)).toBe(posicao);
 });
 
 test('abrir arquivo já aberto foca a aba em vez de duplicar', async ({ page }) => {
@@ -75,5 +79,5 @@ test('trocar de aba muitas vezes não trava a página', async ({ page }) => {
 
   // Se tivesse travado, isto estouraria o tempo limite.
   await expect(aba(page, 'consulta.sql')).toHaveAttribute('data-tab-active', 'true');
-  await expect(editor(page)).toHaveValue(/SELECT/);
+  await expect.poll(() => textoDoEditor(page)).toMatch(/SELECT/);
 });

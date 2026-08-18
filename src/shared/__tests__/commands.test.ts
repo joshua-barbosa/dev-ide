@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  ATENDIDOS_PELO_EDITOR,
   COMMANDS,
   MENUS,
   comandoDoAtalho,
@@ -270,5 +271,15 @@ test('atalho repetido só existe entre comandos que são apelidos', () => {
       `"${atalho}" é dividido por ${ids.join(', ')}. Se forem apelidos, declare em ` +
         'APELIDOS_CONHECIDOS; se não, um deles nunca vai disparar.'
     );
+  }
+});
+
+test('todo comando atendido pelo editor existe e não está pendente', () => {
+  // Um id errado aqui produziria um item de menu habilitado e inerte — pior
+  // que "em breve", porque promete e não cumpre.
+  for (const id of ATENDIDOS_PELO_EDITOR) {
+    const cmd = COMMANDS.find((c) => c.id === id);
+    assert.ok(cmd !== undefined, `id inexistente em ATENDIDOS_PELO_EDITOR: ${id}`);
+    assert.notEqual(cmd.pending, true, `${id} está atendido e pendente ao mesmo tempo`);
   }
 });

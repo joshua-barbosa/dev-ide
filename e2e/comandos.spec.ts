@@ -3,7 +3,10 @@
 // O que interessa aqui é o fluxo que motivou a spec: criar sem responder caixa
 // nenhuma, e só nomear ao salvar.
 import { expect, test } from '@playwright/test';
-import { entradaRapida, menu, rodape } from './fixtures';
+import {
+  abrirArquivo, cursores, editor, entradaRapida, esperarEditorPronto, menu, rodape,
+  textoDoEditor,
+} from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -54,7 +57,8 @@ test('o segundo arquivo novo é untitled-2', async ({ page }) => {
 test('salvar pede o nome pela entrada rápida, e cancelar preserva a aba', async ({ page }) => {
   await menu(page, 'File');
   await page.getByRole('menuitem', { name: 'New Text File' }).click();
-  await page.locator('textarea').first().fill('console.log("do untitled");');
+  await esperarEditorPronto(page);
+  await page.keyboard.type('console.log("do untitled");');
 
   await menu(page, 'File');
   await page.getByRole('menuitem', { name: /^Save/ }).first().click();
@@ -64,7 +68,7 @@ test('salvar pede o nome pela entrada rápida, e cancelar preserva a aba', async
 
   // Cancelar não pode custar o que foi digitado.
   await expect(page.locator('[data-tab="untitled-1"]')).toBeVisible();
-  await expect(page.locator('textarea').first()).toHaveValue('console.log("do untitled");');
+  await expect.poll(() => textoDoEditor(page)).toMatch(/console\.log\("do untitled"\);/);
 });
 
 test('a paleta abre com Ctrl+Shift+P e executa o comando escolhido', async ({ page }) => {
@@ -129,4 +133,76 @@ test('a aba de painel ativa fica destacada', async ({ page }) => {
     (el) => Number.parseFloat(getComputedStyle(el).width)
   );
   expect(largura).toBeGreaterThan(0);
+});
+
+// ---- o que a migração para o Monaco destravou (spec 010) ----
+
+test('multi-cursor: editar três linhas ao mesmo tempo', async ({ page }) => {
+  // A razão de ser da spec 010. Na `textarea` anterior isto era impossível —
+  // não por esforço, mas porque o HTML define um cursor por campo.
+  await menu(page, 'File');
+  await page.getByRole('menuitem', { name: 'New Text File' }).click();
+  await esperarEditorPronto(page);
+  await page.keyboard.type('alfa\nbeta\ngama');
+  await expect.poll(() => textoDoEditor(page)).toMatch(/gama/);
+
+  // Só teclado, de propósito: `Alt+clique` põe cursores, mas deixa o foco numa
+  // `div` do Monaco, e as teclas seguintes não chegam à área de texto. Um
+  // caminho puramente de teclado não tem esse problema — e `Shift+Alt+I` é um
+  // dos comandos do menu Selection que o usuário pediu.
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Shift+Alt+i');
+  // **Três cursores ao mesmo tempo.** É a afirmação central, e ela mede de
+  // verdade: com um cursor só, este contador dá 1 — conferido.
+  //
+  // O teste PARA aqui de propósito. Digitar e verificar as três linhas seria
+  // mais forte, mas a digitação sintética do Playwright não alcança o caminho
+  // de entrada do Monaco em multi-cursor: os cursores existem e as teclas somem.
+  // Conferido à mão, com teclado de verdade, em 2026-08-18: `// FIM` entrou no
+  // fim de todas as linhas de uma vez.
+  //
+  // Afirmar o que a ferramenta consegue medir é melhor que afirmar de menos —
+  // e muito melhor que um teste que falha por limitação do arranjo e ensina a
+  // ignorar falha vermelha.
+  await expect(cursores(page)).toHaveCount(3);
+});
+
+test('busca abre dentro do editor com Ctrl+F', async ({ page }) => {
+  await menu(page, 'File');
+  await page.getByRole('menuitem', { name: 'New Text File' }).click();
+  await esperarEditorPronto(page);
+  await page.keyboard.type('procure_por_isto = 1;');
+
+  await page.keyboard.press('Control+f');
+  // O campo de busca é do Monaco, e vive dentro da área do editor.
+  await expect(editor(page).locator('.find-widget')).toBeVisible();
+});
+
+test('o código sai colorido, com o tema do projeto', async ({ page }) => {
+  await abrirArquivo(page, 'utils.ts');
+
+  // `poll` porque a análise de TypeScript acontece num worker: afirmar na hora
+  // pega o arquivo ainda sem cor, e a falha pareceria de tema.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const spans = document.querySelectorAll('[data-editor] .view-line span[class*="mtk"]');
+          return [...new Set([...spans].map((s) => getComputedStyle(s).color))].length;
+        }),
+      { message: 'o realce não está pintando nada', timeout: 15_000 }
+    )
+    .toBeGreaterThan(2);
+});
+
+test('mover linha com Alt+seta', async ({ page }) => {
+  await menu(page, 'File');
+  await page.getByRole('menuitem', { name: 'New Text File' }).click();
+  await esperarEditorPronto(page);
+  await page.keyboard.type('primeira\nsegunda');
+  await expect.poll(() => textoDoEditor(page)).toMatch(/segunda/);
+
+  await page.keyboard.press('Alt+ArrowUp');
+  const linhas = (await textoDoEditor(page)).split('\n');
+  expect(linhas[0]).toContain('segunda');
 });
