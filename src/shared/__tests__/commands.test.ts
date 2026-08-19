@@ -5,6 +5,7 @@ import {
   COMMANDS,
   MENUS,
   comandoDoAtalho,
+  escapaDoTerminal,
   estaDisponivel,
   filtrarComandos,
   formatarAtalho,
@@ -283,5 +284,36 @@ test('todo comando atendido pelo editor existe e não está pendente', () => {
     const cmd = COMMANDS.find((c) => c.id === id);
     assert.ok(cmd !== undefined, `id inexistente em ATENDIDOS_PELO_EDITOR: ${id}`);
     assert.notEqual(cmd.pending, true, `${id} está atendido e pendente ao mesmo tempo`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Atalhos que escapam do terminal (spec 014)
+// ---------------------------------------------------------------------------
+
+test('os atalhos de esconder painel e lateral escapam do terminal', () => {
+  // Sem isto, com o foco no terminal, `Ctrl+J` só escrevia nova linha: o
+  // emulador o consome porque no shell ele É nova linha.
+  assert.equal(escapaDoTerminal('Ctrl+J'), true);
+  assert.equal(escapaDoTerminal('Ctrl+B'), true);
+  assert.equal(escapaDoTerminal('Ctrl+`'), true);
+  assert.equal(escapaDoTerminal('Ctrl+Shift+P'), true);
+});
+
+test('Ctrl+C NÃO escapa — sem ele não há como interromper um programa', () => {
+  // É o limite da lista: deixar tudo passar tiraria do terminal justamente o
+  // que faz dele um terminal.
+  for (const atalho of ['Ctrl+C', 'Ctrl+D', 'Ctrl+Z', 'Ctrl+A', 'Ctrl+L', 'Ctrl+R']) {
+    assert.equal(escapaDoTerminal(atalho), false, atalho);
+  }
+});
+
+test('todo atalho que escapa pertence a um comando declarado', () => {
+  // Se um deles deixar de existir, escapar do terminal vira tecla morta.
+  for (const atalho of ['Ctrl+J', 'Ctrl+B', 'Ctrl+`', 'Ctrl+Shift+P']) {
+    assert.ok(
+      COMMANDS.some((c) => c.keybinding === atalho),
+      `nenhum comando declara ${atalho}`
+    );
   }
 });

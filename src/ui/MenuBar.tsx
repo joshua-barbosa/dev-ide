@@ -13,14 +13,22 @@ import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Tooltip from '@mui/material/Tooltip';
 import { MENUS, itensDoMenu, type ContextoDeComandos, type MenuId } from '../shared/commands';
+import { Icon } from './Icon';
 import { tokens } from './theme';
 
 export interface MenuBarProps {
   readonly contexto: ContextoDeComandos;
   readonly onComando: (id: string) => void;
+  /** Estado dos dois painéis, para a dica dizer o que o clique vai fazer. */
+  readonly lateralVisivel: boolean;
+  readonly painelVisivel: boolean;
+  readonly onAlternarLateral: () => void;
+  readonly onAlternarPainel: () => void;
 }
 
-export function MenuBar({ contexto, onComando }: MenuBarProps) {
+export function MenuBar({
+  contexto, onComando, lateralVisivel, painelVisivel, onAlternarLateral, onAlternarPainel,
+}: MenuBarProps) {
   const [aberto, setAberto] = useState<MenuId | null>(null);
   const [ancora, setAncora] = useState<HTMLElement | null>(null);
 
@@ -72,6 +80,38 @@ export function MenuBar({ contexto, onComando }: MenuBarProps) {
           {rotulo}
         </Box>
       ))}
+
+      {/* À direita, como no VS Code. A dica diz o VERBO do próximo clique
+          ("Esconder"/"Mostrar"), e não o nome do painel: é o que a pessoa quer
+          saber antes de clicar. */}
+      <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.25 }}>
+        {([
+          ['lateral', lateralVisivel, onAlternarLateral, 'lucide:panel-left', 'a barra lateral', 'Ctrl+B'],
+          ['painel', painelVisivel, onAlternarPainel, 'lucide:panel-bottom', 'o painel inferior', 'Ctrl+J'],
+        ] as const).map(([chave, visivel, alternar, icone, nome, atalho]) => (
+          <Tooltip
+            key={chave}
+            title={`${visivel ? 'Esconder' : 'Mostrar'} ${nome} (${atalho})`}
+            placement="bottom"
+          >
+            <Box
+              component="button"
+              type="button"
+              aria-label={`${visivel ? 'Esconder' : 'Mostrar'} ${nome}`}
+              aria-pressed={visivel}
+              onClick={alternar}
+              sx={{
+                border: 0, bgcolor: 'transparent', cursor: 'pointer', p: 0.6,
+                display: 'flex', alignItems: 'center', borderRadius: 0.5,
+                color: visivel ? 'text.primary' : 'text.secondary',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
+            >
+              <Icon name={icone} size={14} />
+            </Box>
+          </Tooltip>
+        ))}
+      </Box>
 
       <Menu
         open={aberto !== null}

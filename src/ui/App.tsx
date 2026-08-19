@@ -35,7 +35,13 @@ import {
   type ContextoDeComandos, type IdImplementado,
 } from '../shared/commands';
 import { ResultGrid } from './grid/ResultGrid';
-import { OutputPanel } from './OutputPanel';
+import { BottomPanel } from './BottomPanel';
+import { ResizerHorizontal } from './ResizerHorizontal';
+import { useLayout, ALTURA_PADRAO_PAINEL } from './useLayout';
+import { useProblemas } from './useProblemas';
+import {
+  abrirTerminal as abrirNoPainel, ativarTerminal, fecharTerminal, SEM_TERMINAIS,
+} from '../shared/terminais';
 import { useExecution } from './useExecution';
 import { usePasta } from './files/usePasta';
 import { usePrefs } from './usePrefs';
@@ -43,13 +49,35 @@ import { usePrefs } from './usePrefs';
 export function App() {
   const lateral = useSidebarWidth();
   const dialogs = useDialogs();
+  const problemas = useProblemas();
+
+  /**
+   * Mostra o erro E o guarda em `Problems`.
+   *
+   * Declarado antes dos demais ganchos porque vários os recebem. O diálogo
+   * continua sendo o susto do momento; a lista é o que sobra depois — que era
+   * exatamente o que faltava, já que o painel se chamava "saída" e não recebia
+   * nada além do runner.
+   */
+  const falhou = (origem: 'conexão' | 'ide' | 'execução') => (erro: unknown): void => {
+    problemas.registrar(origem, erro);
+    dialogs.aoFalhar(erro);
+  };
+  const falhaDeConexao = falhou('conexão');
+  const falhaDaIde = falhou('ide');
+
   const ws = useWorkspace({ confirmar: dialogs.confirmar });
   const conexoes = useConnections({ confirmar: dialogs.confirmar });
-  const menu = useContextMenu(dialogs.aoFalhar);
-  const exec = useExecution(ws);
+  const menu = useContextMenu(falhaDaIde);
+  const exec = useExecution(ws, (mensagem) => problemas.registrar('execução', mensagem));
   const pasta = usePasta();
   const qi = useQuickInput();
-  const prefs = usePrefs(dialogs.aoFalhar);
+  const prefs = usePrefs(falhaDaIde);
+  const layout = useLayout();
+  // Terminais de SHELL, que desde a decisão D6 moram no painel inferior. O de
+  // conexão continua sendo aba do editor — saída longa de query merece tela
+  // cheia, comando curto de shell não.
+  const [terminais, setTerminais] = useState(SEM_TERMINAIS);
   const [painelLateral, setPainelLateral] = useState('files');
   const [linguagem, setLinguagem] = useState('javascript');
 
@@ -65,7 +93,10 @@ export function App() {
   };
 
   const executar = (modo: 'file' | 'block'): void => {
-    void exec.executar(modo, linguagem).catch(dialogs.aoFalhar);
+    // Trazer o painel à frente é metade da utilidade: rodar e não ver a saída
+    // porque o painel estava escondido seria pior que não ter o botão.
+    layout.mostrarPainel('output');
+    void exec.executar(modo, linguagem).catch(falhou('execução'));
   };
 
   /** Abre o arquivo do símbolo, se preciso, e pula para a linha. */
@@ -76,7 +107,7 @@ export function App() {
       pular();
       return;
     }
-    ws.abrirArquivo(arquivo).then(pular).catch(dialogs.aoFalhar);
+    ws.abrirArquivo(arquivo).then(pular).catch(falhaDaIde);
   };
 
   /**
@@ -268,6 +299,44 @@ export function App() {
     ws.abrirQuery(`sql:${id}:${alvo}`, `${objeto}.sql`, `SELECT * FROM ${alvo} LIMIT 100;`, id);
   };
 
+  /**
+   * Abre um terminal de shell NO PAINEL (decisão D6).
+   *
+   * O de conexão continua sendo aba do editor — `abrirTerminalDaConexao`.
+   */
+  const novoTerminalNoPainel = (): void => {
+    const id = `term-${crypto.randomUUID()}`;
+    setTerminais((atual) => abrirNoPainel(atual, id));
+    layout.mostrarPainel('terminal');
+  };
+
+  const texto = (): string => exec.saida.map((l) => l.texto).join('');
+
+  /** Leva a saída para uma aba do editor, sem passar por arquivo. */
+  const abrirSaidaNoEditor = (): void => {
+    const conteudo = texto();
+    if (conteudo === '') return;
+    ws.abrirTexto('saida:editor', 'output.log', conteudo, 'plaintext');
+  };
+
+  /** Grava a saída na pasta aberta, com o nome pedido pela entrada rápida. */
+  const salvarSaidaComo = async (): Promise<void> => {
+    const conteudo = texto();
+    if (conteudo === '') return;
+    if (pasta.pasta === '') {
+      await dialogs.avisar(
+        'Abra uma pasta antes de salvar a saída — é nela que o arquivo será gravado.',
+        'Salvar saída'
+      );
+      return;
+    }
+    await pedirComRetentativa(
+      qi,
+      { titulo: 'Salvar saída como', placeholder: 'ex.: saida.log', valorInicial: 'saida.log' },
+      (nome) => pasta.criarArquivo(nome, conteudo)
+    );
+  };
+
   const contexto: ContextoDeComandos = {
     temEditor: ws.active !== null && ws.active.type !== 'grid' && ws.active.type !== 'conexao',
     temProjeto: pasta.pasta !== '',
@@ -280,7 +349,7 @@ export function App() {
   };
 
   const avisar = (p: Promise<unknown>): void => {
-    void p.catch(dialogs.aoFalhar);
+    void p.catch(falhaDaIde);
   };
 
   /**
@@ -316,7 +385,12 @@ export function App() {
     'view.symbols': () => setPainelLateral('symbols'),
     'view.database': () => setPainelLateral('database'),
     'view.service': () => setPainelLateral('service'),
-    'view.output': () => exec.limparSaida(),
+    // Passou a significar o que o nome diz: mostrar o painel naquela aba. Antes
+    // este comando LIMPAVA a saída, o que ninguém adivinharia pelo rótulo.
+    'view.output': () => layout.mostrarPainel('output'),
+    'view.problems': () => layout.mostrarPainel('problems'),
+    'view.toggleSidebar': layout.alternarLateral,
+    'view.togglePanel': layout.alternarPainel,
     // Alterna e PERSISTE. A ação do Monaco alternaria e esqueceria — e o
     // usuário espera que a escolha sobreviva a recarregar a página.
     'view.wordWrap': () =>
@@ -334,7 +408,7 @@ export function App() {
       if (id !== null) avisar(conexoes.desconectar(id));
     },
 
-    'terminal.new': () => ws.abrirTerminal(null, 'Terminal'),
+    'terminal.new': novoTerminalNoPainel,
     'terminal.connection': () => {
       const conexao = conexoes.acharConexao(exec.conexaoAtiva);
       if (conexao !== null) avisar(abrirTerminalDaConexao(conexao));
@@ -467,15 +541,26 @@ export function App() {
         ...(lateral.dragging ? { cursor: 'col-resize', userSelect: 'none' } : {}),
       }}
     >
-      <MenuBar contexto={contexto} onComando={executarComando} />
+      <MenuBar
+        contexto={contexto}
+        onComando={executarComando}
+        lateralVisivel={layout.lateralVisivel}
+        painelVisivel={layout.painelVisivel}
+        onAlternarLateral={layout.alternarLateral}
+        onAlternarPainel={layout.alternarPainel}
+      />
 
       <Box component="main" sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
+        {/* Escondida com `display: none`, e não desmontada: o painel de arquivos
+            guarda quais pastas estão expandidas, e remontar perderia isso.
+            Mesma regra do editor e dos terminais. */}
+        <Box sx={{ display: layout.lateralVisivel ? 'contents' : 'none' }}>
         <Sidebar
           width={lateral.width}
           painelAtivo={painelLateral}
           onPainelAtivo={setPainelLateral}
           onAbrirPasta={() => avisar(abrirPastaPeloNavegador())}
-          onErro={dialogs.aoFalhar}
+          onErro={falhaDaIde}
           onAbrirArquivo={ws.abrirArquivo}
           pasta={pasta}
           onIrParaSimbolo={irParaSimbolo}
@@ -488,7 +573,7 @@ export function App() {
             onAbrirTerminal: (conexao: PublicConnection) => avisar(abrirTerminalDaConexao(conexao)),
             onFiltrar: (id, caminho, atual) => avisar(filtrarCategoria(id, caminho, atual)),
             onNovoObjeto: novoObjeto,
-            onErro: dialogs.aoFalhar,
+            onErro: falhaDeConexao,
             onMenuNo: (e, id, caminho, no) =>
               menu.abrir(e, [
                 { label: 'Copiar nome', onClick: () => copiar(no.label) },
@@ -525,6 +610,7 @@ export function App() {
           }}
         />
         <Resizer dragging={lateral.dragging} onStart={lateral.startDrag} onReset={lateral.reset} />
+        </Box>
 
         <Box
           component="section"
@@ -620,11 +706,60 @@ export function App() {
             </Box>
           )}
 
-          <OutputPanel
-            linhas={exec.saida}
-            status={exec.status}
-            onLimpar={exec.limparSaida}
-          />
+          {/* SEMPRE montado, escondido com `display: none`.
+              Usar `&&` aqui desmontava o painel inteiro — e com ele os
+              terminais, que morriam ao esconder. Esconder é esconder, não
+              fechar (AC-4). É a mesma regra do editor e das abas, e este
+              arquivo já a documentava dez linhas acima quando o defeito
+              entrou. */}
+          <Box
+            sx={{
+              display: layout.painelVisivel ? 'contents' : 'none',
+            }}
+          >
+            <>
+              <ResizerHorizontal
+                onAltura={layout.definirAltura}
+                onReset={() => layout.definirAltura(ALTURA_PADRAO_PAINEL)}
+              />
+              <BottomPanel
+                aba={layout.abaDoPainel}
+                onAba={layout.definirAba}
+                altura={layout.alturaDoPainel}
+                linhas={exec.saida}
+                status={exec.status}
+                problemas={problemas.lista}
+                terminais={terminais}
+                onLimpar={exec.limparSaida}
+                onLimparProblemas={problemas.limpar}
+                onAbrirNoEditor={abrirSaidaNoEditor}
+                onSalvarComo={() => avisar(salvarSaidaComo())}
+                onNovoTerminal={novoTerminalNoPainel}
+                onAtivarTerminal={(id) => setTerminais((a) => ativarTerminal(a, id))}
+                onFecharTerminal={(id) => setTerminais((a) => fecharTerminal(a, id))}
+                onEsconder={layout.alternarPainel}
+              >
+                {/* Todos montados, só o ativo à vista — mesma regra do editor e
+                    das abas de terminal. Renderizar só o ativo desmontaria o
+                    componente ao alternar, matando o processo e apagando o
+                    buffer. */}
+                {terminais.lista.map((t) => (
+                  <Box
+                    key={t.id}
+                    sx={{
+                      flex: 1, minHeight: 0, minWidth: 0,
+                      display: terminais.ativo === t.id ? 'flex' : 'none',
+                    }}
+                  >
+                    <TerminalHost
+                      ativo={terminais.ativo === t.id && layout.painelVisivel}
+                      fontSize={prefs.prefs['terminal.fontSize']}
+                    />
+                  </Box>
+                ))}
+              </BottomPanel>
+            </>
+          </Box>
         </Box>
       </Box>
 

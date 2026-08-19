@@ -48,6 +48,8 @@ export interface Workspace {
   aoMoverCursor(linha: number, coluna: number): void;
   abrirArquivo(caminho: string): Promise<void>;
   abrirQuery(id: string, titulo: string, conteudo: string, connectionId: string): void;
+  /** Abre texto solto numa aba, sem arquivo em disco por trás. */
+  abrirTexto(id: string, titulo: string, conteudo: string, linguagem: string): void;
   abrirFormulario(connectionId: string | null, titulo: string, grupoInicial?: string): void;
   abrirTerminal(connectionId: string | null, titulo: string): void;
   novoSemTitulo(): void;
@@ -158,6 +160,26 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         type: 'sql',
         title: titulo,
         meta: { path: null, content: conteudo, language: 'sql', view: null, connectionId },
+      });
+    },
+    [salvarNaAba, store]
+  );
+
+  /**
+   * Abre texto que não veio de arquivo — hoje, a saída da execução.
+   *
+   * Separado de `abrirQuery` porque aquele marca a aba como `sql`, e a saída de
+   * um programa não é SQL. Reaproveitar por preguiça daria realce errado e um
+   * botão "executar consulta" onde não há consulta.
+   */
+  const abrirTexto = useCallback(
+    (id: string, titulo: string, conteudo: string, linguagem: string) => {
+      if (ultimaAtiva.current !== null) salvarNaAba(ultimaAtiva.current);
+      store.open({
+        id,
+        type: 'file',
+        title: titulo,
+        meta: { path: null, content: conteudo, language: linguagem, view: null },
       });
     },
     [salvarNaAba, store]
@@ -315,6 +337,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     cursor,
     abrirArquivo,
     abrirQuery,
+    abrirTexto,
     abrirFormulario,
     abrirTerminal,
     novoSemTitulo,

@@ -121,6 +121,9 @@ const DECLARADOS = [
   { id: 'view.database', label: 'Database', menu: 'view', group: 2 },
   { id: 'view.service', label: 'Service', menu: 'view', group: 2 },
   { id: 'view.output', label: 'Output', menu: 'view', group: 3 },
+  { id: 'view.problems', label: 'Problems', menu: 'view', group: 3, keybinding: 'Ctrl+Shift+M' },
+  { id: 'view.toggleSidebar', label: 'Toggle Primary Side Bar', menu: 'view', group: 3, keybinding: 'Ctrl+B' },
+  { id: 'view.togglePanel', label: 'Toggle Panel', menu: 'view', group: 3, keybinding: 'Ctrl+J' },
   { id: 'view.appearance', label: 'Appearance', menu: 'view', group: 4, pending: true },
   { id: 'view.wordWrap', label: 'Word Wrap', menu: 'view', group: 4, keybinding: 'Alt+Z' },
 
@@ -239,6 +242,33 @@ export function filtrarComandos(
       const alvo = `${c.label} ${c.id}`.toLowerCase();
       return termos.every((termo) => alvo.includes(termo));
     });
+}
+
+/**
+ * Atalhos que a IDE tira do terminal.
+ *
+ * Existe por um defeito real: com o foco no terminal, `Ctrl+J` e `Ctrl+B` nunca
+ * chegavam à IDE. O emulador os consome porque **no shell eles significam outra
+ * coisa** — `Ctrl+J` é nova linha e `Ctrl+B` é "voltar um caractere" do
+ * readline.
+ *
+ * A escolha aqui é deliberada e tem custo: dentro do terminal, estes quatro
+ * deixam de valer para o shell. É o mesmo que o VS Code faz, e é o preço de o
+ * usuário poder esconder o painel de onde ele está olhando.
+ *
+ * **A lista é curta de propósito.** Deixar passar tudo tiraria `Ctrl+C` do
+ * terminal, e aí não haveria como interromper um programa — o oposto do que se
+ * espera de um terminal.
+ */
+const ESCAPAM_DO_TERMINAL: ReadonlySet<string> = new Set([
+  'Ctrl+J', // esconder/mostrar o painel
+  'Ctrl+B', // esconder/mostrar a lateral
+  'Ctrl+`', // novo terminal
+  'Ctrl+Shift+P', // paleta de comandos
+]);
+
+export function escapaDoTerminal(atalho: string): boolean {
+  return ESCAPAM_DO_TERMINAL.has(atalho);
 }
 
 /** Evento de teclado no formato dos `keybinding` declarados. */

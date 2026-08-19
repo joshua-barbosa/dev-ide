@@ -37,7 +37,15 @@ export interface Execution {
   limparSaida(): void;
 }
 
-export function useExecution(ws: Workspace): Execution {
+/**
+ * Avisa que algo deu errado, para a aba `Problems`.
+ *
+ * Injetado em vez de importado para o gancho continuar testável e para não
+ * amarrar execução a painel — quem decide o que fazer com o problema é o App.
+ */
+export type AoFalharExecucao = (mensagem: string) => void;
+
+export function useExecution(ws: Workspace, aoFalhar: AoFalharExecucao = () => {}): Execution {
   const [grades, setGrades] = useState<ReadonlyMap<string, EstadoGrade>>(new Map());
   const [saida, setSaida] = useState<readonly LinhaSaida[]>([]);
   const [status, setStatus] = useState({ texto: '', erro: false });
@@ -86,8 +94,9 @@ export function useExecution(ws: Workspace): Execution {
       const msg = (e as Error).message;
       atualizarGrade(gridId, { resultado: null, erro: msg, carregando: false, rotulo: aba.title });
       setStatus({ texto: 'erro', erro: true });
+      aoFalhar(msg);
     }
-  }, [atualizarGrade, escrever, ws]);
+  }, [aoFalhar, atualizarGrade, escrever, ws]);
 
   const executarCodigo = useCallback(
     async (modo: ModoExecucao, linguagem: string, funcao?: string, args?: unknown[]) => {
@@ -146,15 +155,24 @@ export function useExecution(ws: Workspace): Execution {
             ? 'tempo esgotado (15s)'
             : `exit ${r.exitCode} · ${r.durationMs}ms`;
         setStatus({ texto, erro: !ok });
+        // Cancelado NÃO é problema: o usuário pediu para parar.
+        if (!ok && !r.cancelled) {
+          aoFalhar(
+            r.timedOut
+              ? 'A execução passou de 15 s e foi interrompida.'
+              : (r.stderr.trim() || `A execução terminou com código ${r.exitCode}.`)
+          );
+        }
       } catch (e) {
         escrever(`${(e as Error).message}\n`, true);
         setStatus({ texto: 'erro', erro: true });
+        aoFalhar((e as Error).message);
       } finally {
         execucaoAtual.current = null;
         setExecutando(false);
       }
     },
-    [escrever, ws]
+    [aoFalhar, escrever, ws]
   );
 
   const executar = useCallback(

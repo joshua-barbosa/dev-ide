@@ -14,6 +14,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { tokens } from '../theme';
+import { escapaDoTerminal, formatarAtalho } from '../../shared/commands';
 
 export interface TerminalHostProps {
   /** Ausente = shell do usuário; presente = cliente daquela conexão. */
@@ -41,6 +42,8 @@ export function TerminalHost({
   // buffer — a regressão que a spec 008 já viveu ao trocar de aba.
   const tamanhoDaFonte = useRef(fontSize);
   tamanhoDaFonte.current = fontSize;
+  const ativoAgora = useRef(ativo);
+  ativoAgora.current = ativo;
   const emUso = useRef<{
     term: Terminal;
     fit: FitAddon;
@@ -91,6 +94,16 @@ export function TerminalHost({
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
+
+    // Deixa alguns atalhos da IDE passarem em vez de virarem bytes no shell.
+    // Devolver `false` faz o emulador NÃO tratar a tecla, e aí ela sobe até o
+    // ouvinte do documento. Sem isto, `Ctrl+J` com o foco aqui só escrevia uma
+    // nova linha — o painel nunca se escondia.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown') return true;
+      return !escapaDoTerminal(formatarAtalho(e));
+    });
+
     term.open(alvo);
     fit.fit();
 
@@ -142,6 +155,10 @@ export function TerminalHost({
     });
     observador.observe(alvo);
     emUso.current = { term, fit, enviar };
+    // Foco na montagem, e não só no efeito de `ativo`: aquele roda antes de o
+    // emulador existir, e sem isto abrir um terminal deixava o cursor piscando
+    // sem receber tecla nenhuma — dava a impressão de terminal morto.
+    if (ativoAgora.current) term.focus();
 
     return () => {
       observador.disconnect();

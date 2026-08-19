@@ -102,6 +102,9 @@ const ICONES_DA_INTERFACE = [
   // Navegador de pastas (spec 012): confirmar a pasta atual e subir um nível.
   'lucide:check',
   'lucide:corner-left-up',
+  // Ocultar lateral e painel inferior (spec 014).
+  'lucide:panel-left',
+  'lucide:panel-bottom',
 ] as const;
 
 /**
