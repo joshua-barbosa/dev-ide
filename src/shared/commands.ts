@@ -141,8 +141,17 @@ const DECLARADOS = [
   { id: 'go.file', label: 'Go to File…', menu: 'go', group: 1, keybinding: 'Ctrl+P' },
   { id: 'go.symbol', label: 'Go to Symbol…', menu: 'go', group: 1, keybinding: 'Ctrl+Shift+O' },
   { id: 'go.line', label: 'Go to Line…', menu: 'go', group: 1, keybinding: 'Ctrl+G', when: 'temEditor' },
-  { id: 'go.back', label: 'Back', menu: 'go', group: 2, keybinding: 'Alt+ArrowLeft', when: 'podeVoltar' },
-  { id: 'go.forward', label: 'Forward', menu: 'go', group: 2, keybinding: 'Alt+ArrowRight', when: 'podeAvancar' },
+  // Navegação por código (spec 032). Sem `when: 'temEditor'` de propósito: o
+  // item precisa estar visível e clicável para poder EXPLICAR que só entende
+  // TypeScript e JavaScript. Cinza não ensina nada.
+  { id: 'go.definition', label: 'Go to Definition', menu: 'go', group: 2,
+    keybinding: 'F12', when: 'temEditor' },
+  { id: 'go.typeDefinition', label: 'Go to Type Definition', menu: 'go', group: 2,
+    when: 'temEditor' },
+  { id: 'go.references', label: 'Go to References', menu: 'go', group: 2,
+    keybinding: 'Shift+F12', when: 'temEditor' },
+  { id: 'go.back', label: 'Back', menu: 'go', group: 3, keybinding: 'Alt+ArrowLeft', when: 'podeVoltar' },
+  { id: 'go.forward', label: 'Forward', menu: 'go', group: 3, keybinding: 'Alt+ArrowRight', when: 'podeAvancar' },
 
   // ---- Run ----
   { id: 'run.file', label: 'Run File', menu: 'run', group: 1, keybinding: 'Ctrl+Enter', when: 'temEditor' },

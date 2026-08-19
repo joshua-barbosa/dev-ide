@@ -40,6 +40,8 @@ export interface EditorGroupProps {
   readonly terminalFontSize: number;
   readonly tema: NomeDoTema;
   readonly snippets: readonly Snippet[];
+  /** Comando pedido de DENTRO do editor, por tecla que o Monaco reserva. */
+  readonly onComando: (id: string) => void;
 
   readonly grades: ReadonlyMap<string, EstadoGrade>;
   /** Abas mostrando o conteúdo renderizado em vez do texto (spec 024). */
@@ -67,6 +69,7 @@ export function EditorGroup({
   fontSize, tabSize, wordWrap, terminalFontSize, tema, snippets,
   grades, formulario, emPreview, conteudoDaAba, onPreview,
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
+  onComando,
 }: EditorGroupProps) {
   const caixa = useRef<HTMLDivElement>(null);
   // A zona vive num `ref` E num estado: o `ref` é a verdade que a soltura lê, o
@@ -178,6 +181,7 @@ export function EditorGroup({
           wordWrap={wordWrap}
           tema={tema}
           snippets={snippets}
+          onComando={onComando}
         />
       </Box>
 

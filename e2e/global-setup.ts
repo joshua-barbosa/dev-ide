@@ -71,6 +71,23 @@ export default async function globalSetup(): Promise<void> {
     'SELECT id, nome FROM alunos;\n'
   );
 
+  // Dois arquivos que se referenciam, para a navegação por código (spec 032)
+  // ter o que atravessar. Sem um par assim, "ir para a definição" só provaria
+  // o caso trivial de saltar dentro do próprio arquivo.
+  fs.writeFileSync(
+    path.join(dados, 'projects', 'demo', 'lib.ts'),
+    ['export function saudar(nome: string): string {', '  return `ola ${nome}`;', '}', ''].join('\n')
+  );
+  fs.writeFileSync(
+    path.join(dados, 'projects', 'demo', 'usa-lib.ts'),
+    [
+      "import { saudar } from './lib';",
+      '',
+      'export const MENSAGEM = saudar("joshua");',
+      '',
+    ].join('\n')
+  );
+
   // Deixa a pasta `demo` aberta, como se o usuário já a tivesse aberto antes.
   //
   // Desde a spec 012 a IDE sobe SEM pasta na primeira vez — antes ela escolhia

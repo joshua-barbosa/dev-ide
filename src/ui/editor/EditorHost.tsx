@@ -92,10 +92,20 @@ export interface EditorHostProps {
   readonly tema: NomeDoTema;
   /** Snippets a oferecer na conclusão (spec 019). */
   readonly snippets: readonly Snippet[];
+  /**
+   * Executa um comando da IDE pedido de dentro do editor (spec 032).
+   *
+   * Existe porque o Monaco **consome** F12 e Shift+F12 com as ações dele. O
+   * atalho global nunca via a tecla: o editor a engolia e não fazia nada, já
+   * que não há provedor de definição registrado nele. É a mesma situação do
+   * xterm com Ctrl+J na spec 014, e a saída é a mesma — devolver a tecla a
+   * quem sabe o que fazer com ela.
+   */
+  readonly onComando: (id: string) => void;
 }
 
 export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function EditorHost(
-  { onChange, onCursor, fontSize, tabSize, wordWrap, tema, snippets },
+  { onChange, onCursor, fontSize, tabSize, wordWrap, tema, snippets, onComando },
   ref
 ) {
   const caixa = useRef<HTMLDivElement>(null);
@@ -104,8 +114,10 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
   // primeiro render faria a barra de status congelar depois de trocar de aba.
   const aoMudar = useRef(onChange);
   const aoMoverCursor = useRef(onCursor);
+  const aoComandar = useRef(onComando);
   aoMudar.current = onChange;
   aoMoverCursor.current = onCursor;
+  aoComandar.current = onComando;
 
   // O tema precisa existir ANTES do primeiro `create`, senão o editor nasce com
   // o `vs-dark` padrão e só repinta no efeito seguinte — um piscar visível.
@@ -117,9 +129,10 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
   }
 
   useEffect(() => {
-    if (caixa.current === null) return;
+    const embrulho = caixa.current;
+    if (embrulho === null) return;
 
-    const ed = monaco.editor.create(caixa.current, {
+    const ed = monaco.editor.create(embrulho, {
       value: '',
       language: 'plaintext',
       theme: NOME_DO_TEMA,
@@ -143,6 +156,20 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     const mudou = ed.onDidChangeModelContent(() => aoMudar.current());
     const moveu = ed.onDidChangeCursorPosition((e) =>
       aoMoverCursor.current(e.position.lineNumber, e.position.column)
+    );
+
+    // Devolve à IDE as teclas que o Monaco reserva para ações que ele não tem
+    // como cumprir.
+    //
+    // **O Monaco traz o próprio serviço de TypeScript, e ele enxerga só os
+    // modelos abertos.** Sem isto, F12 dentro de `usa-lib.ts` pula para o
+    // `import` da primeira linha em vez do arquivo onde a função está —
+    // parece funcionar, e está errado. Quem sabe procurar no projeto inteiro é
+    // o serviço do servidor (spec 032).
+    ed.addCommand(monaco.KeyCode.F12, () => aoComandar.current('go.definition'));
+    ed.addCommand(
+      monaco.KeyMod.Shift | monaco.KeyCode.F12,
+      () => aoComandar.current('go.references')
     );
 
     return () => {

@@ -171,7 +171,8 @@ test('todo atalho declarado bate com o que a formatação produz', () => {
   // A lista de teclas cresce quando um comando novo usa uma que ainda não
   // aparecia — foi o caso do `\` do Split Editor. O critério para acrescentar é
   // um só: `formatarAtalho` precisa **produzir** aquele texto.
-  const validas = /^(Ctrl\+)?(Shift\+)?(Alt\+)?([A-Z]|Enter|Tab|Escape|Arrow(Up|Down|Left|Right)|\/|\\|`)$/;
+  const validas =
+    /^(Ctrl\+)?(Shift\+)?(Alt\+)?([A-Z]|F([1-9]|1[0-2])|Enter|Tab|Escape|Arrow(Up|Down|Left|Right)|\/|\\|`)$/;
   for (const cmd of COMMANDS) {
     if (cmd.keybinding === undefined) continue;
     assert.match(cmd.keybinding, validas, `atalho fora do formato em ${cmd.id}`);
@@ -336,4 +337,14 @@ test('a barra invertida do Split Editor é mesmo o que a formatação produz', (
     'Ctrl+\\'
   );
   assert.equal(comandoDoAtalho('Ctrl+\\', TUDO)?.id, 'view.splitEditor');
+});
+
+test('formatarAtalho produz as teclas de função declaradas', () => {
+  // Mesmo cuidado que o `\` do Split Editor exigiu: só entra na lista de
+  // teclas válidas o que `formatarAtalho` sabe PRODUZIR. F12 chega como
+  // `e.key === "F12"`, e não como caractere.
+  const tecla = (key: string, shift = false) =>
+    formatarAtalho({ key, ctrlKey: false, shiftKey: shift, altKey: false, metaKey: false });
+  assert.equal(tecla('F12'), 'F12');
+  assert.equal(tecla('F12', true), 'Shift+F12');
 });

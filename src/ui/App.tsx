@@ -59,6 +59,7 @@ import { useSnippets } from './useSnippets';
 import { useBusca } from './files/useBusca';
 import { useComandosAcoes } from './acoes/useComandosAcoes';
 import { useArquivoAcoes } from './acoes/useArquivoAcoes';
+import { useCodigoAcoes } from './acoes/useCodigoAcoes';
 import { usePastaAcoes } from './acoes/usePastaAcoes';
 import { useConexoesAcoes } from './acoes/useConexoesAcoes';
 import { useSnippetsAcoes } from './acoes/useSnippetsAcoes';
@@ -177,6 +178,7 @@ export function App() {
   const arquivoAcoes = useArquivoAcoes({
     qi, ws, pasta, prefs, avisar: dialogs.avisar, confirmar: dialogs.confirmar,
   });
+  const codigoAcoes = useCodigoAcoes({ qi, ws, avisar: dialogs.avisar });
   const pastaAcoes = usePastaAcoes({ qi, pasta, avisar: dialogs.avisar });
   const conexoesAcoes = useConexoesAcoes({ qi, ws, exec, conexoes });
 
@@ -407,6 +409,9 @@ export function App() {
     'go.file': () => avisar(abrirPorCaminho()),
     'go.symbol': () => setPainelLateral('symbols'),
     'go.line': () => avisar(irParaLinha()),
+    'go.definition': () => avisar(codigoAcoes.irParaDefinicao()),
+    'go.typeDefinition': () => avisar(codigoAcoes.irParaDefinicaoDeTipo()),
+    'go.references': () => avisar(codigoAcoes.verReferencias()),
     'go.back': () => irPara(nav.voltar()),
     'go.forward': () => irPara(nav.avancar()),
 
@@ -638,6 +643,7 @@ export function App() {
                     ws.grupoFocado === g && contexto.temEditor ? () => executar('file') : undefined
                   }
                   onSoltar={(zona, carga) => ws.soltarNoGrupo(g, zona, carga)}
+                  onComando={executarComando}
                   formulario={formularioDeConexao}
                 />
               )}

@@ -132,6 +132,21 @@ function comCaminho(base: string, nodePath: readonly string[]): string {
 
 const conexoes = '/api/connections';
 
+export interface Alvo {
+  readonly caminho: string;
+  readonly linha: number;
+  readonly coluna: number;
+  readonly previa: string;
+}
+
+export interface PerguntaDeCodigo {
+  readonly caminho: string;
+  readonly linha: number;
+  readonly coluna: number;
+  /** O que está na tela, quando difere do disco. */
+  readonly conteudo?: string;
+}
+
 export const Api = {
   // ---- projetos e arquivos ----
   listProjects: () => request<Projeto[]>('GET', '/api/projects'),
@@ -183,6 +198,14 @@ export const Api = {
       substituto,
       caminhos,
     }),
+
+  // ---- navegação por código (spec 032) ----
+  definition: (pergunta: PerguntaDeCodigo) =>
+    request<{ alvos: Alvo[] }>('POST', '/api/language/definition', pergunta),
+  typeDefinition: (pergunta: PerguntaDeCodigo) =>
+    request<{ alvos: Alvo[] }>('POST', '/api/language/type-definition', pergunta),
+  references: (pergunta: PerguntaDeCodigo) =>
+    request<{ alvos: Alvo[] }>('POST', '/api/language/references', pergunta),
 
   // ---- espaço de trabalho (spec 012) ----
   browseFolders: (caminho?: string) =>
