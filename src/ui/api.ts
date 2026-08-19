@@ -227,6 +227,8 @@ export const Api = {
     request<RetratoDoEspaco>('DELETE', '/api/workspace/recent', { path }),
   createWorkspaceFile: (name: string, content: string) =>
     request<{ path: string }>('POST', '/api/workspace/file', { name, content }),
+  createWorkspaceFolder: (name: string) =>
+    request<{ path: string }>('POST', '/api/workspace/folder', { name }),
 
   // ---- preferências ----
   prefs: () => request<Preferencias>('GET', '/api/prefs'),

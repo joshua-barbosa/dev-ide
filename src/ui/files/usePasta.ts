@@ -36,6 +36,8 @@ export interface PastaAberta {
   criarProjeto(nome: string): Promise<void>;
   /** Devolve o caminho do arquivo criado; deixa o erro subir para a retentativa. */
   criarArquivo(nome: string, conteudo: string): Promise<string>;
+  /** Cria uma pasta e devolve o caminho; deixa o erro subir para a retentativa. */
+  criarPasta(nome: string): Promise<string>;
 }
 
 /**
@@ -123,6 +125,15 @@ export function usePasta(): PastaAberta {
     [recarregar]
   );
 
+  const criarPasta = useCallback(
+    async (nome: string): Promise<string> => {
+      const criada = await Api.createWorkspaceFolder(nome.trim());
+      await recarregar();
+      return criada.path;
+    },
+    [recarregar]
+  );
+
   const pasta = retrato.pasta ?? '';
   return {
     pasta,
@@ -140,5 +151,6 @@ export function usePasta(): PastaAberta {
     carregarFilhos,
     criarProjeto,
     criarArquivo,
+    criarPasta,
   };
 }

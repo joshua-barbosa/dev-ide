@@ -179,7 +179,9 @@ export function App() {
     qi, ws, pasta, prefs, avisar: dialogs.avisar, confirmar: dialogs.confirmar,
   });
   const codigoAcoes = useCodigoAcoes({ qi, ws, avisar: dialogs.avisar });
-  const pastaAcoes = usePastaAcoes({ qi, pasta, avisar: dialogs.avisar });
+  const pastaAcoes = usePastaAcoes({
+    qi, pasta, avisar: dialogs.avisar, abrirArquivo: ws.abrirArquivo,
+  });
   const conexoesAcoes = useConexoesAcoes({ qi, ws, exec, conexoes });
 
   /**
@@ -539,6 +541,8 @@ export function App() {
           painelAtivo={painelLateral}
           onPainelAtivo={setPainelLateral}
           onAbrirPasta={() => avisar(pastaAcoes.abrirPasta())}
+          onNovoArquivo={() => avisar(pastaAcoes.novoArquivoNaPasta())}
+          onNovaPasta={() => avisar(pastaAcoes.novaPasta())}
           busca={{
             busca,
             // Abre o arquivo e pula para a ocorrência — clicar num resultado

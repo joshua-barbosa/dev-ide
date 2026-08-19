@@ -27,11 +27,13 @@ export interface FilesPanelProps {
   readonly caminhoAtivo: string | null;
   /** Sobem para o App: quem pergunta é a entrada rápida. */
   readonly onAbrirPasta: () => void;
+  readonly onNovoArquivo: () => void;
+  readonly onNovaPasta: () => void;
   readonly onErro: (erro: unknown) => void;
 }
 
 export function FilesPanel({
-  pasta, onAbrirArquivo, caminhoAtivo, onAbrirPasta, onErro,
+  pasta, onAbrirArquivo, caminhoAtivo, onAbrirPasta, onNovoArquivo, onNovaPasta, onErro,
 }: FilesPanelProps) {
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
   /** Pastas cujo conteúdo está sendo pedido agora — a linha mostra "…". */
@@ -88,6 +90,25 @@ export function FilesPanel({
         });
     }
   }, [abertas, onErro, pasta]);
+
+  /** Um botão do cabeçalho: ícone só, com o nome na dica e no rótulo. */
+  const acao = (rotulo: string, icone: string, aoClicar: () => void): React.ReactNode => (
+    <Tooltip key={rotulo} title={rotulo} placement="bottom">
+      <Box
+        component="button"
+        type="button"
+        aria-label={rotulo}
+        onClick={aoClicar}
+        sx={{
+          border: 0, bgcolor: 'transparent', color: 'text.secondary', cursor: 'pointer',
+          p: 0.3, display: 'flex', borderRadius: 0.5,
+          '&:hover': { color: 'text.primary', bgcolor: 'action.hover' },
+        }}
+      >
+        <Icon name={icone} size={14} />
+      </Box>
+    </Tooltip>
+  );
 
   const abrir = useCallback(
     (caminho: string) => {
@@ -165,6 +186,10 @@ export function FilesPanel({
       <Box
         sx={{
           px: 1, pb: 0.75, display: 'flex', gap: 0.5, alignItems: 'center', minWidth: 0,
+          // Só aparecem ao passar o mouse, como no VS Code — e ao receber
+          // foco, senão quem navega pelo teclado nunca as alcança.
+          '& .acoes-da-arvore': { opacity: 0, transition: 'opacity 120ms' },
+          '&:hover .acoes-da-arvore, &:focus-within .acoes-da-arvore': { opacity: 1 },
         }}
       >
         <Tooltip title={pasta.pasta} placement="bottom-start">
@@ -179,11 +204,17 @@ export function FilesPanel({
             {pasta.nome}
           </Box>
         </Tooltip>
-        <Tooltip title="Abrir pasta…" placement="bottom">
-          <Button onClick={onAbrirPasta} sx={{ minWidth: 28, px: 0.5 }}>
-            <Icon name={ICONE_DE_PASTA} size={14} />
-          </Button>
-        </Tooltip>
+        {/* As quatro do VS Code, na ordem dele. Abrir pasta NÃO fica aqui:
+            mora em File → Open Folder, e ter o mesmo comando em dois lugares
+            só faz a barra parecer cheia. */}
+        <Box className="acoes-da-arvore" sx={{ display: 'flex', gap: 0.25 }}>
+          {acao('Novo arquivo', 'lucide:file-plus', onNovoArquivo)}
+          {acao('Nova pasta', 'lucide:folder-plus', onNovaPasta)}
+          {acao('Recarregar', 'lucide:refresh-cw', () => {
+            pasta.recarregar().catch(onErro);
+          })}
+          {acao('Recolher tudo', 'lucide:list-collapse', () => setAbertas(new Set()))}
+        </Box>
       </Box>
 
       {pasta.truncada && (

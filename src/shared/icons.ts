@@ -84,7 +84,9 @@ const ICONES_DA_INTERFACE = [
   'lucide:boxes',
   'lucide:layers',
   'lucide:chevron-left',
-  'lucide:chevrons-down-up',
+  // `list-collapse`, e não `chevrons-down-up`: os dois chevrons convergindo
+  // desenham um X em 14px, e X ao lado de outros botões lê como "fechar".
+  'lucide:list-collapse',
   'lucide:pencil',
   'lucide:square-terminal',
   'lucide:list-filter',
@@ -111,6 +113,13 @@ const ICONES_DA_INTERFACE = [
   // Botão de preview do markdown (spec 024).
   'lucide:book-open',
   'lucide:file-code',
+  // Ações do cabeçalho da árvore (spec 035), na ordem do VS Code.
+  'lucide:file-plus',
+  'lucide:folder-plus',
+  'lucide:refresh-cw',
+  // `list-collapse`, e não `chevrons-down-up`: os dois chevrons convergindo
+  // desenham um X em 14px, e X ao lado de outros botões lê como "fechar".
+  'lucide:list-collapse',
   // Painel de busca (spec 027).
   'lucide:search',
   'lucide:replace',

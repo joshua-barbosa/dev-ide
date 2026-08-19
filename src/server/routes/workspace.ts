@@ -147,5 +147,27 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
     res.status(201).json(ok({ path: alvo }));
   }));
 
+  /**
+   * Cria uma pasta dentro da pasta aberta.
+   *
+   * Gêmea da rota de arquivo, e com as mesmas duas guardas: o caminho é
+   * conferido contra a pasta aberta, e o que já existe é recusado em vez de
+   * silenciosamente reaproveitado — `mkdir -p` sobre uma pasta cheia não dá
+   * erro, e o usuário concluiria que criou uma pasta nova.
+   */
+  router.post('/workspace/folder', wrap((req, res) => {
+    const atual = estado.ler().pastaAtual;
+    if (atual === null) throw new Error('Abra uma pasta antes de criar outra dentro dela.');
+    const pasta = pastaValida(atual);
+
+    const relativo = requireString(req.body?.name, 'name').trim();
+    if (relativo === '') throw new Error('O nome da pasta não pode ser vazio.');
+    const alvo = dentroDaPasta(pasta, relativo);
+    if (fs.existsSync(alvo)) throw new Error(`"${relativo}" já existe na pasta.`);
+
+    fs.mkdirSync(alvo, { recursive: true });
+    res.status(201).json(ok({ path: alvo }));
+  }));
+
   return router;
 }

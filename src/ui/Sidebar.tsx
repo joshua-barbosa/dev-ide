@@ -33,6 +33,8 @@ export interface SidebarProps {
   readonly pasta: PastaAberta;
   readonly onIrParaSimbolo: (arquivo: string, linha: number) => void;
   readonly onAbrirPasta: () => void;
+  readonly onNovoArquivo: () => void;
+  readonly onNovaPasta: () => void;
   readonly busca: SearchPanelProps;
   readonly onErro: (erro: unknown) => void;
   /** Controlado por fora: o menu View também troca de painel. */
@@ -43,6 +45,8 @@ export interface SidebarProps {
 export function Sidebar({
   width, onAbrirArquivo, caminhoAtivo = null, conexoes, pasta, onIrParaSimbolo,
   onAbrirPasta,
+  onNovoArquivo,
+  onNovaPasta,
   busca,
   onErro,
   painelAtivo,
@@ -102,6 +106,8 @@ export function Sidebar({
             onAbrirArquivo={onAbrirArquivo}
             caminhoAtivo={caminhoAtivo}
             onAbrirPasta={onAbrirPasta}
+            onNovoArquivo={onNovoArquivo}
+            onNovaPasta={onNovaPasta}
             onErro={onErro}
           />
         )}

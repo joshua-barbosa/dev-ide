@@ -10,17 +10,22 @@ export interface PastaAcoesDeps {
   readonly qi: QuickInputController;
   readonly pasta: PastaAberta;
   avisar(mensagem: string, titulo?: string): Promise<void>;
+  /** Abre o arquivo recém-criado — criar sem abrir seria meio caminho. */
+  abrirArquivo(caminho: string): Promise<void>;
 }
 
 export interface PastaAcoes {
   novoProjeto(): Promise<void>;
+  /** Cria um arquivo na pasta aberta e o abre (spec 035). */
+  novoArquivoNaPasta(): Promise<void>;
+  novaPasta(): Promise<void>;
   escolherProjeto(): Promise<void>;
   abrirPasta(): Promise<void>;
   abrirRecente(): Promise<void>;
 }
 
 export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
-  const { qi, pasta, avisar } = deps;
+  const { qi, pasta, avisar, abrirArquivo } = deps;
 
   const novoProjeto = async (): Promise<void> => {
     await pedirComRetentativa(
@@ -115,5 +120,32 @@ export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
   };
 
 
-  return { novoProjeto, escolherProjeto, abrirPasta, abrirRecente };
+  /**
+   * Cria um arquivo na pasta aberta e o abre.
+   *
+   * Aceita caminho com barras (`src/util/novo.ts`): é o que o VS Code faz, e as
+   * pastas do meio são criadas junto. Quem recusa nome repetido e caminho para
+   * fora é o servidor — a retentativa mantém o que foi digitado.
+   */
+  const novoArquivoNaPasta = async (): Promise<void> => {
+    const criado = await pedirComRetentativa(
+      qi,
+      { titulo: 'Nome do arquivo', placeholder: 'ex.: utils.ts, src/api/rotas.py' },
+      (nome: string) => pasta.criarArquivo(nome, '')
+    );
+    if (criado === null) return;
+    await abrirArquivo(criado);
+  };
+
+  const novaPasta = async (): Promise<void> => {
+    await pedirComRetentativa(
+      qi,
+      { titulo: 'Nome da pasta', placeholder: 'ex.: componentes, src/api' },
+      (nome: string) => pasta.criarPasta(nome)
+    );
+  };
+
+  return {
+    novoProjeto, escolherProjeto, abrirPasta, abrirRecente, novoArquivoNaPasta, novaPasta,
+  };
 }
