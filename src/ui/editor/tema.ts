@@ -5,31 +5,26 @@
 // colado de outro lugar — que é exatamente o que a spec 001 evitou ao trazer o
 // MUI com o tema do projeto em vez do azul padrão do Material.
 //
-// As cores dos tokens saem de um princípio simples: manter as três âncoras que a
-// IDE já tinha (`accent` para o que é estrutura, `run` para o que é valor,
-// `error` para o que está errado) e derivar o resto delas.
+// Desde a spec 017 as cores vêm da paleta em `shared/temas.ts`, e não de
+// constantes aqui: era o único jeito de o editor acompanhar a troca de tema.
 import * as monaco from 'monaco-editor';
-import { tokens } from '../theme';
+import { TEMAS, type NomeDoTema } from '../../shared/temas';
 
 export const NOME_DO_TEMA = 'dev-ide';
 
-/** Cores de token. Sem `#` porque é o formato que o Monaco espera aqui. */
-const cor = {
-  reservada: 'c98ade', // roxo suave: estrutura da linguagem
-  tipo: '5cc8c2', // ciano: tipos e classes
-  funcao: tokens.accent.slice(1), // âmbar do projeto: o que se chama
-  texto: '9ecf7e', // verde: literal de texto
-  numero: 'd9a05b', // laranja queimado: literal numérico
-  comentario: '6b6e7a', // cinza apagado, mas legível
-  constante: 'd88fb0', // rosa: constante e enum
-  variavel: tokens.fg.slice(1), // cor normal do texto
-  operador: '9aa0b0',
-  invalido: tokens.error.slice(1),
-} as const;
+/**
+ * Registra (ou re-registra) o tema do editor a partir da paleta.
+ *
+ * Re-registrar com o mesmo nome substitui a definição, e o Monaco repinta os
+ * editores que já usam esse nome — é o que faz trocar de tema não exigir
+ * remontar o editor nem recarregar a página.
+ */
+export function registrarTema(nome: NomeDoTema): void {
+  const p = TEMAS[nome];
+  const cor = { ...p.sintaxe, variavel: p.fg.slice(1), invalido: p.error.slice(1) };
 
-export function registrarTema(): void {
   monaco.editor.defineTheme(NOME_DO_TEMA, {
-    base: 'vs-dark',
+    base: nome === 'escuro' ? 'vs-dark' : 'vs',
     // `false` seria começar do zero e ter que declarar cada regra de cada
     // linguagem; herdar mantém as que não nos interessam com valor razoável.
     inherit: true,
@@ -57,26 +52,23 @@ export function registrarTema(): void {
       { token: 'invalid', foreground: cor.invalido },
     ],
     colors: {
-      'editor.background': tokens.bgEditor,
-      'editor.foreground': tokens.fg,
-      'editorLineNumber.foreground': tokens.fgDim,
-      'editorLineNumber.activeForeground': tokens.accent,
-      'editorCursor.foreground': tokens.accent,
-      'editor.lineHighlightBackground': tokens.bg,
-      'editor.selectionBackground': '#3a4a63',
-      // Um pouco mais claro que a seleção: é o que mostra as OUTRAS ocorrências
-      // quando se usa multi-cursor, e confundi-las com a seleção ativa tira
-      // metade da utilidade.
-      'editor.selectionHighlightBackground': '#2c3a4d',
-      'editorWidget.background': tokens.bgPanel,
-      'editorWidget.border': tokens.border,
-      'editorSuggestWidget.background': tokens.bgPanel,
-      'editorSuggestWidget.selectedBackground': tokens.bg,
-      'input.background': tokens.bg,
-      'input.foreground': tokens.fg,
-      'scrollbarSlider.background': `${tokens.border}aa`,
-      'scrollbarSlider.hoverBackground': tokens.fgDim,
-      'minimap.background': tokens.bgEditor,
+      'editor.background': p.bgEditor,
+      'editor.foreground': p.fg,
+      'editorLineNumber.foreground': p.fgDim,
+      'editorLineNumber.activeForeground': p.accent,
+      'editorCursor.foreground': p.accent,
+      'editor.lineHighlightBackground': p.bg,
+      'editor.selectionBackground': p.selecao,
+      'editor.selectionHighlightBackground': p.selecaoFraca,
+      'editorWidget.background': p.bgPanel,
+      'editorWidget.border': p.border,
+      'editorSuggestWidget.background': p.bgPanel,
+      'editorSuggestWidget.selectedBackground': p.bg,
+      'input.background': p.bg,
+      'input.foreground': p.fg,
+      'scrollbarSlider.background': `${p.border}aa`,
+      'scrollbarSlider.hoverBackground': p.fgDim,
+      'minimap.background': p.bgEditor,
     },
   });
 }

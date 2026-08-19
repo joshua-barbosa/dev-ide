@@ -7,9 +7,12 @@
 // em `shared/commands.ts` à função que o executa, e `contexto` diz o que está
 // disponível agora. Menu, paleta e atalhos leem essa mesma dupla — por isso um
 // comando novo entra numa linha e aparece nos três lugares.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
-import { tokens } from './theme';
+import CssBaseline from '@mui/material/CssBaseline';
+import { ThemeProvider } from '@mui/material/styles';
+import { aplicarVariaveis, criarTema, tokens } from './theme';
+import { NOMES_DE_TEMA, ROTULO_DO_TEMA, TEMAS, type NomeDoTema } from '../shared/temas';
 import { Sidebar } from './Sidebar';
 import { Resizer } from './Resizer';
 import { useSidebarWidth } from './useSidebarWidth';
@@ -75,6 +78,12 @@ export function App() {
   const pasta = usePasta();
   const qi = useQuickInput();
   const prefs = usePrefs(falhaDaIde);
+  const tema = prefs.prefs['workbench.theme'] as NomeDoTema;
+  // As variáveis CSS precisam existir ANTES da primeira pintura: escrevê-las
+  // num `useEffect` deixaria o primeiro quadro sem cor nenhuma.
+  aplicarVariaveis(TEMAS[tema]);
+  const temaMui = useMemo(() => criarTema(tema), [tema]);
+
   const layout = useLayout();
   const nav = useHistorico({ abaExiste: (abaId) => ws.store.get(abaId) !== null });
   useAutoSave({ ws, prefs: prefs.prefs, aoFalhar: falhaDaIde });
@@ -331,6 +340,21 @@ export function App() {
     if (caminho !== null) await ws.abrirArquivo(caminho);
   };
 
+  /** Escolhe o tema. Vale para moldura, editor e terminal ao mesmo tempo. */
+  const escolherTema = async (): Promise<void> => {
+    const escolhido = await qi.pedir({
+      titulo: 'Tema da interface',
+      placeholder: 'Escolha um tema',
+      opcoes: NOMES_DE_TEMA.map((nome) => ({
+        valor: nome,
+        rotulo: ROTULO_DO_TEMA[nome],
+        detalhe: nome === tema ? 'atual' : undefined,
+        icone: nome === tema ? 'lucide:check' : 'lucide:circle-dot',
+      })),
+    });
+    if (escolhido !== null) await prefs.definir({ 'workbench.theme': escolhido as NomeDoTema });
+  };
+
   const escolherLinguagem = async (): Promise<void> => {
     const escolhida = await qi.pedir({
       titulo: 'Selecionar linguagem',
@@ -475,6 +499,7 @@ export function App() {
     'view.service': () => setPainelLateral('service'),
     // Passou a significar o que o nome diz: mostrar o painel naquela aba. Antes
     // este comando LIMPAVA a saída, o que ninguém adivinharia pelo rótulo.
+    'view.appearance': () => avisar(escolherTema()),
     'view.output': () => layout.mostrarPainel('output'),
     'view.problems': () => layout.mostrarPainel('problems'),
     'view.toggleSidebar': layout.alternarLateral,
@@ -620,6 +645,8 @@ export function App() {
     ws.active?.type !== 'terminal';
 
   return (
+    <ThemeProvider theme={temaMui}>
+    <CssBaseline />
     <Box
       sx={{
         height: '100%',
@@ -726,6 +753,7 @@ export function App() {
               fontSize={prefs.prefs['editor.fontSize']}
               tabSize={prefs.prefs['editor.tabSize']}
               wordWrap={prefs.prefs['editor.wordWrap']}
+              tema={tema}
             />
           </Box>
 
@@ -752,6 +780,7 @@ export function App() {
                 <TerminalHost
                   ativo={ws.activeId === t.id}
                   fontSize={prefs.prefs['terminal.fontSize']}
+                  tema={tema}
                   connectionId={
                     typeof t.meta.connectionId === 'string' ? t.meta.connectionId : null
                   }
@@ -845,6 +874,7 @@ export function App() {
                     <TerminalHost
                       ativo={terminais.ativo === t.id && layout.painelVisivel}
                       fontSize={prefs.prefs['terminal.fontSize']}
+                      tema={tema}
                     />
                   </Box>
                 ))}
@@ -889,5 +919,6 @@ export function App() {
       {dialogs.elemento}
       {menu.elemento}
     </Box>
+    </ThemeProvider>
   );
 }

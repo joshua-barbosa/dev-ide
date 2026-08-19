@@ -10,11 +10,12 @@
 // natureza, e reconciliar isso a cada render seria pior de todas as formas.
 import { useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
-import { Terminal } from '@xterm/xterm';
+import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { tokens } from '../theme';
 import { escapaDoTerminal, formatarAtalho } from '../../shared/commands';
+import { TEMAS, type NomeDoTema } from '../../shared/temas';
 
 export interface TerminalHostProps {
   /** Ausente = shell do usuário; presente = cliente daquela conexão. */
@@ -29,10 +30,29 @@ export interface TerminalHostProps {
   readonly onFim?: (exitCode: number) => void;
   /** Vem do arquivo de preferências (spec 011). */
   readonly fontSize?: number;
+  /**
+   * Tema (spec 017).
+   *
+   * O xterm pinta em canvas, então recebe a COR de verdade — variável CSS não
+   * chega lá. É o mesmo motivo pelo qual o Monaco recebe a paleta.
+   */
+  readonly tema?: NomeDoTema;
+}
+
+/**
+ * Cores do emulador. O fundo acompanha o do editor, para não haver emenda.
+ *
+ * A paleta ANSI vai junto: o shell colore o prompt e o `ls` supondo fundo
+ * escuro, e sobre branco o amarelo e o ciano padrão somem. Sem isso o tema
+ * claro entregaria um terminal com metade do texto invisível.
+ */
+function coresDoTerminal(nome: NomeDoTema): ITheme {
+  const p = TEMAS[nome];
+  return { background: p.bgEditor, foreground: p.fg, cursor: p.accent, ...p.ansi };
 }
 
 export function TerminalHost({
-  connectionId = null, ativo = true, onFim, fontSize = 13,
+  connectionId = null, ativo = true, onFim, fontSize = 13, tema = 'escuro',
 }: TerminalHostProps) {
   const caixa = useRef<HTMLDivElement>(null);
   const aoFim = useRef(onFim);
@@ -44,6 +64,8 @@ export function TerminalHost({
   tamanhoDaFonte.current = fontSize;
   const ativoAgora = useRef(ativo);
   ativoAgora.current = ativo;
+  const temaAtual = useRef(tema);
+  temaAtual.current = tema;
   const emUso = useRef<{
     term: Terminal;
     fit: FitAddon;
@@ -79,6 +101,13 @@ export function TerminalHost({
     }
   }, [fontSize]);
 
+  // Trocar de tema com o terminal aberto: `options.theme` repinta o buffer que
+  // já está na tela, sem remontar — e sem matar o processo.
+  useEffect(() => {
+    if (emUso.current === null) return;
+    emUso.current.term.options.theme = coresDoTerminal(tema);
+  }, [tema]);
+
   useEffect(() => {
     const alvo = caixa.current;
     if (alvo === null) return;
@@ -90,7 +119,7 @@ export function TerminalHost({
       // O buffer limita a memória quando um `cat` de arquivo grande despeja
       // tudo de uma vez; sem teto, a aba engoliria a máquina.
       scrollback: 5_000,
-      theme: { background: tokens.bgEditor },
+      theme: coresDoTerminal(temaAtual.current),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);

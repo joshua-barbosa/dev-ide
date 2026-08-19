@@ -26,6 +26,7 @@ import cssWorker from 'monaco-editor/language/css/css.worker?worker';
 import htmlWorker from 'monaco-editor/language/html/html.worker?worker';
 import { idDoMonaco } from '../../shared/editor/monaco-ids';
 import { tokens } from '../theme';
+import type { NomeDoTema } from '../../shared/temas';
 import { NOME_DO_TEMA, registrarTema } from './tema';
 
 // O caminho destes imports NÃO é o que a documentação sugere: o `exports` do
@@ -41,7 +42,8 @@ self.MonacoEnvironment = {
   },
 };
 
-registrarTema();
+/** Temas já definidos no Monaco, para não redefinir a cada render. */
+const registrado = new Set<NomeDoTema>();
 
 /** Cursor e rolagem, guardados por aba para voltar onde estava. */
 export interface ViewState {
@@ -72,10 +74,12 @@ export interface EditorHostProps {
   readonly fontSize: number;
   readonly tabSize: number;
   readonly wordWrap: boolean;
+  /** Tema (spec 017). Re-registrar repinta o editor sem remontá-lo. */
+  readonly tema: NomeDoTema;
 }
 
 export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function EditorHost(
-  { onChange, onCursor, fontSize, tabSize, wordWrap },
+  { onChange, onCursor, fontSize, tabSize, wordWrap, tema },
   ref
 ) {
   const caixa = useRef<HTMLDivElement>(null);
@@ -86,6 +90,15 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
   const aoMoverCursor = useRef(onCursor);
   aoMudar.current = onChange;
   aoMoverCursor.current = onCursor;
+
+  // O tema precisa existir ANTES do primeiro `create`, senão o editor nasce com
+  // o `vs-dark` padrão e só repinta no efeito seguinte — um piscar visível.
+  const temaAtual = useRef(tema);
+  temaAtual.current = tema;
+  if (!registrado.has(tema)) {
+    registrarTema(tema);
+    registrado.add(tema);
+  }
 
   useEffect(() => {
     if (caixa.current === null) return;
@@ -127,6 +140,13 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     // e depois são aplicados pelo efeito abaixo. Colocá-los aqui recriaria o
     // editor a cada mudança de fonte, jogando fora histórico e rolagem.
   }, []);
+
+  // Trocar de tema: re-registrar a definição com o mesmo nome faz o Monaco
+  // repintar os editores que já a usam — sem remontar, sem perder histórico.
+  useEffect(() => {
+    registrarTema(tema);
+    monaco.editor.setTheme(NOME_DO_TEMA);
+  }, [tema]);
 
   // Aparência sem remontar: `updateOptions` é o caminho que o Monaco oferece
   // justamente para isso.

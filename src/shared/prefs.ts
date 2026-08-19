@@ -49,6 +49,7 @@ export const ESQUEMA = {
   },
   'editor.autoSaveDelay': { padrao: 1_000, tipo: 'inteiro', min: 200, max: 60_000 },
   'terminal.fontSize': { padrao: 13, tipo: 'inteiro', min: 8, max: 40 },
+  'workbench.theme': { padrao: 'escuro', tipo: 'opcao', opcoes: ['escuro', 'claro'] },
   'vault.rememberDays': { padrao: 15, tipo: 'inteiro', min: 1, max: 365 },
 } as const satisfies Record<string, Regra>;
 

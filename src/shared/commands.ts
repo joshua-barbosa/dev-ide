@@ -127,7 +127,7 @@ const DECLARADOS = [
   { id: 'view.problems', label: 'Problems', menu: 'view', group: 3, keybinding: 'Ctrl+Shift+M' },
   { id: 'view.toggleSidebar', label: 'Toggle Primary Side Bar', menu: 'view', group: 3, keybinding: 'Ctrl+B' },
   { id: 'view.togglePanel', label: 'Toggle Panel', menu: 'view', group: 3, keybinding: 'Ctrl+J' },
-  { id: 'view.appearance', label: 'Appearance', menu: 'view', group: 4, pending: true },
+  { id: 'view.appearance', label: 'Appearance', menu: 'view', group: 4 },
   { id: 'view.wordWrap', label: 'Word Wrap', menu: 'view', group: 4, keybinding: 'Alt+Z' },
 
   // ---- Go ----
