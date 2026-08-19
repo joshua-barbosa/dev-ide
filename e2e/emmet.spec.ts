@@ -49,8 +49,12 @@ test('multiplicação e classe: div.card*2', async ({ page }) => {
   await expect(page.locator('.suggest-widget')).toBeVisible({ timeout: 10_000 });
   await page.keyboard.press('Tab');
 
-  const texto = await textoDoEditor(page);
-  expect(texto.match(/class="card"/g)?.length).toBe(2);
+  // `poll`, e não leitura direta: o Monaco aplica a expansão fora do turno em
+  // que a tecla é despachada. Ler na hora dava `undefined` de vez em quando — e
+  // falha intermitente ensina a ignorar vermelho.
+  await expect
+    .poll(async () => (await textoDoEditor(page)).match(/class="card"/g)?.length ?? 0)
+    .toBe(2);
 });
 
 test('em TypeScript o Emmet NÃO se mete', async ({ page }) => {
