@@ -14,7 +14,7 @@ import {
   buscarNoConteudo, montarRegex, substituirNoConteudo,
   type ArquivoComOcorrencias, type OpcoesDeBusca,
 } from '../shared/busca';
-import { arquivosDaArvore, arvoreDaPasta } from './pastas';
+import { varrerArquivos } from './pastas';
 
 /** Arquivo maior que isto não é código: é dado, e varrer não ajuda ninguém. */
 export const MAX_BYTES_POR_ARQUIVO = 2 * 1024 * 1024;
@@ -65,16 +65,17 @@ export function buscarNaPasta(
   const regex = montarRegex(termo, opcoes);
   if (regex === null) return VAZIO;
 
-  const { nodes } = arvoreDaPasta(pasta);
-  const caminhos = arquivosDaArvore(nodes);
+  // Varredura com as regras de `.gitignore`: procurar dentro de `node_modules`
+  // devolve milhares de acertos que ninguém quer ler.
+  const { arquivos: caminhos, truncated } = varrerArquivos(pasta, { max: MAX_ARQUIVOS });
   const limite = Date.now() + MAX_MS;
 
   const arquivos: ArquivoComOcorrencias[] = [];
   let total = 0;
   let visitados = 0;
-  let truncado = caminhos.length > MAX_ARQUIVOS;
+  let truncado = truncated;
 
-  for (const caminho of caminhos.slice(0, MAX_ARQUIVOS)) {
+  for (const caminho of caminhos) {
     if (Date.now() > limite || total >= MAX_OCORRENCIAS) {
       truncado = true;
       break;

@@ -3,9 +3,10 @@
 // Puramente de apresentação — o estado vive em `usePasta`, porque a árvore, os
 // símbolos e o botão de criar arquivo compartilham a mesma verdade.
 //
-// Não há carregamento preguiçoso aqui: o servidor devolve a árvore inteira de
-// uma vez, diferente da árvore de conexões, onde cada nível custa uma consulta
-// ao banco. O que existe é **teto** — ver o aviso de árvore cortada.
+// **Carrega um nível por vez** (spec 034), como a árvore de conexões — cada `>`
+// clicado vira uma chamada ao servidor. Antes vinha tudo de uma vez, com teto
+// global de nós, e uma `.venv` gastava o teto sozinha: a árvore chegava cortada
+// e o conserto de então foi esconder pastas, o que era pior que o defeito.
 import { useCallback, useState } from 'react';
 import {
   ICONE_DE_PASTA, ICONE_DE_PASTA_ABERTA, iconeDeArquivo,
@@ -33,15 +34,36 @@ export function FilesPanel({
   pasta, onAbrirArquivo, caminhoAtivo, onAbrirPasta, onErro,
 }: FilesPanelProps) {
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
+  /** Pastas cujo conteúdo está sendo pedido agora — a linha mostra "…". */
+  const [carregando, setCarregando] = useState<ReadonlySet<string>>(new Set());
 
-  const alternar = useCallback((caminho: string) => {
-    setAbertas((atual) => {
-      const proximo = new Set(atual);
-      if (proximo.has(caminho)) proximo.delete(caminho);
-      else proximo.add(caminho);
-      return proximo;
-    });
-  }, []);
+  const alternar = useCallback(
+    (no: FileNode) => {
+      setAbertas((atual) => {
+        const proximo = new Set(atual);
+        if (proximo.has(no.path)) proximo.delete(no.path);
+        else proximo.add(no.path);
+        return proximo;
+      });
+
+      // `children` ausente é "ainda não carregada". Lista vazia é "carregada e
+      // vazia" — só a primeira pede ao servidor, e é por isso que as duas não
+      // podem ser a mesma coisa.
+      if (no.children !== undefined) return;
+      setCarregando((atual) => new Set(atual).add(no.path));
+      pasta
+        .carregarFilhos(no.path)
+        .catch(onErro)
+        .finally(() =>
+          setCarregando((atual) => {
+            const proximo = new Set(atual);
+            proximo.delete(no.path);
+            return proximo;
+          })
+        );
+    },
+    [onErro, pasta]
+  );
 
   const abrir = useCallback(
     (caminho: string) => {
@@ -66,7 +88,7 @@ export function FilesPanel({
             expansivel={no.type === 'dir'}
             aberto={aberta}
             ativo={no.path === caminhoAtivo}
-            onClick={() => (no.type === 'dir' ? alternar(no.path) : abrir(no.path))}
+            onClick={() => (no.type === 'dir' ? alternar(no) : abrir(no.path))}
             aoArrastar={
               no.type === 'dir'
                 ? undefined
@@ -79,7 +101,19 @@ export function FilesPanel({
                   }
             }
           />
-          {no.type === 'dir' && aberta && renderizar(no.children ?? [], nivel + 1)}
+          {no.type === 'dir' && aberta && no.children !== undefined
+            ? renderizar(no.children, nivel + 1)
+            : null}
+          {no.type === 'dir' && aberta && carregando.has(no.path) ? (
+            <Box
+              sx={{
+                pl: `${(nivel + 1) * 12 + 20}px`, py: 0.2,
+                color: 'text.secondary', fontSize: 11,
+              }}
+            >
+              …
+            </Box>
+          ) : null}
         </Box>
       );
     });
@@ -129,13 +163,14 @@ export function FilesPanel({
       </Box>
 
       {pasta.truncada && (
-        // Árvore cortada em silêncio parece pasta vazia pela metade. Dizer é o
-        // mínimo — e é o que o teto de nós comprou.
+        // Desde a spec 034 isto é raro: o teto passou a ser por PASTA, e só
+        // dispara num diretório com mais de 5.000 entradas. Continua sendo dito
+        // porque lista cortada em silêncio parece pasta que acabou.
         <Box
           data-arvore-truncada
           sx={{ px: 1.25, pb: 0.5, color: 'warning.main', fontSize: 10, lineHeight: 1.4 }}
         >
-          Pasta grande: a árvore foi cortada. Abra uma subpasta para ver o resto.
+          Esta pasta tem entradas demais para listar por inteiro.
         </Box>
       )}
 

@@ -214,6 +214,12 @@ export const Api = {
       caminho === undefined ? '/api/folders' : `/api/folders?path=${encodeURIComponent(caminho)}`
     ),
   workspace: () => request<RetratoDoEspaco>('GET', '/api/workspace'),
+  /** Os filhos de uma pasta do projeto — a árvore carrega um nível por vez. */
+  fileChildren: (caminho: string) =>
+    request<{ nodes: FileNode[]; truncated: boolean }>(
+      'GET',
+      `/api/files/children?path=${encodeURIComponent(caminho)}`
+    ),
   docs: () => request<{ path: string }>('GET', '/api/docs'),
   openFolder: (path: string) => request<RetratoDoEspaco>('POST', '/api/workspace', { path }),
   closeFolder: () => request<RetratoDoEspaco>('DELETE', '/api/workspace'),

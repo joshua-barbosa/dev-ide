@@ -31,9 +31,32 @@ export interface PastaAberta {
   fechar(): Promise<void>;
   esquecer(caminho: string): Promise<void>;
   recarregar(): Promise<void>;
+  /** Pede ao servidor os filhos de uma pasta e os põe na árvore. */
+  carregarFilhos(caminho: string): Promise<void>;
   criarProjeto(nome: string): Promise<void>;
   /** Devolve o caminho do arquivo criado; deixa o erro subir para a retentativa. */
   criarArquivo(nome: string, conteudo: string): Promise<string>;
+}
+
+/**
+ * Devolve a árvore com os filhos de `alvo` preenchidos.
+ *
+ * Imutável de ponta a ponta: só o ramo que muda é recriado, e o resto é
+ * reaproveitado — é o que evita o React redesenhar a árvore inteira a cada
+ * pasta aberta.
+ */
+function enxertar(
+  nos: readonly FileNode[],
+  alvo: string,
+  filhos: readonly FileNode[]
+): readonly FileNode[] {
+  return nos.map((no) => {
+    if (no.path === alvo) return { ...no, children: filhos };
+    // Só desce pelo ramo que contém o alvo.
+    if (no.type !== 'dir' || no.children === undefined) return no;
+    if (!alvo.startsWith(`${no.path}/`)) return no;
+    return { ...no, children: enxertar(no.children, alvo, filhos) };
+  });
 }
 
 export function usePasta(): PastaAberta {
@@ -47,6 +70,19 @@ export function usePasta(): PastaAberta {
 
   const recarregar = useCallback(async () => {
     setRetrato(await Api.workspace());
+  }, []);
+
+  /**
+   * Carrega os filhos de uma pasta e os enxerta na árvore (spec 034).
+   *
+   * A árvore vem um nível por vez: `children` ausente é "ainda não carregada",
+   * e é o que faz este pedido acontecer quando o usuário clica no `>`. Uma
+   * lista vazia é "carregada e vazia" — pasta sem nada dentro —, e por isso as
+   * duas não podem ser a mesma coisa.
+   */
+  const carregarFilhos = useCallback(async (caminho: string): Promise<void> => {
+    const { nodes } = await Api.fileChildren(caminho);
+    setRetrato((atual) => ({ ...atual, arvore: enxertar(atual.arvore, caminho, nodes) }));
   }, []);
 
   useEffect(() => {
@@ -101,6 +137,7 @@ export function usePasta(): PastaAberta {
     fechar,
     esquecer,
     recarregar,
+    carregarFilhos,
     criarProjeto,
     criarArquivo,
   };

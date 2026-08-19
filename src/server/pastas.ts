@@ -11,6 +11,7 @@
 // linhas dos drivers.
 import * as fs from 'fs';
 import * as path from 'path';
+import { ignorado, lerRegras, REGRAS_PADRAO, type Regra } from '../shared/gitignore';
 
 export interface FileNode {
   name: string;
@@ -38,27 +39,26 @@ export interface ListagemDePastas {
 }
 
 /**
- * O que a árvore não mostra.
+ * Quantas entradas de UMA pasta a árvore devolve.
  *
- * **Não é "oculto"**: é o que tem milhares de nós e ninguém edita. Gastariam o
- * teto de `MAX_NOS` antes de o código do projeto aparecer. Arquivo oculto de
- * verdade — `.gitignore`, `.env`, `.vscode/` — APARECE: dentro de um projeto,
- * oculto é arquivo que se edita, e escondê-lo foi um defeito reportado pelo
- * usuário em 2026-08-19.
+ * Não é o antigo teto da árvore inteira — esse deixou de existir quando a
+ * árvore passou a carregar um nível por vez (spec 034). É proteção contra a
+ * pasta patológica: um diretório com 200 mil arquivos trava a rolagem do
+ * navegador, e não há como ler 200 mil nomes de qualquer jeito.
  */
-const IGNORADAS = new Set([
-  // JavaScript
-  'node_modules', 'dist', '.next', '.nuxt', '.svelte-kit', '.turbo', '.parcel-cache',
-  // Python — `.venv` sozinha tem milhares de arquivos e comia o teto INTEIRO,
-  // deixando a árvore com seis entradas. Foi o que apareceu ao mostrar ocultos.
-  '.venv', 'venv', '__pycache__', '.mypy_cache', '.pytest_cache', '.ruff_cache', '.tox',
-  // PHP e Rust
-  'vendor', 'target',
-  // Controle de versão e a própria IDE
-  '.git', '.hg', '.svn', '.runs',
-]);
-export const MAX_NOS = 5_000;
+export const MAX_ENTRADAS = 5_000;
+
+/** Até onde uma varredura desce. Ciclo de link simbólico não vira laço eterno. */
 export const MAX_PROFUNDIDADE = 12;
+
+/**
+ * Teto de arquivos numa varredura.
+ *
+ * Com o `.gitignore` respeitado, um projeto normal fica bem abaixo. O teto
+ * existe para o caso anormal — e para DIZER que ficou cortado, em vez de fingir
+ * que acabou.
+ */
+export const MAX_ARQUIVOS_VARRIDOS = 20_000;
 
 /** Recusa o que não é pasta existente, com mensagem que diz o caminho. */
 export function pastaValida(bruto: string): string {
@@ -91,43 +91,105 @@ export function listarSubpastas(alvo: string): ListagemDePastas {
   return { path: alvo, parent: pai === alvo ? null : pai, dirs };
 }
 
-/** Árvore de arquivos da pasta, com teto de nós e de profundidade. */
-export function arvoreDaPasta(alvo: string): ArvoreDaPasta {
-  let restantes = MAX_NOS;
+/**
+ * O conteúdo de UMA pasta, sem descer.
+ *
+ * **Mostra tudo que existe no disco**, inclusive `.venv`, `vendor` e
+ * `node_modules`. Esconder pasta é mentir sobre o projeto — e era o que a
+ * versão anterior fazia, por um motivo que deixou de existir: ela lia a árvore
+ * INTEIRA de uma vez, então uma `.venv` gastava o teto de nós e a árvore
+ * chegava truncada. Lendo um nível por vez, pasta grande custa exatamente o que
+ * custa abrir pasta grande: nada, até alguém abrir.
+ *
+ * O que **não** se varre continua governado por `.gitignore` — mas isso é a
+ * busca e a indexação, e não o que aparece na tela. Ver `shared/gitignore.ts`.
+ */
+export function filhosDaPasta(dir: string): { nodes: FileNode[]; truncated: boolean } {
+  let entradas: fs.Dirent[];
+  try {
+    entradas = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    // Pasta sem permissão de leitura: vazia em vez de derrubar o painel.
+    return { nodes: [], truncated: false };
+  }
 
-  const ler = (dir: string, profundidade: number): FileNode[] => {
-    if (profundidade > MAX_PROFUNDIDADE) return [];
+  const nodes: FileNode[] = [];
+  for (const entrada of entradas) {
+    if (nodes.length >= MAX_ENTRADAS) break;
+    const full = path.join(dir, entrada.name);
+    if (entrada.isDirectory()) {
+      // `children` ausente significa "ainda não carregada" para a interface —
+      // diferente de `[]`, que significa "carregada e vazia".
+      nodes.push({ name: entrada.name, path: full, type: 'dir' });
+    } else if (entrada.isFile()) {
+      nodes.push({ name: entrada.name, path: full, type: 'file' });
+    }
+  }
+  nodes.sort((a, b) =>
+    a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1
+  );
+  return { nodes, truncated: entradas.length > MAX_ENTRADAS };
+}
+
+/**
+ * Varre a pasta inteira, aplicando as regras de `.gitignore`.
+ *
+ * É o outro lado da moeda: quem MOSTRA não filtra, quem VARRE filtra. Busca,
+ * símbolos e serviço de linguagem passam por aqui, e nenhum deles tem o que
+ * fazer dentro de `node_modules`.
+ *
+ * Lê o `.gitignore` de cada pasta pelo caminho, como o git faz — um monorepo
+ * tem um por pacote.
+ */
+export function varrerArquivos(
+  raiz: string,
+  opcoes: { readonly extensoes?: ReadonlySet<string>; readonly max?: number } = {}
+): { arquivos: string[]; truncated: boolean } {
+  const max = opcoes.max ?? MAX_ARQUIVOS_VARRIDOS;
+  const arquivos: string[] = [];
+  let truncated = false;
+
+  const andar = (dir: string, profundidade: number, herdadas: readonly Regra[]): void => {
+    if (profundidade > MAX_PROFUNDIDADE || truncated) return;
+
     let entradas: fs.Dirent[];
     try {
       entradas = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
-      // Pasta sem permissão de leitura: some da árvore em vez de derrubá-la.
-      return [];
+      return;
     }
 
-    const nodes: FileNode[] = [];
-    for (const entrada of entradas) {
-      if (restantes <= 0) break;
-      if (IGNORADAS.has(entrada.name)) continue;
-      const full = path.join(dir, entrada.name);
-      restantes -= 1;
-      if (entrada.isDirectory()) {
-        nodes.push({
-          name: entrada.name, path: full, type: 'dir',
-          children: ler(full, profundidade + 1),
-        });
-      } else if (entrada.isFile()) {
-        nodes.push({ name: entrada.name, path: full, type: 'file' });
+    // O `.gitignore` desta pasta vale para ela e para as de baixo.
+    let regras = herdadas;
+    const proprio = path.join(dir, '.gitignore');
+    if (entradas.some((e) => e.name === '.gitignore' && e.isFile())) {
+      try {
+        regras = [...herdadas, ...lerRegras(fs.readFileSync(proprio, 'utf8'))];
+      } catch {
+        // Ilegível: segue com as herdadas.
       }
     }
-    nodes.sort((a, b) =>
-      a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1
-    );
-    return nodes;
+
+    for (const entrada of entradas) {
+      if (arquivos.length >= max) {
+        truncated = true;
+        return;
+      }
+      const full = path.join(dir, entrada.name);
+      const relativo = path.relative(raiz, full).split(path.sep).join('/');
+      if (ignorado(relativo, entrada.isDirectory(), regras)) continue;
+
+      if (entrada.isDirectory()) andar(full, profundidade + 1, regras);
+      else if (entrada.isFile()) {
+        if (opcoes.extensoes === undefined || opcoes.extensoes.has(path.extname(entrada.name))) {
+          arquivos.push(full);
+        }
+      }
+    }
   };
 
-  const nodes = ler(alvo, 0);
-  return { nodes, truncated: restantes <= 0 };
+  andar(raiz, 0, REGRAS_PADRAO);
+  return { arquivos, truncated };
 }
 
 /** Caminhos dos arquivos da árvore, opcionalmente filtrados por extensão. */

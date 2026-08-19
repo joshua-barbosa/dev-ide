@@ -4,8 +4,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
-  arquivosDaArvore, arvoreDaPasta, dentroDaPasta, listarSubpastas, MAX_NOS, MAX_PROFUNDIDADE,
-  pastaValida,
+  dentroDaPasta, filhosDaPasta, listarSubpastas, MAX_ENTRADAS, MAX_PROFUNDIDADE,
+  pastaValida, varrerArquivos,
 } from '../pastas';
 
 function comPasta(fn: (raiz: string) => void): void {
@@ -62,42 +62,53 @@ test('a raiz do sistema de arquivos não tem pai', () => {
   assert.equal(listarSubpastas('/').parent, null);
 });
 
-// ---- árvore ----
+// ---- árvore (um nível por vez, spec 034) ----
 
 test('a árvore MOSTRA os ocultos — eles são arquivo de trabalho', () => {
   comPasta((raiz) => {
-    // O usuário reportou em 2026-08-19: `.gitignore`, `.env`, `.cursorignore`,
-    // `.claude`, `.cursor` e `.vscode` sumiam da árvore. O filtro por ponto
-    // inicial veio junto do navegador de PASTAS, onde ele faz sentido (`.cache`
-    // e `.local` no `$HOME` são ruído). Dentro de um projeto é o contrário:
-    // arquivo oculto ali é arquivo que se edita.
+    // Reportado pelo usuário em 2026-08-19: `.gitignore`, `.env`, `.claude` e
+    // `.vscode` sumiam. O filtro por ponto inicial veio do navegador de PASTAS,
+    // onde faz sentido; dentro de um projeto, oculto é arquivo que se edita.
     fs.writeFileSync(path.join(raiz, '.gitignore'), '');
     fs.writeFileSync(path.join(raiz, '.env'), '');
     fs.mkdirSync(path.join(raiz, '.vscode'));
-    fs.writeFileSync(path.join(raiz, '.vscode', 'settings.json'), '');
     fs.writeFileSync(path.join(raiz, 'a.ts'), '');
 
-    const nomes = arvoreDaPasta(raiz).nodes.map((n) => n.name);
+    const nomes = filhosDaPasta(raiz).nodes.map((n) => n.name);
     assert.deepEqual(nomes, ['.vscode', '.env', '.gitignore', 'a.ts']);
-    const vscode = arvoreDaPasta(raiz).nodes.find((n) => n.name === '.vscode');
-    assert.deepEqual(vscode?.children?.map((c) => c.name), ['settings.json']);
   });
 });
 
-test('a árvore continua ignorando o que é máquina, não trabalho', () => {
+test('a árvore mostra TAMBÉM as pastas de dependência', () => {
+  // A versão anterior as escondia, e escondê-las era mentir sobre o projeto:
+  // num projeto Laravel, `vendor` existe e o usuário sabe disso. O que resolveu
+  // não foi mostrar menos — foi parar de ler a árvore inteira de uma vez.
   comPasta((raiz) => {
-    // Estas quatro não são escondidas por serem ocultas: são milhares de nós
-    // que ninguém edita, e que gastariam o teto de MAX_NOS antes do código.
-    for (const nome of ['node_modules', '.git', 'dist', '.runs', '.venv', '__pycache__',
-                        'vendor', 'target', '.mypy_cache', '.next']) {
+    for (const nome of ['node_modules', '.venv', 'vendor', 'dist', '.git']) {
       fs.mkdirSync(path.join(raiz, nome));
       fs.writeFileSync(path.join(raiz, nome, 'x.js'), '');
     }
     fs.writeFileSync(path.join(raiz, 'a.ts'), '');
 
-    const { nodes, truncated } = arvoreDaPasta(raiz);
-    assert.deepEqual(nodes.map((n) => n.name), ['a.ts']);
-    assert.equal(truncated, false);
+    const nomes = filhosDaPasta(raiz).nodes.map((n) => n.name);
+    assert.deepEqual(nomes, ['.git', '.venv', 'dist', 'node_modules', 'vendor', 'a.ts']);
+  });
+});
+
+test('a árvore NÃO desce sozinha: pasta vem sem filhos', () => {
+  // É o coração da mudança. `children` ausente significa "ainda não carregada";
+  // uma lista vazia significaria "carregada e vazia", e a interface precisa
+  // distinguir as duas para saber quando pedir.
+  comPasta((raiz) => {
+    fs.mkdirSync(path.join(raiz, 'sub'));
+    fs.writeFileSync(path.join(raiz, 'sub', 'fundo.ts'), '');
+
+    const sub = filhosDaPasta(raiz).nodes[0];
+    assert.equal(sub?.name, 'sub');
+    assert.equal(sub?.children, undefined);
+
+    // E o nível de baixo chega quando é pedido.
+    assert.deepEqual(filhosDaPasta(sub!.path).nodes.map((n) => n.name), ['fundo.ts']);
   });
 });
 
@@ -105,11 +116,82 @@ test('pasta antes de arquivo, e cada grupo em ordem alfabética', () => {
   comPasta((raiz) => {
     fs.writeFileSync(path.join(raiz, 'a.ts'), '');
     fs.mkdirSync(path.join(raiz, 'zeta'));
-    assert.deepEqual(arvoreDaPasta(raiz).nodes.map((n) => n.name), ['zeta', 'a.ts']);
+    assert.deepEqual(filhosDaPasta(raiz).nodes.map((n) => n.name), ['zeta', 'a.ts']);
   });
 });
 
-test('a profundidade tem teto — pasta muito aninhada para de descer', () => {
+test('uma pasta com entradas demais é cortada, e avisa', () => {
+  comPasta((raiz) => {
+    for (let i = 0; i < MAX_ENTRADAS + 1; i += 1) {
+      fs.writeFileSync(path.join(raiz, `a${i}.txt`), '');
+    }
+    const { nodes, truncated } = filhosDaPasta(raiz);
+    assert.equal(nodes.length, MAX_ENTRADAS);
+    assert.equal(truncated, true);
+  });
+});
+
+test('pasta sem permissão de leitura vem vazia em vez de derrubar o painel', () => {
+  comPasta((raiz) => {
+    const proibida = path.join(raiz, 'proibida');
+    fs.mkdirSync(proibida);
+    fs.writeFileSync(path.join(proibida, 'x.txt'), '');
+    fs.chmodSync(proibida, 0o000);
+    try {
+      assert.deepEqual(filhosDaPasta(raiz).nodes.map((n) => n.name), ['proibida']);
+      assert.deepEqual(filhosDaPasta(proibida).nodes, []);
+    } finally {
+      fs.chmodSync(proibida, 0o700);
+    }
+  });
+});
+
+// ---- varredura (o outro lado: quem indexa, filtra) ----
+
+test('a varredura PULA o que a árvore mostra', () => {
+  comPasta((raiz) => {
+    fs.mkdirSync(path.join(raiz, 'node_modules'));
+    fs.writeFileSync(path.join(raiz, 'node_modules', 'dep.ts'), '');
+    fs.mkdirSync(path.join(raiz, '.venv'));
+    fs.writeFileSync(path.join(raiz, '.venv', 'lib.py'), '');
+    fs.writeFileSync(path.join(raiz, 'a.ts'), '');
+
+    const { arquivos } = varrerArquivos(raiz);
+    assert.deepEqual(arquivos.map((c) => path.basename(c)), ['a.ts']);
+  });
+});
+
+test('a varredura obedece ao .gitignore do projeto', () => {
+  comPasta((raiz) => {
+    fs.writeFileSync(path.join(raiz, '.gitignore'), 'segredos/\n*.log\n!importante.log\n');
+    fs.mkdirSync(path.join(raiz, 'segredos'));
+    fs.writeFileSync(path.join(raiz, 'segredos', 'chave.txt'), '');
+    fs.writeFileSync(path.join(raiz, 'ruido.log'), '');
+    fs.writeFileSync(path.join(raiz, 'importante.log'), '');
+    fs.writeFileSync(path.join(raiz, 'a.ts'), '');
+
+    const nomes = varrerArquivos(raiz).arquivos.map((c) => path.basename(c)).sort();
+    assert.deepEqual(nomes, ['.gitignore', 'a.ts', 'importante.log']);
+  });
+});
+
+test('o .gitignore de uma SUBPASTA vale para ela, e não para as irmãs', () => {
+  // É o caso do monorepo: um `.gitignore` por pacote.
+  comPasta((raiz) => {
+    for (const pacote of ['api', 'web']) {
+      fs.mkdirSync(path.join(raiz, pacote));
+      fs.writeFileSync(path.join(raiz, pacote, 'gerado.ts'), '');
+    }
+    fs.writeFileSync(path.join(raiz, 'api', '.gitignore'), 'gerado.ts\n');
+
+    const nomes = varrerArquivos(raiz, { extensoes: new Set(['.ts']) }).arquivos
+      .map((c) => path.relative(raiz, c))
+      .sort();
+    assert.deepEqual(nomes, ['web/gerado.ts']);
+  });
+});
+
+test('a varredura tem teto de profundidade', () => {
   comPasta((raiz) => {
     let atual = raiz;
     for (let i = 0; i <= MAX_PROFUNDIDADE + 2; i += 1) {
@@ -117,58 +199,31 @@ test('a profundidade tem teto — pasta muito aninhada para de descer', () => {
       fs.mkdirSync(atual);
     }
     fs.writeFileSync(path.join(atual, 'fundo.txt'), '');
-
-    // Sem teto isto desceria até o fim; a afirmação é que NÃO desce.
-    const caminhos = arquivosDaArvore(arvoreDaPasta(raiz).nodes);
-    assert.equal(caminhos.length, 0, 'o arquivo no fundo não pode aparecer');
+    assert.equal(varrerArquivos(raiz).arquivos.length, 0, 'o arquivo no fundo não aparece');
   });
 });
 
-test('o número de nós tem teto, e a árvore avisa que cortou', () => {
+test('a varredura tem teto de arquivos, e avisa que cortou', () => {
   comPasta((raiz) => {
-    // Um a mais que o teto: o corte precisa acontecer de verdade.
-    for (let i = 0; i < MAX_NOS + 1; i += 1) {
-      fs.writeFileSync(path.join(raiz, `a${i}.txt`), '');
-    }
-    const arvore = arvoreDaPasta(raiz);
-    assert.equal(arvore.truncated, true);
-    assert.equal(arvore.nodes.length, MAX_NOS);
+    for (let i = 0; i < 12; i += 1) fs.writeFileSync(path.join(raiz, `a${i}.txt`), '');
+    const { arquivos, truncated } = varrerArquivos(raiz, { max: 5 });
+    assert.equal(arquivos.length, 5);
+    assert.equal(truncated, true);
   });
 });
 
-test('pasta sem permissão de leitura some da árvore em vez de derrubá-la', () => {
-  comPasta((raiz) => {
-    const proibida = path.join(raiz, 'proibida');
-    fs.mkdirSync(proibida);
-    fs.writeFileSync(path.join(proibida, 'x.txt'), '');
-    fs.chmodSync(proibida, 0o000);
-    try {
-      const nos = arvoreDaPasta(raiz).nodes;
-      assert.deepEqual(nos.map((n) => n.name), ['proibida']);
-      assert.deepEqual(nos[0]?.children, []);
-    } finally {
-      fs.chmodSync(proibida, 0o700);
-    }
-  });
-});
-
-test('arquivosDaArvore filtra por extensão', () => {
+test('a varredura filtra por extensão', () => {
   comPasta((raiz) => {
     fs.mkdirSync(path.join(raiz, 'sub'));
     fs.writeFileSync(path.join(raiz, 'a.ts'), '');
     fs.writeFileSync(path.join(raiz, 'sub', 'b.py'), '');
     fs.writeFileSync(path.join(raiz, 'sub', 'c.txt'), '');
-
-    const { nodes } = arvoreDaPasta(raiz);
-    assert.equal(arquivosDaArvore(nodes).length, 3);
-    assert.deepEqual(
-      arquivosDaArvore(nodes, new Set(['.ts', '.py'])).map((c) => path.basename(c)).sort(),
-      ['a.ts', 'b.py']
-    );
+    const nomes = varrerArquivos(raiz, { extensoes: new Set(['.ts', '.py']) }).arquivos
+      .map((c) => path.basename(c))
+      .sort();
+    assert.deepEqual(nomes, ['a.ts', 'b.py']);
   });
 });
-
-// ---- contenção ----
 
 test('dentroDaPasta recusa caminho que escapa', () => {
   comPasta((raiz) => {

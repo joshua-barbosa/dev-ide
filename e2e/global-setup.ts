@@ -71,6 +71,20 @@ export default async function globalSetup(): Promise<void> {
     'SELECT id, nome FROM alunos;\n'
   );
 
+  // Uma subpasta com um `node_modules` dentro, para a árvore preguiçosa e a
+  // varredura com `.gitignore` (spec 034) terem o que provar: a pasta de
+  // dependência APARECE na árvore e NÃO entra na busca.
+  fs.mkdirSync(path.join(dados, 'projects', 'demo', 'sub'));
+  fs.writeFileSync(
+    path.join(dados, 'projects', 'demo', 'sub', 'dentro.txt'),
+    'ZORBAXDEPENDENCIA aqui dentro\n'
+  );
+  fs.mkdirSync(path.join(dados, 'projects', 'demo', 'node_modules'));
+  fs.writeFileSync(
+    path.join(dados, 'projects', 'demo', 'node_modules', 'dep.js'),
+    'ZORBAXDEPENDENCIA na dependencia\n'
+  );
+
   // Dois arquivos que se referenciam, para a navegação por código (spec 032)
   // ter o que atravessar. Sem um par assim, "ir para a definição" só provaria
   // o caso trivial de saltar dentro do próprio arquivo.

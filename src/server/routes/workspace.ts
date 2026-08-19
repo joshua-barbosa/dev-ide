@@ -16,7 +16,7 @@ import * as path from 'path';
 import { requireString, wrap } from '../http/handlers';
 import { EXTENSOES_DE_SIMBOLO, extractSymbols, type SymbolInfo } from '../symbols';
 import {
-  arquivosDaArvore, arvoreDaPasta, dentroDaPasta, listarSubpastas, pastaValida,
+  dentroDaPasta, filhosDaPasta, listarSubpastas, pastaValida, varrerArquivos,
   type FileNode,
 } from '../pastas';
 import type { EstadoStore } from '../estado';
@@ -58,9 +58,10 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
       return { ...VAZIO, recentes: limpo.recentes };
     }
 
-    const { nodes, truncated } = arvoreDaPasta(pasta);
+    // Só o primeiro nível: o resto chega quando o usuário abrir a pasta.
+    const { nodes, truncated } = filhosDaPasta(pasta);
     const simbolos: SymbolInfo[] = [];
-    for (const arquivo of arquivosDaArvore(nodes, EXTENSOES_DE_SIMBOLO)) {
+    for (const arquivo of varrerArquivos(pasta, { extensoes: EXTENSOES_DE_SIMBOLO }).arquivos) {
       try {
         simbolos.push(...extractSymbols(arquivo, fs.readFileSync(arquivo, 'utf8')));
       } catch {
@@ -69,6 +70,22 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
     }
     return { pasta, recentes: atual.recentes, arvore: nodes, simbolos, truncated };
   };
+
+  /**
+   * Os filhos de UMA pasta do projeto (spec 034).
+   *
+   * A árvore carrega um nível por vez, então cada `>` clicado vira uma chamada
+   * aqui. O caminho vem do cliente e é conferido contra a pasta aberta — ler
+   * fora dela seria expor o disco inteiro por uma URL.
+   */
+  router.get('/files/children', wrap((req, res) => {
+    const atual = estado.ler().pastaAtual;
+    if (atual === null) throw new Error('Nenhuma pasta aberta.');
+    const raiz = pastaValida(atual);
+    const bruto = typeof req.query.path === 'string' ? req.query.path : '';
+    const alvo = bruto === '' ? raiz : dentroDaPasta(raiz, bruto);
+    res.json({ success: true, data: filhosDaPasta(pastaValida(alvo)), error: null });
+  }));
 
   /** Navegador de pastas. Sem `path`, começa na pasta pessoal do usuário. */
   router.get('/folders', wrap((req, res) => {

@@ -12,7 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import ts from 'typescript';
-import { arquivosDaArvore, arvoreDaPasta } from './pastas';
+import { varrerArquivos } from './pastas';
 
 /** Um lugar no código: onde algo foi definido, ou onde é usado. */
 export interface Alvo {
@@ -49,8 +49,7 @@ interface Servico {
 const porPasta = new Map<string, Servico>();
 
 function listarArquivos(pasta: string): string[] {
-  const { nodes } = arvoreDaPasta(pasta);
-  return arquivosDaArvore(nodes, EXTENSOES).slice(0, MAX_ARQUIVOS);
+  return varrerArquivos(pasta, { extensoes: EXTENSOES, max: MAX_ARQUIVOS }).arquivos;
 }
 
 /**
