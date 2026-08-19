@@ -46,6 +46,7 @@ import { useExecution } from './useExecution';
 import { usePasta } from './files/usePasta';
 import { usePrefs } from './usePrefs';
 import { useAutoSave } from './useAutoSave';
+import { useHistorico } from './useHistorico';
 
 export function App() {
   const lateral = useSidebarWidth();
@@ -75,6 +76,7 @@ export function App() {
   const qi = useQuickInput();
   const prefs = usePrefs(falhaDaIde);
   const layout = useLayout();
+  const nav = useHistorico({ abaExiste: (abaId) => ws.store.get(abaId) !== null });
   useAutoSave({ ws, prefs: prefs.prefs, aoFalhar: falhaDaIde });
   // Terminais de SHELL, que desde a decisão D6 moram no painel inferior. O de
   // conexão continua sendo aba do editor — saída longa de query merece tela
@@ -88,6 +90,18 @@ export function App() {
     const atual = ws.editorRef.current?.getLanguage();
     if (atual !== undefined) setLinguagem(atual);
   }, [ws.activeId, ws.editorRef]);
+
+  /**
+   * Trocar de aba é um salto; mover o cursor não é.
+   *
+   * É a decisão central da spec 016: registrar cada movimento faria `Back`
+   * andar uma casa por vez e não servir para nada.
+   */
+  useEffect(() => {
+    if (ws.activeId !== null) nav.registrarSalto({ abaId: ws.activeId, linha: ws.cursor.linha });
+    // `cursor` FORA das dependências de propósito — é justamente o que não deve
+    // disparar registro.
+  }, [ws.activeId]);
 
   const trocarLinguagem = (lang: string): void => {
     ws.editorRef.current?.setLanguage(lang);
@@ -104,7 +118,15 @@ export function App() {
   /** Abre o arquivo do símbolo, se preciso, e pula para a linha. */
   const irParaSimbolo = (arquivo: string, linha: number): void => {
     const atual = (ws.active?.meta as { path?: string | null } | undefined)?.path ?? null;
-    const pular = () => window.setTimeout(() => ws.editorRef.current?.goToLine(linha), 0);
+    // De onde se saiu já está no histórico: o efeito de `activeId` registrou ao
+    // chegar aqui. O que falta é a linha de destino, que não é troca de aba.
+    const pular = () => window.setTimeout(() => {
+      ws.editorRef.current?.goToLine(linha);
+      const destino = ws.store.list().find(
+        (t) => (t.meta as { path?: string | null }).path === arquivo
+      );
+      if (destino !== undefined) nav.registrarSalto({ abaId: destino.id, linha });
+    }, 0);
     if (arquivo === atual) {
       pular();
       return;
@@ -323,7 +345,16 @@ export function App() {
     const numero = Number(alvo);
     if (alvo !== null && Number.isInteger(numero) && numero > 0) {
       ws.editorRef.current?.goToLine(numero);
+      if (ws.activeId !== null) nav.registrarSalto({ abaId: ws.activeId, linha: numero });
     }
+  };
+
+  /** Leva a uma posição do histórico: ativa a aba e pula para a linha. */
+  const irPara = (posicao: { abaId: string; linha: number } | null): void => {
+    if (posicao === null) return;
+    ws.ativar(posicao.abaId);
+    // Depois da troca de aba: o editor só carrega o conteúdo no efeito seguinte.
+    window.setTimeout(() => ws.editorRef.current?.goToLine(posicao.linha), 0);
   };
 
   const abrirPaleta = async (): Promise<void> => {
@@ -398,6 +429,8 @@ export function App() {
     temConexaoAtiva: exec.conexaoAtiva !== null,
     cofreDestrancado: conexoes.estado?.vault.unlocked === true,
     executando: exec.executando,
+    podeVoltar: nav.podeVoltar,
+    podeAvancar: nav.podeAvancar,
   };
 
   const avisar = (p: Promise<unknown>): void => {
@@ -454,6 +487,8 @@ export function App() {
     'go.file': () => avisar(abrirPorCaminho()),
     'go.symbol': () => setPainelLateral('symbols'),
     'go.line': () => avisar(irParaLinha()),
+    'go.back': () => irPara(nav.voltar()),
+    'go.forward': () => irPara(nav.avancar()),
 
     'run.file': () => executar('file'),
     'run.selection': () => executar('block'),

@@ -42,6 +42,9 @@ export interface ContextoDeComandos {
   readonly cofreDestrancado: boolean;
   /** Há código rodando agora (spec 013). */
   readonly executando: boolean;
+  /** Navegação Back/Forward (spec 016). */
+  readonly podeVoltar: boolean;
+  readonly podeAvancar: boolean;
 }
 
 export type ChaveDeContexto = keyof ContextoDeComandos;
@@ -131,8 +134,8 @@ const DECLARADOS = [
   { id: 'go.file', label: 'Go to File…', menu: 'go', group: 1, keybinding: 'Ctrl+P' },
   { id: 'go.symbol', label: 'Go to Symbol…', menu: 'go', group: 1, keybinding: 'Ctrl+Shift+O' },
   { id: 'go.line', label: 'Go to Line…', menu: 'go', group: 1, keybinding: 'Ctrl+G', when: 'temEditor' },
-  { id: 'go.back', label: 'Back', menu: 'go', group: 2, pending: true },
-  { id: 'go.forward', label: 'Forward', menu: 'go', group: 2, pending: true },
+  { id: 'go.back', label: 'Back', menu: 'go', group: 2, keybinding: 'Alt+ArrowLeft', when: 'podeVoltar' },
+  { id: 'go.forward', label: 'Forward', menu: 'go', group: 2, keybinding: 'Alt+ArrowRight', when: 'podeAvancar' },
 
   // ---- Run ----
   { id: 'run.file', label: 'Run File', menu: 'run', group: 1, keybinding: 'Ctrl+Enter', when: 'temEditor' },
