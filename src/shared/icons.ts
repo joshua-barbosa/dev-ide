@@ -105,6 +105,9 @@ const ICONES_DA_INTERFACE = [
   // Ocultar lateral e painel inferior (spec 014).
   'lucide:panel-left',
   'lucide:panel-bottom',
+  // Dividir terminal e os panes na lista lateral (spec 021).
+  'lucide:columns-2',
+  'lucide:corner-down-right',
 ] as const;
 
 /**

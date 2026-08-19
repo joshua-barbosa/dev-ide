@@ -12,6 +12,15 @@
 export interface TerminalAberto {
   readonly id: string;
   readonly titulo: string;
+  /**
+   * A que **par** este terminal pertence.
+   *
+   * Terminais do mesmo par aparecem lado a lado — é o "split terminal". Um
+   * terminal comum é o único do par dele, e o par recebe o id do primeiro. O
+   * modelo é esse, e não uma árvore de painéis, pelo mesmo motivo da spec 020:
+   * árvore é o certo para N divisões aninhadas e o errado para duas.
+   */
+  readonly par: string;
 }
 
 export interface EstadoDeTerminais {
@@ -35,9 +44,47 @@ export function proximoTitulo(lista: readonly TerminalAberto[]): string {
 export function abrirTerminal(estado: EstadoDeTerminais, id: string): EstadoDeTerminais {
   if (estado.lista.some((t) => t.id === id)) return { ...estado, ativo: id };
   return {
-    lista: [...estado.lista, { id, titulo: proximoTitulo(estado.lista) }],
+    lista: [...estado.lista, { id, titulo: proximoTitulo(estado.lista), par: id }],
     ativo: id,
   };
+}
+
+/**
+ * Abre um terminal **ao lado** do ativo, no mesmo par.
+ *
+ * Sem ativo, é o mesmo que abrir um normal: dividir o nada não significa coisa
+ * alguma, e recusar seria atrito por preciosismo.
+ */
+export function dividirTerminal(estado: EstadoDeTerminais, id: string): EstadoDeTerminais {
+  const ativo = estado.lista.find((t) => t.id === estado.ativo);
+  if (ativo === undefined) return abrirTerminal(estado, id);
+  return {
+    lista: [...estado.lista, { id, titulo: proximoTitulo(estado.lista), par: ativo.par }],
+    ativo: id,
+  };
+}
+
+/** Os terminais que dividem a tela com o ativo, na ordem de abertura. */
+export function paneisVisiveis(estado: EstadoDeTerminais): readonly TerminalAberto[] {
+  const ativo = estado.lista.find((t) => t.id === estado.ativo);
+  if (ativo === undefined) return [];
+  return estado.lista.filter((t) => t.par === ativo.par);
+}
+
+/**
+ * A lista lateral: uma entrada por par, com os panes dentro.
+ *
+ * É o que o VS Code mostra — o par é a unidade de navegação, e os panes são
+ * detalhe de layout dele.
+ */
+export function paresDe(estado: EstadoDeTerminais): readonly (readonly TerminalAberto[])[] {
+  const porPar = new Map<string, TerminalAberto[]>();
+  for (const t of estado.lista) {
+    const atual = porPar.get(t.par);
+    if (atual === undefined) porPar.set(t.par, [t]);
+    else atual.push(t);
+  }
+  return [...porPar.values()];
 }
 
 /**

@@ -41,7 +41,8 @@ import { ResizerHorizontal } from './ResizerHorizontal';
 import { useLayout, ALTURA_PADRAO_PAINEL } from './useLayout';
 import { useProblemas } from './useProblemas';
 import {
-  abrirTerminal as abrirNoPainel, ativarTerminal, fecharTerminal, SEM_TERMINAIS,
+  abrirTerminal as abrirNoPainel, ativarTerminal, dividirTerminal, fecharTerminal,
+  paneisVisiveis, SEM_TERMINAIS,
 } from '../shared/terminais';
 import { useExecution } from './useExecution';
 import { usePasta } from './files/usePasta';
@@ -329,6 +330,12 @@ export function App() {
     layout.mostrarPainel('terminal');
   };
 
+  /** Abre um terminal AO LADO do ativo, no mesmo par. */
+  const dividirTerminalNoPainel = (): void => {
+    setTerminais((atual) => dividirTerminal(atual, `term-${crypto.randomUUID()}`));
+    layout.mostrarPainel('terminal');
+  };
+
   const texto = (): string => exec.saida.map((l) => l.texto).join('');
 
   /** Leva a saída para uma aba do editor, sem passar por arquivo. */
@@ -361,6 +368,9 @@ export function App() {
   });
   const snippetsAcoes = useSnippetsAcoes({ qi, ws, snippets, linguagem });
 
+
+  /** Ids dos terminais que dividem a tela com o ativo. */
+  const visiveisNoPainel = new Set(paneisVisiveis(terminais).map((t) => t.id));
 
   const contexto: ContextoDeComandos = {
     temEditor: ws.active !== null && ws.active.type !== 'grid' && ws.active.type !== 'conexao',
@@ -444,6 +454,7 @@ export function App() {
     },
 
     'terminal.new': () => novoTerminalNoPainel(),
+    'terminal.split': dividirTerminalNoPainel,
     'terminal.runTask': () => avisar(comandosAcoes.abrir()),
     'terminal.connection': () => {
       const conexao = conexoes.acharConexao(exec.conexaoAtiva);
@@ -670,7 +681,8 @@ export function App() {
                 onLimparProblemas={problemas.limpar}
                 onAbrirNoEditor={abrirSaidaNoEditor}
                 onSalvarComo={() => avisar(salvarSaidaComo())}
-                onNovoTerminal={novoTerminalNoPainel}
+                onNovoTerminal={() => novoTerminalNoPainel()}
+                onDividirTerminal={dividirTerminalNoPainel}
                 onAtivarTerminal={(id) => setTerminais((a) => ativarTerminal(a, id))}
                 onFecharTerminal={(id) => setTerminais((a) => fecharTerminal(a, id))}
                 onEsconder={layout.alternarPainel}
@@ -679,16 +691,23 @@ export function App() {
                     das abas de terminal. Renderizar só o ativo desmontaria o
                     componente ao alternar, matando o processo e apagando o
                     buffer. */}
+                {/* Todos montados; à vista, os do PAR do ativo — é o lado a
+                    lado do "split terminal". Esconder continua sendo
+                    `display: none`, nunca desmontar. */}
                 {terminais.lista.map((t) => (
                   <Box
                     key={t.id}
+                    data-pane-terminal={t.titulo}
                     sx={{
                       flex: 1, minHeight: 0, minWidth: 0,
-                      display: terminais.ativo === t.id ? 'flex' : 'none',
+                      display: visiveisNoPainel.has(t.id) ? 'flex' : 'none',
+                      borderLeft: 1,
+                      borderColor: 'divider',
+                      '&:first-of-type': { borderLeft: 0 },
                     }}
                   >
                     <TerminalHost
-                      ativo={terminais.ativo === t.id && layout.painelVisivel}
+                      ativo={visiveisNoPainel.has(t.id) && layout.painelVisivel}
                       fontSize={prefs.prefs['terminal.fontSize']}
                       tema={tema}
                       comandoInicial={comandosIniciais.get(t.id) ?? null}

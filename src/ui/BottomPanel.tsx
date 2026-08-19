@@ -14,7 +14,7 @@ import { Icon } from './Icon';
 import { tokens } from './theme';
 import type { LinhaSaida } from './useExecution';
 import { ABAS_DO_PAINEL, type AbaDoPainel, type Problema } from '../shared/painel';
-import type { EstadoDeTerminais } from '../shared/terminais';
+import { paresDe, type EstadoDeTerminais } from '../shared/terminais';
 
 export interface AcoesDoPainel {
   readonly onLimpar: () => void;
@@ -22,6 +22,7 @@ export interface AcoesDoPainel {
   readonly onSalvarComo: () => void;
   readonly onLimparProblemas: () => void;
   readonly onNovoTerminal: () => void;
+  readonly onDividirTerminal: () => void;
   readonly onFecharTerminal: (id: string) => void;
   readonly onAtivarTerminal: (id: string) => void;
   readonly onEsconder: () => void;
@@ -47,8 +48,11 @@ function horaDe(iso: string): string {
 export function BottomPanel({
   aba, onAba, altura, linhas, status, problemas, terminais, children,
   onLimpar, onAbrirNoEditor, onSalvarComo, onLimparProblemas,
-  onNovoTerminal, onFecharTerminal, onAtivarTerminal, onEsconder,
+  onNovoTerminal, onDividirTerminal, onFecharTerminal, onAtivarTerminal, onEsconder,
 }: BottomPanelProps) {
+  // Um item por PAR na lista lateral, com os panes dentro — é a unidade de
+  // navegação, e o lado a lado é detalhe de layout dela.
+  const pares = paresDe(terminais);
   const botao = (
     titulo: string,
     icone: string,
@@ -124,6 +128,8 @@ export function BottomPanel({
             <>
               {botao('Novo terminal', 'lucide:plus', onNovoTerminal)}
               {terminais.ativo !== null &&
+                botao('Dividir terminal', 'lucide:columns-2', onDividirTerminal)}
+              {terminais.ativo !== null &&
                 botao('Fechar terminal', 'lucide:trash-2',
                   () => onFecharTerminal(terminais.ativo as string), 'Fechar terminal')}
             </>
@@ -198,26 +204,35 @@ export function BottomPanel({
                   overflow: 'auto', bgcolor: 'background.paper', py: 0.5,
                 }}
               >
-                {terminais.lista.map((t) => (
-                  <Box
-                    key={t.id}
-                    data-terminal-item={t.titulo}
-                    aria-selected={terminais.ativo === t.id}
-                    onClick={() => onAtivarTerminal(t.id)}
-                    sx={{
-                      display: 'flex', alignItems: 'center', gap: 0.75, px: 1, py: 0.4,
-                      fontSize: 11, cursor: 'pointer',
-                      bgcolor: terminais.ativo === t.id ? 'action.selected' : 'transparent',
-                      color: terminais.ativo === t.id ? 'text.primary' : 'text.secondary',
-                      '&:hover': { bgcolor: 'action.hover' },
-                    }}
-                  >
-                    <Icon name="lucide:square-terminal" size={12} />
-                    <Box sx={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-                      {t.titulo}
+                {pares.map((panes) =>
+                  panes.map((t, i) => (
+                    <Box
+                      key={t.id}
+                      data-terminal-item={t.titulo}
+                      aria-selected={terminais.ativo === t.id}
+                      onClick={() => onAtivarTerminal(t.id)}
+                      sx={{
+                        display: 'flex', alignItems: 'center', gap: 0.75, py: 0.4,
+                        // Panes do mesmo par entram recuados, com um traço à
+                        // esquerda: é o que mostra que dividem a tela.
+                        pl: panes.length > 1 && i > 0 ? 2 : 1,
+                        pr: 1,
+                        fontSize: 11, cursor: 'pointer',
+                        bgcolor: terminais.ativo === t.id ? 'action.selected' : 'transparent',
+                        color: terminais.ativo === t.id ? 'text.primary' : 'text.secondary',
+                        '&:hover': { bgcolor: 'action.hover' },
+                      }}
+                    >
+                      <Icon
+                        name={panes.length > 1 && i > 0 ? 'lucide:corner-down-right' : 'lucide:square-terminal'}
+                        size={12}
+                      />
+                      <Box sx={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                        {t.titulo}
+                      </Box>
                     </Box>
-                  </Box>
-                ))}
+                  ))
+                )}
               </Box>
             )}
           </>

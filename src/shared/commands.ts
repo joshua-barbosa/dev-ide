@@ -148,7 +148,12 @@ const DECLARADOS = [
   // ---- Terminal ----
   { id: 'terminal.new', label: 'New Terminal', menu: 'terminal', group: 1, keybinding: 'Ctrl+`' },
   { id: 'terminal.connection', label: 'Abrir conexão no terminal', menu: 'terminal', group: 1, when: 'temConexaoAtiva' },
-  { id: 'terminal.split', label: 'Split Terminal', menu: 'terminal', group: 1, pending: true },
+  // SEM atalho, e não por esquecimento: o do VS Code é `Ctrl+Shift+5`, e ele
+  // não funcionaria aqui. `formatarAtalho` lê `e.key`, e com Shift a tecla `5`
+  // chega como `%` — a declaração casaria com um evento que nunca acontece. Ler
+  // `e.code` resolveria, mas isso é mudança no modelo de atalhos inteiro, não
+  // numa linha. O item de menu e o botão do painel dão conta.
+  { id: 'terminal.split', label: 'Split Terminal', menu: 'terminal', group: 1 },
   { id: 'terminal.runTask', label: 'Run Task…', menu: 'terminal', group: 2, keybinding: 'Ctrl+Shift+R' },
 
   // ---- Help ----
