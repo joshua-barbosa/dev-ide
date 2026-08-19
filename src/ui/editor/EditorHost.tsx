@@ -68,12 +68,14 @@ export interface EditorHandle {
 export interface EditorHostProps {
   readonly onChange: () => void;
   readonly onCursor: (linha: number, coluna: number) => void;
+  /** Aparência, vinda do arquivo de preferências (spec 011). */
+  readonly fontSize: number;
+  readonly tabSize: number;
+  readonly wordWrap: boolean;
 }
 
-const TAMANHO_TAB = 4;
-
 export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function EditorHost(
-  { onChange, onCursor },
+  { onChange, onCursor, fontSize, tabSize, wordWrap },
   ref
 ) {
   const caixa = useRef<HTMLDivElement>(null);
@@ -93,9 +95,11 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
       language: 'plaintext',
       theme: NOME_DO_TEMA,
       fontFamily: tokens.fontMono,
-      fontSize: 13,
-      lineHeight: 20,
-      tabSize: TAMANHO_TAB,
+      fontSize,
+      tabSize,
+      wordWrap: wordWrap ? 'on' : 'off',
+      // Sem `lineHeight` fixo: o Monaco o deriva da fonte. Fixar 20 px, como
+      // antes da spec 011, cortaria as letras assim que a fonte passasse disso.
       insertSpaces: true,
       automaticLayout: true,
       minimap: { enabled: true },
@@ -119,7 +123,20 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
       ed.dispose();
       editor.current = null;
     };
+    // Sem dependências de propósito: os valores de aparência entram na criação
+    // e depois são aplicados pelo efeito abaixo. Colocá-los aqui recriaria o
+    // editor a cada mudança de fonte, jogando fora histórico e rolagem.
   }, []);
+
+  // Aparência sem remontar: `updateOptions` é o caminho que o Monaco oferece
+  // justamente para isso.
+  useEffect(() => {
+    editor.current?.updateOptions({
+      fontSize,
+      tabSize,
+      wordWrap: wordWrap ? 'on' : 'off',
+    });
+  }, [fontSize, tabSize, wordWrap]);
 
   useImperativeHandle(
     ref,

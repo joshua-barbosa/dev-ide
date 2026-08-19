@@ -12,12 +12,14 @@ import type { Vault } from '../connections/vault';
 import { diasDeLembranca, type RememberedKey } from '../connections/remember';
 import type { ConnectionInput, FieldValue, Session, VaultState } from '../connections/types';
 import { queryList, requireString, wrap } from '../http/handlers';
+import type { LeitorDePreferencias } from '../prefs';
 
 export interface ConnectionsDeps {
   readonly registry: DriverRegistry;
   readonly vault: Vault;
   readonly pool: SessionPool;
   readonly remember: RememberedKey;
+  readonly prefs: LeitorDePreferencias;
 }
 
 /** Capacidades da sessão — é o que liga as sub-abas (terminal, SFTP, monitor...) na UI. */
@@ -45,7 +47,9 @@ function readInput(body: unknown, registry: DriverRegistry): ConnectionInput {
   };
 }
 
-export function createConnectionsRouter({ registry, vault, pool, remember }: ConnectionsDeps): Router {
+export function createConnectionsRouter(
+  { registry, vault, pool, remember, prefs }: ConnectionsDeps
+): Router {
   const router = Router();
 
   const ok = (data: unknown) => ({ success: true, data, error: null });
@@ -67,7 +71,8 @@ export function createConnectionsRouter({ registry, vault, pool, remember }: Con
   const talvezLembrar = (pedido: unknown): void => {
     if (pedido !== true) return;
     try {
-      remember.save(vault.exportKey(), diasDeLembranca(process.env));
+      const dias = diasDeLembranca(process.env, prefs.ler()['vault.rememberDays']);
+      remember.save(vault.exportKey(), dias);
     } catch {
       remember.clear();
     }

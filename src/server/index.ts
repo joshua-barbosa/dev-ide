@@ -8,8 +8,10 @@ import { Vault } from './connections/vault';
 import { RememberedKey, restaurarCofre } from './connections/remember';
 import { errorEnvelope, requireString, wrap } from './http/handlers';
 import { localhostOnly } from './http/security';
+import { PreferencesStore } from './prefs';
 import { ProjectStore } from './projects';
 import { createConnectionsRouter } from './routes/connections';
+import { createPrefsRouter } from './routes/prefs';
 import { TerminalRegistry } from './terminal/registry';
 import { montarSocketDeTerminal } from './terminal/socket';
 import { criarResolvedorDeAbertura } from './terminal/abertura';
@@ -28,6 +30,9 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 const store = new ProjectStore(PROJECTS_DIR);
 store.ensureBaseDir();
+
+// ---- Preferências ----
+const prefs = new PreferencesStore(PreferencesStore.defaultPath());
 
 // ---- Conexões (banco, redis, arquivos remotos, ssh) ----
 const registry = registerBuiltinDrivers(new DriverRegistry());
@@ -57,7 +62,8 @@ const app = express();
 app.use(localhostOnly);
 app.use(express.json({ limit: '4mb' }));
 app.use(express.static(UI_DIR));
-app.use('/api/connections', createConnectionsRouter({ registry, vault, pool, remember }));
+app.use('/api/connections', createConnectionsRouter({ registry, vault, pool, remember, prefs }));
+app.use('/api/prefs', createPrefsRouter(prefs));
 
 function validateFilePath(raw: string): string {
   const resolved = path.resolve(raw);

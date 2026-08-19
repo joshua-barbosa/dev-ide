@@ -38,6 +38,7 @@ import { ResultGrid } from './grid/ResultGrid';
 import { OutputPanel } from './OutputPanel';
 import { useExecution } from './useExecution';
 import { useProject } from './files/useProject';
+import { usePrefs } from './usePrefs';
 
 export function App() {
   const lateral = useSidebarWidth();
@@ -48,6 +49,7 @@ export function App() {
   const exec = useExecution(ws);
   const projeto = useProject();
   const qi = useQuickInput();
+  const prefs = usePrefs(dialogs.aoFalhar);
   const [painelLateral, setPainelLateral] = useState('files');
   const [linguagem, setLinguagem] = useState('javascript');
 
@@ -91,6 +93,9 @@ export function App() {
   const salvarArquivo = async (): Promise<void> => {
     const caminho = await ws.salvar();
     if (caminho !== null) {
+      // Salvou o próprio `config.json`? Relê — é o que faz editar a preferência
+      // no editor surtir efeito sem recarregar a página.
+      if (caminho === prefs.caminho) await prefs.recarregar();
       await projeto.recarregar();
       return;
     }
@@ -127,6 +132,19 @@ export function App() {
       })),
     });
     if (escolhido !== null) projeto.selecionar(escolhido);
+  };
+
+  /**
+   * Abre o `config.json` como aba do editor.
+   *
+   * É a "tela de configurações" desta IDE, e de propósito: a IDE já sabe abrir,
+   * editar e salvar arquivo, então isto custa uma linha e cobre 100% das
+   * chaves. Um formulário custaria um campo por preferência, e ficaria para
+   * trás a cada chave nova.
+   */
+  const abrirPreferencias = async (): Promise<void> => {
+    const { path } = await Api.prefsFile();
+    await ws.abrirArquivo(path);
   };
 
   const abrirPorCaminho = async (): Promise<void> => {
@@ -206,6 +224,7 @@ export function App() {
     'file.openWorkspace': () => avisar(escolherProjeto()),
     'file.save': () => avisar(salvarArquivo()),
     'file.saveAs': () => avisar(salvarArquivo()),
+    'file.preferences': () => avisar(abrirPreferencias()),
     'file.closeEditor': () => { if (ws.activeId !== null) ws.fechar(ws.activeId); },
 
     'edit.undo': () => document.execCommand('undo'),
@@ -224,6 +243,10 @@ export function App() {
     'view.database': () => setPainelLateral('database'),
     'view.service': () => setPainelLateral('service'),
     'view.output': () => exec.limparSaida(),
+    // Alterna e PERSISTE. A ação do Monaco alternaria e esqueceria — e o
+    // usuário espera que a escolha sobreviva a recarregar a página.
+    'view.wordWrap': () =>
+      avisar(prefs.definir({ 'editor.wordWrap': !prefs.prefs['editor.wordWrap'] })),
 
     'go.file': () => avisar(abrirPorCaminho()),
     'go.symbol': () => setPainelLateral('symbols'),
@@ -444,7 +467,14 @@ export function App() {
           {/* O editor fica montado sempre: desmontá-lo ao ficar sem abas perderia
               a instância e a ref imperativa. Some de vista, não do DOM. */}
           <Box sx={{ flex: 1, display: mostrarEditor ? 'flex' : 'none', minHeight: 0 }}>
-            <EditorHost ref={ws.editorRef} onChange={ws.marcarSujo} onCursor={ws.aoMoverCursor} />
+            <EditorHost
+              ref={ws.editorRef}
+              onChange={ws.marcarSujo}
+              onCursor={ws.aoMoverCursor}
+              fontSize={prefs.prefs['editor.fontSize']}
+              tabSize={prefs.prefs['editor.tabSize']}
+              wordWrap={prefs.prefs['editor.wordWrap']}
+            />
           </Box>
 
           {ws.active?.type === 'grid' && (
@@ -469,6 +499,7 @@ export function App() {
               >
                 <TerminalHost
                   ativo={ws.activeId === t.id}
+                  fontSize={prefs.prefs['terminal.fontSize']}
                   connectionId={
                     typeof t.meta.connectionId === 'string' ? t.meta.connectionId : null
                   }

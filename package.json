@@ -7,10 +7,11 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build:server": "tsc",
     "build:ui": "vite build",
-    "build": "npm run clean && npm run build:server && npm run build:icons && npm run build:ui",
+    "typecheck:ui": "tsc --noEmit -p tsconfig.ui.json",
+    "build": "npm run clean && npm run build:server && npm run typecheck:ui && npm run build:icons && npm run build:ui",
     "start": "npm run build && node dist/server/index.js",
     "dev": "vite",
-    "test": "npm run clean && npm run build:server && node --test 'dist/**/__tests__/*.test.js'",
+    "test": "npm run clean && npm run build:server && npm run typecheck:ui && node --test 'dist/**/__tests__/*.test.js'",
     "build:icons": "node scripts/build-icons.mjs",
     "e2e": "npm run build && playwright test",
     "e2e:headed": "E2E_HEADED=1 npm run build && playwright test --headed"

@@ -15,6 +15,7 @@ import type {
   TreeNode,
 } from '../shared/contracts';
 import type { DriverPanel, ConnectionKind, FieldSpec } from '../shared/contracts';
+import type { PatchDePreferencias, Preferencias } from '../shared/prefs';
 
 export interface DriverInfo {
   readonly type: string;
@@ -109,6 +110,14 @@ export const Api = {
   saveFile: (path: string, content: string) =>
     request<{ path: string; bytes: number }>('POST', '/api/file', { path, content }),
   run: (payload: Record<string, unknown>) => request<RunResult>('POST', '/api/run', payload),
+
+  // ---- preferências ----
+  prefs: () => request<Preferencias>('GET', '/api/prefs'),
+  setPrefs: (patch: PatchDePreferencias) =>
+    request<Preferencias>('PATCH', '/api/prefs', patch),
+  prefsPath: () => request<{ path: string }>('GET', '/api/prefs/file'),
+  /** Cria o arquivo se preciso; devolve o caminho para abri-lo no editor. */
+  prefsFile: () => request<{ path: string }>('POST', '/api/prefs/file'),
 
   // ---- conexões ----
   drivers: () => request<DriverInfo[]>('GET', `${conexoes}/drivers`),

@@ -176,6 +176,20 @@ test('valor inválido no ambiente cai no padrão em vez de quebrar', () => {
   }
 });
 
+// ---- spec 011: o arquivo de preferências entra como padrão ----
+
+test('sem ambiente, vale o prazo vindo do arquivo de preferências', () => {
+  assert.equal(diasDeLembranca({}, 30), 30);
+});
+
+test('o ambiente vence o arquivo — é o que a suíte usa para isolar', () => {
+  assert.equal(diasDeLembranca({ DEV_IDE_VAULT_REMEMBER_DAYS: '7' }, 30), 7);
+});
+
+test('ambiente inválido cai no valor do arquivo, não no padrão embutido', () => {
+  assert.equal(diasDeLembranca({ DEV_IDE_VAULT_REMEMBER_DAYS: 'quinze' }, 30), 30);
+});
+
 // ---- restauração na subida do servidor (AC-2, AC-5, AC-8) ----
 
 /** Cofre mínimo, com o comportamento que importa: chave certa abre, errada lança. */

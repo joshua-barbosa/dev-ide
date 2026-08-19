@@ -11,6 +11,7 @@ import { Vault } from '../connections/vault';
 import { RememberedKey } from '../connections/remember';
 import { errorEnvelope } from '../http/handlers';
 import { createConnectionsRouter } from '../routes/connections';
+import { padroes } from '../../shared/prefs';
 import type { Driver, Session } from '../connections/types';
 
 const SENHA = 'senha-mestra';
@@ -80,7 +81,7 @@ async function bootstrap() {
 
   const app = express();
   app.use(express.json());
-  app.use('/api/connections', createConnectionsRouter({ registry, vault, pool, remember }));
+  app.use('/api/connections', createConnectionsRouter({ registry, vault, pool, remember, prefs: { ler: padroes } }));
   app.use(errorEnvelope);
 
   const server = app.listen(0, '127.0.0.1');

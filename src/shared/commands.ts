@@ -75,7 +75,7 @@ const DECLARADOS = [
   { id: 'file.saveAs', label: 'Save As…', menu: 'file', group: 3, keybinding: 'Ctrl+Shift+S', when: 'temEditor' },
   { id: 'file.saveAll', label: 'Save All', menu: 'file', group: 3, pending: true },
   { id: 'file.autoSave', label: 'Auto Save', menu: 'file', group: 4, pending: true },
-  { id: 'file.preferences', label: 'Preferences', menu: 'file', group: 4, pending: true },
+  { id: 'file.preferences', label: 'Preferences', menu: 'file', group: 4 },
   { id: 'file.revert', label: 'Revert File', menu: 'file', group: 5, pending: true },
   { id: 'file.closeEditor', label: 'Close Editor', menu: 'file', group: 5, keybinding: 'Ctrl+W', when: 'temAba' },
 
@@ -164,7 +164,6 @@ const ATENDIDOS = [
   'selection.moveLineUp', 'selection.moveLineDown', 'selection.duplicate',
   'selection.addCursorAbove', 'selection.addCursorBelow', 'selection.cursorsToLineEnds',
   'selection.addNextOccurrence', 'selection.addPrevOccurrence', 'selection.allOccurrences',
-  'view.wordWrap',
 ] as const;
 
 export const ATENDIDOS_PELO_EDITOR: ReadonlySet<string> = new Set(ATENDIDOS);

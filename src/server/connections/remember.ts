@@ -59,12 +59,19 @@ export const machineIdPadrao: LeitorDeMaquina = () =>
  * Valor inválido cai no padrão em vez de quebrar: uma variável de ambiente
  * digitada errada não pode impedir a IDE de subir. Só aceita inteiro positivo —
  * zero e negativo significariam "já vencida", que é o mesmo que não lembrar.
+ *
+ * **O ambiente vence o arquivo de preferências** (spec 011). Inverter deixaria
+ * a suíte de ponta a ponta sem como forçar um prazo: ambiente é a ferramenta de
+ * quem opera, arquivo é a de quem usa.
  */
-export function diasDeLembranca(env: Readonly<Record<string, string | undefined>>): number {
+export function diasDeLembranca(
+  env: Readonly<Record<string, string | undefined>>,
+  padraoDoArquivo: number = DIAS_PADRAO
+): number {
   const bruto = env.DEV_IDE_VAULT_REMEMBER_DAYS;
-  if (bruto === undefined) return DIAS_PADRAO;
+  if (bruto === undefined) return padraoDoArquivo;
   const dias = Number(bruto.trim());
-  if (!Number.isSafeInteger(dias) || dias <= 0) return DIAS_PADRAO;
+  if (!Number.isSafeInteger(dias) || dias <= 0) return padraoDoArquivo;
   return dias;
 }
 

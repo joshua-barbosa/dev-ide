@@ -26,12 +26,21 @@ export interface TerminalHostProps {
    */
   readonly ativo?: boolean;
   readonly onFim?: (exitCode: number) => void;
+  /** Vem do arquivo de preferências (spec 011). */
+  readonly fontSize?: number;
 }
 
-export function TerminalHost({ connectionId = null, ativo = true, onFim }: TerminalHostProps) {
+export function TerminalHost({
+  connectionId = null, ativo = true, onFim, fontSize = 13,
+}: TerminalHostProps) {
   const caixa = useRef<HTMLDivElement>(null);
   const aoFim = useRef(onFim);
   aoFim.current = onFim;
+  // Por ref, e não por dependência: o efeito que cria o emulador NÃO pode
+  // depender do tamanho da fonte. Remontar mataria o processo e apagaria o
+  // buffer — a regressão que a spec 008 já viveu ao trocar de aba.
+  const tamanhoDaFonte = useRef(fontSize);
+  tamanhoDaFonte.current = fontSize;
   const emUso = useRef<{
     term: Terminal;
     fit: FitAddon;
@@ -52,13 +61,28 @@ export function TerminalHost({ connectionId = null, ativo = true, onFim }: Termi
     term.focus();
   }, [ativo]);
 
+  // Fonte nova nos terminais já abertos: muda a opção, remede e avisa o PTY —
+  // o programa do outro lado pergunta o tamanho ao terminal, não ao navegador.
+  useEffect(() => {
+    const emUsoAgora = emUso.current;
+    if (emUsoAgora === null) return;
+    const { term, fit, enviar } = emUsoAgora;
+    term.options.fontSize = fontSize;
+    try {
+      fit.fit();
+      enviar({ tipo: 'tamanho', cols: term.cols, rows: term.rows });
+    } catch {
+      // A aba pode estar escondida, e aí a medida dá zero.
+    }
+  }, [fontSize]);
+
   useEffect(() => {
     const alvo = caixa.current;
     if (alvo === null) return;
 
     const term = new Terminal({
       fontFamily: tokens.fontMono,
-      fontSize: 13,
+      fontSize: tamanhoDaFonte.current,
       cursorBlink: true,
       // O buffer limita a memória quando um `cat` de arquivo grande despeja
       // tudo de uma vez; sem teto, a aba engoliria a máquina.

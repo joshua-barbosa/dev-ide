@@ -26,5 +26,8 @@ export const ACAO_DO_MONACO: Readonly<Record<string, string>> = {
   'selection.addNextOccurrence': 'editor.action.addSelectionToNextFindMatch',
   'selection.addPrevOccurrence': 'editor.action.addSelectionToPreviousFindMatch',
   'selection.allOccurrences': 'editor.action.selectHighlights',
-  'view.wordWrap': 'editor.action.toggleWordWrap',
 };
+
+// `view.wordWrap` saiu daqui na spec 011: a ação do Monaco alterna e esquece, e
+// o usuário espera que a escolha sobreviva a recarregar a página. Agora ela vira
+// preferência, e quem aplica é o `EditorHost` — o editor obedece, não decide.
