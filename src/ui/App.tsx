@@ -604,14 +604,7 @@ export function App() {
             // Abre o arquivo e pula para a ocorrência — clicar num resultado
             // que não leva a lugar nenhum seria metade da feature.
             onAbrir: (caminho, o) => {
-              void ws
-                .abrirArquivo(caminho)
-                .then(() => {
-                  window.setTimeout(() => {
-                    ws.editorRef.current?.goToPosition(o.linha, o.coluna);
-                  }, 0);
-                })
-                .catch(falhaDaIde);
+              void ws.abrirArquivoEm(caminho, o.linha, o.coluna).catch(falhaDaIde);
             },
             onConfirmar: (mensagem, rotulo) =>
               dialogs.confirmar({

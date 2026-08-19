@@ -102,6 +102,8 @@ export interface Workspace {
   readonly edicoes: number;
   aoMoverCursor(linha: number, coluna: number): void;
   abrirArquivo(caminho: string): Promise<void>;
+  /** Abre o arquivo e leva o cursor à linha e coluna dadas. */
+  abrirArquivoEm(caminho: string, linha: number, coluna: number): Promise<void>;
   abrirQuery(id: string, titulo: string, conteudo: string, connectionId: string): void;
   /** Abre texto solto numa aba, sem arquivo em disco por trás. */
   abrirTexto(id: string, titulo: string, conteudo: string, linguagem: string): void;
@@ -203,6 +205,16 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   const carregando = useRef(false);
   /** A última aba carregada em CADA grupo — a guarda de reentrância, por grupo. */
   const ultimaAtiva = useRef(new Map<number, string | null>());
+  /**
+   * Para onde ir assim que a aba terminar de carregar, por id de aba.
+   *
+   * Abrir um arquivo e pular para uma linha são dois tempos: o conteúdo só
+   * chega ao editor no efeito abaixo, um render depois. Mandar o cursor antes
+   * disso não dá erro — o salto simplesmente se perde, e o arquivo abre na
+   * linha 1. Era o que acontecia ao clicar num resultado de busca de um arquivo
+   * ainda fechado; com ele já aberto, funcionava, e por isso passou pelo teste.
+   */
+  const posicaoPendente = useRef(new Map<string, { linha: number; coluna: number }>());
 
   /**
    * Guarda no store o que está no editor de `grupoDoEditor`.
@@ -269,6 +281,12 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         editor.setViewState(meta.view);
       } finally {
         carregando.current = false;
+      }
+
+      const destino = posicaoPendente.current.get(aba.id);
+      if (destino !== undefined) {
+        posicaoPendente.current.delete(aba.id);
+        editor.goToPosition(destino.linha, destino.coluna);
       }
     }
 
@@ -341,6 +359,30 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
       });
     },
     [salvarGrupoFocado, store]
+  );
+
+  /**
+   * Abre o arquivo e leva o cursor até a posição — venha ele de onde vier.
+   *
+   * O salto é pedido ANTES de abrir, e não depois: se a aba nasce agora, quem
+   * o executa é o efeito de carregar; se ela já estava aberta e à vista, o
+   * efeito não roda e o salto sai daqui mesmo.
+   */
+  const abrirArquivoEm = useCallback(
+    async (caminho: string, linha: number, coluna: number) => {
+      const id = `file:${caminho}`;
+      posicaoPendente.current.set(id, { linha, coluna });
+      await abrirArquivo(caminho);
+
+      const aba = store.get(id);
+      if (aba === null) return;
+      if (ultimaAtiva.current.get(aba.grupo) !== id) return;
+      const editor = editores.current.get(aba.grupo) ?? null;
+      if (editor === null) return;
+      posicaoPendente.current.delete(id);
+      editor.goToPosition(linha, coluna);
+    },
+    [abrirArquivo, store]
   );
 
   const abrirQuery = useCallback(
@@ -743,6 +785,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     cursor,
     edicoes,
     abrirArquivo,
+    abrirArquivoEm,
     abrirQuery,
     abrirTexto,
     abrirFormulario,

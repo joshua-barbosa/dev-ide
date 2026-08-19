@@ -8,7 +8,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { editor, esperarEditorPronto, entradaRapida, menu } from './fixtures';
 
 const preview = (page: Page) => page.locator('[data-markdown-preview]');
-const botao = (page: Page) => page.getByRole('button', { name: 'Preview' });
+// `exact`: o botão de fechar aba passou a se chamar "Fechar <arquivo>", e num
+// arquivo chamado `preview-*.md` isso também contém "preview".
+const botao = (page: Page) => page.getByRole('button', { name: 'Preview', exact: true });
 
 /** Cria um `.md` na pasta aberta, com o conteúdo dado. */
 async function arquivoMarkdown(page: Page, nome: string, conteudo: string): Promise<void> {

@@ -107,6 +107,23 @@ test('clicar num resultado abre o arquivo NA LINHA da ocorrência', async ({ pag
   await expect(page.locator('footer')).toContainText('Ln 3, Col 6');
 });
 
+test('e também quando o arquivo estava FECHADO', async ({ page }) => {
+  // A distinção é a feature inteira: com a aba já aberta o editor existe e
+  // recebe o salto na hora; fechada, o conteúdo só chega um render depois, e o
+  // cursor mandado antes disso some sem erro nenhum. O arquivo abria na linha
+  // 1, que é justamente o que ninguém pediu.
+  const TERMO = termo('FECHADO');
+  await criarArquivo(page, 'busca-fechado.txt', `um\ndois\ntres\nquatro ${TERMO}\n`);
+  await page.locator('[data-tab="busca-fechado.txt"] [aria-label*="Fechar"]').click();
+  await expect(page.locator('[data-tab="busca-fechado.txt"]')).toHaveCount(0);
+
+  await procurar(page, TERMO);
+  await ocorrencia(page, 'busca-fechado.txt', 4).click();
+
+  await expect(page.locator('[data-tab="busca-fechado.txt"]')).toBeVisible();
+  await expect(page.locator('footer')).toContainText('Ln 4, Col 8');
+});
+
 test('substitui num arquivo só, deixando o outro intacto', async ({ page }) => {
   const TERMO = termo('UM');
   await criarArquivo(page, 'troca-um.txt', `${TERMO} aqui\n`);

@@ -96,6 +96,9 @@ export function TabBar({
               component="button"
               type="button"
               title="Fechar"
+              // O nome precisa dizer QUAL aba: com várias abertas, "Fechar"
+              // repetido não distingue nada para quem navega pelo teclado.
+              aria-label={`Fechar ${tab.title}`}
               onClick={(e) => {
                 e.stopPropagation(); // não ativar a aba ao fechá-la
                 onClose(tab.id);
