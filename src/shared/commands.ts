@@ -147,7 +147,7 @@ const DECLARADOS = [
   { id: 'terminal.new', label: 'New Terminal', menu: 'terminal', group: 1, keybinding: 'Ctrl+`' },
   { id: 'terminal.connection', label: 'Abrir conexão no terminal', menu: 'terminal', group: 1, when: 'temConexaoAtiva' },
   { id: 'terminal.split', label: 'Split Terminal', menu: 'terminal', group: 1, pending: true },
-  { id: 'terminal.runTask', label: 'Run Task…', menu: 'terminal', group: 2, pending: true },
+  { id: 'terminal.runTask', label: 'Run Task…', menu: 'terminal', group: 2, keybinding: 'Ctrl+Shift+R' },
 
   // ---- Help ----
   { id: 'help.commands', label: 'Show All Commands', menu: 'help', group: 1, keybinding: 'Ctrl+Shift+P' },

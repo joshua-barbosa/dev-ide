@@ -37,6 +37,15 @@ export interface TerminalHostProps {
    * chega lá. É o mesmo motivo pelo qual o Monaco recebe a paleta.
    */
   readonly tema?: NomeDoTema;
+  /**
+   * Comando a executar assim que o shell estiver de pé.
+   *
+   * Enviado como **digitação**, e não como executável: é o que o usuário faria
+   * com as mãos, e não abre superfície nova — o socket já aceita texto
+   * arbitrário. Mandar o servidor montar o comando daria ao navegador o poder
+   * de escolher o executável, que a spec 008 fechou de propósito.
+   */
+  readonly comandoInicial?: string | null;
 }
 
 /**
@@ -53,6 +62,7 @@ function coresDoTerminal(nome: NomeDoTema): ITheme {
 
 export function TerminalHost({
   connectionId = null, ativo = true, onFim, fontSize = 13, tema = 'escuro',
+  comandoInicial = null,
 }: TerminalHostProps) {
   const caixa = useRef<HTMLDivElement>(null);
   const aoFim = useRef(onFim);
@@ -66,6 +76,7 @@ export function TerminalHost({
   ativoAgora.current = ativo;
   const temaAtual = useRef(tema);
   temaAtual.current = tema;
+  const comandoPendente = useRef(comandoInicial);
   const emUso = useRef<{
     term: Terminal;
     fit: FitAddon;
@@ -158,7 +169,18 @@ export function TerminalHost({
         mensagem?: string;
         exitCode?: number;
       };
-      if (msg.tipo === 'dados') term.write(msg.dados ?? '');
+      if (msg.tipo === 'dados') {
+        term.write(msg.dados ?? '');
+        // A primeira saída é o prompt: o shell carregou o perfil e está pronto
+        // para receber. Enviar antes disso faria a linha se perder no meio da
+        // inicialização. É heurística, e é a mesma que uma pessoa usa — ela
+        // também espera o `$` aparecer.
+        if (comandoPendente.current !== null) {
+          const comando = comandoPendente.current;
+          comandoPendente.current = null;
+          enviar({ tipo: 'dados', dados: `${comando}\r` });
+        }
+      }
       else if (msg.tipo === 'erro') term.writeln(`\r\n\x1b[31m${msg.mensagem ?? 'Erro.'}\x1b[0m`);
       else if (msg.tipo === 'fim') {
         // A aba fica: ler o código de saída depois de o processo morrer é

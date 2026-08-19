@@ -16,6 +16,14 @@ import type {
 } from '../shared/contracts';
 import type { DriverPanel, ConnectionKind, FieldSpec } from '../shared/contracts';
 import type { PatchDePreferencias, Preferencias } from '../shared/prefs';
+import type {
+  ComandoDescoberto, ComandoSalvo, DestinoDeComando,
+} from '../shared/comandos-salvos';
+
+export interface ListaDeComandos {
+  readonly salvos: readonly ComandoSalvo[];
+  readonly descobertos: readonly ComandoDescoberto[];
+}
 
 export interface DriverInfo {
   readonly type: string;
@@ -135,6 +143,13 @@ export const Api = {
   run: (payload: Record<string, unknown>) => request<RunResult>('POST', '/api/run', payload),
   stopRun: (id: string) =>
     request<{ parou: boolean }>('POST', `/api/run/${encodeURIComponent(id)}/stop`),
+
+  // ---- comandos salvos (spec 018) ----
+  commands: () => request<ListaDeComandos>('GET', '/api/commands'),
+  createCommand: (nome: string, comando: string, destino: DestinoDeComando) =>
+    request<ComandoSalvo>('POST', '/api/commands', { nome, comando, destino }),
+  deleteCommand: (id: string) =>
+    request<{ removido: boolean }>('DELETE', `/api/commands/${encodeURIComponent(id)}`),
 
   // ---- espaço de trabalho (spec 012) ----
   browseFolders: (caminho?: string) =>

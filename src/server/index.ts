@@ -13,6 +13,8 @@ import { ProjectStore } from './projects';
 import { createConnectionsRouter } from './routes/connections';
 import { createPrefsRouter } from './routes/prefs';
 import { createWorkspaceRouter } from './routes/workspace';
+import { createComandosRouter } from './routes/comandos';
+import { ComandosStore } from './comandos';
 import { EstadoStore } from './estado';
 import { TerminalRegistry } from './terminal/registry';
 import { montarSocketDeTerminal } from './terminal/socket';
@@ -36,6 +38,7 @@ const prefs = new PreferencesStore(PreferencesStore.defaultPath());
 
 // ---- Espaço de trabalho (pasta aberta, recentes) ----
 const estado = new EstadoStore(EstadoStore.defaultPath());
+const comandos = new ComandosStore(ComandosStore.defaultPath());
 
 // ---- Execuções em andamento (para poder parar) ----
 const execucoes = new RegistroDeExecucoes();
@@ -58,7 +61,10 @@ const terminais = new TerminalRegistry();
 const resolverAbertura = criarResolvedorDeAbertura({
   registry,
   vault,
-  cwdPadrao: () => PROJECTS_DIR,
+  // A pasta ABERTA, e não a de projetos: desde a spec 012 o espaço de trabalho
+  // é qualquer pasta, e um terminal que nasce noutro lugar faz `npm run build`
+  // rodar no projeto errado — ou em nenhum.
+  cwdPadrao: () => estado.ler().pastaAtual ?? PROJECTS_DIR,
 });
 
 // A interface é compilada pelo Vite de src/ui para dist/ui.
@@ -71,6 +77,7 @@ app.use(express.static(UI_DIR));
 app.use('/api/connections', createConnectionsRouter({ registry, vault, pool, remember, prefs }));
 app.use('/api/prefs', createPrefsRouter(prefs));
 app.use('/api', createWorkspaceRouter(estado));
+app.use('/api/commands', createComandosRouter(comandos, estado));
 
 function validateFilePath(raw: string): string {
   const resolved = path.resolve(raw);

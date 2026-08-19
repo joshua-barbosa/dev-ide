@@ -45,6 +45,7 @@ import { useProblemas } from './useProblemas';
 import {
   abrirTerminal as abrirNoPainel, ativarTerminal, fecharTerminal, SEM_TERMINAIS,
 } from '../shared/terminais';
+import { DESTINOS, type DestinoDeComando } from '../shared/comandos-salvos';
 import { useExecution } from './useExecution';
 import { usePasta } from './files/usePasta';
 import { usePrefs } from './usePrefs';
@@ -91,6 +92,9 @@ export function App() {
   // conexão continua sendo aba do editor — saída longa de query merece tela
   // cheia, comando curto de shell não.
   const [terminais, setTerminais] = useState(SEM_TERMINAIS);
+  // O comando que cada terminal recém-aberto deve rodar. Fica fora do store de
+  // terminais porque é de uso único — some assim que o shell o recebe.
+  const [comandosIniciais, setComandosIniciais] = useState<ReadonlyMap<string, string>>(new Map());
   const [painelLateral, setPainelLateral] = useState('files');
   const [linguagem, setLinguagem] = useState('javascript');
 
@@ -411,8 +415,11 @@ export function App() {
    *
    * O de conexão continua sendo aba do editor — `abrirTerminalDaConexao`.
    */
-  const novoTerminalNoPainel = (): void => {
+  const novoTerminalNoPainel = (comando?: string): void => {
     const id = `term-${crypto.randomUUID()}`;
+    if (comando !== undefined) {
+      setComandosIniciais((atual) => new Map(atual).set(id, comando));
+    }
     setTerminais((atual) => abrirNoPainel(atual, id));
     layout.mostrarPainel('terminal');
   };
@@ -442,6 +449,108 @@ export function App() {
       { titulo: 'Salvar saída como', placeholder: 'ex.: saida.log', valorInicial: 'saida.log' },
       (nome) => pasta.criarArquivo(nome, conteudo)
     );
+  };
+
+  /**
+   * A caixa de comandos salvos — o que era `Run Task…`.
+   *
+   * Descobertos e salvos na mesma lista, mais duas entradas de gestão. Uma tela
+   * de gerenciamento seria mais interface que conteúdo: o usuário tem poucos
+   * comandos.
+   */
+  const rodarComando = async (): Promise<void> => {
+    const { salvos, descobertos } = await Api.commands();
+
+    const escolhido = await qi.pedir({
+      titulo: 'Comandos',
+      placeholder: 'Escolha um comando',
+      opcoes: [
+        ...descobertos.map((c) => ({
+          valor: `rodar:shell:${c.comando}`,
+          rotulo: c.nome,
+          detalhe: `${c.comando}  ·  ${c.origem}`,
+          icone: 'lucide:play',
+        })),
+        ...salvos.map((c) => ({
+          valor: `rodar:${c.destino}:${c.comando}`,
+          rotulo: c.nome,
+          detalhe: c.comando,
+          icone: c.destino === 'sql' ? 'database' : 'lucide:square-terminal',
+          sufixo: 'salvo',
+        })),
+        { valor: 'novo:', rotulo: 'Salvar um comando novo…', icone: 'lucide:plus' },
+        ...(salvos.length === 0
+          ? []
+          : [{ valor: 'remover:', rotulo: 'Remover um comando salvo…', icone: 'lucide:trash-2' }]),
+      ],
+    });
+    if (escolhido === null) return;
+
+    const separador = escolhido.indexOf(':');
+    const verbo = escolhido.slice(0, separador);
+    const resto = escolhido.slice(separador + 1);
+
+    if (verbo === 'novo') return salvarComando();
+    if (verbo === 'remover') return removerComando();
+
+    const segundo = resto.indexOf(':');
+    const destino = resto.slice(0, segundo) as DestinoDeComando;
+    const comando = resto.slice(segundo + 1);
+
+    if (destino === 'sql') {
+      // ABRE, não executa: um comando de shell o usuário escolheu rodar; um SQL
+      // pode ser um DELETE. O gatilho fica com ele.
+      ws.abrirTexto(`comando:${comando}`, 'comando.sql', comando, 'sql');
+      return;
+    }
+    novoTerminalNoPainel(comando);
+  };
+
+  /** Cria um comando salvo, avisando sobre senha em texto puro. */
+  const salvarComando = async (): Promise<void> => {
+    const nome = await qi.pedir({
+      titulo: 'Novo comando salvo',
+      placeholder: 'Nome, ex.: subir homologação',
+    });
+    if (nome === null) return;
+
+    const comando = await qi.pedir({
+      titulo: `Comando de "${nome}"`,
+      placeholder: 'ex.: npm run deploy — ou um SELECT, se o destino for SQL',
+    });
+    if (comando === null) return;
+
+    const destino = await qi.pedir({
+      titulo: 'Para onde este comando vai?',
+      placeholder: 'Destino',
+      opcoes: DESTINOS.map((d) => ({
+        valor: d,
+        rotulo: d === 'shell' ? 'Terminal (shell)' : 'Consulta (SQL)',
+        detalhe: d === 'shell' ? 'abre um terminal e executa' : 'abre numa aba, sem executar',
+        icone: d === 'shell' ? 'lucide:square-terminal' : 'database',
+      })),
+    });
+    if (destino === null) return;
+
+    await Api.createCommand(nome, comando, destino as DestinoDeComando);
+    // O aviso é o que se deve ao usuário: o `commands.json` não é o cofre.
+    await dialogs.avisar(
+      `"${nome}" foi salvo e vale em qualquer pasta.\n\n` +
+        'Atenção: comandos salvos ficam em ~/.dev-ide/commands.json em texto puro. ' +
+        'Não guarde senha dentro de um.',
+      'Comando salvo'
+    );
+  };
+
+  const removerComando = async (): Promise<void> => {
+    const { salvos } = await Api.commands();
+    const escolhido = await qi.pedir({
+      titulo: 'Remover comando salvo',
+      placeholder: 'Escolha o que remover',
+      opcoes: salvos.map((c) => ({ valor: c.id, rotulo: c.nome, detalhe: c.comando })),
+    });
+    if (escolhido === null) return;
+    await Api.deleteCommand(escolhido);
   };
 
   const contexto: ContextoDeComandos = {
@@ -523,7 +632,8 @@ export function App() {
       if (id !== null) avisar(conexoes.desconectar(id));
     },
 
-    'terminal.new': novoTerminalNoPainel,
+    'terminal.new': () => novoTerminalNoPainel(),
+    'terminal.runTask': () => avisar(rodarComando()),
     'terminal.connection': () => {
       const conexao = conexoes.acharConexao(exec.conexaoAtiva);
       if (conexao !== null) avisar(abrirTerminalDaConexao(conexao));
@@ -875,6 +985,7 @@ export function App() {
                       ativo={terminais.ativo === t.id && layout.painelVisivel}
                       fontSize={prefs.prefs['terminal.fontSize']}
                       tema={tema}
+                      comandoInicial={comandosIniciais.get(t.id) ?? null}
                     />
                   </Box>
                 ))}
