@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { idDoMonaco, LINGUAGENS_DO_MONACO } from '../editor/monaco-ids';
+import { idDoMonaco, LINGUAGEM_PADRAO_MONACO, LINGUAGENS_DO_MONACO } from '../editor/monaco-ids';
 import { LINGUAGENS } from '../editor/idiomas';
-import { EXT_TO_LANG } from '../editor/languages';
+import { EXT_TO_LANG, NOME_TO_LANG } from '../editor/languages';
 import { ACAO_DO_MONACO } from '../editor/acoes-monaco';
 import { ATENDIDOS_PELO_EDITOR } from '../commands';
 
@@ -61,4 +61,58 @@ test('o mapa de ações do editor cobre exatamente os comandos atendidos', () =>
 
   const sobrando = Object.keys(ACAO_DO_MONACO).filter((id) => !ATENDIDOS_PELO_EDITOR.has(id));
   assert.deepEqual(sobrando, [], 'ações do Monaco para comandos que não estão declarados');
+});
+
+// ---------------------------------------------------------------------------
+// Os três mapas de linguagem precisam concordar (spec 024)
+// ---------------------------------------------------------------------------
+//
+// Nasceu de um defeito real: a spec 010 acrescentou markdown, yaml, shell, xml e
+// dockerfile ao mapa do Monaco e **parou aí**. O mapa de extensões e o catálogo
+// do seletor ficaram para trás, então `.md` continuou abrindo como texto puro —
+// justamente o que aquele comentário dizia ter resolvido.
+//
+// Uma linguagem só existe de verdade quando os três a conhecem: a extensão que a
+// escolhe, o id do Monaco que a pinta, e o catálogo que a mostra no rodapé.
+
+test('toda linguagem alcançável por extensão tem id do Monaco', () => {
+  for (const [ext, nossa] of Object.entries(EXT_TO_LANG)) {
+    assert.notEqual(
+      idDoMonaco(nossa),
+      LINGUAGEM_PADRAO_MONACO,
+      `${ext} → "${nossa}" cai em texto puro: falta entrada no mapa do Monaco`
+    );
+  }
+});
+
+test('toda linguagem alcançável por extensão aparece no seletor', () => {
+  const noSeletor = new Set(LINGUAGENS.map(([valor]) => valor));
+  for (const [ext, nossa] of Object.entries(EXT_TO_LANG)) {
+    assert.ok(noSeletor.has(nossa), `${ext} → "${nossa}" não está no catálogo do rodapé`);
+  }
+});
+
+test('toda linguagem do seletor tem id do Monaco', () => {
+  for (const [valor] of LINGUAGENS) {
+    assert.notEqual(idDoMonaco(valor), undefined, valor);
+  }
+  // `plain` é a única que cai no padrão, e de propósito.
+  for (const [valor] of LINGUAGENS.filter(([v]) => v !== 'plain')) {
+    assert.notEqual(
+      idDoMonaco(valor),
+      LINGUAGEM_PADRAO_MONACO,
+      `"${valor}" está no seletor mas vira texto puro no editor`
+    );
+  }
+});
+
+test('markdown chega pelo caminho todo — foi o que o preview cobrou', () => {
+  assert.equal(EXT_TO_LANG['.md'], 'markdown');
+  assert.equal(idDoMonaco('markdown'), 'markdown');
+  assert.ok(LINGUAGENS.some(([v]) => v === 'markdown'));
+});
+
+test('arquivos sem extensão que valem pelo nome', () => {
+  assert.equal(NOME_TO_LANG['dockerfile'], 'dockerfile');
+  assert.equal(idDoMonaco(NOME_TO_LANG['dockerfile'] as string), 'dockerfile');
 });

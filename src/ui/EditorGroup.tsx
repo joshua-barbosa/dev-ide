@@ -13,6 +13,7 @@ import { TabBar } from './tabs/TabBar';
 import { EditorHost, type EditorHandle } from './editor/EditorHost';
 import { TerminalHost } from './terminal/TerminalHost';
 import { ResultGrid } from './grid/ResultGrid';
+import { MarkdownPreview } from './editor/MarkdownPreview';
 import { tokens } from './theme';
 import type { Tab } from '../shared/tabs';
 import type { NomeDoTema } from '../shared/temas';
@@ -36,6 +37,11 @@ export interface EditorGroupProps {
   readonly snippets: readonly Snippet[];
 
   readonly grades: ReadonlyMap<string, EstadoGrade>;
+  /** Abas mostrando o conteúdo renderizado em vez do texto (spec 024). */
+  readonly emPreview: ReadonlySet<string>;
+  conteudoDaAba(id: string): string;
+  /** Ausente quando a aba ativa não é pré-visualizável. */
+  readonly onPreview?: () => void;
   /** O formulário de conexão é montado pelo `App`, que conhece os drivers. */
   readonly formulario: React.ReactNode;
 
@@ -52,13 +58,17 @@ export interface EditorGroupProps {
 export function EditorGroup({
   grupo, abas, ativaId, focado, dividido,
   fontSize, tabSize, wordWrap, terminalFontSize, tema, snippets,
-  grades, formulario,
+  grades, formulario, emPreview, conteudoDaAba, onPreview,
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar,
 }: EditorGroupProps) {
   const ativa = abas.find((t) => t.id === ativaId) ?? null;
   const semAbas = abas.length === 0;
+  const mostrandoPreview = ativa !== null && emPreview.has(ativa.id);
   const mostrarEditor =
-    !semAbas && ativa !== null && !['grid', 'conexao', 'terminal'].includes(ativa.type);
+    !semAbas &&
+    ativa !== null &&
+    !mostrandoPreview &&
+    !['grid', 'conexao', 'terminal'].includes(ativa.type);
 
   return (
     <Box
@@ -85,6 +95,8 @@ export function EditorGroup({
         onClose={onFechar}
         onExecutar={onExecutar}
         ehSql={ativa?.type === 'sql'}
+        onPreview={onPreview}
+        emPreview={mostrandoPreview}
       />
 
       {/* Montado sempre: desmontá-lo ao ficar sem abas perderia a instância e a
@@ -101,6 +113,12 @@ export function EditorGroup({
           snippets={snippets}
         />
       </Box>
+
+      {/* O editor continua MONTADO atrás do preview — a regra de sempre. Trocar
+          para o renderizado não pode custar histórico de desfazer nem rolagem. */}
+      {mostrandoPreview && ativa !== null && (
+        <MarkdownPreview fonte={conteudoDaAba(ativa.id)} />
+      )}
 
       {ativa?.type === 'grid' && (
         <ResultGrid {...(grades.get(ativa.id) ?? { resultado: null })} />

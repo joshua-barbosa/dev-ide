@@ -15,6 +15,13 @@ export const LINGUAGENS: ReadonlyArray<readonly [valor: string, rotulo: string, 
   ['json', 'JSON', 'vscode-icons:file-type-json'],
   ['html', 'HTML', 'vscode-icons:file-type-html'],
   ['css', 'CSS', 'vscode-icons:file-type-css'],
+  // Mesma correção da spec 024: estas existiam no mapa do Monaco e não aqui,
+  // então não apareciam no seletor do rodapé.
+  ['markdown', 'Markdown', 'vscode-icons:file-type-markdown'],
+  ['yaml', 'YAML', 'vscode-icons:file-type-yaml'],
+  ['shell', 'Shell', 'vscode-icons:file-type-shell'],
+  ['xml', 'XML', 'vscode-icons:file-type-xml'],
+  ['dockerfile', 'Dockerfile', 'vscode-icons:file-type-docker'],
   ['plain', 'Texto', 'vscode-icons:file-type-text'],
 ];
 

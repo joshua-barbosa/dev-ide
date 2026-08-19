@@ -20,4 +20,20 @@ export const EXT_TO_LANG: Record<string, string> = {
   '.html': 'html', '.htm': 'html',
   '.css': 'css',
   '.sql': 'sql',
+  // Acrescentadas na spec 024. A spec 010 declarou estas linguagens em
+  // `monaco-ids.ts` e parou aí — o mapa de extensões nunca foi atualizado, então
+  // `.md` continuou abrindo como texto puro. O comentário de lá dizia que o
+  // problema estava resolvido; não estava. O teste de cruzamento entre os três
+  // mapas entrou junto, para a divergência não voltar em silêncio.
+  '.md': 'markdown', '.markdown': 'markdown',
+  '.yml': 'yaml', '.yaml': 'yaml',
+  '.sh': 'shell', '.bash': 'shell', '.zsh': 'shell',
+  '.xml': 'xml', '.svg': 'xml',
+  '.dockerfile': 'dockerfile',
+};
+
+/** Arquivos sem extensão cujo NOME decide a linguagem. */
+export const NOME_TO_LANG: Record<string, string> = {
+  dockerfile: 'dockerfile',
+  makefile: 'shell',
 };

@@ -44,6 +44,21 @@ test.afterEach(async ({ page }) => {
   );
 });
 
+test('salvar uma aba sem título NÃO apaga o texto da tela', async ({ page }) => {
+  // Regressão de um defeito que existia desde a spec 006 e ninguém tinha visto:
+  // o `content` do estado da aba só era atualizado ao TROCAR de aba, e uma aba
+  // sem título nunca foi trocada — então ele estava vazio. Ao virar arquivo, a
+  // aba renascia com esse vazio, o efeito o carregava no editor, e o texto sumia
+  // logo depois de ser salvo. Em disco o arquivo ficava certo, o que tornava o
+  // defeito ainda mais confuso: parecia que salvar tinha apagado tudo.
+  //
+  // Encontrado de lado, escrevendo o preview de markdown — que lê a mesma cópia.
+  await novoArquivoSalvo(page, 'nao-pode-sumir.ts', 'const nao_pode_sumir = 1;');
+
+  await expect.poll(() => textoDoEditor(page)).toMatch(/const nao_pode_sumir = 1;/);
+  await expect(aba(page, 'nao-pode-sumir.ts')).toHaveAttribute('data-tab-dirty', 'false');
+});
+
 test('Save All fica cinza sem aba suja', async ({ page }) => {
   await menu(page, 'File');
   await expect(page.getByRole('menuitem', { name: 'Save All' })).toBeDisabled();

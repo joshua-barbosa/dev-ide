@@ -13,6 +13,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
 import { aplicarVariaveis, criarTema } from './theme';
 import { NOMES_DE_TEMA, ROTULO_DO_TEMA, TEMAS, type NomeDoTema } from '../shared/temas';
+import { temPreview } from '../shared/markdown';
 import { Sidebar } from './Sidebar';
 import { Resizer } from './Resizer';
 import { useSidebarWidth } from './useSidebarWidth';
@@ -645,6 +646,11 @@ export function App() {
                 tema={tema}
                 snippets={snippets.lista}
                 grades={exec.grades}
+                emPreview={ws.emPreview}
+                conteudoDaAba={ws.conteudoDaAba}
+                onPreview={
+                  ws.grupoFocado === g && temPreview(linguagem) ? ws.alternarPreview : undefined
+                }
                 registrarEditor={ws.registrarEditor(g)}
                 onFocar={() => ws.focarGrupo(g)}
                 onAtivar={ws.ativar}

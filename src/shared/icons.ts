@@ -108,6 +108,9 @@ const ICONES_DA_INTERFACE = [
   // Dividir terminal e os panes na lista lateral (spec 021).
   'lucide:columns-2',
   'lucide:corner-down-right',
+  // Botão de preview do markdown (spec 024).
+  'lucide:book-open',
+  'lucide:file-code',
 ] as const;
 
 /**

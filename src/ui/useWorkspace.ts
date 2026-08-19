@@ -15,7 +15,7 @@ import { GRUPO_PADRAO, type Tab, type TabStore } from '../shared/tabs';
 import { proximoSemTitulo } from '../shared/untitled';
 import { ICONE_DE_ARQUIVO, iconeDeArquivo } from '../shared/editor/arquivos';
 import type { EditorHandle, ViewState } from './editor/EditorHost';
-import { EXT_TO_LANG } from '../shared/editor/languages';
+import { EXT_TO_LANG, NOME_TO_LANG } from '../shared/editor/languages';
 import { Api } from './api';
 import { useTabs } from './tabs/useTabs';
 
@@ -34,7 +34,14 @@ const ehEditavel = (aba: Tab | null): boolean => aba !== null && EDITAVEIS.has(a
 const metaDe = (aba: Tab): EditorTabMeta => aba.meta as unknown as EditorTabMeta;
 
 export function linguagemDe(caminho: string): string {
-  const ext = `.${caminho.split('.').pop()?.toLowerCase() ?? ''}`;
+  const nome = (caminho.split('/').pop() ?? caminho).toLowerCase();
+  // Nome inteiro primeiro: `Dockerfile` e `Makefile` não têm extensão, e o
+  // `split('.')` neles devolveria o próprio nome como se fosse uma.
+  const porNome = NOME_TO_LANG[nome];
+  if (porNome !== undefined) return porNome;
+
+  if (!nome.includes('.')) return 'plain';
+  const ext = `.${nome.split('.').pop() ?? ''}`;
   return EXT_TO_LANG[ext] ?? 'plain';
 }
 
@@ -62,6 +69,12 @@ export interface Workspace {
   registrarEditor(grupo: number): (handle: EditorHandle | null) => void;
   /** Manda a aba ativa para o outro grupo, criando-o se preciso. */
   dividir(): void;
+  /** Abas mostrando o conteúdo renderizado em vez do texto. */
+  readonly emPreview: ReadonlySet<string>;
+  /** Alterna entre texto e renderizado na aba ativa. */
+  alternarPreview(): void;
+  /** O conteúdo atual de uma aba, já com o que não foi salvo. */
+  conteudoDaAba(id: string): string;
   focarGrupo(grupo: number): void;
   readonly cursor: { readonly linha: number; readonly coluna: number };
   /**
@@ -158,6 +171,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
 
   const [cursor, setCursor] = useState({ linha: 1, coluna: 1 });
   const [edicoes, setEdicoes] = useState(0);
+  const [emPreview, setEmPreview] = useState<ReadonlySet<string>>(new Set());
 
   /** Suprime o "sujou" que a própria troca de aba dispara ao recarregar o editor. */
   const carregando = useRef(false);
@@ -471,6 +485,33 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     store.mover(id, atual === GRUPO_PADRAO ? 1 : GRUPO_PADRAO);
   }, [salvarGrupoFocado, store]);
 
+  /**
+   * Alterna a aba ativa entre o texto e o conteúdo renderizado.
+   *
+   * Salva o editor no store ANTES de trocar: o preview precisa mostrar o que
+   * está na tela, inclusive o que ainda não foi gravado em disco. Sem isso, o
+   * botão mostraria a versão de antes da última tecla.
+   */
+  const alternarPreview = useCallback(() => {
+    const id = store.activeId();
+    if (id === null) return;
+    salvarGrupoFocado();
+    setEmPreview((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(id)) proximo.delete(id);
+      else proximo.add(id);
+      return proximo;
+    });
+  }, [salvarGrupoFocado, store]);
+
+  const conteudoDaAba = useCallback(
+    (id: string): string => {
+      const aba = store.get(id);
+      return aba === null ? '' : metaDe(aba).content;
+    },
+    [store]
+  );
+
   const reverter = useCallback(async (): Promise<void> => {
     const aba = active;
     const editor = editorRef.current;
@@ -498,9 +539,20 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
    * Troca o id junto com o caminho: o id `untitled:...` deixaria a aba
    * invisível para `abrirArquivo`, que procura por `file:<caminho>` — e abrir o
    * mesmo arquivo pela árvore criaria uma segunda aba do mesmo conteúdo.
+   *
+   * **A primeira linha é o conserto de um defeito que apagava o trabalho na
+   * tela.** O `content` do `meta` só é atualizado ao trocar de aba, e uma aba
+   * sem título nunca foi trocada — então ele estava vazio. A aba nova nascia com
+   * conteúdo vazio, o efeito carregava esse vazio no editor, e o texto sumia da
+   * tela logo depois de ser salvo. Em disco o arquivo ficava certo, o que tornava
+   * o defeito ainda mais confuso: parecia que salvar tinha apagado tudo.
    */
   const adotarArquivo = useCallback(
     (idAntigo: string, caminho: string) => {
+      const abaOriginal = store.get(idAntigo);
+      if (abaOriginal === null) return;
+      salvarNaAba(idAntigo, abaOriginal.grupo);
+
       const aba = store.get(idAntigo);
       if (aba === null) return;
       const language = linguagemDe(caminho);
@@ -511,11 +563,12 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         title: caminho.split('/').pop() ?? caminho,
         icon: iconeDeArquivo(caminho, language),
         dirty: false,
+        grupo: aba.grupo,
         meta: { ...metaDe(aba), path: caminho, language },
       });
       editorRef.current?.setLanguage(language);
     },
-    [store]
+    [salvarNaAba, store]
   );
 
   return {
@@ -528,6 +581,9 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     editorRef,
     registrarEditor,
     dividir,
+    emPreview,
+    alternarPreview,
+    conteudoDaAba,
     focarGrupo: (grupo: number) => store.focarGrupo(grupo),
     cursor,
     edicoes,
