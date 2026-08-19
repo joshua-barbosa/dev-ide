@@ -24,6 +24,7 @@ import { EXT_TO_LANG, NOME_TO_LANG } from '../shared/editor/languages';
 import { Api } from './api';
 import { useTabs } from './tabs/useTabs';
 import { useGruposDeEditor } from './editor/useGruposDeEditor';
+import { conciliar, type SessaoDeAbas } from '../shared/sessao-abas';
 
 export interface EditorTabMeta {
   /** Caminho no disco; `null` em aba de query, que não tem arquivo. */
@@ -125,6 +126,8 @@ export interface Workspace {
   reverter(): Promise<void>;
   /** Relê do disco as abas abertas dos caminhos dados. */
   recarregarDoDisco(caminhos: readonly string[]): Promise<void>;
+  /** Reabre as abas de uma sessão guardada. */
+  restaurarSessao(sessao: SessaoDeAbas): Promise<void>;
   marcarAbaSuja(id: string, sujo: boolean): void;
   ativar(id: string): void;
   fechar(id: string): Promise<void>;
@@ -460,6 +463,40 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     [abrirArquivo, store]
   );
 
+  /**
+   * Reabre as abas de uma sessão guardada (spec 029).
+   *
+   * Tenta abrir cada uma e **deixa cair em silêncio** a que não existe mais: o
+   * arquivo pode ter sido apagado com a IDE fechada, e uma caixa de erro por
+   * arquivo sumido seria pior que a ausência dele. O que sobreviveu passa por
+   * `conciliar`, que é quem impede meia tela em branco.
+   */
+  const restaurarSessao = useCallback(
+    async (sessao: SessaoDeAbas): Promise<void> => {
+      const abertos = new Set<string>();
+      for (const aba of sessao.abas) {
+        try {
+          await abrirNoGrupo(aba.caminho, aba.grupo);
+          abertos.add(aba.caminho);
+        } catch {
+          // sumiu do disco enquanto a IDE estava fechada
+        }
+      }
+      if (abertos.size === 0) return;
+
+      const final = conciliar(sessao, abertos);
+      // Aba num grupo que o arranjo não tem ficaria invisível para sempre.
+      for (const aba of final.abas) {
+        const atual = store.get(`file:${aba.caminho}`);
+        if (atual !== null && atual.grupo !== aba.grupo) store.mover(atual.id, aba.grupo);
+      }
+      setLayout(final.layout);
+      for (const caminho of Object.values(final.ativas)) store.activate(`file:${caminho}`);
+      store.focarGrupo(final.grupoFocado);
+    },
+    [abrirNoGrupo, store]
+  );
+
   const soltarNoGrupo = useCallback(
     (grupoAlvo: number, zona: Zona, carga: CargaDeArraste): void => {
       salvarTodosOsGrupos();
@@ -639,6 +676,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     salvarTodas,
     reverter,
     recarregarDoDisco,
+    restaurarSessao,
     aoMoverCursor: (linha, coluna) => setCursor({ linha, coluna }),
   };
 }

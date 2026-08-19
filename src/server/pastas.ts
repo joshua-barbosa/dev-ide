@@ -37,7 +37,26 @@ export interface ListagemDePastas {
   readonly dirs: readonly Subpasta[];
 }
 
-const IGNORADAS = new Set(['node_modules', '.git', 'dist', '.runs']);
+/**
+ * O que a árvore não mostra.
+ *
+ * **Não é "oculto"**: é o que tem milhares de nós e ninguém edita. Gastariam o
+ * teto de `MAX_NOS` antes de o código do projeto aparecer. Arquivo oculto de
+ * verdade — `.gitignore`, `.env`, `.vscode/` — APARECE: dentro de um projeto,
+ * oculto é arquivo que se edita, e escondê-lo foi um defeito reportado pelo
+ * usuário em 2026-08-19.
+ */
+const IGNORADAS = new Set([
+  // JavaScript
+  'node_modules', 'dist', '.next', '.nuxt', '.svelte-kit', '.turbo', '.parcel-cache',
+  // Python — `.venv` sozinha tem milhares de arquivos e comia o teto INTEIRO,
+  // deixando a árvore com seis entradas. Foi o que apareceu ao mostrar ocultos.
+  '.venv', 'venv', '__pycache__', '.mypy_cache', '.pytest_cache', '.ruff_cache', '.tox',
+  // PHP e Rust
+  'vendor', 'target',
+  // Controle de versão e a própria IDE
+  '.git', '.hg', '.svn', '.runs',
+]);
 export const MAX_NOS = 5_000;
 export const MAX_PROFUNDIDADE = 12;
 
@@ -89,7 +108,7 @@ export function arvoreDaPasta(alvo: string): ArvoreDaPasta {
     const nodes: FileNode[] = [];
     for (const entrada of entradas) {
       if (restantes <= 0) break;
-      if (entrada.name.startsWith('.') || IGNORADAS.has(entrada.name)) continue;
+      if (IGNORADAS.has(entrada.name)) continue;
       const full = path.join(dir, entrada.name);
       restantes -= 1;
       if (entrada.isDirectory()) {

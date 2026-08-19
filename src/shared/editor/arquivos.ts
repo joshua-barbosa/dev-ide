@@ -39,6 +39,17 @@ const POR_EXTENSAO: Readonly<Record<string, string>> = {
   '.rb': 'vscode-icons:file-type-ruby',
   '.vue': 'vscode-icons:file-type-vue',
   '.gitignore': 'vscode-icons:file-type-git',
+  '.gitattributes': 'vscode-icons:file-type-git',
+  '.gitmodules': 'vscode-icons:file-type-git',
+  // Os "ignore" e "rc" que povoam a raiz de um projeto. Passaram a aparecer na
+  // árvore na spec 029, e sem entrada aqui sairiam todos como papel em branco.
+  '.dockerignore': 'vscode-icons:file-type-config',
+  '.cursorignore': 'vscode-icons:file-type-config',
+  '.npmrc': 'vscode-icons:file-type-config',
+  '.nvmrc': 'vscode-icons:file-type-config',
+  '.editorconfig': 'vscode-icons:file-type-config',
+  '.prettierrc': 'vscode-icons:file-type-config',
+  '.eslintrc': 'vscode-icons:file-type-config',
 };
 
 export const ICONE_DE_ARQUIVO = 'vscode-icons:default-file';
@@ -68,6 +79,11 @@ export function iconeDeArquivo(caminho: string, linguagem?: string): string {
 
   const direto = POR_EXTENSAO[ext] ?? POR_EXTENSAO[nome.toLowerCase()];
   if (direto !== undefined) return direto;
+
+  // `.env.example`, `.env.local`, `.env.production`: a extensão de cada um é
+  // diferente e todos são o mesmo tipo de arquivo. Regra de prefixo em vez de
+  // uma linha na tabela para cada sufixo que alguém inventar.
+  if (nome.toLowerCase().startsWith('.env')) return POR_EXTENSAO['.env'] ?? ICONE_DE_ARQUIVO;
 
   // `plain` significa "não reconheci", e aí o papel em branco é mais honesto
   // que o ícone de texto puro.

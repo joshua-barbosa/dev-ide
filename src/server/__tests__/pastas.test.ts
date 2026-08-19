@@ -64,12 +64,35 @@ test('a raiz do sistema de arquivos não tem pai', () => {
 
 // ---- árvore ----
 
-test('a árvore ignora ocultos e as pastas de sempre', () => {
+test('a árvore MOSTRA os ocultos — eles são arquivo de trabalho', () => {
   comPasta((raiz) => {
-    fs.mkdirSync(path.join(raiz, 'node_modules'));
-    fs.writeFileSync(path.join(raiz, 'node_modules', 'x.js'), '');
-    fs.mkdirSync(path.join(raiz, '.git'));
+    // O usuário reportou em 2026-08-19: `.gitignore`, `.env`, `.cursorignore`,
+    // `.claude`, `.cursor` e `.vscode` sumiam da árvore. O filtro por ponto
+    // inicial veio junto do navegador de PASTAS, onde ele faz sentido (`.cache`
+    // e `.local` no `$HOME` são ruído). Dentro de um projeto é o contrário:
+    // arquivo oculto ali é arquivo que se edita.
+    fs.writeFileSync(path.join(raiz, '.gitignore'), '');
     fs.writeFileSync(path.join(raiz, '.env'), '');
+    fs.mkdirSync(path.join(raiz, '.vscode'));
+    fs.writeFileSync(path.join(raiz, '.vscode', 'settings.json'), '');
+    fs.writeFileSync(path.join(raiz, 'a.ts'), '');
+
+    const nomes = arvoreDaPasta(raiz).nodes.map((n) => n.name);
+    assert.deepEqual(nomes, ['.vscode', '.env', '.gitignore', 'a.ts']);
+    const vscode = arvoreDaPasta(raiz).nodes.find((n) => n.name === '.vscode');
+    assert.deepEqual(vscode?.children?.map((c) => c.name), ['settings.json']);
+  });
+});
+
+test('a árvore continua ignorando o que é máquina, não trabalho', () => {
+  comPasta((raiz) => {
+    // Estas quatro não são escondidas por serem ocultas: são milhares de nós
+    // que ninguém edita, e que gastariam o teto de MAX_NOS antes do código.
+    for (const nome of ['node_modules', '.git', 'dist', '.runs', '.venv', '__pycache__',
+                        'vendor', 'target', '.mypy_cache', '.next']) {
+      fs.mkdirSync(path.join(raiz, nome));
+      fs.writeFileSync(path.join(raiz, nome, 'x.js'), '');
+    }
     fs.writeFileSync(path.join(raiz, 'a.ts'), '');
 
     const { nodes, truncated } = arvoreDaPasta(raiz);
