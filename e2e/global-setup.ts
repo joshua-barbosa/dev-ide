@@ -9,6 +9,9 @@ import * as path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const SENHA_MESTRA = 'senha-de-teste';
+
+/** A pasta que a suíte deixa aberta. */
+export const PASTA_DEMO = (dados: string): string => path.join(dados, 'projects', 'demo');
 export const CONEXAO = 'escola';
 export const TABELA = 'alunos';
 /**
@@ -66,6 +69,16 @@ export default async function globalSetup(): Promise<void> {
   fs.writeFileSync(
     path.join(dados, 'projects', 'demo', 'consulta.sql'),
     'SELECT id, nome FROM alunos;\n'
+  );
+
+  // Deixa a pasta `demo` aberta, como se o usuário já a tivesse aberto antes.
+  //
+  // Desde a spec 012 a IDE sobe SEM pasta na primeira vez — antes ela escolhia
+  // o primeiro projeto por ordem alfabética. Semear aqui deixa os testes mais
+  // honestos do que eram: eles dependiam daquela ordem sem dizer.
+  fs.writeFileSync(
+    path.join(dados, 'state.json'),
+    JSON.stringify({ pastaAtual: PASTA_DEMO(dados), recentes: [PASTA_DEMO(dados)] }, null, 2)
   );
 
   const banco = path.join(dados, 'escola.db');

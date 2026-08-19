@@ -29,6 +29,27 @@ export interface DriverInfo {
   readonly hasCli: boolean;
 }
 
+export interface Projeto {
+  readonly name: string;
+  readonly dir: string;
+}
+
+/** Uma parada do navegador de pastas. */
+export interface ListagemDePastas {
+  readonly path: string;
+  readonly parent: string | null;
+  readonly dirs: readonly { readonly name: string; readonly path: string }[];
+}
+
+/** Tudo que a interface precisa para desenhar o espaço de trabalho, de uma vez. */
+export interface RetratoDoEspaco {
+  readonly pasta: string | null;
+  readonly recentes: readonly string[];
+  readonly arvore: readonly FileNode[];
+  readonly simbolos: readonly SymbolInfo[];
+  readonly truncated: boolean;
+}
+
 export interface FileNode {
   readonly name: string;
   readonly path: string;
@@ -93,7 +114,7 @@ const conexoes = '/api/connections';
 
 export const Api = {
   // ---- projetos e arquivos ----
-  listProjects: () => request<string[]>('GET', '/api/projects'),
+  listProjects: () => request<Projeto[]>('GET', '/api/projects'),
   createProject: (name: string) =>
     request<{ name: string; dir: string }>('POST', '/api/projects', { name }),
   fileTree: (project: string) =>
@@ -110,6 +131,20 @@ export const Api = {
   saveFile: (path: string, content: string) =>
     request<{ path: string; bytes: number }>('POST', '/api/file', { path, content }),
   run: (payload: Record<string, unknown>) => request<RunResult>('POST', '/api/run', payload),
+
+  // ---- espaço de trabalho (spec 012) ----
+  browseFolders: (caminho?: string) =>
+    request<ListagemDePastas>(
+      'GET',
+      caminho === undefined ? '/api/folders' : `/api/folders?path=${encodeURIComponent(caminho)}`
+    ),
+  workspace: () => request<RetratoDoEspaco>('GET', '/api/workspace'),
+  openFolder: (path: string) => request<RetratoDoEspaco>('POST', '/api/workspace', { path }),
+  closeFolder: () => request<RetratoDoEspaco>('DELETE', '/api/workspace'),
+  forgetFolder: (path: string) =>
+    request<RetratoDoEspaco>('DELETE', '/api/workspace/recent', { path }),
+  createWorkspaceFile: (name: string, content: string) =>
+    request<{ path: string }>('POST', '/api/workspace/file', { name, content }),
 
   // ---- preferências ----
   prefs: () => request<Preferencias>('GET', '/api/prefs'),

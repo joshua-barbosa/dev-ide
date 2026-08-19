@@ -12,20 +12,19 @@ import { PreferencesStore } from './prefs';
 import { ProjectStore } from './projects';
 import { createConnectionsRouter } from './routes/connections';
 import { createPrefsRouter } from './routes/prefs';
+import { createWorkspaceRouter } from './routes/workspace';
+import { EstadoStore } from './estado';
 import { TerminalRegistry } from './terminal/registry';
 import { montarSocketDeTerminal } from './terminal/socket';
 import { criarResolvedorDeAbertura } from './terminal/abertura';
 import { runCode, RunRequest } from './runner';
-import { extractSymbols, SymbolInfo } from './symbols';
+import { EXTENSOES_DE_SIMBOLO, extractSymbols, SymbolInfo } from './symbols';
 
 const PORT = Number(process.env.PORT ?? 4321);
 const HOST = '127.0.0.1';
 const IDLE_SWEEP_MS = 60_000;
 const ROOT = path.resolve(__dirname, '..', '..');
 const PROJECTS_DIR = process.env.DEV_IDE_PROJECTS ?? path.join(ROOT, 'projects');
-const SYMBOL_EXTENSIONS = new Set([
-  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.php', '.c', '.h', '.cs',
-]);
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 const store = new ProjectStore(PROJECTS_DIR);
@@ -33,6 +32,9 @@ store.ensureBaseDir();
 
 // ---- Preferências ----
 const prefs = new PreferencesStore(PreferencesStore.defaultPath());
+
+// ---- Espaço de trabalho (pasta aberta, recentes) ----
+const estado = new EstadoStore(EstadoStore.defaultPath());
 
 // ---- Conexões (banco, redis, arquivos remotos, ssh) ----
 const registry = registerBuiltinDrivers(new DriverRegistry());
@@ -64,6 +66,7 @@ app.use(express.json({ limit: '4mb' }));
 app.use(express.static(UI_DIR));
 app.use('/api/connections', createConnectionsRouter({ registry, vault, pool, remember, prefs }));
 app.use('/api/prefs', createPrefsRouter(prefs));
+app.use('/api', createWorkspaceRouter(estado));
 
 function validateFilePath(raw: string): string {
   const resolved = path.resolve(raw);
@@ -72,8 +75,11 @@ function validateFilePath(raw: string): string {
 }
 
 // ---- Projetos ----
+// Nome **e** caminho: desde a spec 012 a interface abre pasta por caminho, e
+// os projetos viraram atalhos para dentro de `projects/`.
 app.get('/api/projects', wrap((_req, res) => {
-  res.json({ success: true, data: store.listProjects(), error: null });
+  const dados = store.listProjects().map((name) => ({ name, dir: store.projectDir(name) }));
+  res.json({ success: true, data: dados, error: null });
 }));
 
 app.post('/api/projects', wrap((req, res) => {
@@ -103,7 +109,7 @@ app.post('/api/projects/:name/files', wrap((req, res) => {
 }));
 
 app.get('/api/projects/:name/symbols', wrap((req, res) => {
-  const files = store.projectFiles(req.params.name, SYMBOL_EXTENSIONS);
+  const files = store.projectFiles(req.params.name, EXTENSOES_DE_SIMBOLO);
   const symbols: SymbolInfo[] = [];
   for (const file of files) {
     try {

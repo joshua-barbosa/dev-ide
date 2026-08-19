@@ -33,7 +33,7 @@ export function SymbolsPanel({ simbolos, onIr }: SymbolsPanelProps) {
   if (simbolos.length === 0) {
     return (
       <Box sx={{ px: 1.25, color: 'text.secondary', fontSize: 11, lineHeight: 1.5 }}>
-        Nenhum símbolo — salve arquivos de código no projeto.
+        Nenhum símbolo — salve arquivos de código na pasta aberta.
       </Box>
     );
   }

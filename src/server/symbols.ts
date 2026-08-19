@@ -20,6 +20,12 @@ export interface SymbolInfo {
 
 const TS_LIKE = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
 
+/** Extensões que este módulo sabe ler. Mora aqui, e não em quem chama, porque
+ *  quem sabe o que é extraível é quem extrai. */
+export const EXTENSOES_DE_SIMBOLO: ReadonlySet<string> = new Set([
+  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.php', '.c', '.h', '.cs',
+]);
+
 /** Extrai símbolos (classes, funções, constantes, variáveis, objetos...) de um arquivo. */
 export function extractSymbols(filePath: string, content: string): SymbolInfo[] {
   const ext = path.extname(filePath).toLowerCase();

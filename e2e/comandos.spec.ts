@@ -20,11 +20,16 @@ test('a barra traz os oito menus do VS Code', async ({ page }) => {
 
 test('o menu mostra o não implementado desabilitado, em vez de esconder', async ({ page }) => {
   await menu(page, 'File');
-
-  // Implementado e disponível.
   await expect(page.getByRole('menuitem', { name: /New Text File/ })).toBeEnabled();
+  await page.keyboard.press('Escape');
+
   // Declarado e ainda sem implementação — o usuário pediu ver o mapa inteiro.
-  const pendente = page.getByRole('menuitem', { name: /Open Recent/ });
+  //
+  // O exemplo é o Emmet, e não um item de File, de propósito: ele está no fim
+  // da fila do lote, então este teste não vira manutenção a cada entrega. O
+  // `Open Recent`, que estava aqui antes, deixou de ser pendente na spec 012.
+  await menu(page, 'Edit');
+  const pendente = page.getByRole('menuitem', { name: /Emmet/ });
   await expect(pendente).toBeVisible();
   await expect(pendente).toBeDisabled();
   await expect(pendente).toContainText('em breve');

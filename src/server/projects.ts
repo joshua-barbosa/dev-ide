@@ -62,7 +62,7 @@ export class ProjectStore {
   }
 
   /** Lista recursivamente os caminhos absolutos dos arquivos do projeto. */
-  projectFiles(name: string, extensions?: Set<string>): string[] {
+  projectFiles(name: string, extensions?: ReadonlySet<string>): string[] {
     const result: string[] = [];
     const walk = (nodes: FileNode[]) => {
       for (const node of nodes) {

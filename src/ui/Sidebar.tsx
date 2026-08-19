@@ -10,7 +10,7 @@ import { Icon } from './Icon';
 import { FilesPanel } from './files/FilesPanel';
 import { ConnectionsPanel, type ConnectionsPanelProps } from './connections/ConnectionsPanel';
 import { SymbolsPanel } from './files/SymbolsPanel';
-import type { Project } from './files/useProject';
+import type { PastaAberta } from './files/usePasta';
 
 // Só ícone: o nome vira dica ao passar o mouse e rótulo acessível. Ganha
 // largura na lateral, que é estreita por natureza.
@@ -28,9 +28,9 @@ export interface SidebarProps {
   readonly onAbrirArquivo: (caminho: string) => Promise<void>;
   readonly caminhoAtivo?: string | null;
   readonly conexoes: Omit<ConnectionsPanelProps, 'painel'>;
-  readonly projeto: Project;
+  readonly pasta: PastaAberta;
   readonly onIrParaSimbolo: (arquivo: string, linha: number) => void;
-  readonly onNovoProjeto: () => void;
+  readonly onAbrirPasta: () => void;
   readonly onErro: (erro: unknown) => void;
   /** Controlado por fora: o menu View também troca de painel. */
   readonly painelAtivo: string;
@@ -38,8 +38,8 @@ export interface SidebarProps {
 }
 
 export function Sidebar({
-  width, onAbrirArquivo, caminhoAtivo = null, conexoes, projeto, onIrParaSimbolo,
-  onNovoProjeto,
+  width, onAbrirArquivo, caminhoAtivo = null, conexoes, pasta, onIrParaSimbolo,
+  onAbrirPasta,
   onErro,
   painelAtivo,
   onPainelAtivo,
@@ -94,10 +94,10 @@ export function Sidebar({
       <Box sx={{ flex: 1, overflow: 'auto', py: 0.75, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {ativo === 'files' && (
           <FilesPanel
-            projeto={projeto}
+            pasta={pasta}
             onAbrirArquivo={onAbrirArquivo}
             caminhoAtivo={caminhoAtivo}
-            onNovoProjeto={onNovoProjeto}
+            onAbrirPasta={onAbrirPasta}
             onErro={onErro}
           />
         )}
@@ -105,7 +105,7 @@ export function Sidebar({
           <ConnectionsPanel painel={ativo} {...conexoes} />
         )}
         {ativo === 'symbols' && (
-          <SymbolsPanel simbolos={projeto.simbolos} onIr={onIrParaSimbolo} />
+          <SymbolsPanel simbolos={pasta.simbolos} onIr={onIrParaSimbolo} />
         )}
       </Box>
     </Box>

@@ -61,3 +61,53 @@ test('nenhum arquivo-fonte tem byte de controle cru', () => {
       culpados.join('\n')
   );
 });
+
+// ---------------------------------------------------------------------------
+// Ícone pedido pela interface precisa estar empacotado
+// ---------------------------------------------------------------------------
+//
+// `resolverIcone` devolve o genérico para o que não conhece — o que é a decisão
+// certa em tempo de execução (driver mais novo que a interface não pode abrir
+// buraco na tela), mas esconde erro de digitação nosso: o ícone some e vira um
+// círculo, em silêncio.
+//
+// Aconteceu de verdade na spec 012: o navegador de pastas pediu `lucide:check` e
+// `lucide:corner-left-up` sem acrescentá-los à lista, e os dois apareceram como
+// círculo na tela. Este teste faz o mesmo erro falhar antes de chegar lá.
+
+import { ICONES_USADOS } from '../../shared/icons';
+
+/** Nomes qualificados escritos como literal na interface, ex.: `'lucide:x'`. */
+function iconesLiteraisDaInterface(): ReadonlySet<string> {
+  const achados = new Set<string>();
+  const varrer = (dir: string): void => {
+    for (const entrada of fs.readdirSync(dir, { withFileTypes: true })) {
+      const alvo = path.join(dir, entrada.name);
+      if (entrada.isDirectory()) {
+        varrer(alvo);
+        continue;
+      }
+      if (!/\.tsx?$/.test(entrada.name)) continue;
+      const conteudo = fs.readFileSync(alvo, 'utf8');
+      for (const casamento of conteudo.matchAll(/'([a-z0-9-]+:[a-z0-9-]+)'/g)) {
+        const nome = casamento[1];
+        // Só conjuntos de ícone; `data:`, `http:` e afins não contam.
+        if (nome !== undefined && /^(lucide|devicon|vscode-icons|logos):/.test(nome)) {
+          achados.add(nome);
+        }
+      }
+    }
+  };
+  varrer(path.join(RAIZ, 'src', 'ui'));
+  return achados;
+}
+
+test('todo ícone pedido por nome na interface está empacotado', () => {
+  const declarados = new Set(ICONES_USADOS);
+  const faltando = [...iconesLiteraisDaInterface()].filter((n) => !declarados.has(n));
+  assert.deepEqual(
+    faltando,
+    [],
+    `ícones pedidos pela interface e ausentes de ICONES_USADOS: ${faltando.join(', ')}`
+  );
+});

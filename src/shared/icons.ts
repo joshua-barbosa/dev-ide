@@ -99,6 +99,9 @@ const ICONES_DA_INTERFACE = [
   'lucide:play',
   'lucide:save',
   'lucide:x',
+  // Navegador de pastas (spec 012): confirmar a pasta atual e subir um nível.
+  'lucide:check',
+  'lucide:corner-left-up',
 ] as const;
 
 /**
