@@ -19,7 +19,7 @@ import { useSidebarWidth } from './useSidebarWidth';
 import { useWorkspace } from './useWorkspace';
 import { EditorGroup } from './EditorGroup';
 import { ACAO_DO_MONACO } from '../shared/editor/acoes-monaco';
-import type { PublicConnection, TreeNode } from '../shared/contracts';
+import type { PublicConnection } from '../shared/contracts';
 import { useConnections } from './connections/useConnections';
 import { VaultDialog } from './connections/VaultDialog';
 import { ConnectionForm } from './connections/ConnectionForm';
@@ -43,14 +43,16 @@ import { useProblemas } from './useProblemas';
 import {
   abrirTerminal as abrirNoPainel, ativarTerminal, fecharTerminal, SEM_TERMINAIS,
 } from '../shared/terminais';
-import { DESTINOS, type DestinoDeComando } from '../shared/comandos-salvos';
 import { useExecution } from './useExecution';
 import { usePasta } from './files/usePasta';
 import { usePrefs } from './usePrefs';
 import { useAutoSave } from './useAutoSave';
 import { useHistorico } from './useHistorico';
 import { useSnippets } from './useSnippets';
-import { LINGUAGEM_TODAS, rotuloDaLinguagem } from '../shared/snippets';
+import { useComandosAcoes } from './acoes/useComandosAcoes';
+import { usePastaAcoes } from './acoes/usePastaAcoes';
+import { useConexoesAcoes } from './acoes/useConexoesAcoes';
+import { useSnippetsAcoes } from './acoes/useSnippetsAcoes';
 
 export function App() {
   const lateral = useSidebarWidth();
@@ -232,97 +234,8 @@ export function App() {
     await ws.reverter();
   };
 
-  const novoProjeto = async (): Promise<void> => {
-    await pedirComRetentativa(
-      qi,
-      { titulo: 'Nome do projeto', placeholder: 'ex.: meu-projeto' },
-      (nome: string) => pasta.criarProjeto(nome)
-    );
-  };
-
-  const escolherProjeto = async (): Promise<void> => {
-    const escolhido = await qi.pedir({
-      titulo: 'Abrir workspace',
-      placeholder: 'Escolha um projeto',
-      opcoes: pasta.projetos.map((p) => ({
-        valor: p.dir,
-        rotulo: p.name,
-        detalhe: p.dir,
-        icone: 'folder',
-      })),
-    });
-    if (escolhido !== null) await pasta.abrir(escolhido);
-  };
-
-  /**
-   * Navegador de pastas servido pelo backend.
-   *
-   * O navegador nativo do sistema só existe no Electron, que está adiado por
-   * gatilho — então a IDE lista as pastas e o usuário desce por elas. Cada
-   * parada oferece **abrir esta pasta**, para não obrigar a descer mais um
-   * nível só para confirmar.
-   *
-   * Sem componente novo: a entrada rápida em modo lista já tem seta, filtro,
-   * Enter e Esc. O valor carrega o verbo (`abrir:` ou `ir:`), e o laço vive
-   * aqui — a mesma forma de `pedirComRetentativa`.
-   */
-  const abrirPastaPeloNavegador = async (): Promise<void> => {
-    let atual: string | undefined = pasta.pasta === '' ? undefined : pasta.pasta;
-    for (;;) {
-      const listagem = await Api.browseFolders(atual);
-      const opcoes = [
-        { valor: `abrir:${listagem.path}`, rotulo: 'Abrir esta pasta', detalhe: listagem.path, icone: 'lucide:check' },
-        ...(listagem.parent === null
-          ? []
-          : [{ valor: `ir:${listagem.parent}`, rotulo: '..', detalhe: listagem.parent, icone: 'lucide:corner-left-up' }]),
-        ...listagem.dirs.map((d) => ({ valor: `ir:${d.path}`, rotulo: d.name, icone: 'folder' })),
-      ];
-
-      const escolhido = await qi.pedir({
-        titulo: 'Abrir pasta',
-        placeholder: listagem.path,
-        opcoes,
-      });
-      // Cancelar mantém a pasta anterior (AC-4).
-      if (escolhido === null) return;
-
-      const [verbo, ...resto] = escolhido.split(':');
-      const alvo = resto.join(':');
-      if (verbo === 'abrir') {
-        await pasta.abrir(alvo);
-        return;
-      }
-      atual = alvo;
-    }
-  };
-
-  /** Pastas recentes. A que não existe mais é informada e esquecida (AC-10). */
-  const abrirRecente = async (): Promise<void> => {
-    if (pasta.recentes.length === 0) {
-      await dialogs.avisar('Nenhuma pasta aberta ainda.', 'Open Recent');
-      return;
-    }
-    const escolhido = await qi.pedir({
-      titulo: 'Abrir pasta recente',
-      placeholder: 'Escolha uma pasta',
-      opcoes: pasta.recentes.map((caminho) => ({
-        valor: caminho,
-        rotulo: caminho.split('/').filter((p) => p !== '').pop() ?? caminho,
-        detalhe: caminho,
-        icone: 'folder',
-      })),
-    });
-    if (escolhido === null) return;
-    try {
-      await pasta.abrir(escolhido);
-    } catch (e) {
-      await pasta.esquecer(escolhido);
-      await dialogs.avisar(
-        `${(e as Error).message}\n\nEla foi removida da lista de recentes.`,
-        'Pasta indisponível'
-      );
-    }
-  };
+  const pastaAcoes = usePastaAcoes({ qi, pasta, avisar: dialogs.avisar });
+  const conexoesAcoes = useConexoesAcoes({ qi, ws, exec, conexoes });
 
   /**
    * Abre o `config.json` como aba do editor.
@@ -402,15 +315,6 @@ export function App() {
     void navigator.clipboard?.writeText(texto);
   };
 
-  /** Monta o SELECT de um objeto, qualificando com o schema quando houver. */
-  const abrirQueryDoNo = (id: string, no: { label: string; meta?: Record<string, unknown> }) => {
-    const objeto = typeof no.meta?.object === 'string' ? no.meta.object : no.label;
-    const schema = typeof no.meta?.schema === 'string' ? no.meta.schema : null;
-    const alvo = schema === null ? objeto : `${schema}.${objeto}`;
-    exec.definirConexaoAtiva(id);
-    ws.abrirQuery(`sql:${id}:${alvo}`, `${objeto}.sql`, `SELECT * FROM ${alvo} LIMIT 100;`, id);
-  };
-
   /**
    * Abre um terminal de shell NO PAINEL (decisão D6).
    *
@@ -452,198 +356,11 @@ export function App() {
     );
   };
 
-  /**
-   * A caixa de comandos salvos — o que era `Run Task…`.
-   *
-   * Descobertos e salvos na mesma lista, mais duas entradas de gestão. Uma tela
-   * de gerenciamento seria mais interface que conteúdo: o usuário tem poucos
-   * comandos.
-   */
-  const rodarComando = async (): Promise<void> => {
-    const { salvos, descobertos } = await Api.commands();
+  const comandosAcoes = useComandosAcoes({
+    qi, ws, avisar: dialogs.avisar, rodarNoTerminal: (c) => novoTerminalNoPainel(c),
+  });
+  const snippetsAcoes = useSnippetsAcoes({ qi, ws, snippets, linguagem });
 
-    const escolhido = await qi.pedir({
-      titulo: 'Comandos',
-      placeholder: 'Escolha um comando',
-      opcoes: [
-        ...descobertos.map((c) => ({
-          valor: `rodar:shell:${c.comando}`,
-          rotulo: c.nome,
-          detalhe: `${c.comando}  ·  ${c.origem}`,
-          icone: 'lucide:play',
-        })),
-        ...salvos.map((c) => ({
-          valor: `rodar:${c.destino}:${c.comando}`,
-          rotulo: c.nome,
-          detalhe: c.comando,
-          icone: c.destino === 'sql' ? 'database' : 'lucide:square-terminal',
-          sufixo: 'salvo',
-        })),
-        { valor: 'novo:', rotulo: 'Salvar um comando novo…', icone: 'lucide:plus' },
-        ...(salvos.length === 0
-          ? []
-          : [{ valor: 'remover:', rotulo: 'Remover um comando salvo…', icone: 'lucide:trash-2' }]),
-      ],
-    });
-    if (escolhido === null) return;
-
-    const separador = escolhido.indexOf(':');
-    const verbo = escolhido.slice(0, separador);
-    const resto = escolhido.slice(separador + 1);
-
-    if (verbo === 'novo') return salvarComando();
-    if (verbo === 'remover') return removerComando();
-
-    const segundo = resto.indexOf(':');
-    const destino = resto.slice(0, segundo) as DestinoDeComando;
-    const comando = resto.slice(segundo + 1);
-
-    if (destino === 'sql') {
-      // ABRE, não executa: um comando de shell o usuário escolheu rodar; um SQL
-      // pode ser um DELETE. O gatilho fica com ele.
-      ws.abrirTexto(`comando:${comando}`, 'comando.sql', comando, 'sql');
-      return;
-    }
-    novoTerminalNoPainel(comando);
-  };
-
-  /** Cria um comando salvo, avisando sobre senha em texto puro. */
-  const salvarComando = async (): Promise<void> => {
-    const nome = await qi.pedir({
-      titulo: 'Novo comando salvo',
-      placeholder: 'Nome, ex.: subir homologação',
-    });
-    if (nome === null) return;
-
-    const comando = await qi.pedir({
-      titulo: `Comando de "${nome}"`,
-      placeholder: 'ex.: npm run deploy — ou um SELECT, se o destino for SQL',
-    });
-    if (comando === null) return;
-
-    const destino = await qi.pedir({
-      titulo: 'Para onde este comando vai?',
-      placeholder: 'Destino',
-      opcoes: DESTINOS.map((d) => ({
-        valor: d,
-        rotulo: d === 'shell' ? 'Terminal (shell)' : 'Consulta (SQL)',
-        detalhe: d === 'shell' ? 'abre um terminal e executa' : 'abre numa aba, sem executar',
-        icone: d === 'shell' ? 'lucide:square-terminal' : 'database',
-      })),
-    });
-    if (destino === null) return;
-
-    await Api.createCommand(nome, comando, destino as DestinoDeComando);
-    // O aviso é o que se deve ao usuário: o `commands.json` não é o cofre.
-    await dialogs.avisar(
-      `"${nome}" foi salvo e vale em qualquer pasta.\n\n` +
-        'Atenção: comandos salvos ficam em ~/.dev-ide/commands.json em texto puro. ' +
-        'Não guarde senha dentro de um.',
-      'Comando salvo'
-    );
-  };
-
-  const removerComando = async (): Promise<void> => {
-    const { salvos } = await Api.commands();
-    const escolhido = await qi.pedir({
-      titulo: 'Remover comando salvo',
-      placeholder: 'Escolha o que remover',
-      opcoes: salvos.map((c) => ({ valor: c.id, rotulo: c.nome, detalhe: c.comando })),
-    });
-    if (escolhido === null) return;
-    await Api.deleteCommand(escolhido);
-  };
-
-  /**
-   * A caixa de snippets: inserir, criar e remover.
-   *
-   * Mesma forma da caixa de comandos salvos — uma entrada de menu só, com a
-   * gestão dentro da própria lista. O usuário tem poucos snippets; uma tela de
-   * gerenciamento seria mais interface que conteúdo.
-   */
-  const abrirSnippets = async (): Promise<void> => {
-    const doEditor = snippets.lista.filter(
-      (s) => s.linguagem === linguagem || s.linguagem === LINGUAGEM_TODAS
-    );
-    const escolhido = await qi.pedir({
-      titulo: 'Snippets',
-      placeholder: 'Escolha um snippet para inserir',
-      opcoes: [
-        ...doEditor.map((s) => ({
-          valor: `inserir:${s.id}`,
-          rotulo: s.prefixo,
-          detalhe: s.nome,
-          icone: 'lucide:files',
-          sufixo: rotuloDaLinguagem(s.linguagem),
-        })),
-        { valor: 'novo:', rotulo: 'Salvar um snippet novo…', icone: 'lucide:plus' },
-        ...(snippets.lista.length === 0
-          ? []
-          : [{ valor: 'remover:', rotulo: 'Remover um snippet…', icone: 'lucide:trash-2' }]),
-      ],
-    });
-    if (escolhido === null) return;
-
-    if (escolhido === 'novo:') return salvarSnippet();
-    if (escolhido === 'remover:') return removerSnippet();
-
-    const alvo = snippets.lista.find((s) => s.id === escolhido.slice('inserir:'.length));
-    if (alvo !== undefined) ws.editorRef.current?.inserirSnippet(alvo.corpo);
-  };
-
-  /**
-   * Cria um snippet a partir da SELEÇÃO, quando houver.
-   *
-   * É o caminho natural: o trecho que se quer guardar quase sempre já está na
-   * tela. Pedir para digitar de novo seria pedir duas vezes a mesma coisa.
-   */
-  const salvarSnippet = async (): Promise<void> => {
-    const selecionado = ws.editorRef.current?.getSelection() ?? '';
-
-    const prefixo = await qi.pedir({
-      titulo: 'Novo snippet',
-      placeholder: 'Prefixo — a palavra que dispara, ex.: log',
-    });
-    if (prefixo === null) return;
-
-    const corpo = await qi.pedir({
-      titulo: `Corpo de "${prefixo}"`,
-      placeholder: 'Use $1, ${1:valor} e $0 para os pontos de parada',
-      valorInicial: selecionado,
-    });
-    if (corpo === null) return;
-
-    const alvo = await qi.pedir({
-      titulo: 'Em que linguagem este snippet vale?',
-      placeholder: 'Linguagem',
-      opcoes: [
-        {
-          valor: LINGUAGEM_TODAS,
-          rotulo: 'Todas as linguagens',
-          detalhe: 'para o que não é de linguagem nenhuma',
-          icone: 'lucide:boxes',
-        },
-        ...LINGUAGENS.map(([valor, rotulo, icone]) => ({ valor, rotulo, icone })),
-      ],
-    });
-    if (alvo === null) return;
-
-    await snippets.criar({ nome: prefixo, prefixo, corpo, linguagem: alvo });
-  };
-
-  const removerSnippet = async (): Promise<void> => {
-    const escolhido = await qi.pedir({
-      titulo: 'Remover snippet',
-      placeholder: 'Escolha o que remover',
-      opcoes: snippets.lista.map((s) => ({
-        valor: s.id,
-        rotulo: s.prefixo,
-        detalhe: s.corpo.split('\n')[0],
-        sufixo: rotuloDaLinguagem(s.linguagem),
-      })),
-    });
-    if (escolhido !== null) await snippets.remover(escolhido);
-  };
 
   const contexto: ContextoDeComandos = {
     temEditor: ws.active !== null && ws.active.type !== 'grid' && ws.active.type !== 'conexao',
@@ -670,11 +387,11 @@ export function App() {
    */
   const ACOES: Readonly<Record<IdImplementado, () => void>> = {
     'file.new': novoArquivo,
-    'file.newProject': () => avisar(novoProjeto()),
+    'file.newProject': () => avisar(pastaAcoes.novoProjeto()),
     'file.open': () => avisar(abrirPorCaminho()),
-    'file.openFolder': () => avisar(abrirPastaPeloNavegador()),
-    'file.openWorkspace': () => avisar(escolherProjeto()),
-    'file.openRecent': () => avisar(abrirRecente()),
+    'file.openFolder': () => avisar(pastaAcoes.abrirPasta()),
+    'file.openWorkspace': () => avisar(pastaAcoes.escolherProjeto()),
+    'file.openRecent': () => avisar(pastaAcoes.abrirRecente()),
     'file.save': () => avisar(salvarArquivo()),
     'file.saveAs': () => avisar(salvarArquivo()),
     'file.saveAll': () => avisar(salvarTudo()),
@@ -687,7 +404,7 @@ export function App() {
     'edit.redo': () => document.execCommand('redo'),
     'edit.cut': () => document.execCommand('cut'),
     'edit.copy': () => document.execCommand('copy'),
-    'edit.snippets': () => avisar(abrirSnippets()),
+    'edit.snippets': () => avisar(snippetsAcoes.abrir()),
     'edit.paste': () => avisar(navigator.clipboard.readText().then((t) => {
       document.execCommand('insertText', false, t);
     })),
@@ -727,10 +444,10 @@ export function App() {
     },
 
     'terminal.new': () => novoTerminalNoPainel(),
-    'terminal.runTask': () => avisar(rodarComando()),
+    'terminal.runTask': () => avisar(comandosAcoes.abrir()),
     'terminal.connection': () => {
       const conexao = conexoes.acharConexao(exec.conexaoAtiva);
-      if (conexao !== null) avisar(abrirTerminalDaConexao(conexao));
+      if (conexao !== null) avisar(conexoesAcoes.abrirTerminalDaConexao(conexao));
     },
 
     'help.commands': () => avisar(abrirPaleta()),
@@ -775,70 +492,6 @@ export function App() {
     return () => document.removeEventListener('keydown', aoTeclar);
   }, []);
 
-  const abrirFormulario = (conexao: PublicConnection | null, grupo?: string): void => {
-    ws.abrirFormulario(
-      conexao?.id ?? null,
-      conexao === null ? 'Nova conexão' : conexao.label,
-      grupo
-    );
-  };
-
-  /**
-   * Abre o terminal de uma conexão.
-   *
-   * Destranca o cofre antes: a credencial precisa ser resolvida do lado do
-   * servidor para virar o arquivo temporário. Sem isso a aba abriria e falharia.
-   */
-  const abrirTerminalDaConexao = async (conexao: PublicConnection): Promise<void> => {
-    if (!(await conexoes.garantirDestrancado())) return;
-    ws.abrirTerminal(conexao.id, conexao.label);
-  };
-
-  /** Pede o padrão e aplica o filtro naquela categoria. */
-  const filtrarCategoria = async (
-    id: string,
-    caminho: readonly string[],
-    atual: string | null
-  ): Promise<void> => {
-    const padrao = await qi.pedir({
-      titulo: 'Filtrar por nome',
-      placeholder: 'ex.: alunos, tiraduvidas_%, %_2024',
-      valorInicial: atual ?? '',
-      // Vazio aqui é resposta, não desistência: é como se limpa o filtro.
-      permiteVazio: true,
-    });
-    // Cancelar não mexe no filtro; apagar o texto é o que limpa (AC-9).
-    if (padrao === null) return;
-    await conexoes.definirFiltro(id, caminho, padrao);
-  };
-
-  /** Abre o esqueleto de criação numa aba de query, sem executar nada. */
-  const novoObjeto = (id: string, caminho: readonly string[], no: TreeNode): void => {
-    const template = typeof no.meta?.template === 'string' ? no.meta.template : '';
-    if (template === '') return;
-    exec.definirConexaoAtiva(id);
-    ws.abrirQuery(`novo:${id}:${caminho.join('/')}`, `novo_${no.id}.sql`, template, id);
-  };
-
-  /**
-   * Renomeia um grupo, arrastando os descendentes junto.
-   *
-   * A rota já reescreve o prefixo de todos os caminhos, então renomear "ACME"
-   * move "ACME/Bancos" junto — é o que o usuário espera de uma pasta.
-   */
-  const renomearGrupo = async (caminho: string): Promise<void> => {
-    const atual = caminho.split('/').pop() ?? caminho;
-    const novo = await qi.pedir({
-      titulo: `Renomear "${caminho}"`,
-      placeholder: 'Novo nome do grupo',
-      valorInicial: atual,
-    });
-    if (novo === null || novo.trim() === '' || novo.trim() === atual) return;
-
-    const pai = caminho.includes('/') ? `${caminho.slice(0, caminho.lastIndexOf('/'))}/` : '';
-    await Api.renameGroup(caminho, `${pai}${novo.trim()}`);
-    await conexoes.recarregar();
-  };
   const abaAtual = ws.activeId ?? '';
 
   /**
@@ -901,7 +554,7 @@ export function App() {
           width={lateral.width}
           painelAtivo={painelLateral}
           onPainelAtivo={setPainelLateral}
-          onAbrirPasta={() => avisar(abrirPastaPeloNavegador())}
+          onAbrirPasta={() => avisar(pastaAcoes.abrirPasta())}
           onErro={falhaDaIde}
           onAbrirArquivo={ws.abrirArquivo}
           pasta={pasta}
@@ -909,12 +562,12 @@ export function App() {
           caminhoAtivo={(ws.active?.meta as { path?: string | null } | undefined)?.path ?? null}
           conexoes={{
             ctrl: conexoes,
-            onAbrirQuery: abrirQueryDoNo,
-            onNovaConexao: (grupo?: string) => abrirFormulario(null, grupo),
-            onRenomearGrupo: (caminho: string) => avisar(renomearGrupo(caminho)),
-            onAbrirTerminal: (conexao: PublicConnection) => avisar(abrirTerminalDaConexao(conexao)),
-            onFiltrar: (id, caminho, atual) => avisar(filtrarCategoria(id, caminho, atual)),
-            onNovoObjeto: novoObjeto,
+            onAbrirQuery: conexoesAcoes.abrirQueryDoNo,
+            onNovaConexao: (grupo?: string) => conexoesAcoes.abrirFormulario(null, grupo),
+            onRenomearGrupo: (caminho: string) => avisar(conexoesAcoes.renomearGrupo(caminho)),
+            onAbrirTerminal: (conexao: PublicConnection) => avisar(conexoesAcoes.abrirTerminalDaConexao(conexao)),
+            onFiltrar: (id, caminho, atual) => avisar(conexoesAcoes.filtrarCategoria(id, caminho, atual)),
+            onNovoObjeto: conexoesAcoes.novoObjeto,
             onErro: falhaDeConexao,
             onMenuNo: (e, id, caminho, no) =>
               menu.abrir(e, [
@@ -946,7 +599,7 @@ export function App() {
                   : { label: 'Conectar', onClick: () => conexoes.abrirConexao(conexao) },
                 { label: 'Recarregar metadados', onClick: () => conexoes.recarregarMetadados(conexao.id) },
                 null,
-                { label: 'Editar conexão…', onClick: () => abrirFormulario(conexao) },
+                { label: 'Editar conexão…', onClick: () => conexoesAcoes.abrirFormulario(conexao) },
                 { label: 'Excluir conexão', danger: true, onClick: () => conexoes.excluir(conexao) },
               ]),
           }}
