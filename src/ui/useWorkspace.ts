@@ -10,7 +10,7 @@
 // 2. `null` significa "nenhuma aba". Usá-lo também para "aba fechada" faz a
 //    guarda engolir o evento de fechar a última, e a barra de status fica presa
 //    no arquivo anterior.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { GRUPO_PADRAO, type Tab, type TabStore } from '../shared/tabs';
 import {
   dividir as dividirLayout, LAYOUT_INICIAL, normalizarLayout, podeDividir,
@@ -23,6 +23,7 @@ import type { EditorHandle, ViewState } from './editor/EditorHost';
 import { EXT_TO_LANG, NOME_TO_LANG } from '../shared/editor/languages';
 import { Api } from './api';
 import { useTabs } from './tabs/useTabs';
+import { useGruposDeEditor } from './editor/useGruposDeEditor';
 
 export interface EditorTabMeta {
   /** Caminho no disco; `null` em aba de query, que não tem arquivo. */
@@ -142,159 +143,26 @@ export interface WorkspaceDeps {
 
 export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   const { store, tabs, activeId, active, grupos, grupoFocado } = useTabs();
-  /** Uma instância de editor por grupo, preenchida por ref de callback. */
-  const editores = useRef(new Map<number, EditorHandle | null>());
-  const focoAtual = useRef(grupoFocado);
-  focoAtual.current = grupoFocado;
-
-  const editorRef = useMemo<PonteiroDeEditor>(
-    () => ({
-      get current(): EditorHandle | null {
-        return editores.current.get(focoAtual.current) ?? null;
-      },
-    }),
-    []
-  );
-
-  /**
-   * Quantos editores existem agora. Muda quando um grupo ganha ou perde o seu.
-   *
-   * Existe porque a chegada de um editor é o gatilho para carregar a aba dele:
-   * o grupo novo é renderizado no mesmo commit em que passa a existir, e sem
-   * este contador o efeito rodaria com o mapa ainda vazio, marcaria a aba como
-   * carregada e **nunca tentaria de novo** — foi exatamente o que aconteceu, e
-   * o lado direito da tela dividida nascia em branco.
-   */
-  const [versaoDosEditores, setVersaoDosEditores] = useState(0);
-
-  /**
-   * Uma função por grupo, guardada.
-   *
-   * Devolver uma closure nova a cada render faria o React chamar a antiga com
-   * `null` e a nova com o handle **a cada render** — e, como registrar mexe em
-   * estado, isso viraria laço infinito.
-   */
-  const refsPorGrupo = useRef(new Map<number, (h: EditorHandle | null) => void>());
-  const registrarEditor = useCallback((grupo: number) => {
-    const existente = refsPorGrupo.current.get(grupo);
-    if (existente !== undefined) return existente;
-
-    const fn = (handle: EditorHandle | null): void => {
-      if (handle === null) {
-        editores.current.delete(grupo);
-      } else {
-        editores.current.set(grupo, handle);
-        // **Instância NOVA não sabe de nada.** Trocar o arranjo muda a forma da
-        // árvore, e o React remonta os editores que mudaram de lugar nela — o
-        // que jogava fora o conteúdo e deixava o grupo em branco. Limpar a
-        // guarda aqui faz o efeito carregar a aba de novo no editor novo.
-        ultimaAtiva.current.delete(grupo);
-      }
-      setVersaoDosEditores((n) => n + 1);
-    };
-    refsPorGrupo.current.set(grupo, fn);
-    return fn;
-  }, []);
-
   const [cursor, setCursor] = useState({ linha: 1, coluna: 1 });
   const [edicoes, setEdicoes] = useState(0);
   const [emPreview, setEmPreview] = useState<ReadonlySet<string>>(new Set());
   const [layout, setLayout] = useState<NoDeLayout>(LAYOUT_INICIAL);
 
-  /** Suprime o "sujou" que a própria troca de aba dispara ao recarregar o editor. */
-  const carregando = useRef(false);
-  /** A última aba carregada em CADA grupo — a guarda de reentrância, por grupo. */
-  const ultimaAtiva = useRef(new Map<number, string | null>());
-  /**
-   * Para onde ir assim que a aba terminar de carregar, por id de aba.
-   *
-   * Abrir um arquivo e pular para uma linha são dois tempos: o conteúdo só
-   * chega ao editor no efeito abaixo, um render depois. Mandar o cursor antes
-   * disso não dá erro — o salto simplesmente se perde, e o arquivo abre na
-   * linha 1. Era o que acontecia ao clicar num resultado de busca de um arquivo
-   * ainda fechado; com ele já aberto, funcionava, e por isso passou pelo teste.
-   */
-  const posicaoPendente = useRef(new Map<string, { linha: number; coluna: number }>());
+  // Sem aba, a posição do cursor anterior é estado velho na barra de status.
+  const aoEsvaziarFoco = useCallback(() => setCursor({ linha: 1, coluna: 1 }), []);
 
   /**
-   * Guarda no store o que está no editor de `grupoDoEditor`.
+   * Tudo que sabe que existe mais de um editor mora aqui.
    *
-   * **O grupo é parâmetro, e não `aba.grupo`.** A diferença já custou um
-   * defeito: ao dividir a tela, a aba muda de grupo ANTES de o efeito salvá-la,
-   * e usar `aba.grupo` pegava o editor do lado novo — que ainda está em branco.
-   * O resultado era o arquivo aparecer vazio do outro lado. Quem sabe de que
-   * editor o conteúdo veio é quem chama.
+   * Este gancho fala de ABAS; o de baixo, das INSTÂNCIAS que as mostram. A
+   * separação saiu do teto de 800 linhas do Artigo IV, mas o corte já estava
+   * escrito no backlog antes disso.
    */
-  const salvarNaAba = useCallback(
-    (id: string, grupoDoEditor: number) => {
-      const aba = store.get(id);
-      const editor = editores.current.get(grupoDoEditor) ?? null;
-      if (aba === null || editor === null || !ehEditavel(aba)) return;
-      store.update(id, {
-        meta: {
-          ...metaDe(aba),
-          content: editor.getValue(),
-          language: editor.getLanguage(),
-          view: editor.getViewState(),
-        },
-      });
-    },
-    [store]
-  );
+  const ed = useGruposDeEditor({
+    store, tabs, activeId, grupos, grupoFocado, aoEsvaziarFoco, ehEditavel, metaDe,
+  });
+  const { editorRef, registrarEditor, salvarNaAba, salvarGrupoFocado, salvarTodosOsGrupos } = ed;
 
-  /**
-   * Carrega em cada grupo a aba ativa dele.
-   *
-   * O laço é por grupo porque a divisão da tela tem **dois editores**, cada um
-   * com a própria aba — e a troca de um não pode mexer no outro. As duas
-   * armadilhas do topo continuam valendo, agora por grupo.
-   */
-  useEffect(() => {
-    for (const grupo of grupos) {
-      const ativa = store.ativaDoGrupo(grupo);
-      if (ativa === ultimaAtiva.current.get(grupo)) continue;
-
-      const editor = editores.current.get(grupo) ?? null;
-      const aba = ativa === null ? null : store.get(ativa);
-
-      // O editor do grupo ainda não existe: NÃO marca como carregada e sai. O
-      // contador de editores traz o efeito de volta assim que ele nascer.
-      if (aba !== null && ehEditavel(aba) && editor === null) continue;
-
-      // (1) marca ANTES de salvar — ver o comentário do topo
-      const anterior = ultimaAtiva.current.get(grupo) ?? null;
-      ultimaAtiva.current.set(grupo, ativa);
-      if (anterior !== null) salvarNaAba(anterior, grupo);
-
-      if (aba === null) {
-        // Sem aba, a posição do cursor anterior é estado velho na barra de status.
-        if (grupo === grupoFocado) setCursor({ linha: 1, coluna: 1 });
-        continue;
-      }
-      if (editor === null || !ehEditavel(aba)) continue;
-
-      const meta = metaDe(aba);
-      carregando.current = true;
-      try {
-        editor.setLanguage(meta.language);
-        editor.setValue(meta.content);
-        editor.setViewState(meta.view);
-      } finally {
-        carregando.current = false;
-      }
-
-      const destino = posicaoPendente.current.get(aba.id);
-      if (destino !== undefined) {
-        posicaoPendente.current.delete(aba.id);
-        editor.goToPosition(destino.linha, destino.coluna);
-      }
-    }
-
-    // Grupo que sumiu não pode deixar rastro na guarda.
-    for (const grupo of [...ultimaAtiva.current.keys()]) {
-      if (!grupos.includes(grupo)) ultimaAtiva.current.delete(grupo);
-    }
-  }, [activeId, grupoFocado, grupos, salvarNaAba, store, tabs, versaoDosEditores]);
 
   /**
    * Mantém o arranjo em sincronia com quem realmente tem aba.
@@ -316,24 +184,6 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
       return JSON.stringify(novo) === JSON.stringify(atual) ? atual : novo;
     });
   }, [tabs, grupoFocado]);
-
-  /** Salva no store o que está no editor do grupo em foco. */
-  const salvarGrupoFocado = useCallback(() => {
-    const id = ultimaAtiva.current.get(focoAtual.current) ?? null;
-    if (id !== null) salvarNaAba(id, focoAtual.current);
-  }, [salvarNaAba]);
-
-  /**
-   * Descarrega TODOS os editores para o store.
-   *
-   * Obrigatório antes de mexer no arranjo: mudar a forma da árvore remonta os
-   * editores que trocaram de lugar nela, e o que não estiver no store nesse
-   * instante desaparece. Salvar só o grupo em foco deixaria os outros em branco
-   * — foi exatamente o que aconteceu ao arrastar o segundo arquivo.
-   */
-  const salvarTodosOsGrupos = useCallback(() => {
-    for (const [grupo, id] of ultimaAtiva.current) if (id !== null) salvarNaAba(id, grupo);
-  }, [salvarNaAba]);
 
   const abrirArquivo = useCallback(
     async (caminho: string) => {
@@ -371,18 +221,17 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   const abrirArquivoEm = useCallback(
     async (caminho: string, linha: number, coluna: number) => {
       const id = `file:${caminho}`;
-      posicaoPendente.current.set(id, { linha, coluna });
+      ed.irAoCarregar(id, { linha, coluna });
       await abrirArquivo(caminho);
 
       const aba = store.get(id);
       if (aba === null) return;
-      if (ultimaAtiva.current.get(aba.grupo) !== id) return;
-      const editor = editores.current.get(aba.grupo) ?? null;
+      if (ed.abaCarregada(aba.grupo) !== id) return;
+      const editor = ed.editorDoGrupo(aba.grupo);
       if (editor === null) return;
-      posicaoPendente.current.delete(id);
       editor.goToPosition(linha, coluna);
     },
-    [abrirArquivo, store]
+    [abrirArquivo, ed, store]
   );
 
   const abrirQuery = useCallback(
@@ -508,13 +357,13 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   );
 
   const marcarSujo = useCallback(() => {
-    if (carregando.current) return; // troca de aba não é edição do usuário
-    const id = ultimaAtiva.current.get(focoAtual.current) ?? null;
+    if (ed.estaCarregando()) return; // troca de aba não é edição do usuário
+    const id = ed.abaCarregadaEmFoco();
     if (id === null) return;
     setEdicoes((n) => n + 1);
     const aba = store.get(id);
     if (aba !== null && !aba.dirty) store.update(id, { dirty: true });
-  }, [store]);
+  }, [ed, store]);
 
   /**
    * Grava a aba ativa e devolve o caminho.
@@ -546,7 +395,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   const salvarTodas = useCallback(async (): Promise<{ gravadas: number; semNome: number }> => {
     // Todos os grupos, não só o focado: "Save All" com a tela dividida tem que
     // gravar os dois lados.
-    for (const [grupo, id] of ultimaAtiva.current) if (id !== null) salvarNaAba(id, grupo);
+    salvarTodosOsGrupos();
 
     const sujas = store.list().filter((aba) => aba.dirty && ehEditavel(aba));
     let gravadas = 0;
@@ -563,7 +412,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
       gravadas += 1;
     }
     return { gravadas, semNome };
-  }, [salvarGrupoFocado, store]);
+  }, [salvarTodosOsGrupos, store]);
 
   /**
    * Volta a aba ativa ao que está em disco.
@@ -682,14 +531,9 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     }
 
     const dados = await Api.readFile(meta.path);
-    carregando.current = true;
-    try {
-      editor.setValue(dados.content);
-    } finally {
-      carregando.current = false;
-    }
+    ed.semSujar(() => editor.setValue(dados.content));
     store.update(aba.id, { dirty: false, meta: { ...meta, content: dados.content, view: null } });
-  }, [active, store]);
+  }, [active, ed, store]);
 
   /**
    * Relê do disco as abas abertas dos caminhos dados.
@@ -714,17 +558,12 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         // O efeito de carregar não vai reagir: para ele esta aba já é a ativa
         // do grupo. Quem está na tela precisa ser trocado aqui.
         if (store.ativaDoGrupo(aba.grupo) !== aba.id) continue;
-        const editor = editores.current.get(aba.grupo) ?? null;
+        const editor = ed.editorDoGrupo(aba.grupo);
         if (editor === null) continue;
-        carregando.current = true;
-        try {
-          editor.setValue(dados.content);
-        } finally {
-          carregando.current = false;
-        }
+        ed.semSujar(() => editor.setValue(dados.content));
       }
     },
-    [store]
+    [ed, store]
   );
 
   /**

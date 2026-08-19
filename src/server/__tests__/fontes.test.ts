@@ -152,3 +152,32 @@ test('todo ícone pedido por nome CURTO resolve para um empacotado', () => {
     `nomes curtos que caem no ícone genérico (viram círculo na tela): ${faltando.join(', ')}`
   );
 });
+
+/**
+ * O teto de tamanho do Artigo IV: 800 linhas, absoluto.
+ *
+ * Estava escrito na constituição e em lugar nenhum que falhasse — e dois
+ * arquivos o ultrapassaram durante o lote da parte 1 sem nada apitar. É o mesmo
+ * buraco do typecheck da interface: garantia no papel, não no portão.
+ *
+ * O limite "na prática" (400) NÃO entra aqui de propósito: seria ruído em
+ * arquivo que já nasce grande por motivo legítimo, e um teste que se ignora não
+ * guarda nada. O que este teste protege é o teto que não se negocia.
+ */
+const MAX_LINHAS = 800;
+
+test('nenhum arquivo-fonte passa do teto de 800 linhas', () => {
+  const grandes: string[] = [];
+  for (const alvo of ALVOS.filter((d) => fs.existsSync(d))) {
+    for (const arquivo of arquivos(alvo)) {
+      if (!/\.tsx?$/.test(arquivo)) continue;
+      const linhas = fs.readFileSync(arquivo, 'utf8').split('\n').length;
+      if (linhas > MAX_LINHAS) grandes.push(`${path.relative(RAIZ, arquivo)}: ${linhas}`);
+    }
+  }
+  assert.deepEqual(
+    grandes,
+    [],
+    `passaram do teto absoluto do Artigo IV (${MAX_LINHAS} linhas):\n  ${grandes.join('\n  ')}`
+  );
+});

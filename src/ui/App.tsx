@@ -56,6 +56,7 @@ import { useHistorico } from './useHistorico';
 import { useSnippets } from './useSnippets';
 import { useBusca } from './files/useBusca';
 import { useComandosAcoes } from './acoes/useComandosAcoes';
+import { useArquivoAcoes } from './acoes/useArquivoAcoes';
 import { usePastaAcoes } from './acoes/usePastaAcoes';
 import { useConexoesAcoes } from './acoes/useConexoesAcoes';
 import { useSnippetsAcoes } from './acoes/useSnippetsAcoes';
@@ -169,80 +170,9 @@ export function App() {
     ws.novoSemTitulo();
   };
 
-  /** Grava a aba ativa, pedindo o nome se ela ainda não tem arquivo. */
-  const salvarArquivo = async (): Promise<void> => {
-    const caminho = await ws.salvar();
-    if (caminho !== null) {
-      // Salvou o próprio `config.json`? Relê — é o que faz editar a preferência
-      // no editor surtir efeito sem recarregar a página.
-      if (caminho === prefs.caminho) await prefs.recarregar();
-      await pasta.recarregar();
-      return;
-    }
-    const aba = ws.active;
-    if (aba === null || aba.type === 'grid' || aba.type === 'conexao') return;
-
-    const conteudo = ws.editorRef.current?.getValue() ?? '';
-    const criado = await pedirComRetentativa(
-      qi,
-      { titulo: 'Nome do arquivo', placeholder: 'ex.: utils.ts, script.py' },
-      (nome) => pasta.criarArquivo(nome, conteudo)
-    );
-    // Cancelar mantém a aba como está, com o conteúdo intacto (AC-18).
-    if (criado === null) return;
-    ws.adotarArquivo(aba.id, criado);
-  };
-
-  /** Grava tudo que está sujo e diz o que ficou de fora, sem enfileirar caixas. */
-  const salvarTudo = async (): Promise<void> => {
-    const { gravadas, semNome } = await ws.salvarTodas();
-    await pasta.recarregar();
-    if (semNome > 0) {
-      await dialogs.avisar(
-        `${gravadas} arquivo(s) gravado(s).\n\n` +
-          `${semNome} aba(s) ainda sem nome — use Salvar (Ctrl+S) em cada uma para escolher o arquivo.`,
-        'Save All'
-      );
-    }
-  };
-
-  /** Alterna entre não salvar e salvar por atraso. É o interruptor do menu. */
-  const alternarAutoSave = async (): Promise<void> => {
-    const atual = prefs.prefs['editor.autoSave'];
-    await prefs.definir({ 'editor.autoSave': atual === 'off' ? 'afterDelay' : 'off' });
-  };
-
-  /**
-   * Volta ao que está em disco, confirmando quando há o que perder.
-   *
-   * A ORDEM importa, e o teste pegou isto: a aba sem título nasce suja, então
-   * confirmar antes de checar o disco fazia a IDE perguntar "descartar tudo?"
-   * para só depois dizer que não havia para onde voltar. Primeiro se checa se
-   * a pergunta faz sentido; depois se pergunta.
-   */
-  const reverterArquivo = async (): Promise<void> => {
-    const caminho = (ws.active?.meta as { path?: string | null } | undefined)?.path ?? null;
-    if (caminho === null) {
-      await dialogs.avisar(
-        'Esta aba ainda não foi salva — não há versão em disco para voltar.',
-        'Reverter arquivo'
-      );
-      return;
-    }
-    if (ws.active?.dirty === true) {
-      const ok = await dialogs.confirmar({
-        titulo: 'Reverter arquivo',
-        mensagem:
-          `"${ws.active.title}" tem alterações não salvas.\n\n` +
-          'Voltar ao que está em disco descarta tudo que foi feito desde o último salvamento.',
-        rotuloConfirmar: 'reverter',
-        destrutivo: true,
-      });
-      if (!ok) return;
-    }
-    await ws.reverter();
-  };
-
+  const arquivoAcoes = useArquivoAcoes({
+    qi, ws, pasta, prefs, avisar: dialogs.avisar, confirmar: dialogs.confirmar,
+  });
   const pastaAcoes = usePastaAcoes({ qi, pasta, avisar: dialogs.avisar });
   const conexoesAcoes = useConexoesAcoes({ qi, ws, exec, conexoes });
 
@@ -427,11 +357,11 @@ export function App() {
     'file.openFolder': () => avisar(pastaAcoes.abrirPasta()),
     'file.openWorkspace': () => avisar(pastaAcoes.escolherProjeto()),
     'file.openRecent': () => avisar(pastaAcoes.abrirRecente()),
-    'file.save': () => avisar(salvarArquivo()),
-    'file.saveAs': () => avisar(salvarArquivo()),
-    'file.saveAll': () => avisar(salvarTudo()),
-    'file.autoSave': () => avisar(alternarAutoSave()),
-    'file.revert': () => avisar(reverterArquivo()),
+    'file.save': () => avisar(arquivoAcoes.salvarArquivo()),
+    'file.saveAs': () => avisar(arquivoAcoes.salvarArquivo()),
+    'file.saveAll': () => avisar(arquivoAcoes.salvarTudo()),
+    'file.autoSave': () => avisar(arquivoAcoes.alternarAutoSave()),
+    'file.revert': () => avisar(arquivoAcoes.reverterArquivo()),
     'file.preferences': () => avisar(abrirPreferencias()),
     'file.closeEditor': () => { if (ws.activeId !== null) ws.fechar(ws.activeId); },
 
