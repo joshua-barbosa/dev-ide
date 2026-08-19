@@ -97,7 +97,10 @@ const DECLARADOS = [
   { id: 'edit.toggleComment', label: 'Toggle Line Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+/' },
   { id: 'edit.toggleBlockComment', label: 'Toggle Block Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+Shift+A' },
   { id: 'edit.snippets', label: 'Snippets…', menu: 'edit', group: 5, keybinding: 'Ctrl+Shift+J' },
-  { id: 'edit.emmet', label: 'Emmet: Expand Abbreviation', menu: 'edit', group: 5, keybinding: 'Tab', pending: true },
+  // Sem entrada em `ACOES` e sem `pending`: quem o executa é o EDITOR, quando o
+  // Tab chega nele. Está em `ATENDIDOS_PELO_EDITOR`, como a busca e o
+  // multi-cursor.
+  { id: 'edit.emmet', label: 'Emmet: Expand Abbreviation', menu: 'edit', group: 5, keybinding: 'Tab' },
 
   // ---- Selection ----
   { id: 'selection.all', label: 'Select All', menu: 'selection', group: 1, keybinding: 'Ctrl+A', when: 'temEditor' },
@@ -179,6 +182,7 @@ const ATENDIDOS = [
   'selection.moveLineUp', 'selection.moveLineDown', 'selection.duplicate',
   'selection.addCursorAbove', 'selection.addCursorBelow', 'selection.cursorsToLineEnds',
   'selection.addNextOccurrence', 'selection.addPrevOccurrence', 'selection.allOccurrences',
+  'edit.emmet',
 ] as const;
 
 export const ATENDIDOS_PELO_EDITOR: ReadonlySet<string> = new Set(ATENDIDOS);

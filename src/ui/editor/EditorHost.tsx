@@ -28,6 +28,7 @@ import { idDoMonaco } from '../../shared/editor/monaco-ids';
 import { tokens } from '../theme';
 import type { NomeDoTema } from '../../shared/temas';
 import { LINGUAGEM_TODAS, type Snippet } from '../../shared/snippets';
+import { emmetCSS, emmetHTML, emmetJSX } from 'emmet-monaco-es';
 import { NOME_DO_TEMA, registrarTema } from './tema';
 
 // O caminho destes imports NÃO é o que a documentação sugere: o `exports` do
@@ -150,6 +151,27 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     // Sem dependências de propósito: os valores de aparência entram na criação
     // e depois são aplicados pelo efeito abaixo. Colocá-los aqui recriaria o
     // editor a cada mudança de fonte, jogando fora histórico e rolagem.
+  }, []);
+
+  /**
+   * Emmet: `div.foo>ul>li*3` vira HTML ao apertar Tab.
+   *
+   * **Dependência nova, justificada (Artigo III).** Emmet é uma linguagem de
+   * abreviação com sintaxe própria — filhos, irmãos, multiplicação, numeração,
+   * atributos, agrupamento —, e escrever o motor do zero é desproporcional. Mas
+   * o motor nem é a parte difícil: o difícil é decidir **quando** o Tab expande
+   * e quando ele indenta, olhando o que está antes do cursor. `emmet-monaco-es`
+   * (MIT) faz as duas coisas e depende do Monaco que já temos, em vez de trazer
+   * um segundo.
+   *
+   * Vale só para HTML, CSS e JSX — que é a razão de este ter sido o último item
+   * grande da fila, e não o primeiro.
+   */
+  useEffect(() => {
+    const descartar = [emmetHTML(monaco), emmetCSS(monaco), emmetJSX(monaco)];
+    return () => {
+      for (const d of descartar) d();
+    };
   }, []);
 
   // Conclusão de snippet.

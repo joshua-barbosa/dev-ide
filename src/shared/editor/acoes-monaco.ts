@@ -26,6 +26,11 @@ export const ACAO_DO_MONACO: Readonly<Record<string, string>> = {
   'selection.addNextOccurrence': 'editor.action.addSelectionToNextFindMatch',
   'selection.addPrevOccurrence': 'editor.action.addSelectionToPreviousFindMatch',
   'selection.allOccurrences': 'editor.action.selectHighlights',
+  // Emmet entra no editor como PROVEDOR DE CONCLUSÃO, e não como ação nomeada:
+  // digitar `div.foo>ul>li*3` e apertar Tab aceita a sugestão. O item de menu,
+  // então, abre a lista onde ela aparece — é o mais próximo de "expandir agora"
+  // que existe, e é honesto: mostra a expansão e deixa aceitar.
+  'edit.emmet': 'editor.action.triggerSuggest',
 };
 
 // `view.wordWrap` saiu daqui na spec 011: a ação do Monaco alterna e esquece, e
