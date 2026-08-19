@@ -19,6 +19,7 @@ import type { PatchDePreferencias, Preferencias } from '../shared/prefs';
 import type {
   ComandoDescoberto, ComandoSalvo, DestinoDeComando,
 } from '../shared/comandos-salvos';
+import type { Snippet } from '../shared/snippets';
 
 export interface ListaDeComandos {
   readonly salvos: readonly ComandoSalvo[];
@@ -150,6 +151,13 @@ export const Api = {
     request<ComandoSalvo>('POST', '/api/commands', { nome, comando, destino }),
   deleteCommand: (id: string) =>
     request<{ removido: boolean }>('DELETE', `/api/commands/${encodeURIComponent(id)}`),
+
+  // ---- snippets (spec 019) ----
+  snippets: () => request<Snippet[]>('GET', '/api/snippets'),
+  createSnippet: (dados: Omit<Snippet, 'id'>) =>
+    request<Snippet>('POST', '/api/snippets', dados),
+  deleteSnippet: (id: string) =>
+    request<{ removido: boolean }>('DELETE', `/api/snippets/${encodeURIComponent(id)}`),
 
   // ---- espaço de trabalho (spec 012) ----
   browseFolders: (caminho?: string) =>

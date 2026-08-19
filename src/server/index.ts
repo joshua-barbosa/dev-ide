@@ -15,6 +15,8 @@ import { createPrefsRouter } from './routes/prefs';
 import { createWorkspaceRouter } from './routes/workspace';
 import { createComandosRouter } from './routes/comandos';
 import { ComandosStore } from './comandos';
+import { createSnippetsRouter } from './routes/snippets';
+import { SnippetsStore } from './snippets';
 import { EstadoStore } from './estado';
 import { TerminalRegistry } from './terminal/registry';
 import { montarSocketDeTerminal } from './terminal/socket';
@@ -39,6 +41,7 @@ const prefs = new PreferencesStore(PreferencesStore.defaultPath());
 // ---- Espaço de trabalho (pasta aberta, recentes) ----
 const estado = new EstadoStore(EstadoStore.defaultPath());
 const comandos = new ComandosStore(ComandosStore.defaultPath());
+const snippets = new SnippetsStore(SnippetsStore.defaultPath());
 
 // ---- Execuções em andamento (para poder parar) ----
 const execucoes = new RegistroDeExecucoes();
@@ -78,6 +81,7 @@ app.use('/api/connections', createConnectionsRouter({ registry, vault, pool, rem
 app.use('/api/prefs', createPrefsRouter(prefs));
 app.use('/api', createWorkspaceRouter(estado));
 app.use('/api/commands', createComandosRouter(comandos, estado));
+app.use('/api/snippets', createSnippetsRouter(snippets));
 
 function validateFilePath(raw: string): string {
   const resolved = path.resolve(raw);

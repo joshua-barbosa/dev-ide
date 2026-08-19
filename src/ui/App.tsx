@@ -51,6 +51,8 @@ import { usePasta } from './files/usePasta';
 import { usePrefs } from './usePrefs';
 import { useAutoSave } from './useAutoSave';
 import { useHistorico } from './useHistorico';
+import { useSnippets } from './useSnippets';
+import { LINGUAGEM_TODAS, rotuloDaLinguagem } from '../shared/snippets';
 
 export function App() {
   const lateral = useSidebarWidth();
@@ -87,6 +89,7 @@ export function App() {
 
   const layout = useLayout();
   const nav = useHistorico({ abaExiste: (abaId) => ws.store.get(abaId) !== null });
+  const snippets = useSnippets(falhaDaIde);
   useAutoSave({ ws, prefs: prefs.prefs, aoFalhar: falhaDaIde });
   // Terminais de SHELL, que desde a decisão D6 moram no painel inferior. O de
   // conexão continua sendo aba do editor — saída longa de query merece tela
@@ -553,6 +556,97 @@ export function App() {
     await Api.deleteCommand(escolhido);
   };
 
+  /**
+   * A caixa de snippets: inserir, criar e remover.
+   *
+   * Mesma forma da caixa de comandos salvos — uma entrada de menu só, com a
+   * gestão dentro da própria lista. O usuário tem poucos snippets; uma tela de
+   * gerenciamento seria mais interface que conteúdo.
+   */
+  const abrirSnippets = async (): Promise<void> => {
+    const doEditor = snippets.lista.filter(
+      (s) => s.linguagem === linguagem || s.linguagem === LINGUAGEM_TODAS
+    );
+    const escolhido = await qi.pedir({
+      titulo: 'Snippets',
+      placeholder: 'Escolha um snippet para inserir',
+      opcoes: [
+        ...doEditor.map((s) => ({
+          valor: `inserir:${s.id}`,
+          rotulo: s.prefixo,
+          detalhe: s.nome,
+          icone: 'lucide:files',
+          sufixo: rotuloDaLinguagem(s.linguagem),
+        })),
+        { valor: 'novo:', rotulo: 'Salvar um snippet novo…', icone: 'lucide:plus' },
+        ...(snippets.lista.length === 0
+          ? []
+          : [{ valor: 'remover:', rotulo: 'Remover um snippet…', icone: 'lucide:trash-2' }]),
+      ],
+    });
+    if (escolhido === null) return;
+
+    if (escolhido === 'novo:') return salvarSnippet();
+    if (escolhido === 'remover:') return removerSnippet();
+
+    const alvo = snippets.lista.find((s) => s.id === escolhido.slice('inserir:'.length));
+    if (alvo !== undefined) ws.editorRef.current?.inserirSnippet(alvo.corpo);
+  };
+
+  /**
+   * Cria um snippet a partir da SELEÇÃO, quando houver.
+   *
+   * É o caminho natural: o trecho que se quer guardar quase sempre já está na
+   * tela. Pedir para digitar de novo seria pedir duas vezes a mesma coisa.
+   */
+  const salvarSnippet = async (): Promise<void> => {
+    const selecionado = ws.editorRef.current?.getSelection() ?? '';
+
+    const prefixo = await qi.pedir({
+      titulo: 'Novo snippet',
+      placeholder: 'Prefixo — a palavra que dispara, ex.: log',
+    });
+    if (prefixo === null) return;
+
+    const corpo = await qi.pedir({
+      titulo: `Corpo de "${prefixo}"`,
+      placeholder: 'Use $1, ${1:valor} e $0 para os pontos de parada',
+      valorInicial: selecionado,
+    });
+    if (corpo === null) return;
+
+    const alvo = await qi.pedir({
+      titulo: 'Em que linguagem este snippet vale?',
+      placeholder: 'Linguagem',
+      opcoes: [
+        {
+          valor: LINGUAGEM_TODAS,
+          rotulo: 'Todas as linguagens',
+          detalhe: 'para o que não é de linguagem nenhuma',
+          icone: 'lucide:boxes',
+        },
+        ...LINGUAGENS.map(([valor, rotulo, icone]) => ({ valor, rotulo, icone })),
+      ],
+    });
+    if (alvo === null) return;
+
+    await snippets.criar({ nome: prefixo, prefixo, corpo, linguagem: alvo });
+  };
+
+  const removerSnippet = async (): Promise<void> => {
+    const escolhido = await qi.pedir({
+      titulo: 'Remover snippet',
+      placeholder: 'Escolha o que remover',
+      opcoes: snippets.lista.map((s) => ({
+        valor: s.id,
+        rotulo: s.prefixo,
+        detalhe: s.corpo.split('\n')[0],
+        sufixo: rotuloDaLinguagem(s.linguagem),
+      })),
+    });
+    if (escolhido !== null) await snippets.remover(escolhido);
+  };
+
   const contexto: ContextoDeComandos = {
     temEditor: ws.active !== null && ws.active.type !== 'grid' && ws.active.type !== 'conexao',
     temProjeto: pasta.pasta !== '',
@@ -595,6 +689,7 @@ export function App() {
     'edit.redo': () => document.execCommand('redo'),
     'edit.cut': () => document.execCommand('cut'),
     'edit.copy': () => document.execCommand('copy'),
+    'edit.snippets': () => avisar(abrirSnippets()),
     'edit.paste': () => avisar(navigator.clipboard.readText().then((t) => {
       document.execCommand('insertText', false, t);
     })),
@@ -864,6 +959,7 @@ export function App() {
               tabSize={prefs.prefs['editor.tabSize']}
               wordWrap={prefs.prefs['editor.wordWrap']}
               tema={tema}
+              snippets={snippets.lista}
             />
           </Box>
 

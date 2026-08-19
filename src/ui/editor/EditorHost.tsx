@@ -27,6 +27,7 @@ import htmlWorker from 'monaco-editor/language/html/html.worker?worker';
 import { idDoMonaco } from '../../shared/editor/monaco-ids';
 import { tokens } from '../theme';
 import type { NomeDoTema } from '../../shared/temas';
+import { LINGUAGEM_TODAS, type Snippet } from '../../shared/snippets';
 import { NOME_DO_TEMA, registrarTema } from './tema';
 
 // O caminho destes imports NÃO é o que a documentação sugere: o `exports` do
@@ -65,6 +66,14 @@ export interface EditorHandle {
   focus(): void;
   /** Roda uma ação do próprio editor, pelo id do Monaco. */
   executarAcao(idMonaco: string): void;
+  /**
+   * Insere um snippet na posição do cursor.
+   *
+   * O corpo usa os marcadores do Monaco (`$1`, `${1:valor}`, `$0`), e quem
+   * resolve Tab, valor padrão e **espelho** é ele — era exatamente o que o
+   * backlog dava como impossível antes da troca do editor.
+   */
+  inserirSnippet(corpo: string): void;
 }
 
 export interface EditorHostProps {
@@ -76,10 +85,12 @@ export interface EditorHostProps {
   readonly wordWrap: boolean;
   /** Tema (spec 017). Re-registrar repinta o editor sem remontá-lo. */
   readonly tema: NomeDoTema;
+  /** Snippets a oferecer na conclusão (spec 019). */
+  readonly snippets: readonly Snippet[];
 }
 
 export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function EditorHost(
-  { onChange, onCursor, fontSize, tabSize, wordWrap, tema },
+  { onChange, onCursor, fontSize, tabSize, wordWrap, tema, snippets },
   ref
 ) {
   const caixa = useRef<HTMLDivElement>(null);
@@ -139,6 +150,43 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     // Sem dependências de propósito: os valores de aparência entram na criação
     // e depois são aplicados pelo efeito abaixo. Colocá-los aqui recriaria o
     // editor a cada mudança de fonte, jogando fora histórico e rolagem.
+  }, []);
+
+  // Conclusão de snippet.
+  //
+  // Um provedor só, registrado para TODAS as linguagens, filtrando pela do
+  // modelo na hora. A alternativa — um provedor por linguagem — teria que ser
+  // desmontada e remontada a cada snippet criado, e sobraria provedor órfão de
+  // linguagem que ficou sem snippet.
+  const snippetsAtuais = useRef(snippets);
+  snippetsAtuais.current = snippets;
+  useEffect(() => {
+    const provedor = monaco.languages.registerCompletionItemProvider('*', {
+      provideCompletionItems: (modelo, posicao) => {
+        const linguagem = modelo.getLanguageId();
+        const palavra = modelo.getWordUntilPosition(posicao);
+        const alcance = {
+          startLineNumber: posicao.lineNumber,
+          endLineNumber: posicao.lineNumber,
+          startColumn: palavra.startColumn,
+          endColumn: palavra.endColumn,
+        };
+        const suggestions = snippetsAtuais.current
+          .filter((s) => s.linguagem === linguagem || s.linguagem === LINGUAGEM_TODAS)
+          .map((s) => ({
+            label: s.prefixo,
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            detail: s.nome,
+            documentation: { value: `\`\`\`\n${s.corpo}\n\`\`\`` },
+            insertText: s.corpo,
+            // Sem isto o corpo entraria com `$1` como texto literal.
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range: alcance,
+          }));
+        return { suggestions };
+      },
+    });
+    return () => provedor.dispose();
   }, []);
 
   // Trocar de tema: re-registrar a definição com o mesmo nome faz o Monaco
@@ -228,6 +276,19 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
       },
 
       focus: () => editor.current?.focus(),
+
+      inserirSnippet: (corpo) => {
+        const ed = editor.current;
+        if (ed === null) return;
+        ed.focus();
+        // `snippetController2` é a peça do Monaco que trata marcador de parada.
+        // Inserir com `executeEdits` colocaria `$1` como texto literal.
+        const controlador = ed.getContribution('snippetController2') as
+          | { insert(texto: string): void }
+          | null;
+        if (controlador === null) return;
+        controlador.insert(corpo);
+      },
 
       executarAcao: (idMonaco) => {
         const ed = editor.current;

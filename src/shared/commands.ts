@@ -96,6 +96,7 @@ const DECLARADOS = [
   { id: 'edit.replaceInFiles', label: 'Replace in Files', menu: 'edit', group: 4, keybinding: 'Ctrl+Shift+H', pending: true },
   { id: 'edit.toggleComment', label: 'Toggle Line Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+/' },
   { id: 'edit.toggleBlockComment', label: 'Toggle Block Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+Shift+A' },
+  { id: 'edit.snippets', label: 'Snippets…', menu: 'edit', group: 5, keybinding: 'Ctrl+Shift+J' },
   { id: 'edit.emmet', label: 'Emmet: Expand Abbreviation', menu: 'edit', group: 5, keybinding: 'Tab', pending: true },
 
   // ---- Selection ----
