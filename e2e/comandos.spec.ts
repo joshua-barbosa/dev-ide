@@ -18,22 +18,24 @@ test('a barra traz os oito menus do VS Code', async ({ page }) => {
   }
 });
 
-test('o menu mostra o não implementado desabilitado, em vez de esconder', async ({ page }) => {
+test('não sobrou item "em breve" em menu nenhum', async ({ page }) => {
   await menu(page, 'File');
   await expect(page.getByRole('menuitem', { name: /New Text File/ })).toBeEnabled();
   await page.keyboard.press('Escape');
 
-  // Declarado e ainda sem implementação — o usuário pediu ver o mapa inteiro.
+  // Este teste já foi o oposto: mostrava um item DECLARADO e ainda sem
+  // implementação, porque o usuário pediu ver o mapa inteiro com o pendente
+  // marcado. O exemplo mudou três vezes — `Open Recent` saiu na spec 012, o
+  // Emmet na 022, o `Find in Files` na 027 — e agora não sobrou nenhum.
   //
-  // O exemplo já mudou duas vezes, e isso é boa notícia: `Open Recent` saiu na
-  // spec 012 e o Emmet na 022. Agora é o `Find in Files`, que é da parte 2 do
-  // roteiro e deve durar. Quando ele também sair, troque — ou remova o teste, se
-  // não sobrar item pendente nenhum.
-  await menu(page, 'Edit');
-  const pendente = page.getByRole('menuitem', { name: /Find in Files/ });
-  await expect(pendente).toBeVisible();
-  await expect(pendente).toBeDisabled();
-  await expect(pendente).toContainText('em breve');
+  // O mecanismo do `pending` continua vivo e testado sem navegador, em
+  // `shared/__tests__/commands.test.ts`; o que se prova aqui é o outro lado:
+  // a barra inteira está ligada, e nenhum menu tem promessa pendurada.
+  for (const nome of ['File', 'Edit', 'Selection', 'View', 'Go', 'Run', 'Terminal', 'Help']) {
+    await menu(page, nome);
+    await expect(page.getByRole('menuitem', { name: /em breve/ })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+  }
 });
 
 test('comando indisponível aparece cinza sem aba aberta', async ({ page }) => {

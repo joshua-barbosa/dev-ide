@@ -92,8 +92,8 @@ const DECLARADOS = [
   { id: 'edit.paste', label: 'Paste', menu: 'edit', group: 2, keybinding: 'Ctrl+V', when: 'temEditor' },
   { id: 'edit.find', label: 'Find', menu: 'edit', group: 3, keybinding: 'Ctrl+F' },
   { id: 'edit.replace', label: 'Replace', menu: 'edit', group: 3, keybinding: 'Ctrl+H' },
-  { id: 'edit.findInFiles', label: 'Find in Files', menu: 'edit', group: 4, keybinding: 'Ctrl+Shift+F', pending: true },
-  { id: 'edit.replaceInFiles', label: 'Replace in Files', menu: 'edit', group: 4, keybinding: 'Ctrl+Shift+H', pending: true },
+  { id: 'edit.findInFiles', label: 'Find in Files', menu: 'edit', group: 4, keybinding: 'Ctrl+Shift+F' },
+  { id: 'edit.replaceInFiles', label: 'Replace in Files', menu: 'edit', group: 4, keybinding: 'Ctrl+Shift+H' },
   { id: 'edit.toggleComment', label: 'Toggle Line Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+/' },
   { id: 'edit.toggleBlockComment', label: 'Toggle Block Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+Shift+A' },
   { id: 'edit.snippets', label: 'Snippets…', menu: 'edit', group: 5, keybinding: 'Ctrl+Shift+J' },
@@ -123,7 +123,7 @@ const DECLARADOS = [
   { id: 'view.explorer', label: 'Explorer', menu: 'view', group: 2, keybinding: 'Ctrl+Shift+E' },
   // Mesma feature que `edit.findInFiles`, vista da lateral em vez do menu Edit —
   // por isso compartilham o atalho. Ver a nota sobre atalhos repetidos abaixo.
-  { id: 'view.search', label: 'Search', menu: 'view', group: 2, keybinding: 'Ctrl+Shift+F', pending: true },
+  { id: 'view.search', label: 'Search', menu: 'view', group: 2, keybinding: 'Ctrl+Shift+F' },
   { id: 'view.symbols', label: 'Symbols', menu: 'view', group: 2 },
   { id: 'view.database', label: 'Database', menu: 'view', group: 2 },
   { id: 'view.service', label: 'Service', menu: 'view', group: 2 },

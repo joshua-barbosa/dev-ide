@@ -120,6 +120,8 @@ export interface Workspace {
   salvarTodas(): Promise<{ readonly gravadas: number; readonly semNome: number }>;
   /** Relê o arquivo do disco, jogando fora o que não foi salvo. */
   reverter(): Promise<void>;
+  /** Relê do disco as abas abertas dos caminhos dados. */
+  recarregarDoDisco(caminhos: readonly string[]): Promise<void>;
   marcarAbaSuja(id: string, sujo: boolean): void;
   ativar(id: string): void;
   fechar(id: string): Promise<void>;
@@ -648,6 +650,42 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   }, [active, store]);
 
   /**
+   * Relê do disco as abas abertas dos caminhos dados.
+   *
+   * Substituir em arquivos reescreve o disco POR BAIXO do editor. Sem isto a
+   * aba aberta segue mostrando o texto de antes — e salvá-la depois desfaz a
+   * substituição em silêncio, que é o pior desfecho possível: o usuário viu
+   * "3 arquivos alterados" e o arquivo voltou ao que era.
+   */
+  const recarregarDoDisco = useCallback(
+    async (caminhos: readonly string[]): Promise<void> => {
+      for (const caminho of caminhos) {
+        const aba = store.get(`file:${caminho}`);
+        if (aba === null || !ehEditavel(aba)) continue;
+
+        const dados = await Api.readFile(caminho);
+        store.update(aba.id, {
+          dirty: false,
+          meta: { ...metaDe(aba), content: dados.content, view: null },
+        });
+
+        // O efeito de carregar não vai reagir: para ele esta aba já é a ativa
+        // do grupo. Quem está na tela precisa ser trocado aqui.
+        if (store.ativaDoGrupo(aba.grupo) !== aba.id) continue;
+        const editor = editores.current.get(aba.grupo) ?? null;
+        if (editor === null) continue;
+        carregando.current = true;
+        try {
+          editor.setValue(dados.content);
+        } finally {
+          carregando.current = false;
+        }
+      }
+    },
+    [store]
+  );
+
+  /**
    * Liga a aba sem título ao arquivo recém-criado.
    *
    * Troca o id junto com o caminho: o id `untitled:...` deixaria a aba
@@ -718,6 +756,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     salvar,
     salvarTodas,
     reverter,
+    recarregarDoDisco,
     aoMoverCursor: (linha, coluna) => setCursor({ linha, coluna }),
   };
 }

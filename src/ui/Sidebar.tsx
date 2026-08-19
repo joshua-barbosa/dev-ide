@@ -10,12 +10,14 @@ import { Icon } from './Icon';
 import { FilesPanel } from './files/FilesPanel';
 import { ConnectionsPanel, type ConnectionsPanelProps } from './connections/ConnectionsPanel';
 import { SymbolsPanel } from './files/SymbolsPanel';
+import { SearchPanel, type SearchPanelProps } from './files/SearchPanel';
 import type { PastaAberta } from './files/usePasta';
 
 // Só ícone: o nome vira dica ao passar o mouse e rótulo acessível. Ganha
 // largura na lateral, que é estreita por natureza.
 const PAINEIS = [
   { id: 'files', label: 'Arquivos', icone: 'lucide:files' },
+  { id: 'search', label: 'Search', icone: 'lucide:search' },
   { id: 'symbols', label: 'Símbolos', icone: 'lucide:boxes' },
   { id: 'database', label: 'Database', icone: 'database' },
   { id: 'service', label: 'Service', icone: 'lucide:layers' },
@@ -31,6 +33,7 @@ export interface SidebarProps {
   readonly pasta: PastaAberta;
   readonly onIrParaSimbolo: (arquivo: string, linha: number) => void;
   readonly onAbrirPasta: () => void;
+  readonly busca: SearchPanelProps;
   readonly onErro: (erro: unknown) => void;
   /** Controlado por fora: o menu View também troca de painel. */
   readonly painelAtivo: string;
@@ -40,6 +43,7 @@ export interface SidebarProps {
 export function Sidebar({
   width, onAbrirArquivo, caminhoAtivo = null, conexoes, pasta, onIrParaSimbolo,
   onAbrirPasta,
+  busca,
   onErro,
   painelAtivo,
   onPainelAtivo,
@@ -104,6 +108,11 @@ export function Sidebar({
         {(ativo === 'database' || ativo === 'service') && (
           <ConnectionsPanel painel={ativo} {...conexoes} />
         )}
+        {/* Montado sempre, escondido quando não é a aba ativa: desmontar
+            perderia o termo digitado e os resultados a cada troca de painel. */}
+        <Box sx={{ display: ativo === 'search' ? 'contents' : 'none' }}>
+          <SearchPanel {...busca} />
+        </Box>
         {ativo === 'symbols' && (
           <SymbolsPanel simbolos={pasta.simbolos} onIr={onIrParaSimbolo} />
         )}

@@ -16,6 +16,7 @@ import { createWorkspaceRouter } from './routes/workspace';
 import { createComandosRouter } from './routes/comandos';
 import { ComandosStore } from './comandos';
 import { createSnippetsRouter } from './routes/snippets';
+import { createBuscaRouter } from './routes/busca';
 import { SnippetsStore } from './snippets';
 import { EstadoStore } from './estado';
 import { TerminalRegistry } from './terminal/registry';
@@ -82,6 +83,7 @@ app.use('/api/prefs', createPrefsRouter(prefs));
 app.use('/api', createWorkspaceRouter(estado, ROOT));
 app.use('/api/commands', createComandosRouter(comandos, estado));
 app.use('/api/snippets', createSnippetsRouter(snippets));
+app.use('/api/search', createBuscaRouter(estado));
 
 function validateFilePath(raw: string): string {
   const resolved = path.resolve(raw);

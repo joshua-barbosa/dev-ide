@@ -75,7 +75,7 @@ test('nenhum arquivo-fonte tem byte de controle cru', () => {
 // `lucide:corner-left-up` sem acrescentá-los à lista, e os dois apareceram como
 // círculo na tela. Este teste faz o mesmo erro falhar antes de chegar lá.
 
-import { ICONES_USADOS } from '../../shared/icons';
+import { ICONE_GENERICO, ICONES_USADOS, resolverIcone } from '../../shared/icons';
 
 /** Nomes qualificados escritos como literal na interface, ex.: `'lucide:x'`. */
 function iconesLiteraisDaInterface(): ReadonlySet<string> {
@@ -109,5 +109,46 @@ test('todo ícone pedido por nome na interface está empacotado', () => {
     faltando,
     [],
     `ícones pedidos pela interface e ausentes de ICONES_USADOS: ${faltando.join(', ')}`
+  );
+});
+
+/**
+ * Nomes CURTOS passados ao `Icon`, como `name="chevron-right"`.
+ *
+ * O teste acima só via os qualificados (`lucide:x`). O curto passa por `MAPA` e,
+ * quando não está lá, `resolverIcone` devolve o genérico — em silêncio, e o que
+ * aparece na tela é um círculo. Aconteceu no painel de busca: os dois chevrons
+ * do agrupamento por arquivo saíram como círculo.
+ */
+function iconesCurtosDaInterface(): ReadonlySet<string> {
+  const achados = new Set<string>();
+  const varrer = (dir: string): void => {
+    for (const entrada of fs.readdirSync(dir, { withFileTypes: true })) {
+      const alvo = path.join(dir, entrada.name);
+      if (entrada.isDirectory()) {
+        varrer(alvo);
+        continue;
+      }
+      if (!/\.tsx?$/.test(entrada.name)) continue;
+      // Só literal entre aspas: `name={variavel}` é decidido em tempo de
+      // execução e não dá para conferir aqui.
+      for (const casamento of fs.readFileSync(alvo, 'utf8').matchAll(/name=\{?["']([a-z0-9-]+)["']\}?/g)) {
+        const nome = casamento[1];
+        if (nome !== undefined && !nome.includes(':')) achados.add(nome);
+      }
+    }
+  };
+  varrer(path.join(RAIZ, 'src', 'ui'));
+  return achados;
+}
+
+test('todo ícone pedido por nome CURTO resolve para um empacotado', () => {
+  const faltando = [...iconesCurtosDaInterface()].filter(
+    (nome) => resolverIcone(nome) === ICONE_GENERICO
+  );
+  assert.deepEqual(
+    faltando,
+    [],
+    `nomes curtos que caem no ícone genérico (viram círculo na tela): ${faltando.join(', ')}`
   );
 });

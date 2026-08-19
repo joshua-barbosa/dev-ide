@@ -54,6 +54,7 @@ import { usePrefs } from './usePrefs';
 import { useAutoSave } from './useAutoSave';
 import { useHistorico } from './useHistorico';
 import { useSnippets } from './useSnippets';
+import { useBusca } from './files/useBusca';
 import { useComandosAcoes } from './acoes/useComandosAcoes';
 import { usePastaAcoes } from './acoes/usePastaAcoes';
 import { useConexoesAcoes } from './acoes/useConexoesAcoes';
@@ -95,6 +96,7 @@ export function App() {
   const layout = useLayout();
   const nav = useHistorico({ abaExiste: (abaId) => ws.store.get(abaId) !== null });
   const snippets = useSnippets(falhaDaIde);
+  const busca = useBusca(falhaDaIde, ws.recarregarDoDisco);
   useAutoSave({ ws, prefs: prefs.prefs, aoFalhar: falhaDaIde });
   // Terminais de SHELL, que desde a decisão D6 moram no painel inferior. O de
   // conexão continua sendo aba do editor — saída longa de query merece tela
@@ -446,6 +448,11 @@ export function App() {
 
     'view.commandPalette': () => avisar(abrirPaleta()),
     'view.explorer': () => setPainelLateral('files'),
+    // Os três abrem o MESMO painel: `Find in Files` e `Replace in Files` são a
+    // busca vista do menu Edit, e `Search` é a mesma vista da lateral.
+    'view.search': () => setPainelLateral('search'),
+    'edit.findInFiles': () => setPainelLateral('search'),
+    'edit.replaceInFiles': () => setPainelLateral('search'),
     'view.symbols': () => setPainelLateral('symbols'),
     'view.database': () => setPainelLateral('database'),
     'view.service': () => setPainelLateral('service'),
@@ -592,6 +599,28 @@ export function App() {
           painelAtivo={painelLateral}
           onPainelAtivo={setPainelLateral}
           onAbrirPasta={() => avisar(pastaAcoes.abrirPasta())}
+          busca={{
+            busca,
+            // Abre o arquivo e pula para a ocorrência — clicar num resultado
+            // que não leva a lugar nenhum seria metade da feature.
+            onAbrir: (caminho, o) => {
+              void ws
+                .abrirArquivo(caminho)
+                .then(() => {
+                  window.setTimeout(() => {
+                    ws.editorRef.current?.goToPosition(o.linha, o.coluna);
+                  }, 0);
+                })
+                .catch(falhaDaIde);
+            },
+            onConfirmar: (mensagem, rotulo) =>
+              dialogs.confirmar({
+                titulo: 'Substituir em arquivos',
+                mensagem,
+                rotuloConfirmar: rotulo,
+                destrutivo: true,
+              }),
+          }}
           onErro={falhaDaIde}
           onAbrirArquivo={ws.abrirArquivo}
           pasta={pasta}

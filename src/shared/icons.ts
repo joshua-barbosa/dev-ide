@@ -111,6 +111,10 @@ const ICONES_DA_INTERFACE = [
   // Botão de preview do markdown (spec 024).
   'lucide:book-open',
   'lucide:file-code',
+  // Painel de busca (spec 027).
+  'lucide:search',
+  'lucide:replace',
+  'lucide:replace-all',
 ] as const;
 
 /**

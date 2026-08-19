@@ -20,6 +20,15 @@ import type {
   ComandoDescoberto, ComandoSalvo, DestinoDeComando,
 } from '../shared/comandos-salvos';
 import type { Snippet } from '../shared/snippets';
+import type { ArquivoComOcorrencias, OpcoesDeBusca } from '../shared/busca';
+
+export interface ResultadoDaBusca {
+  readonly arquivos: readonly ArquivoComOcorrencias[];
+  readonly totalDeOcorrencias: number;
+  /** Algum teto cortou a varredura — a lista não está completa. */
+  readonly truncado: boolean;
+  readonly arquivosVisitados: number;
+}
 
 export interface ListaDeComandos {
   readonly salvos: readonly ComandoSalvo[];
@@ -158,6 +167,22 @@ export const Api = {
     request<Snippet>('POST', '/api/snippets', dados),
   deleteSnippet: (id: string) =>
     request<{ removido: boolean }>('DELETE', `/api/snippets/${encodeURIComponent(id)}`),
+
+  // ---- busca em arquivos (spec 027) ----
+  search: (termo: string, opcoes: OpcoesDeBusca) =>
+    request<ResultadoDaBusca>('POST', '/api/search', { termo, ...opcoes }),
+  replaceInFiles: (
+    termo: string,
+    opcoes: OpcoesDeBusca,
+    substituto: string,
+    caminhos: readonly string[]
+  ) =>
+    request<{ arquivosAlterados: number; trocas: number }>('POST', '/api/search/replace', {
+      termo,
+      ...opcoes,
+      substituto,
+      caminhos,
+    }),
 
   // ---- espaço de trabalho (spec 012) ----
   browseFolders: (caminho?: string) =>

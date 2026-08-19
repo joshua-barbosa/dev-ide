@@ -123,11 +123,11 @@ export function TabBar({
                     ●
                   </Box>
                   <Box className="aba-x" sx={{ display: 'none' }}>
-                    <Icon name="x" size={12} />
+                    <Icon name="lucide:x" size={12} />
                   </Box>
                 </>
               ) : (
-                <Icon name="x" size={12} />
+                <Icon name="lucide:x" size={12} />
               )}
             </Box>
           </Box>
