@@ -15,12 +15,28 @@ export interface StatusBarProps {
   readonly linguagem: string;
   /** Ausente quando não há editor: aí a linguagem é só informação. */
   readonly onTrocarLinguagem?: () => void;
+  /** Ausente quando não há editor: aí a posição é só informação (spec 026). */
+  readonly onIrParaPosicao?: () => void;
 }
 
 export function StatusBar({
-  titulo, sujo, linha, coluna, linguagem, onTrocarLinguagem,
+  titulo, sujo, linha, coluna, linguagem, onTrocarLinguagem, onIrParaPosicao,
 }: StatusBarProps) {
   const rotulo = rotuloDaLinguagem(linguagem);
+
+  /** Os dois botões da direita são iguais em tudo menos no que fazem. */
+  const estiloDeBotao = (ativo: boolean) => ({
+    border: 0,
+    bgcolor: 'transparent',
+    color: 'inherit',
+    font: 'inherit',
+    px: 0.75,
+    py: 0.2,
+    borderRadius: 0.5,
+    cursor: ativo ? 'pointer' : 'default',
+    opacity: ativo ? 1 : 0.5,
+    '&:hover': { bgcolor: ativo ? 'action.hover' : 'transparent' },
+  });
 
   return (
     <Box
@@ -38,7 +54,14 @@ export function StatusBar({
         </Box>
       )}
 
-      <Box component="span" sx={{ ml: 'auto' }}>
+      <Box
+        component="button"
+        disabled={onIrParaPosicao === undefined}
+        onClick={onIrParaPosicao}
+        aria-label="Ir para linha e coluna"
+        title="Ir para linha e coluna (Ctrl+G)"
+        sx={{ ml: 'auto', ...estiloDeBotao(onIrParaPosicao !== undefined) }}
+      >
         Ln {linha}, Col {coluna}
       </Box>
 
@@ -47,13 +70,7 @@ export function StatusBar({
         disabled={onTrocarLinguagem === undefined}
         onClick={onTrocarLinguagem}
         aria-label="Selecionar linguagem"
-        sx={{
-          border: 0, bgcolor: 'transparent', color: 'inherit', font: 'inherit',
-          px: 0.75, py: 0.2, borderRadius: 0.5,
-          cursor: onTrocarLinguagem === undefined ? 'default' : 'pointer',
-          opacity: onTrocarLinguagem === undefined ? 0.5 : 1,
-          '&:hover': { bgcolor: onTrocarLinguagem === undefined ? 'transparent' : 'action.hover' },
-        }}
+        sx={estiloDeBotao(onTrocarLinguagem !== undefined)}
       >
         {rotulo}
       </Box>

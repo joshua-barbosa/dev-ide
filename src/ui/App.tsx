@@ -14,6 +14,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import { aplicarVariaveis, criarTema } from './theme';
 import { NOMES_DE_TEMA, ROTULO_DO_TEMA, TEMAS, type NomeDoTema } from '../shared/temas';
 import { temPreview } from '../shared/markdown';
+import { dicaDePosicao, interpretarPosicao } from '../shared/editor/posicao';
 import { Sidebar } from './Sidebar';
 import { Resizer } from './Resizer';
 import { useSidebarWidth } from './useSidebarWidth';
@@ -288,12 +289,29 @@ export function App() {
     if (escolhida !== null) trocarLinguagem(escolhida);
   };
 
+  /**
+   * A caixa de "ir para", do `Ctrl+G` e do clique em "Ln x, Col y".
+   *
+   * Aceita `12` e `12:5`, como o VS Code — e também `12,5`, que é o formato que
+   * a própria barra de status mostra e que a mão copia de lá.
+   */
   const irParaLinha = async (): Promise<void> => {
-    const alvo = await qi.pedir({ titulo: 'Ir para a linha', placeholder: 'Número da linha' });
-    const numero = Number(alvo);
-    if (alvo !== null && Number.isInteger(numero) && numero > 0) {
-      ws.editorRef.current?.goToLine(numero);
-      if (ws.activeId !== null) nav.registrarSalto({ abaId: ws.activeId, linha: numero });
+    const editor = ws.editorRef.current;
+    if (editor === null) return;
+    const total = editor.totalDeLinhas();
+
+    const alvo = await qi.pedir({
+      titulo: 'Ir para linha e coluna',
+      placeholder: dicaDePosicao(total),
+    });
+    if (alvo === null) return;
+
+    const posicao = interpretarPosicao(alvo, total);
+    if (posicao === null) return;
+
+    editor.goToPosition(posicao.linha, posicao.coluna);
+    if (ws.activeId !== null) {
+      nav.registrarSalto({ abaId: ws.activeId, linha: posicao.linha });
     }
   };
 
@@ -746,6 +764,7 @@ export function App() {
         onTrocarLinguagem={
           contexto.temEditor ? () => avisar(escolherLinguagem()) : undefined
         }
+        onIrParaPosicao={contexto.temEditor ? () => avisar(irParaLinha()) : undefined}
       />
 
       <QuickInput

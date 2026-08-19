@@ -62,6 +62,10 @@ export interface EditorHandle {
   setLanguage(lang: string): void;
   getLanguage(): string;
   goToLine(linha: number): void;
+  /** Vai para linha E coluna — o que a caixa de "ir para" pede (spec 026). */
+  goToPosition(linha: number, coluna: number): void;
+  /** Quantas linhas o arquivo tem. Serve para limitar o salto. */
+  totalDeLinhas(): number;
   getViewState(): ViewState;
   setViewState(view: ViewState | null): void;
   focus(): void;
@@ -263,6 +267,22 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
         ed.setPosition({ lineNumber: linha, column: 1 });
         ed.focus();
       },
+
+      goToPosition: (linha, coluna) => {
+        const ed = editor.current;
+        if (ed === null) return;
+        // `revealPositionInCenter` e não `revealLine`: com a coluna longe da
+        // margem, centralizar só a linha deixaria o cursor fora da vista à
+        // direita.
+        const posicao = { lineNumber: linha, column: coluna };
+        ed.revealPositionInCenter(posicao);
+        // O Monaco já limita a coluna ao fim da linha; não é preciso saber o
+        // tamanho dela aqui.
+        ed.setPosition(posicao);
+        ed.focus();
+      },
+
+      totalDeLinhas: () => editor.current?.getModel()?.getLineCount() ?? 0,
 
       // O nosso `ViewState` é por deslocamento em caracteres, e não por
       // linha/coluna: é o formato que as abas já guardam, e mudá-lo obrigaria a
