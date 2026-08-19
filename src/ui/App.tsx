@@ -39,10 +39,11 @@ import {
 import { BottomPanel } from './BottomPanel';
 import { ResizerHorizontal } from './ResizerHorizontal';
 import { useLayout, ALTURA_PADRAO_PAINEL } from './useLayout';
+import { usePersistido } from './usePersistido';
 import { useProblemas } from './useProblemas';
 import {
   abrirTerminal as abrirNoPainel, ativarTerminal, dividirTerminal, fecharTerminal,
-  paneisVisiveis, SEM_TERMINAIS,
+  normalizarTerminais, paneisVisiveis, SEM_TERMINAIS,
 } from '../shared/terminais';
 import { useExecution } from './useExecution';
 import { usePasta } from './files/usePasta';
@@ -95,7 +96,9 @@ export function App() {
   // Terminais de SHELL, que desde a decisão D6 moram no painel inferior. O de
   // conexão continua sendo aba do editor — saída longa de query merece tela
   // cheia, comando curto de shell não.
-  const [terminais, setTerminais] = useState(SEM_TERMINAIS);
+  // Persistido: os ids precisam sobreviver ao F5 para o servidor reatar as
+  // sessões. É o que faz recarregar a página não matar o terminal (spec 023).
+  const [terminais, setTerminais] = usePersistido('terminais', SEM_TERMINAIS, normalizarTerminais);
   // O comando que cada terminal recém-aberto deve rodar. Fica fora do store de
   // terminais porque é de uso único — some assim que o shell o recebe.
   const [comandosIniciais, setComandosIniciais] = useState<ReadonlyMap<string, string>>(new Map());
@@ -714,6 +717,7 @@ export function App() {
                       fontSize={prefs.prefs['terminal.fontSize']}
                       tema={tema}
                       comandoInicial={comandosIniciais.get(t.id) ?? null}
+                      sessaoId={t.id}
                     />
                   </Box>
                 ))}

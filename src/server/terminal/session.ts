@@ -30,6 +30,15 @@ export const MARCADOR_DE_CREDENCIAL = '__ARQUIVO_DE_CREDENCIAL__';
 /** Espera antes de matar à força quem ignorou o pedido de encerrar. */
 const PRAZO_ATE_MATAR_MS = 2_000;
 
+/**
+ * Quanto da saída fica guardado para repintar a tela numa reconexão.
+ *
+ * Sem isso, voltar depois de um F5 daria um terminal vivo e uma tela em branco —
+ * pior que abrir um novo, porque parece que o histórico se perdeu. O teto existe
+ * porque um `cat` de arquivo grande encheria a memória do servidor.
+ */
+const MAX_HISTORICO_BYTES = 200 * 1024;
+
 export interface OpcoesDeSessao {
   readonly comando: ComandoDeTerminal;
   readonly cwd?: string;
@@ -46,6 +55,16 @@ export class TerminalSession {
   private readonly proc: pty.IPty;
   private readonly credencial: string | null;
   private encerrada = false;
+  /** Saída recente, para repintar a tela de quem reconecta. */
+  private historicoTexto = '';
+  /**
+   * O ouvinte ATUAL da saída.
+   *
+   * Um só, e substituível: numa reconexão, o socket novo toma o lugar do
+   * antigo. Assinar direto no `proc.onData`, como antes, empilharia ouvintes
+   * mortos a cada F5 — e cada byte seria enviado para sockets fechados.
+   */
+  private ouvinteDeDados: ((dados: string) => void) | null = null;
 
   constructor(opcoes: OpcoesDeSessao) {
     const { comando } = opcoes;
@@ -86,6 +105,13 @@ export class TerminalSession {
       throw e;
     }
 
+    // Uma assinatura só, aqui: ela alimenta o histórico e repassa a quem
+    // estiver ouvindo agora.
+    this.proc.onData((dados) => {
+      this.historicoTexto = (this.historicoTexto + dados).slice(-MAX_HISTORICO_BYTES);
+      this.ouvinteDeDados?.(dados);
+    });
+
     // Sempre apaga, tenha a sessão sido fechada por quem pediu ou não.
     this.proc.onExit(() => {
       this.encerrada = true;
@@ -97,8 +123,14 @@ export class TerminalSession {
     return this.proc.pid;
   }
 
-  onData(ouvinte: (dados: string) => void): void {
-    this.proc.onData(ouvinte);
+  /** Substitui o ouvinte. Passar `null` desliga sem matar a sessão. */
+  onData(ouvinte: ((dados: string) => void) | null): void {
+    this.ouvinteDeDados = ouvinte;
+  }
+
+  /** A saída recente, para repintar a tela de quem reconecta. */
+  historico(): string {
+    return this.historicoTexto;
   }
 
   onExit(ouvinte: (fim: Encerramento) => void): void {

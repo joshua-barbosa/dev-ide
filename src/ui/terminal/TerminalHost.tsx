@@ -46,6 +46,13 @@ export interface TerminalHostProps {
    * de escolher o executável, que a spec 008 fechou de propósito.
    */
   readonly comandoInicial?: string | null;
+  /**
+   * Id da sessão, escolhido pelo cliente (spec 023).
+   *
+   * É o que permite reatar o mesmo processo depois de um F5: o servidor não tem
+   * como saber sozinho que o socket novo é a mesma aba de antes.
+   */
+  readonly sessaoId?: string;
 }
 
 /**
@@ -62,7 +69,7 @@ function coresDoTerminal(nome: NomeDoTema): ITheme {
 
 export function TerminalHost({
   connectionId = null, ativo = true, onFim, fontSize = 13, tema = 'escuro',
-  comandoInicial = null,
+  comandoInicial = null, sessaoId,
 }: TerminalHostProps) {
   const caixa = useRef<HTMLDivElement>(null);
   const aoFim = useRef(onFim);
@@ -77,6 +84,7 @@ export function TerminalHost({
   const temaAtual = useRef(tema);
   temaAtual.current = tema;
   const comandoPendente = useRef(comandoInicial);
+  const reconectado = useRef(false);
   const emUso = useRef<{
     term: Terminal;
     fit: FitAddon;
@@ -158,6 +166,7 @@ export function TerminalHost({
     ws.onopen = () => {
       enviar({
         tipo: 'abrir',
+        id: sessaoId,
         opcoes: { connectionId, cols: term.cols, rows: term.rows },
       });
     };
@@ -169,6 +178,15 @@ export function TerminalHost({
         mensagem?: string;
         exitCode?: number;
       };
+      if (msg.tipo === 'reconectado') {
+        // Reatou a sessão de antes do F5. O histórico vem logo em seguida, e a
+        // tela precisa estar limpa para não duplicar o que já estava nela.
+        term.reset();
+        reconectado.current = true;
+        // Comando de abertura não roda de novo: ele já rodou na sessão original.
+        comandoPendente.current = null;
+        return;
+      }
       if (msg.tipo === 'dados') {
         term.write(msg.dados ?? '');
         // A primeira saída é o prompt: o shell carregou o perfil e está pronto
@@ -214,10 +232,15 @@ export function TerminalHost({
     return () => {
       observador.disconnect();
       emUso.current = null;
+      // Esta limpeza roda quando o COMPONENTE é desmontado — ou seja, quando o
+      // usuário fechou o terminal. Ela NÃO roda ao recarregar a página, e é
+      // justamente essa diferença que o servidor usa para decidir entre matar
+      // agora e esperar o navegador voltar.
+      enviar({ tipo: 'fechar' });
       ws.close();
       term.dispose();
     };
-  }, [connectionId]);
+  }, [connectionId, sessaoId]);
 
   return (
     <Box

@@ -30,6 +30,38 @@ export interface EstadoDeTerminais {
 
 export const SEM_TERMINAIS: EstadoDeTerminais = { lista: [], ativo: null };
 
+/**
+ * Lê o estado guardado no navegador, tolerando lixo.
+ *
+ * Existe porque a lista passou a ser **persistida** (spec 023), e o que está
+ * guardado pode ter sido escrito por uma versão anterior — a de antes do campo
+ * `par`, por exemplo. Entrada incompleta é descartada; a ativa que não existe
+ * mais vira `null`, em vez de deixar um id fantasma apontando para nada.
+ */
+export function normalizarTerminais(bruto: unknown): EstadoDeTerminais {
+  if (bruto === null || typeof bruto !== 'object' || Array.isArray(bruto)) return SEM_TERMINAIS;
+  const lido = bruto as Record<string, unknown>;
+  if (!Array.isArray(lido.lista)) return SEM_TERMINAIS;
+
+  const lista: TerminalAberto[] = [];
+  for (const item of lido.lista) {
+    const t = (item ?? {}) as Record<string, unknown>;
+    if (typeof t.id !== 'string' || t.id === '') continue;
+    if (typeof t.titulo !== 'string' || t.titulo === '') continue;
+    lista.push({
+      id: t.id,
+      titulo: t.titulo,
+      par: typeof t.par === 'string' && t.par !== '' ? t.par : t.id,
+    });
+  }
+
+  const ativo =
+    typeof lido.ativo === 'string' && lista.some((t) => t.id === lido.ativo)
+      ? lido.ativo
+      : (lista[0]?.id ?? null);
+  return { lista, ativo };
+}
+
 /** Nome na sequência em que foram abertos: "Terminal 1", "Terminal 2"… */
 export function proximoTitulo(lista: readonly TerminalAberto[]): string {
   const usados = new Set(lista.map((t) => t.titulo));

@@ -122,7 +122,7 @@ test('aceita a origem local e entrega a saída do processo', async () => {
   });
 });
 
-test('fechar o socket encerra o processo', async () => {
+test('fechar o terminal DE PROPÓSITO encerra o processo na hora', async () => {
   await comServidor(async (base, reg) => {
     const ws = new WebSocket(base, { headers: { Origin: 'http://localhost:4321' } });
     await new Promise((r) => ws.on('open', r));
@@ -130,11 +130,71 @@ test('fechar o socket encerra o processo', async () => {
     await new Promise((r) => setTimeout(r, 500));
     assert.equal(reg.quantidade, 1);
 
+    // A mensagem explícita é o que distingue "fechei" de "a página caiu".
+    // Sem ela, fechar a aba deixaria o `mysql` vivo com a credencial em disco.
+    ws.send(JSON.stringify({ tipo: 'fechar' }));
+    await new Promise((r) => setTimeout(r, 600));
+
+    assert.equal(reg.quantidade, 0, 'o processo sobreviveu ao fechamento da aba');
+    assert.equal(reg.esperandoReconexao, 0, 'fechar não pode virar espera');
+  });
+});
+
+test('o socket cair sozinho NÃO mata — é o F5 (spec 023)', async () => {
+  await comServidor(async (base, reg) => {
+    const ws = new WebSocket(base, { headers: { Origin: 'http://localhost:4321' } });
+    await new Promise((r) => ws.on('open', r));
+    ws.send(JSON.stringify({ tipo: 'abrir', opcoes: {} }));
+    await new Promise((r) => setTimeout(r, 500));
+
+    // Sem `fechar` antes: é exatamente o que acontece ao recarregar a página,
+    // porque o navegador não roda a limpeza do componente.
     ws.close();
     await new Promise((r) => setTimeout(r, 600));
 
-    // Sem isto, fechar a aba deixaria o `mysql` vivo com a credencial em disco.
-    assert.equal(reg.quantidade, 0, 'o processo sobreviveu ao fechamento da aba');
+    assert.equal(reg.quantidade, 1, 'a sessão precisa esperar o navegador voltar');
+    assert.equal(reg.esperandoReconexao, 1);
+  });
+});
+
+test('reconectar com o mesmo id reata a sessão e repinta a tela', async () => {
+  await comServidor(async (base, reg) => {
+    const primeiro = new WebSocket(base, { headers: { Origin: 'http://localhost:4321' } });
+    await new Promise((r) => primeiro.on('open', r));
+    primeiro.send(JSON.stringify({ tipo: 'abrir', id: 'term-fixo', opcoes: {} }));
+    await new Promise((r) => setTimeout(r, 500));
+    const sessao = reg.obter('term-fixo');
+    assert.notEqual(sessao, null, 'o id do cliente foi aceito');
+
+    primeiro.close();
+    await new Promise((r) => setTimeout(r, 300));
+
+    const segundo = new WebSocket(base, { headers: { Origin: 'http://localhost:4321' } });
+    await new Promise((r) => segundo.on('open', r));
+    const recebidas: { tipo: string; dados?: string }[] = [];
+    segundo.on('message', (b) => recebidas.push(JSON.parse(String(b))));
+    segundo.send(JSON.stringify({ tipo: 'abrir', id: 'term-fixo', opcoes: {} }));
+    await new Promise((r) => setTimeout(r, 500));
+
+    assert.equal(reg.obter('term-fixo'), sessao, 'é a MESMA sessão, não uma nova');
+    assert.ok(
+      recebidas.some((m) => m.tipo === 'reconectado'),
+      'o cliente precisa saber que reatou, para limpar a tela antes do histórico'
+    );
+    segundo.send(JSON.stringify({ tipo: 'fechar' }));
+  });
+});
+
+test('id do cliente fora do formato é ignorado, e vira sessão nova', async () => {
+  await comServidor(async (base, reg) => {
+    const ws = new WebSocket(base, { headers: { Origin: 'http://localhost:4321' } });
+    await new Promise((r) => ws.on('open', r));
+    ws.send(JSON.stringify({ tipo: 'abrir', id: '../../etc/passwd', opcoes: {} }));
+    await new Promise((r) => setTimeout(r, 500));
+
+    assert.equal(reg.quantidade, 1);
+    assert.equal(reg.obter('../../etc/passwd'), null, 'o id torto não pode virar chave');
+    ws.send(JSON.stringify({ tipo: 'fechar' }));
   });
 });
 
@@ -182,4 +242,87 @@ test('mensagem inválida não derruba a conexão', async () => {
     assert.equal(ws.readyState, ws.OPEN, 'a conexão caiu por causa de lixo na entrada');
     ws.close();
   });
+});
+
+// ---------------------------------------------------------------------------
+// Reconexão depois do F5 (spec 023)
+// ---------------------------------------------------------------------------
+
+/** Um shell que escreve algo e fica vivo — dá histórico e sobrevive ao teste. */
+const opcoesDeEco = () => ({
+  comando: { ...SH, args: ['-c', 'echo pronto; sleep 5'] },
+});
+
+test('o registro solta a sessão em vez de matá-la, e reatar a devolve', () => {
+  const registry = new TerminalRegistry(4, 10_000);
+  const sessao = registry.abrir('term-a', opcoesDeEco());
+  try {
+    registry.soltar('term-a');
+    assert.equal(registry.quantidade, 1, 'soltar NÃO mata');
+    assert.equal(registry.esperandoReconexao, 1);
+
+    assert.equal(registry.reatar('term-a'), sessao, 'a mesma sessão volta');
+    assert.equal(registry.esperandoReconexao, 0, 'reatar cancela o prazo');
+  } finally {
+    registry.fecharTodos();
+  }
+});
+
+test('sem ninguém reatar, o prazo encerra a sessão', async () => {
+  // Prazo curtíssimo: o que se afirma é a regra, não a duração.
+  const registry = new TerminalRegistry(4, 30);
+  registry.abrir('term-b', opcoesDeEco());
+  registry.soltar('term-b');
+
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(registry.quantidade, 0, 'senão sobraria um bash órfão para sempre');
+  assert.equal(registry.esperandoReconexao, 0);
+});
+
+test('fechar cancela o prazo e mata na hora', () => {
+  const registry = new TerminalRegistry(4, 10_000);
+  registry.abrir('term-c', opcoesDeEco());
+  registry.soltar('term-c');
+  registry.fechar('term-c');
+
+  assert.equal(registry.quantidade, 0);
+  assert.equal(registry.esperandoReconexao, 0);
+  assert.equal(registry.reatar('term-c'), null);
+});
+
+test('reatar o que não existe devolve null, para quem chamou abrir uma nova', () => {
+  const registry = new TerminalRegistry();
+  assert.equal(registry.reatar('term-inexistente'), null);
+});
+
+test('a sessão guarda a saída recente para repintar a tela', async () => {
+  const registry = new TerminalRegistry(4, 10_000);
+  const sessao = registry.abrir('term-d', opcoesDeEco());
+  try {
+    await new Promise((r) => setTimeout(r, 400));
+    // O `echo` do fixture já escreveu algo; o histórico não pode estar vazio,
+    // senão reconectar daria terminal vivo com tela em branco.
+    assert.ok(sessao.historico().length > 0);
+  } finally {
+    registry.fecharTodos();
+  }
+});
+
+test('soltar desliga o ouvinte — os bytes não vão para um socket fechado', async () => {
+  const registry = new TerminalRegistry(4, 10_000);
+  const sessao = registry.abrir('term-e', opcoesDeEco());
+  try {
+    let recebeu = 0;
+    sessao.onData(() => { recebeu += 1; });
+    registry.soltar('term-e');
+
+    const antes = recebeu;
+    sessao.write('mais texto\r');
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(recebeu, antes, 'o ouvinte antigo não pode continuar recebendo');
+    // Mas o histórico continua crescendo, para a reconexão ter o que mostrar.
+    assert.ok(sessao.historico().length > 0);
+  } finally {
+    registry.fecharTodos();
+  }
 });

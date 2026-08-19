@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  abrirTerminal, ativarTerminal, dividirTerminal, fecharTerminal, paneisVisiveis, paresDe,
-  proximoTitulo, SEM_TERMINAIS,
+  abrirTerminal, ativarTerminal, dividirTerminal, fecharTerminal, normalizarTerminais,
+  paneisVisiveis, paresDe, proximoTitulo, SEM_TERMINAIS,
 } from '../terminais';
 
 function comIds(...ids: string[]) {
@@ -130,4 +130,45 @@ test('fechar os dois panes tira o par da lista', () => {
 test('os títulos continuam únicos entre panes', () => {
   const e = dividirTerminal(comIds('a'), 'b');
   assert.deepEqual(e.lista.map((t) => t.titulo), ['Terminal 1', 'Terminal 2']);
+});
+
+// ---------------------------------------------------------------------------
+// Estado guardado no navegador (spec 023)
+// ---------------------------------------------------------------------------
+
+test('estado guardado estragado vira estado vazio', () => {
+  for (const entrada of [undefined, null, 7, 'x', [], {}, { lista: 'nao-e-lista' }]) {
+    assert.deepEqual(normalizarTerminais(entrada), SEM_TERMINAIS);
+  }
+});
+
+test('entrada guardada por uma versão SEM `par` ganha o próprio id', () => {
+  // O campo entrou na spec 021; o que estava no navegador antes não o tem.
+  const e = normalizarTerminais({ lista: [{ id: 'a', titulo: 'Terminal 1' }], ativo: 'a' });
+  assert.deepEqual(e.lista, [{ id: 'a', titulo: 'Terminal 1', par: 'a' }]);
+});
+
+test('entradas incompletas são descartadas', () => {
+  const e = normalizarTerminais({
+    lista: [
+      { id: 'a', titulo: 'Terminal 1', par: 'a' },
+      { id: '', titulo: 'sem id', par: 'x' },
+      { id: 'c', titulo: '' },
+      null,
+    ],
+    ativo: 'a',
+  });
+  assert.deepEqual(e.lista.map((t) => t.id), ['a']);
+});
+
+test('ativa que não existe mais cai no primeiro, e não vira id fantasma', () => {
+  const e = normalizarTerminais({
+    lista: [{ id: 'a', titulo: 'Terminal 1', par: 'a' }],
+    ativo: 'sumiu',
+  });
+  assert.equal(e.ativo, 'a');
+});
+
+test('lista vazia não tem ativa', () => {
+  assert.equal(normalizarTerminais({ lista: [], ativo: 'a' }).ativo, null);
 });

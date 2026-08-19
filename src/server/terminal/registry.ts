@@ -11,10 +11,25 @@ import { TerminalSession, type OpcoesDeSessao } from './session';
 /** Teto de terminais simultâneos. Não é limite de recurso, é rede de proteção. */
 const MAXIMO = 12;
 
+/**
+ * Quanto tempo uma sessão sobrevive sem ninguém ligado a ela.
+ *
+ * É o que faz o F5 não matar o terminal: a página cai, o socket fecha, e a
+ * sessão espera o navegador voltar. Trinta segundos é folgado para um
+ * recarregamento e curto para não deixar `bash` órfão quando a aba foi mesmo
+ * fechada — e fechar a aba pelo botão continua matando na hora, sem espera.
+ */
+const PRAZO_DE_RECONEXAO_MS = 30_000;
+
 export class TerminalRegistry {
   private readonly vivos = new Map<string, TerminalSession>();
+  /** Sessões soltas, esperando o navegador voltar. */
+  private readonly esperando = new Map<string, NodeJS.Timeout>();
 
-  constructor(private readonly maximo: number = MAXIMO) {}
+  constructor(
+    private readonly maximo: number = MAXIMO,
+    private readonly prazoDeReconexao: number = PRAZO_DE_RECONEXAO_MS
+  ) {}
 
   get quantidade(): number {
     return this.vivos.size;
@@ -43,7 +58,53 @@ export class TerminalRegistry {
     return this.vivos.get(id) ?? null;
   }
 
+  /**
+   * Solta a sessão sem matá-la, dando um prazo para alguém voltar.
+   *
+   * Chamado quando o socket cai. Se ninguém reatar, a sessão é encerrada —
+   * senão um `bash` ficaria vivo para sempre depois de a aba ser fechada.
+   */
+  soltar(id: string): void {
+    const sessao = this.vivos.get(id);
+    if (sessao === undefined || this.esperando.has(id)) return;
+
+    // Ninguém ouvindo: sem isto, os bytes iriam para um socket fechado.
+    sessao.onData(null);
+    const timer = setTimeout(() => {
+      this.esperando.delete(id);
+      this.fechar(id);
+    }, this.prazoDeReconexao);
+    // Não segura o processo do servidor no encerramento.
+    timer.unref();
+    this.esperando.set(id, timer);
+  }
+
+  /**
+   * Reata uma sessão que estava esperando.
+   *
+   * Devolve `null` quando não há — e aí quem chamou abre uma nova, que é o
+   * comportamento certo depois de o prazo estourar.
+   */
+  reatar(id: string): TerminalSession | null {
+    const timer = this.esperando.get(id);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.esperando.delete(id);
+    }
+    return this.vivos.get(id) ?? null;
+  }
+
+  /** Quantas sessões estão soltas esperando reconexão. */
+  get esperandoReconexao(): number {
+    return this.esperando.size;
+  }
+
   fechar(id: string): void {
+    const timer = this.esperando.get(id);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.esperando.delete(id);
+    }
     const sessao = this.vivos.get(id);
     if (sessao === undefined) return;
     this.vivos.delete(id);
@@ -52,6 +113,8 @@ export class TerminalRegistry {
 
   /** Chamado no desligamento do servidor. Nenhum processo pode sobreviver a ele. */
   fecharTodos(): void {
+    for (const timer of this.esperando.values()) clearTimeout(timer);
+    this.esperando.clear();
     for (const sessao of this.vivos.values()) sessao.close();
     this.vivos.clear();
   }
