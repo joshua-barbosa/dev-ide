@@ -199,7 +199,14 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
    * grande da fila, e não o primeiro.
    */
   useEffect(() => {
-    const descartar = [emmetHTML(monaco), emmetCSS(monaco), emmetJSX(monaco)];
+    // PHP entra na lista do HTML (spec 033). Quem decide se o cursor está numa
+    // ilha de HTML ou dentro de `<?php ?>` é a própria biblioteca, olhando os
+    // tokens do Monaco — foi o que tornou este item pequeno em vez de grande.
+    const descartar = [
+      emmetHTML(monaco, ['html', 'php']),
+      emmetCSS(monaco),
+      emmetJSX(monaco),
+    ];
     return () => {
       for (const d of descartar) d();
     };
