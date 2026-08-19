@@ -52,6 +52,7 @@ import { useExecution } from './useExecution';
 import { usePasta } from './files/usePasta';
 import { usePrefs } from './usePrefs';
 import { useAutoSave } from './useAutoSave';
+import { useSessaoDeAbas } from './useSessaoDeAbas';
 import { useHistorico } from './useHistorico';
 import { useSnippets } from './useSnippets';
 import { useBusca } from './files/useBusca';
@@ -99,6 +100,8 @@ export function App() {
   const snippets = useSnippets(falhaDaIde);
   const busca = useBusca(falhaDaIde, ws.recarregarDoDisco);
   useAutoSave({ ws, prefs: prefs.prefs, aoFalhar: falhaDaIde });
+  // As abas do editor voltam depois do F5, como os terminais do painel (spec 030).
+  useSessaoDeAbas({ ws, pasta: pasta.pasta, aoFalhar: falhaDaIde });
   // Terminais de SHELL, que desde a decisão D6 moram no painel inferior. O de
   // conexão continua sendo aba do editor — saída longa de query merece tela
   // cheia, comando curto de shell não.
