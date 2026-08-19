@@ -23,7 +23,14 @@ export interface RegraBooleano {
   readonly tipo: 'booleano';
 }
 
-export type Regra = RegraNumero | RegraBooleano;
+/** Uma entre N opções declaradas. O tipo do valor sai das próprias opções. */
+export interface RegraOpcao {
+  readonly padrao: string;
+  readonly tipo: 'opcao';
+  readonly opcoes: readonly string[];
+}
+
+export type Regra = RegraNumero | RegraBooleano | RegraOpcao;
 
 /**
  * As preferências que existem.
@@ -36,6 +43,11 @@ export const ESQUEMA = {
   'editor.fontSize': { padrao: 13, tipo: 'inteiro', min: 8, max: 40 },
   'editor.tabSize': { padrao: 4, tipo: 'inteiro', min: 1, max: 8 },
   'editor.wordWrap': { padrao: false, tipo: 'booleano' },
+  // Salvar sozinho. `onFocusChange` grava ao trocar de aba ou perder a janela.
+  'editor.autoSave': {
+    padrao: 'off', tipo: 'opcao', opcoes: ['off', 'afterDelay', 'onFocusChange'],
+  },
+  'editor.autoSaveDelay': { padrao: 1_000, tipo: 'inteiro', min: 200, max: 60_000 },
   'terminal.fontSize': { padrao: 13, tipo: 'inteiro', min: 8, max: 40 },
   'vault.rememberDays': { padrao: 15, tipo: 'inteiro', min: 1, max: 365 },
 } as const satisfies Record<string, Regra>;
@@ -46,7 +58,11 @@ export type ChaveDePreferencia = keyof typeof ESQUEMA;
 export type Preferencias = {
   readonly [K in ChaveDePreferencia]: (typeof ESQUEMA)[K]['padrao'] extends boolean
     ? boolean
-    : number;
+    : (typeof ESQUEMA)[K]['padrao'] extends string
+      ? (typeof ESQUEMA)[K] extends { readonly opcoes: readonly (infer O)[] }
+        ? O
+        : string
+      : number;
 };
 
 export type PatchDePreferencias = Partial<Preferencias>;
@@ -59,7 +75,7 @@ export function ehChave(nome: string): nome is ChaveDePreferencia {
 
 /** Os padrões, como objeto pronto. Novo a cada chamada, para ninguém mutar. */
 export function padroes(): Preferencias {
-  const saida: Record<string, number | boolean> = {};
+  const saida: Record<string, number | boolean | string> = {};
   for (const chave of CHAVES) saida[chave] = ESQUEMA[chave].padrao;
   return saida as Preferencias;
 }
@@ -67,15 +83,16 @@ export function padroes(): Preferencias {
 /** Descrição do que a chave aceita — vira a mensagem de erro e a documentação. */
 export function descreverRegra(chave: ChaveDePreferencia): string {
   const regra: Regra = ESQUEMA[chave];
-  return regra.tipo === 'booleano'
-    ? 'true ou false'
-    : `número inteiro entre ${regra.min} e ${regra.max}`;
+  if (regra.tipo === 'booleano') return 'true ou false';
+  if (regra.tipo === 'opcao') return `um de: ${regra.opcoes.join(', ')}`;
+  return `número inteiro entre ${regra.min} e ${regra.max}`;
 }
 
 /** Verdadeiro quando o valor serve para a chave, sem conversão nem clamp. */
 function valorValido(chave: ChaveDePreferencia, valor: unknown): boolean {
   const regra: Regra = ESQUEMA[chave];
   if (regra.tipo === 'booleano') return typeof valor === 'boolean';
+  if (regra.tipo === 'opcao') return typeof valor === 'string' && regra.opcoes.includes(valor);
   return (
     typeof valor === 'number' &&
     Number.isSafeInteger(valor) &&
@@ -96,10 +113,12 @@ export function normalizar(bruto: unknown): Preferencias {
   if (bruto === null || typeof bruto !== 'object' || Array.isArray(bruto)) return base;
 
   const lido = bruto as Record<string, unknown>;
-  const saida: Record<string, number | boolean> = { ...base };
+  const saida: Record<string, number | boolean | string> = { ...base };
   for (const chave of CHAVES) {
     const valor = lido[chave];
-    if (valor !== undefined && valorValido(chave, valor)) saida[chave] = valor as number | boolean;
+    if (valor !== undefined && valorValido(chave, valor)) {
+      saida[chave] = valor as number | boolean | string;
+    }
   }
   return saida as Preferencias;
 }
@@ -116,7 +135,7 @@ export function validarPatch(bruto: unknown): PatchDePreferencias {
     throw new Error('O corpo precisa ser um objeto de preferências.');
   }
   const lido = bruto as Record<string, unknown>;
-  const saida: Record<string, number | boolean> = {};
+  const saida: Record<string, number | boolean | string> = {};
 
   for (const [chave, valor] of Object.entries(lido)) {
     if (!ehChave(chave)) {
@@ -125,7 +144,7 @@ export function validarPatch(bruto: unknown): PatchDePreferencias {
     if (!valorValido(chave, valor)) {
       throw new Error(`Valor inválido para "${chave}": esperado ${descreverRegra(chave)}.`);
     }
-    saida[chave] = valor as number | boolean;
+    saida[chave] = valor as number | boolean | string;
   }
   return saida as PatchDePreferencias;
 }

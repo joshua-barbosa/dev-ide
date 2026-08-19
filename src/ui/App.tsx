@@ -45,6 +45,7 @@ import {
 import { useExecution } from './useExecution';
 import { usePasta } from './files/usePasta';
 import { usePrefs } from './usePrefs';
+import { useAutoSave } from './useAutoSave';
 
 export function App() {
   const lateral = useSidebarWidth();
@@ -74,6 +75,7 @@ export function App() {
   const qi = useQuickInput();
   const prefs = usePrefs(falhaDaIde);
   const layout = useLayout();
+  useAutoSave({ ws, prefs: prefs.prefs, aoFalhar: falhaDaIde });
   // Terminais de SHELL, que desde a decisão D6 moram no painel inferior. O de
   // conexão continua sendo aba do editor — saída longa de query merece tela
   // cheia, comando curto de shell não.
@@ -142,6 +144,56 @@ export function App() {
     // Cancelar mantém a aba como está, com o conteúdo intacto (AC-18).
     if (criado === null) return;
     ws.adotarArquivo(aba.id, criado);
+  };
+
+  /** Grava tudo que está sujo e diz o que ficou de fora, sem enfileirar caixas. */
+  const salvarTudo = async (): Promise<void> => {
+    const { gravadas, semNome } = await ws.salvarTodas();
+    await pasta.recarregar();
+    if (semNome > 0) {
+      await dialogs.avisar(
+        `${gravadas} arquivo(s) gravado(s).\n\n` +
+          `${semNome} aba(s) ainda sem nome — use Salvar (Ctrl+S) em cada uma para escolher o arquivo.`,
+        'Save All'
+      );
+    }
+  };
+
+  /** Alterna entre não salvar e salvar por atraso. É o interruptor do menu. */
+  const alternarAutoSave = async (): Promise<void> => {
+    const atual = prefs.prefs['editor.autoSave'];
+    await prefs.definir({ 'editor.autoSave': atual === 'off' ? 'afterDelay' : 'off' });
+  };
+
+  /**
+   * Volta ao que está em disco, confirmando quando há o que perder.
+   *
+   * A ORDEM importa, e o teste pegou isto: a aba sem título nasce suja, então
+   * confirmar antes de checar o disco fazia a IDE perguntar "descartar tudo?"
+   * para só depois dizer que não havia para onde voltar. Primeiro se checa se
+   * a pergunta faz sentido; depois se pergunta.
+   */
+  const reverterArquivo = async (): Promise<void> => {
+    const caminho = (ws.active?.meta as { path?: string | null } | undefined)?.path ?? null;
+    if (caminho === null) {
+      await dialogs.avisar(
+        'Esta aba ainda não foi salva — não há versão em disco para voltar.',
+        'Reverter arquivo'
+      );
+      return;
+    }
+    if (ws.active?.dirty === true) {
+      const ok = await dialogs.confirmar({
+        titulo: 'Reverter arquivo',
+        mensagem:
+          `"${ws.active.title}" tem alterações não salvas.\n\n` +
+          'Voltar ao que está em disco descarta tudo que foi feito desde o último salvamento.',
+        rotuloConfirmar: 'reverter',
+        destrutivo: true,
+      });
+      if (!ok) return;
+    }
+    await ws.reverter();
   };
 
   const novoProjeto = async (): Promise<void> => {
@@ -367,6 +419,9 @@ export function App() {
     'file.openRecent': () => avisar(abrirRecente()),
     'file.save': () => avisar(salvarArquivo()),
     'file.saveAs': () => avisar(salvarArquivo()),
+    'file.saveAll': () => avisar(salvarTudo()),
+    'file.autoSave': () => avisar(alternarAutoSave()),
+    'file.revert': () => avisar(reverterArquivo()),
     'file.preferences': () => avisar(abrirPreferencias()),
     'file.closeEditor': () => { if (ws.activeId !== null) ws.fechar(ws.activeId); },
 
@@ -548,6 +603,7 @@ export function App() {
         painelVisivel={layout.painelVisivel}
         onAlternarLateral={layout.alternarLateral}
         onAlternarPainel={layout.alternarPainel}
+        estados={{ 'file.autoSave': prefs.prefs['editor.autoSave'] }}
       />
 
       <Box component="main" sx={{ flex: 1, display: 'flex', minHeight: 0 }}>

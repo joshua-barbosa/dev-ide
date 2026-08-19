@@ -208,6 +208,10 @@ test('mover linha com Alt+seta', async ({ page }) => {
   await expect.poll(() => textoDoEditor(page)).toMatch(/segunda/);
 
   await page.keyboard.press('Alt+ArrowUp');
-  const linhas = (await textoDoEditor(page)).split('\n');
-  expect(linhas[0]).toContain('segunda');
+  // `poll`, e não leitura direta: o Monaco aplica a edição fora do turno em que
+  // a tecla é despachada, e ler na hora pegava o texto de antes. Falhou uma vez
+  // em cada tantas execuções — e falha intermitente ensina a ignorar vermelho.
+  await expect
+    .poll(async () => (await textoDoEditor(page)).split('\n')[0])
+    .toContain('segunda');
 });

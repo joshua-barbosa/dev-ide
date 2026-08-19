@@ -24,10 +24,19 @@ export interface MenuBarProps {
   readonly painelVisivel: boolean;
   readonly onAlternarLateral: () => void;
   readonly onAlternarPainel: () => void;
+  /**
+   * Texto à direita de um item, no lugar do atalho.
+   *
+   * Existe para o `Auto Save` mostrar o modo em que está: um interruptor sem
+   * lâmpada não diz se está ligado. Mapa `id → texto`, para o componente
+   * continuar sem saber de comando nenhum.
+   */
+  readonly estados?: Readonly<Record<string, string>>;
 }
 
 export function MenuBar({
   contexto, onComando, lateralVisivel, painelVisivel, onAlternarLateral, onAlternarPainel,
+  estados = {},
 }: MenuBarProps) {
   const [aberto, setAberto] = useState<MenuId | null>(null);
   const [ancora, setAncora] = useState<HTMLElement | null>(null);
@@ -137,7 +146,7 @@ export function MenuBar({
                 >
                   <Box component="span">{item.cmd.label}</Box>
                   <Box component="span" sx={{ color: 'text.secondary', fontSize: 11 }}>
-                    {pendente ? 'em breve' : (item.cmd.keybinding ?? '')}
+                    {pendente ? 'em breve' : (estados[item.cmd.id] ?? item.cmd.keybinding ?? '')}
                   </Box>
                 </MenuItem>
               );

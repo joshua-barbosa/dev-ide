@@ -45,6 +45,14 @@ export interface Workspace {
   readonly active: Tab | null;
   readonly editorRef: React.RefObject<EditorHandle | null>;
   readonly cursor: { readonly linha: number; readonly coluna: number };
+  /**
+   * Contador de edições do usuário.
+   *
+   * É o sinal do Auto Save: um número que muda a cada tecla, sem carregar o
+   * conteúdo junto. Usar o próprio texto como dependência refaria o efeito a
+   * cada caractere com uma cópia do arquivo inteiro.
+   */
+  readonly edicoes: number;
   aoMoverCursor(linha: number, coluna: number): void;
   abrirArquivo(caminho: string): Promise<void>;
   abrirQuery(id: string, titulo: string, conteudo: string, connectionId: string): void;
@@ -56,6 +64,15 @@ export interface Workspace {
   adotarArquivo(idAntigo: string, caminho: string): void;
   /** Devolve o caminho gravado, ou `null` se não havia o que salvar. */
   salvar(): Promise<string | null>;
+  /**
+   * Grava todas as abas sujas que já têm arquivo.
+   *
+   * Devolve quantas gravou e quantas ficaram de fora por ainda não terem nome —
+   * quem chama decide como contar isso ao usuário.
+   */
+  salvarTodas(): Promise<{ readonly gravadas: number; readonly semNome: number }>;
+  /** Relê o arquivo do disco, jogando fora o que não foi salvo. */
+  reverter(): Promise<void>;
   marcarAbaSuja(id: string, sujo: boolean): void;
   ativar(id: string): void;
   fechar(id: string): Promise<void>;
@@ -76,6 +93,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   const { store, tabs, activeId, active } = useTabs();
   const editorRef = useRef<EditorHandle>(null);
   const [cursor, setCursor] = useState({ linha: 1, coluna: 1 });
+  const [edicoes, setEdicoes] = useState(0);
 
   /** Suprime o "sujou" que a própria troca de aba dispara ao recarregar o editor. */
   const carregando = useRef(false);
@@ -278,6 +296,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     if (carregando.current) return; // troca de aba não é edição do usuário
     const id = ultimaAtiva.current;
     if (id === null) return;
+    setEdicoes((n) => n + 1);
     const aba = store.get(id);
     if (aba !== null && !aba.dirty) store.update(id, { dirty: true });
   }, [store]);
@@ -300,6 +319,60 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     await Api.saveFile(meta.path, editor.getValue());
     store.update(aba.id, { dirty: false });
     return meta.path;
+  }, [active, store]);
+
+  /**
+   * Grava tudo que está sujo e tem para onde ir.
+   *
+   * O conteúdo da aba ATIVA vem do editor, não do estado da aba: o estado só é
+   * atualizado ao trocar de aba, então salvar a partir dele gravaria a versão
+   * de antes da última tecla (AC-2).
+   */
+  const salvarTodas = useCallback(async (): Promise<{ gravadas: number; semNome: number }> => {
+    if (ultimaAtiva.current !== null) salvarNaAba(ultimaAtiva.current);
+
+    const sujas = store.list().filter((aba) => aba.dirty && ehEditavel(aba));
+    let gravadas = 0;
+    let semNome = 0;
+
+    for (const aba of sujas) {
+      const meta = metaDe(aba);
+      if (meta.path === null) {
+        semNome += 1;
+        continue;
+      }
+      await Api.saveFile(meta.path, meta.content);
+      store.update(aba.id, { dirty: false });
+      gravadas += 1;
+    }
+    return { gravadas, semNome };
+  }, [salvarNaAba, store]);
+
+  /**
+   * Volta a aba ativa ao que está em disco.
+   *
+   * Deixa o erro subir quando o arquivo sumiu: reverter para o nada seria
+   * destruir o que restou no editor (AC-14).
+   */
+  const reverter = useCallback(async (): Promise<void> => {
+    const aba = active;
+    const editor = editorRef.current;
+    if (aba === null || editor === null || !ehEditavel(aba)) {
+      throw new Error('Não há arquivo aberto para reverter.');
+    }
+    const meta = metaDe(aba);
+    if (meta.path === null) {
+      throw new Error('Esta aba ainda não foi salva — não há versão em disco para voltar.');
+    }
+
+    const dados = await Api.readFile(meta.path);
+    carregando.current = true;
+    try {
+      editor.setValue(dados.content);
+    } finally {
+      carregando.current = false;
+    }
+    store.update(aba.id, { dirty: false, meta: { ...meta, content: dados.content, view: null } });
   }, [active, store]);
 
   /**
@@ -335,6 +408,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     active,
     editorRef,
     cursor,
+    edicoes,
     abrirArquivo,
     abrirQuery,
     abrirTexto,
@@ -347,6 +421,8 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     fechar,
     marcarSujo,
     salvar,
+    salvarTodas,
+    reverter,
     aoMoverCursor: (linha, coluna) => setCursor({ linha, coluna }),
   };
 }

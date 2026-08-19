@@ -87,3 +87,25 @@ test('mesclar preserva o que o patch não menciona e não muta a origem', () => 
   assert.equal(novo['editor.tabSize'], atual['editor.tabSize']);
   assert.equal(atual['editor.fontSize'], 13, 'a origem não pode ser mutada');
 });
+
+// ---- opções (spec 015) --------------------------------------------------------
+
+test('preferência de opção só aceita um dos valores declarados', () => {
+  assert.equal(normalizar({ 'editor.autoSave': 'afterDelay' })['editor.autoSave'], 'afterDelay');
+  assert.equal(normalizar({ 'editor.autoSave': 'onFocusChange' })['editor.autoSave'], 'onFocusChange');
+  // Valor inventado cai no padrão em vez de virar um modo que ninguém trata.
+  assert.equal(normalizar({ 'editor.autoSave': 'sempre' })['editor.autoSave'], 'off');
+  assert.equal(normalizar({ 'editor.autoSave': true })['editor.autoSave'], 'off');
+});
+
+test('o patch recusa opção fora da lista, dizendo quais valem', () => {
+  assert.throws(
+    () => validarPatch({ 'editor.autoSave': 'sempre' }),
+    /editor\.autoSave.*off, afterDelay, onFocusChange/
+  );
+});
+
+test('o atraso do auto save tem faixa', () => {
+  assert.equal(normalizar({ 'editor.autoSaveDelay': 50 })['editor.autoSaveDelay'], 1_000);
+  assert.equal(normalizar({ 'editor.autoSaveDelay': 300 })['editor.autoSaveDelay'], 300);
+});

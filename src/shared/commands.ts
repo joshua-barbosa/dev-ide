@@ -75,10 +75,10 @@ const DECLARADOS = [
   { id: 'file.openRecent', label: 'Open Recent', menu: 'file', group: 2 },
   { id: 'file.save', label: 'Save', menu: 'file', group: 3, keybinding: 'Ctrl+S', when: 'temEditor' },
   { id: 'file.saveAs', label: 'Save As…', menu: 'file', group: 3, keybinding: 'Ctrl+Shift+S', when: 'temEditor' },
-  { id: 'file.saveAll', label: 'Save All', menu: 'file', group: 3, pending: true },
-  { id: 'file.autoSave', label: 'Auto Save', menu: 'file', group: 4, pending: true },
+  { id: 'file.saveAll', label: 'Save All', menu: 'file', group: 3, when: 'abaSuja' },
+  { id: 'file.autoSave', label: 'Auto Save', menu: 'file', group: 4 },
   { id: 'file.preferences', label: 'Preferences', menu: 'file', group: 4 },
-  { id: 'file.revert', label: 'Revert File', menu: 'file', group: 5, pending: true },
+  { id: 'file.revert', label: 'Revert File', menu: 'file', group: 5, when: 'temEditor' },
   { id: 'file.closeEditor', label: 'Close Editor', menu: 'file', group: 5, keybinding: 'Ctrl+W', when: 'temAba' },
 
   // ---- Edit ----
