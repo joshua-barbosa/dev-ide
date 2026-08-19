@@ -76,6 +76,28 @@ test('termo apagado limpa o resultado, sem erro na tela', async ({ page }) => {
   await expect(page.locator('[data-arquivo-busca]')).toHaveCount(0);
 });
 
+test('o X limpa o campo, e só aparece com algo escrito', async ({ page }) => {
+  const TERMO = termo('LIMPA');
+  await criarArquivo(page, 'busca-limpa.txt', `${TERMO}\n`);
+  await painelLateral(page, 'Search').click();
+
+  // Campo vazio não tem o que limpar: um X permanente seria ruído clicável.
+  await expect(page.getByRole('button', { name: 'Limpar pesquisar' })).toHaveCount(0);
+
+  await campoBusca(page).fill(TERMO);
+  await expect(resumo(page)).toHaveText('1 em 1 arquivo(s)');
+  await page.getByRole('button', { name: 'Limpar pesquisar' }).click();
+
+  await expect(campoBusca(page)).toHaveValue('');
+  await expect(resumo(page)).toHaveText('');
+  await expect(page.locator('[data-arquivo-busca]')).toHaveCount(0);
+
+  // O campo de substituição tem o seu, independente.
+  await campoTroca(page).fill('qualquer coisa');
+  await page.getByRole('button', { name: 'Limpar substituir por' }).click();
+  await expect(campoTroca(page)).toHaveValue('');
+});
+
 test('o modo regex só vale quando pedido', async ({ page }) => {
   const TERMO = termo('REGEX');
   await criarArquivo(page, 'busca-regex.txt', `${TERMO}xb\n${TERMO}.b\n`);

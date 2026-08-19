@@ -86,19 +86,48 @@ export function SearchPanel({ busca, onAbrir, onConfirmar }: SearchPanelProps) {
     valor: string,
     placeholder: string,
     rotulo: string,
-    aoMudar: (v: string) => void
+    aoMudar: (v: string) => void,
+    /** Só o campo de pesquisa fica vermelho: quem não compila é a expressão. */
+    marcaInvalido = false
   ): React.ReactNode => (
     <InputBase
       value={valor}
       placeholder={placeholder}
       onChange={(e) => aoMudar(e.target.value)}
       inputProps={{ 'aria-label': rotulo }}
+      endAdornment={
+        // Só existe com algo escrito: um X permanente num campo vazio é ruído,
+        // e ainda por cima clicável sem efeito.
+        valor === '' ? null : (
+          <Tooltip title={`Limpar ${rotulo.toLowerCase()}`} placement="bottom">
+            <Box
+              component="button"
+              type="button"
+              aria-label={`Limpar ${rotulo.toLowerCase()}`}
+              onClick={() => aoMudar('')}
+              sx={{
+                border: 0,
+                bgcolor: 'transparent',
+                color: 'text.secondary',
+                cursor: 'pointer',
+                p: 0.2,
+                mr: -0.3,
+                display: 'flex',
+                flexShrink: 0,
+                '&:hover': { color: 'text.primary' },
+              }}
+            >
+              <Icon name="lucide:x" size={12} />
+            </Box>
+          </Tooltip>
+        )
+      }
       sx={{
         flex: 1,
         fontSize: 12,
         fontFamily: tokens.fontMono,
         border: 1,
-        borderColor: busca.termoInvalido ? 'error.main' : 'divider',
+        borderColor: marcaInvalido && busca.termoInvalido ? 'error.main' : 'divider',
         borderRadius: 0.5,
         px: 0.75,
         py: 0.2,
@@ -120,7 +149,7 @@ export function SearchPanel({ busca, onAbrir, onConfirmar }: SearchPanelProps) {
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <Box sx={{ px: 1, pb: 0.75, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          {campo(busca.termo, 'Pesquisar', 'Pesquisar', busca.definirTermo)}
+          {campo(busca.termo, 'Pesquisar', 'Pesquisar', busca.definirTermo, true)}
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
