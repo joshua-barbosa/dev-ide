@@ -82,6 +82,25 @@ export function abrirTerminal(estado: EstadoDeTerminais, id: string): EstadoDeTe
 }
 
 /**
+ * Quantos panes cabem lado a lado num par.
+ *
+ * A spec 021 parou em dois e disse por quê: "a interface fica ilegível na
+ * altura de um painel inferior". Medido depois, o argumento vale para a
+ * ALTURA, não para a quantidade — quatro panes numa janela normal dão uns 45
+ * caracteres de largura cada, que é estreito e legível. Acima disso viram tiras.
+ *
+ * O editor tem o mesmo tipo de teto (`MAX_GRUPOS`, seis), pelo mesmo motivo.
+ */
+export const MAX_PANES = 4;
+
+/** Verdadeiro enquanto couber outro pane ao lado do ativo. */
+export function podeDividirTerminal(estado: EstadoDeTerminais): boolean {
+  const ativo = estado.lista.find((t) => t.id === estado.ativo);
+  if (ativo === undefined) return estado.lista.length === 0;
+  return estado.lista.filter((t) => t.par === ativo.par).length < MAX_PANES;
+}
+
+/**
  * Abre um terminal **ao lado** do ativo, no mesmo par.
  *
  * Sem ativo, é o mesmo que abrir um normal: dividir o nada não significa coisa
@@ -90,6 +109,9 @@ export function abrirTerminal(estado: EstadoDeTerminais, id: string): EstadoDeTe
 export function dividirTerminal(estado: EstadoDeTerminais, id: string): EstadoDeTerminais {
   const ativo = estado.lista.find((t) => t.id === estado.ativo);
   if (ativo === undefined) return abrirTerminal(estado, id);
+  // No teto, dividir não faz nada: o comando já aparece cinza, e o clique que
+  // escapar por atalho não pode criar uma tira ilegível.
+  if (!podeDividirTerminal(estado)) return estado;
   return {
     lista: [...estado.lista, { id, titulo: proximoTitulo(estado.lista), par: ativo.par }],
     ativo: id,

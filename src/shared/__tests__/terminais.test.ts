@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   abrirTerminal, ativarTerminal, dividirTerminal, fecharTerminal, normalizarTerminais,
-  paneisVisiveis, paresDe, proximoTitulo, SEM_TERMINAIS,
+  paneisVisiveis, paresDe, podeDividirTerminal, proximoTitulo, SEM_TERMINAIS,
 } from '../terminais';
 
 function comIds(...ids: string[]) {
@@ -171,4 +171,42 @@ test('ativa que não existe mais cai no primeiro, e não vira id fantasma', () =
 
 test('lista vazia não tem ativa', () => {
   assert.equal(normalizarTerminais({ lista: [], ativo: 'a' }).ativo, null);
+});
+
+// ---------------------------------------------------------------------------
+// Mais de dois panes (spec 031)
+// ---------------------------------------------------------------------------
+
+test('dividir três vezes dá quatro panes lado a lado', () => {
+  // A spec 021 parou em dois por decisão de interface, não por limite do
+  // modelo — o `par` sempre foi um campo, e não um par literal.
+  let estado = abrirTerminal(SEM_TERMINAIS, 'a');
+  for (const id of ['b', 'c', 'd']) estado = dividirTerminal(estado, id);
+  assert.equal(paneisVisiveis(estado).length, 4);
+  assert.equal(paresDe(estado).length, 1, 'os quatro são do mesmo par');
+});
+
+test('o quinto pane é recusado, e o estado fica intacto', () => {
+  let estado = abrirTerminal(SEM_TERMINAIS, 'a');
+  for (const id of ['b', 'c', 'd']) estado = dividirTerminal(estado, id);
+  const antes = estado;
+  estado = dividirTerminal(estado, 'e');
+  assert.equal(estado, antes, 'devolver o MESMO objeto evita render à toa');
+});
+
+test('podeDividirTerminal acompanha o teto', () => {
+  let estado = abrirTerminal(SEM_TERMINAIS, 'a');
+  assert.equal(podeDividirTerminal(estado), true);
+  for (const id of ['b', 'c']) estado = dividirTerminal(estado, id);
+  assert.equal(podeDividirTerminal(estado), true, 'com três, ainda cabe um');
+  estado = dividirTerminal(estado, 'd');
+  assert.equal(podeDividirTerminal(estado), false);
+});
+
+test('o teto é por PAR, e não no total de terminais', () => {
+  let estado = abrirTerminal(SEM_TERMINAIS, 'a');
+  for (const id of ['b', 'c', 'd']) estado = dividirTerminal(estado, id);
+  estado = abrirTerminal(estado, 'novo');
+  assert.equal(podeDividirTerminal(estado), true, 'um par cheio não trava o próximo');
+  assert.equal(paneisVisiveis(estado).length, 1);
 });

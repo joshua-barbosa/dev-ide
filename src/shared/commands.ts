@@ -45,6 +45,8 @@ export interface ContextoDeComandos {
   /** Navegação Back/Forward (spec 016). */
   readonly podeVoltar: boolean;
   readonly podeAvancar: boolean;
+  /** Ainda cabe outro pane ao lado do terminal ativo (spec 031). */
+  readonly podeDividirTerminal: boolean;
 }
 
 export type ChaveDeContexto = keyof ContextoDeComandos;
@@ -156,7 +158,8 @@ const DECLARADOS = [
   // chega como `%` — a declaração casaria com um evento que nunca acontece. Ler
   // `e.code` resolveria, mas isso é mudança no modelo de atalhos inteiro, não
   // numa linha. O item de menu e o botão do painel dão conta.
-  { id: 'terminal.split', label: 'Split Terminal', menu: 'terminal', group: 1 },
+  { id: 'terminal.split', label: 'Split Terminal', menu: 'terminal', group: 1,
+    when: 'podeDividirTerminal' },
   { id: 'terminal.runTask', label: 'Run Task…', menu: 'terminal', group: 2, keybinding: 'Ctrl+Shift+R' },
 
   // ---- Help ----

@@ -87,3 +87,33 @@ test('fechar um pane deixa o outro vivo', async ({ page }) => {
   await expect(paneis(page)).toHaveCount(1);
   await expect(page.locator('[data-terminal-item="Terminal 1"]')).toBeVisible();
 });
+
+test('dá para dividir mais de uma vez, até o teto de quatro', async ({ page }) => {
+  // A spec 021 parou em dois por decisão de interface. Medido depois: quatro
+  // panes numa janela normal dão uns 45 caracteres cada — estreito e legível.
+  await novoTerminal(page);
+  await dividir(page);
+  await dividir(page);
+  await expect(paneis(page)).toHaveCount(3);
+
+  await dividir(page);
+  await expect(paneis(page)).toHaveCount(4);
+
+  // No teto, o item do menu fica cinza, como o Split Editor já faz.
+  await menu(page, 'Terminal');
+  await expect(page.getByRole('menuitem', { name: 'Split Terminal' })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(paneis(page)).toHaveCount(4);
+});
+
+test('o teto é por par: um novo terminal volta a poder dividir', async ({ page }) => {
+  await novoTerminal(page);
+  for (let i = 0; i < 3; i += 1) await dividir(page);
+  await expect(paneis(page)).toHaveCount(4);
+
+  await novoTerminal(page);
+  await expect(paneis(page)).toHaveCount(1);
+  await menu(page, 'Terminal');
+  await expect(page.getByRole('menuitem', { name: 'Split Terminal' })).toBeEnabled();
+  await page.keyboard.press('Escape');
+});

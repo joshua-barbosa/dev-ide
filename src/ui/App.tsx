@@ -46,6 +46,7 @@ import { usePersistido } from './usePersistido';
 import { useProblemas } from './useProblemas';
 import {
   abrirTerminal as abrirNoPainel, ativarTerminal, dividirTerminal, fecharTerminal,
+  podeDividirTerminal,
   normalizarTerminais, paneisVisiveis, SEM_TERMINAIS,
 } from '../shared/terminais';
 import { useExecution } from './useExecution';
@@ -341,6 +342,7 @@ export function App() {
     executando: exec.executando,
     podeVoltar: nav.podeVoltar,
     podeAvancar: nav.podeAvancar,
+    podeDividirTerminal: podeDividirTerminal(terminais),
   };
 
   const avisar = (p: Promise<unknown>): void => {

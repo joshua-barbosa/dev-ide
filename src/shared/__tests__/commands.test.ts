@@ -31,6 +31,7 @@ const NADA: ContextoDeComandos = {
   executando: false,
   podeVoltar: false,
   podeAvancar: false,
+  podeDividirTerminal: false,
 };
 
 const TUDO: ContextoDeComandos = {
@@ -44,6 +45,7 @@ const TUDO: ContextoDeComandos = {
   executando: true,
   podeVoltar: true,
   podeAvancar: true,
+  podeDividirTerminal: true,
 };
 
 // ---- integridade do registro (AC-1, AC-4) ----
