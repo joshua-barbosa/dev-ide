@@ -133,6 +133,10 @@ export function FilesPanel({
             expansivel={no.type === 'dir'}
             aberto={aberta}
             ativo={no.path === caminhoAtivo}
+            // Cinza e itálico com um significado exato: a IDE não indexa isto.
+            // Continua abrindo, arrastando e editando como qualquer outro.
+            esmaecido={no.ignored === true}
+            titulo={no.ignored === true ? `${no.path} — ignorado pelo .gitignore` : no.path}
             onClick={() => (no.type === 'dir' ? alternar(no) : abrir(no.path))}
             aoArrastar={
               no.type === 'dir'

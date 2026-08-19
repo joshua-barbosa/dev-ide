@@ -71,6 +71,11 @@ export default async function globalSetup(): Promise<void> {
     'SELECT id, nome FROM alunos;\n'
   );
 
+  // Um `.gitignore` de verdade, para a marca de "ignorado" (spec 036) ter o que
+  // marcar — e um arquivo que ele ignora, ao lado de um que não.
+  fs.writeFileSync(path.join(dados, 'projects', 'demo', '.gitignore'), 'ignorado.txt\n');
+  fs.writeFileSync(path.join(dados, 'projects', 'demo', 'ignorado.txt'), 'nao indexado\n');
+
   // Uma subpasta com um `node_modules` dentro, para a árvore preguiçosa e a
   // varredura com `.gitignore` (spec 034) terem o que provar: a pasta de
   // dependência APARECE na árvore e NÃO entra na busca.

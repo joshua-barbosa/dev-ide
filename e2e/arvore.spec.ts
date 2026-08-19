@@ -77,3 +77,35 @@ test('recarregar a árvore NÃO esvazia as pastas já abertas', async ({ page })
 
   await expect(linhaArvore(page, 'dentro.txt')).toBeVisible();
 });
+
+// ---------------------------------------------------------------------------
+// O que o .gitignore ignora (spec 036)
+// ---------------------------------------------------------------------------
+
+test('o ignorado aparece em CINZA, e não escondido', async ({ page }) => {
+  const ignorado = linhaArvore(page, 'ignorado.txt');
+  const normal = linhaArvore(page, 'utils.ts');
+
+  await expect(ignorado).toBeVisible();
+  await expect(normal).toBeVisible();
+
+  // O cinza tem um significado exato: a IDE não indexa aquilo.
+  await expect(ignorado).toHaveCSS('font-style', 'italic');
+  await expect(normal).toHaveCSS('font-style', 'normal');
+  await expect(ignorado).toHaveAttribute('title', /ignorado pelo \.gitignore/);
+});
+
+test('a pasta de dependência também vem marcada', async ({ page }) => {
+  await expect(linhaArvore(page, 'node_modules')).toHaveCSS('font-style', 'italic');
+  await expect(linhaArvore(page, 'sub')).toHaveCSS('font-style', 'normal');
+});
+
+test('o ignorado continua abrindo normalmente', async ({ page }) => {
+  // Cinza é aviso, não bloqueio.
+  await linhaArvore(page, 'ignorado.txt').click();
+  await expect(page.locator('[data-tab="ignorado.txt"]')).toBeVisible();
+});
+
+test('metadado de controle de versão NÃO aparece', async ({ page }) => {
+  await expect(linhaArvore(page, '.git')).toHaveCount(0);
+});

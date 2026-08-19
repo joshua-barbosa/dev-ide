@@ -73,6 +73,8 @@ export interface FileNode {
   readonly path: string;
   readonly type: 'file' | 'dir';
   readonly children?: readonly FileNode[];
+  /** O `.gitignore` manda ignorar: a árvore mostra, mas em cinza (spec 036). */
+  readonly ignored?: boolean;
 }
 
 export interface SymbolInfo {

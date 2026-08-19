@@ -84,7 +84,7 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
     const raiz = pastaValida(atual);
     const bruto = typeof req.query.path === 'string' ? req.query.path : '';
     const alvo = bruto === '' ? raiz : dentroDaPasta(raiz, bruto);
-    res.json({ success: true, data: filhosDaPasta(pastaValida(alvo)), error: null });
+    res.json({ success: true, data: filhosDaPasta(pastaValida(alvo), raiz), error: null });
   }));
 
   /** Navegador de pastas. Sem `path`, começa na pasta pessoal do usuário. */

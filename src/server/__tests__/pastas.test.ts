@@ -84,14 +84,61 @@ test('a árvore mostra TAMBÉM as pastas de dependência', () => {
   // num projeto Laravel, `vendor` existe e o usuário sabe disso. O que resolveu
   // não foi mostrar menos — foi parar de ler a árvore inteira de uma vez.
   comPasta((raiz) => {
-    for (const nome of ['node_modules', '.venv', 'vendor', 'dist', '.git']) {
+    for (const nome of ['node_modules', '.venv', 'vendor', 'dist']) {
       fs.mkdirSync(path.join(raiz, nome));
       fs.writeFileSync(path.join(raiz, nome, 'x.js'), '');
     }
     fs.writeFileSync(path.join(raiz, 'a.ts'), '');
 
     const nomes = filhosDaPasta(raiz).nodes.map((n) => n.name);
-    assert.deepEqual(nomes, ['.git', '.venv', 'dist', 'node_modules', 'vendor', 'a.ts']);
+    assert.deepEqual(nomes, ['.venv', 'dist', 'node_modules', 'vendor', 'a.ts']);
+  });
+});
+
+test('metadado de controle de versão NÃO aparece (spec 036)', () => {
+  // Lista curta e de um tipo só: nada aqui se edita, nunca. É o `files.exclude`
+  // padrão do VS Code, e é o oposto de esconder `vendor` — que se abre.
+  comPasta((raiz) => {
+    for (const nome of ['.git', '.hg', '.svn', 'CVS']) fs.mkdirSync(path.join(raiz, nome));
+    fs.writeFileSync(path.join(raiz, '.DS_Store'), '');
+    fs.writeFileSync(path.join(raiz, 'a.ts'), '');
+
+    assert.deepEqual(filhosDaPasta(raiz).nodes.map((n) => n.name), ['a.ts']);
+  });
+});
+
+test('o que o .gitignore ignora vem MARCADO, e não escondido', () => {
+  comPasta((raiz) => {
+    fs.writeFileSync(path.join(raiz, '.gitignore'), '*.log\nconstruido/\n');
+    fs.mkdirSync(path.join(raiz, 'construido'));
+    fs.mkdirSync(path.join(raiz, 'node_modules'));
+    fs.writeFileSync(path.join(raiz, 'saida.log'), '');
+    fs.writeFileSync(path.join(raiz, 'a.ts'), '');
+
+    const porNome = new Map(filhosDaPasta(raiz).nodes.map((n) => [n.name, n.ignored ?? false]));
+    assert.equal(porNome.get('construido'), true);
+    assert.equal(porNome.get('saida.log'), true);
+    assert.equal(porNome.get('node_modules'), true, 'o padrão embutido também marca');
+    assert.equal(porNome.get('a.ts'), false);
+    assert.equal(porNome.get('.gitignore'), false);
+  });
+});
+
+test('a marca vale DENTRO da subpasta, somando os .gitignore do caminho', () => {
+  // Sem somar as regras da raiz, abrir uma subpasta perderia o cinza lá dentro.
+  comPasta((raiz) => {
+    fs.writeFileSync(path.join(raiz, '.gitignore'), '*.log\n');
+    fs.mkdirSync(path.join(raiz, 'pacote'));
+    fs.writeFileSync(path.join(raiz, 'pacote', '.gitignore'), 'gerado.ts\n');
+    fs.writeFileSync(path.join(raiz, 'pacote', 'saida.log'), '');
+    fs.writeFileSync(path.join(raiz, 'pacote', 'gerado.ts'), '');
+    fs.writeFileSync(path.join(raiz, 'pacote', 'fonte.ts'), '');
+
+    const sub = path.join(raiz, 'pacote');
+    const porNome = new Map(filhosDaPasta(sub, raiz).nodes.map((n) => [n.name, n.ignored ?? false]));
+    assert.equal(porNome.get('saida.log'), true, 'regra da raiz');
+    assert.equal(porNome.get('gerado.ts'), true, 'regra da própria pasta');
+    assert.equal(porNome.get('fonte.ts'), false);
   });
 });
 

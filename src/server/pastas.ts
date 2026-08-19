@@ -18,6 +18,14 @@ export interface FileNode {
   path: string;
   type: 'file' | 'dir';
   children?: FileNode[];
+  /**
+   * O `.gitignore` (ou o padrão embutido) manda ignorar isto.
+   *
+   * A árvore continua MOSTRANDO — o cinza só diz que a IDE não vai indexar
+   * aquilo. É a mesma regra da varredura, e é de propósito: assim o cinza tem
+   * um significado exato ("não entra na busca") em vez de ser decoração.
+   */
+  ignored?: boolean;
 }
 
 export interface ArvoreDaPasta {
@@ -47,6 +55,21 @@ export interface ListagemDePastas {
  * navegador, e não há como ler 200 mil nomes de qualquer jeito.
  */
 export const MAX_ENTRADAS = 5_000;
+
+/**
+ * O que a árvore não mostra, por decisão do usuário em 2026-08-19.
+ *
+ * **Lista curta e de um tipo só:** metadado de controle de versão e sujeira de
+ * sistema operacional. Nada aqui se edita, nunca. É o mesmo `files.exclude`
+ * padrão do VS Code.
+ *
+ * **Não é o lugar de `node_modules`, `.venv` ou `vendor`** — essas aparecem, e
+ * quem decide não varrê-las é o `.gitignore`. Foi exatamente essa confusão que
+ * a spec 034 desfez; misturar as duas coisas de novo aqui desfaria o conserto.
+ */
+const NAO_MOSTRADAS: ReadonlySet<string> = new Set([
+  '.git', '.hg', '.svn', 'CVS', '.DS_Store', 'Thumbs.db',
+]);
 
 /** Até onde uma varredura desce. Ciclo de link simbólico não vira laço eterno. */
 export const MAX_PROFUNDIDADE = 12;
@@ -104,7 +127,10 @@ export function listarSubpastas(alvo: string): ListagemDePastas {
  * O que **não** se varre continua governado por `.gitignore` — mas isso é a
  * busca e a indexação, e não o que aparece na tela. Ver `shared/gitignore.ts`.
  */
-export function filhosDaPasta(dir: string): { nodes: FileNode[]; truncated: boolean } {
+export function filhosDaPasta(
+  dir: string,
+  raiz: string = dir
+): { nodes: FileNode[]; truncated: boolean } {
   let entradas: fs.Dirent[];
   try {
     entradas = fs.readdirSync(dir, { withFileTypes: true });
@@ -113,22 +139,55 @@ export function filhosDaPasta(dir: string): { nodes: FileNode[]; truncated: bool
     return { nodes: [], truncated: false };
   }
 
+  const regras = regrasAte(raiz, dir);
   const nodes: FileNode[] = [];
   for (const entrada of entradas) {
     if (nodes.length >= MAX_ENTRADAS) break;
+    if (NAO_MOSTRADAS.has(entrada.name)) continue;
     const full = path.join(dir, entrada.name);
+    const relativo = path.relative(raiz, full).split(path.sep).join('/');
+    const cinza = ignorado(relativo, entrada.isDirectory(), regras);
     if (entrada.isDirectory()) {
       // `children` ausente significa "ainda não carregada" para a interface —
       // diferente de `[]`, que significa "carregada e vazia".
-      nodes.push({ name: entrada.name, path: full, type: 'dir' });
+      nodes.push({ name: entrada.name, path: full, type: 'dir', ...(cinza ? { ignored: true } : {}) });
     } else if (entrada.isFile()) {
-      nodes.push({ name: entrada.name, path: full, type: 'file' });
+      nodes.push({ name: entrada.name, path: full, type: 'file', ...(cinza ? { ignored: true } : {}) });
     }
   }
   nodes.sort((a, b) =>
     a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1
   );
   return { nodes, truncated: entradas.length > MAX_ENTRADAS };
+}
+
+/**
+ * As regras que valem dentro de `dir`, somando os `.gitignore` do caminho.
+ *
+ * Da raiz até a pasta pedida, como o git faz: cada nível pode acrescentar, e o
+ * de baixo vê o de cima. Sem isto, abrir uma subpasta perderia as regras da
+ * raiz e nada ficaria cinza lá dentro.
+ */
+function regrasAte(raiz: string, dir: string): readonly Regra[] {
+  let regras: readonly Regra[] = REGRAS_PADRAO;
+  const relativo = path.relative(raiz, dir);
+  const partes = relativo === '' ? [] : relativo.split(path.sep);
+
+  let atual = raiz;
+  for (let i = 0; i <= partes.length; i += 1) {
+    try {
+      const arquivo = path.join(atual, '.gitignore');
+      if (fs.existsSync(arquivo)) {
+        regras = [...regras, ...lerRegras(fs.readFileSync(arquivo, 'utf8'))];
+      }
+    } catch {
+      // Ilegível: segue com o que já tem.
+    }
+    const proxima = partes[i];
+    if (proxima === undefined) break;
+    atual = path.join(atual, proxima);
+  }
+  return regras;
 }
 
 /**
