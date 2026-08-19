@@ -24,6 +24,13 @@ export interface TreeRowProps {
   readonly onContextMenu?: (e: React.MouseEvent) => void;
   /** Ações que aparecem ao passar o mouse, à direita da linha. */
   readonly acoes?: React.ReactNode;
+  /**
+   * Presente torna a linha arrastável; quem monta decide o que ela carrega.
+   *
+   * Pasta e nó de conexão não passam nada, e por isso não arrastam — não há
+   * para onde soltá-los.
+   */
+  readonly aoArrastar?: (e: React.DragEvent) => void;
 }
 
 export function TreeRow({
@@ -41,6 +48,7 @@ export function TreeRow({
   onDoubleClick,
   onContextMenu,
   acoes,
+  aoArrastar,
 }: TreeRowProps) {
   return (
     <Box
@@ -50,6 +58,10 @@ export function TreeRow({
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
+      // Arrastável só quando quem monta a linha diz o que ela carrega. Pasta e
+      // nó de conexão não arrastam — não há para onde soltá-los.
+      draggable={aoArrastar !== undefined}
+      onDragStart={aoArrastar}
       sx={{
         display: 'flex',
         alignItems: 'center',

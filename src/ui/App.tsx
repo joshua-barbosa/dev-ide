@@ -19,6 +19,7 @@ import { Resizer } from './Resizer';
 import { useSidebarWidth } from './useSidebarWidth';
 import { useWorkspace } from './useWorkspace';
 import { EditorGroup } from './EditorGroup';
+import { EditorGrid } from './EditorGrid';
 import { ACAO_DO_MONACO } from '../shared/editor/acoes-monaco';
 import type { PublicConnection } from '../shared/contracts';
 import { useConnections } from './connections/useConnections';
@@ -629,40 +630,43 @@ export function App() {
           component="section"
           sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}
         >
-          {/* Os grupos, lado a lado. Com um só, é exatamente a tela de antes. */}
-          <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
-            {ws.grupos.map((g) => (
-              <EditorGroup
-                key={g}
-                grupo={g}
-                abas={ws.tabs.filter((t) => t.grupo === g)}
-                ativaId={ws.store.ativaDoGrupo(g)}
-                focado={ws.grupoFocado === g}
-                dividido={ws.grupos.length > 1}
-                fontSize={prefs.prefs['editor.fontSize']}
-                tabSize={prefs.prefs['editor.tabSize']}
-                wordWrap={prefs.prefs['editor.wordWrap']}
-                terminalFontSize={prefs.prefs['terminal.fontSize']}
-                tema={tema}
-                snippets={snippets.lista}
-                grades={exec.grades}
-                emPreview={ws.emPreview}
-                conteudoDaAba={ws.conteudoDaAba}
-                onPreview={
-                  ws.grupoFocado === g && temPreview(linguagem) ? ws.alternarPreview : undefined
-                }
-                registrarEditor={ws.registrarEditor(g)}
-                onFocar={() => ws.focarGrupo(g)}
-                onAtivar={ws.ativar}
-                onFechar={ws.fechar}
-                onMudar={ws.marcarSujo}
-                onCursor={ws.aoMoverCursor}
-                onExecutar={
-                  ws.grupoFocado === g && contexto.temEditor ? () => executar('file') : undefined
-                }
-                formulario={formularioDeConexao}
-              />
-            ))}
+          {/* O arranjo dos grupos. Com um só, é exatamente a tela de antes. */}
+          <Box sx={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0 }}>
+            <EditorGrid
+              layout={ws.layout}
+              grupo={(g) => (
+                <EditorGroup
+                  grupo={g}
+                  abas={ws.tabs.filter((t) => t.grupo === g)}
+                  ativaId={ws.store.ativaDoGrupo(g)}
+                  focado={ws.grupoFocado === g}
+                  dividido={ws.grupos.length > 1}
+                  fontSize={prefs.prefs['editor.fontSize']}
+                  tabSize={prefs.prefs['editor.tabSize']}
+                  wordWrap={prefs.prefs['editor.wordWrap']}
+                  terminalFontSize={prefs.prefs['terminal.fontSize']}
+                  tema={tema}
+                  snippets={snippets.lista}
+                  grades={exec.grades}
+                  emPreview={ws.emPreview}
+                  conteudoDaAba={ws.conteudoDaAba}
+                  onPreview={
+                    ws.grupoFocado === g && temPreview(linguagem) ? ws.alternarPreview : undefined
+                  }
+                  registrarEditor={ws.registrarEditor(g)}
+                  onFocar={() => ws.focarGrupo(g)}
+                  onAtivar={ws.ativar}
+                  onFechar={ws.fechar}
+                  onMudar={ws.marcarSujo}
+                  onCursor={ws.aoMoverCursor}
+                  onExecutar={
+                    ws.grupoFocado === g && contexto.temEditor ? () => executar('file') : undefined
+                  }
+                  onSoltar={(zona, carga) => ws.soltarNoGrupo(g, zona, carga)}
+                  formulario={formularioDeConexao}
+                />
+              )}
+            />
           </Box>
 
           {/* SEMPRE montado, escondido com `display: none`.

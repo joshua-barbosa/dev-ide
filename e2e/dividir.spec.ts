@@ -12,7 +12,7 @@ const grupo = (page: Page, n: number) => page.locator(`[data-grupo-editor="${n}"
 /** O texto do editor de um grupo, com o espaço inquebrável do Monaco normalizado. */
 async function textoDoGrupo(page: Page, n: number): Promise<string> {
   const bruto = await grupo(page, n).locator('.view-lines').innerText();
-  return bruto.replace(/ /g, ' ');
+  return bruto.replace(/\u00a0/g, ' ');
 }
 
 async function dividir(page: Page): Promise<void> {
@@ -98,15 +98,20 @@ test('fechar a última aba de um lado desfaz a divisão', async ({ page }) => {
   await expect(grupo(page, 0)).toBeVisible();
 });
 
-test('dividir de novo traz a aba de volta', async ({ page }) => {
+test('dividir SEMPRE cria um grupo à direita, e não alterna entre dois', async ({ page }) => {
+  // Mudou na spec 025. Com dois grupos fixos, alternar fazia sentido; com N,
+  // o esperado é o do VS Code — cada divisão abre mais um lado à direita.
   await abrirArquivo(page, 'utils.ts');
   await abrirArquivo(page, 'consulta.sql');
   await dividir(page);
   await expect(grupo(page, 1).locator('[data-tab="consulta.sql"]')).toBeVisible();
 
   await dividir(page);
-  await expect(grupo(page, 0).locator('[data-tab="consulta.sql"]')).toBeVisible();
-  await expect(grupo(page, 1)).toHaveCount(0);
+  // A aba saiu do grupo 1, que ficou vazio e sumiu; ela está no grupo novo.
+  await expect(page.locator('[data-grupo-editor]')).toHaveCount(2);
+  await expect(grupo(page, 0).locator('[data-tab="utils.ts"]')).toBeVisible();
+  await expect(page.locator('[data-tab="consulta.sql"]')).toHaveCount(1);
+  await expect(grupo(page, 0).locator('[data-tab="consulta.sql"]')).toHaveCount(0);
 });
 
 test('abrir pela árvore um arquivo que está do outro lado leva o foco até ele', async ({ page }) => {

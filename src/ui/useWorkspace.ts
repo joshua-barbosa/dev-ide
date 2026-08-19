@@ -12,6 +12,11 @@
 //    no arquivo anterior.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GRUPO_PADRAO, type Tab, type TabStore } from '../shared/tabs';
+import {
+  dividir as dividirLayout, LAYOUT_INICIAL, normalizarLayout, podeDividir,
+  proximoGrupo, type Lado, type NoDeLayout,
+} from '../shared/layout-editor';
+import type { CargaDeArraste, Zona } from '../shared/arrastar';
 import { proximoSemTitulo } from '../shared/untitled';
 import { ICONE_DE_ARQUIVO, iconeDeArquivo } from '../shared/editor/arquivos';
 import type { EditorHandle, ViewState } from './editor/EditorHost';
@@ -64,11 +69,21 @@ export interface Workspace {
   readonly active: Tab | null;
   readonly grupos: readonly number[];
   readonly grupoFocado: number;
+  /** O arranjo dos grupos na tela (spec 025). */
+  readonly layout: NoDeLayout;
+  /** Verdadeiro enquanto couber outro grupo. */
+  readonly podeDividir: boolean;
   readonly editorRef: PonteiroDeEditor;
   /** Ref de callback para o `EditorHost` de um grupo se registrar. */
   registrarEditor(grupo: number): (handle: EditorHandle | null) => void;
   /** Manda a aba ativa para o outro grupo, criando-o se preciso. */
   dividir(): void;
+  /**
+   * Trata o que foi solto sobre um grupo.
+   *
+   * `centro` abre ali mesmo; qualquer outra zona cria um grupo naquele lado.
+   */
+  soltarNoGrupo(grupoAlvo: number, zona: Zona, carga: CargaDeArraste): void;
   /** Abas mostrando o conteúdo renderizado em vez do texto. */
   readonly emPreview: ReadonlySet<string>;
   /** Alterna entre texto e renderizado na aba ativa. */
@@ -161,8 +176,16 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     if (existente !== undefined) return existente;
 
     const fn = (handle: EditorHandle | null): void => {
-      if (handle === null) editores.current.delete(grupo);
-      else editores.current.set(grupo, handle);
+      if (handle === null) {
+        editores.current.delete(grupo);
+      } else {
+        editores.current.set(grupo, handle);
+        // **Instância NOVA não sabe de nada.** Trocar o arranjo muda a forma da
+        // árvore, e o React remonta os editores que mudaram de lugar nela — o
+        // que jogava fora o conteúdo e deixava o grupo em branco. Limpar a
+        // guarda aqui faz o efeito carregar a aba de novo no editor novo.
+        ultimaAtiva.current.delete(grupo);
+      }
       setVersaoDosEditores((n) => n + 1);
     };
     refsPorGrupo.current.set(grupo, fn);
@@ -172,6 +195,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   const [cursor, setCursor] = useState({ linha: 1, coluna: 1 });
   const [edicoes, setEdicoes] = useState(0);
   const [emPreview, setEmPreview] = useState<ReadonlySet<string>>(new Set());
+  const [layout, setLayout] = useState<NoDeLayout>(LAYOUT_INICIAL);
 
   /** Suprime o "sujou" que a própria troca de aba dispara ao recarregar o editor. */
   const carregando = useRef(false);
@@ -252,10 +276,43 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     }
   }, [activeId, grupoFocado, grupos, salvarNaAba, store, tabs, versaoDosEditores]);
 
+  /**
+   * Mantém o arranjo em sincronia com quem realmente tem aba.
+   *
+   * São duas verdades — a árvore de layout e o store de abas — e elas se
+   * desencontram quando a última aba de um grupo fecha. Reconciliar aqui é o
+   * que impede uma metade de tela em branco sobrando na tela.
+   *
+   * O grupo em FOCO é preservado mesmo vazio: ele é o destino de "abrir agora",
+   * e removê-lo faria a próxima aba nascer do lado errado.
+   */
+  useEffect(() => {
+    const vivos = new Set(tabs.map((t) => t.grupo));
+    vivos.add(grupoFocado);
+    setLayout((atual) => {
+      const novo = normalizarLayout(atual, vivos);
+      // Compara pelo desenho: devolver objeto novo a cada render entraria em
+      // laço, já que `layout` é dependência de quem o consome.
+      return JSON.stringify(novo) === JSON.stringify(atual) ? atual : novo;
+    });
+  }, [tabs, grupoFocado]);
+
   /** Salva no store o que está no editor do grupo em foco. */
   const salvarGrupoFocado = useCallback(() => {
     const id = ultimaAtiva.current.get(focoAtual.current) ?? null;
     if (id !== null) salvarNaAba(id, focoAtual.current);
+  }, [salvarNaAba]);
+
+  /**
+   * Descarrega TODOS os editores para o store.
+   *
+   * Obrigatório antes de mexer no arranjo: mudar a forma da árvore remonta os
+   * editores que trocaram de lugar nela, e o que não estiver no store nesse
+   * instante desaparece. Salvar só o grupo em foco deixaria os outros em branco
+   * — foi exatamente o que aconteceu ao arrastar o segundo arquivo.
+   */
+  const salvarTodosOsGrupos = useCallback(() => {
+    for (const [grupo, id] of ultimaAtiva.current) if (id !== null) salvarNaAba(id, grupo);
   }, [salvarNaAba]);
 
   const abrirArquivo = useCallback(
@@ -480,10 +537,67 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   const dividir = useCallback(() => {
     const id = store.activeId();
     if (id === null) return;
-    salvarGrupoFocado();
-    const atual = store.get(id)?.grupo ?? GRUPO_PADRAO;
-    store.mover(id, atual === GRUPO_PADRAO ? 1 : GRUPO_PADRAO);
-  }, [salvarGrupoFocado, store]);
+    salvarTodosOsGrupos();
+    const alvo = store.get(id)?.grupo ?? GRUPO_PADRAO;
+    setLayout((atual) => {
+      if (!podeDividir(atual)) return atual;
+      const novo = proximoGrupo(atual);
+      store.mover(id, novo);
+      return dividirLayout(atual, alvo, 'direita', novo);
+    });
+  }, [salvarTodosOsGrupos, store]);
+
+  /**
+   * Abre um arquivo num grupo específico.
+   *
+   * Arquivo já aberto é MOVIDO, e não duplicado: arrastar da árvore algo que já
+   * está numa aba significa "quero ele aqui", não "quero dois dele".
+   */
+  const abrirNoGrupo = useCallback(
+    async (caminho: string, grupo: number): Promise<void> => {
+      const jaAberta = store.get(`file:${caminho}`);
+      if (jaAberta !== null) {
+        store.mover(jaAberta.id, grupo);
+        store.activate(jaAberta.id);
+        return;
+      }
+      store.focarGrupo(grupo);
+      await abrirArquivo(caminho);
+    },
+    [abrirArquivo, store]
+  );
+
+  const soltarNoGrupo = useCallback(
+    (grupoAlvo: number, zona: Zona, carga: CargaDeArraste): void => {
+      salvarTodosOsGrupos();
+
+      const aplicar = (destino: number): void => {
+        if (carga.tipo === 'aba') {
+          store.mover(carga.id, destino);
+          return;
+        }
+        void abrirNoGrupo(carga.caminho, destino);
+      };
+
+      if (zona === 'centro') {
+        aplicar(grupoAlvo);
+        return;
+      }
+
+      setLayout((atual) => {
+        // No teto, soltar na borda vira soltar no centro: recusar em silêncio
+        // deixaria o usuário arrastando de novo sem entender.
+        if (!podeDividir(atual)) {
+          aplicar(grupoAlvo);
+          return atual;
+        }
+        const novo = proximoGrupo(atual);
+        aplicar(novo);
+        return dividirLayout(atual, grupoAlvo, zona as Lado, novo);
+      });
+    },
+    [abrirNoGrupo, salvarTodosOsGrupos, store]
+  );
 
   /**
    * Alterna a aba ativa entre o texto e o conteúdo renderizado.
@@ -578,6 +692,9 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     active,
     grupos,
     grupoFocado,
+    layout,
+    podeDividir: podeDividir(layout),
+    soltarNoGrupo,
     editorRef,
     registrarEditor,
     dividir,

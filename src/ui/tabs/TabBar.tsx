@@ -6,6 +6,7 @@ import Box from '@mui/material/Box';
 import type { Tab } from '../../shared/tabs';
 import { Icon } from '../Icon';
 import { tokens } from '../theme';
+import { codificarCarga, MIME_DE_ARRASTE } from '../../shared/arrastar';
 
 export interface TabBarProps {
   readonly tabs: readonly Tab[];
@@ -51,6 +52,11 @@ export function TabBar({
             onClick={() => onActivate(tab.id)}
             onAuxClick={(e) => {
               if (e.button === 1) onClose(tab.id); // botão do meio fecha
+            }}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData(MIME_DE_ARRASTE, codificarCarga({ tipo: 'aba', id: tab.id }));
+              e.dataTransfer.effectAllowed = 'move';
             }}
             title={tab.title}
             sx={{

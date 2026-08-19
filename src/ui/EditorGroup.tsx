@@ -8,8 +8,10 @@
 // **A regra que este arquivo repete três vezes, porque ela já custou dois
 // defeitos:** editor e terminais ficam MONTADOS e apenas somem de vista.
 // Desmontar perde a instância imperativa, mata o processo e apaga o buffer.
+import { useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import { TabBar } from './tabs/TabBar';
+import { ZonaDeSoltura } from './ZonaDeSoltura';
 import { EditorHost, type EditorHandle } from './editor/EditorHost';
 import { TerminalHost } from './terminal/TerminalHost';
 import { ResultGrid } from './grid/ResultGrid';
@@ -19,6 +21,9 @@ import type { Tab } from '../shared/tabs';
 import type { NomeDoTema } from '../shared/temas';
 import type { Snippet } from '../shared/snippets';
 import type { EstadoGrade } from './useExecution';
+import {
+  decodificarCarga, MIME_DE_ARRASTE, zonaDoPonto, type CargaDeArraste, type Zona,
+} from '../shared/arrastar';
 
 export interface EditorGroupProps {
   readonly grupo: number;
@@ -53,14 +58,66 @@ export interface EditorGroupProps {
   onCursor(linha: number, coluna: number): void;
   /** Ausente quando não há o que executar; aí o botão não aparece. */
   readonly onExecutar?: () => void;
+  /** Soltou algo neste grupo, na zona dada (spec 025). */
+  onSoltar(zona: Zona, carga: CargaDeArraste): void;
 }
 
 export function EditorGroup({
   grupo, abas, ativaId, focado, dividido,
   fontSize, tabSize, wordWrap, terminalFontSize, tema, snippets,
   grades, formulario, emPreview, conteudoDaAba, onPreview,
-  registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar,
+  registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
 }: EditorGroupProps) {
+  const caixa = useRef<HTMLDivElement>(null);
+  // A zona vive num `ref` E num estado: o `ref` é a verdade que a soltura lê, o
+  // estado só desenha o indicador.
+  //
+  // Ler do estado no `drop` parece funcionar porque o `dragover` dispara dezenas
+  // de vezes e o React tem tempo de reconciliar entre elas. Mas soltar logo após
+  // entrar no grupo cai numa closure com `zona` ainda `null`, e o arraste se
+  // perde sem dizer nada. Foi assim que o teste automatizado o pegou.
+  const zonaAtual = useRef<Zona | null>(null);
+  const [zona, setZona] = useState<Zona | null>(null);
+
+  const definirZona = (nova: Zona | null): void => {
+    zonaAtual.current = nova;
+    setZona(nova);
+  };
+
+  /** Só arraste NOSSO acende o indicador — um arquivo do sistema não conta. */
+  const ehNosso = (e: React.DragEvent): boolean =>
+    [...e.dataTransfer.types].includes(MIME_DE_ARRASTE);
+
+  const aoArrastarSobre = (e: React.DragEvent): void => {
+    if (!ehNosso(e)) return;
+    // Sem `preventDefault` o navegador recusa a soltura — é o modo de dizer
+    // "aceito aqui".
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+
+    const r = caixa.current?.getBoundingClientRect();
+    if (r === undefined) return;
+    definirZona(
+      zonaDoPonto(
+        { x: r.left, y: r.top, largura: r.width, altura: r.height },
+        e.clientX,
+        e.clientY
+      )
+    );
+  };
+
+  const aoSoltar = (e: React.DragEvent): void => {
+    if (!ehNosso(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const alvo = zonaAtual.current;
+    definirZona(null);
+    // O conteúdo só pode ser lido no `drop`; durante o `dragover` o navegador
+    // entrega apenas os TIPOS. É por isso que o indicador se decide pelo tipo.
+    const carga = decodificarCarga(e.dataTransfer.getData(MIME_DE_ARRASTE));
+    if (carga !== null && alvo !== null) onSoltar(alvo, carga);
+  };
   const ativa = abas.find((t) => t.id === ativaId) ?? null;
   const semAbas = abas.length === 0;
   const mostrandoPreview = ativa !== null && emPreview.has(ativa.id);
@@ -72,22 +129,32 @@ export function EditorGroup({
 
   return (
     <Box
+      ref={caixa}
       data-grupo-editor={grupo}
       data-grupo-focado={focado ? 'true' : 'false'}
       // `onFocusCapture` e não `onClick`: clicar no editor não dispara clique no
       // contêiner (o Monaco engole), mas o foco sobe sempre.
       onFocusCapture={onFocar}
       onMouseDown={onFocar}
+      onDragOver={aoArrastarSobre}
+      onDragEnter={aoArrastarSobre}
+      // `dragleave` dispara também ao passar sobre um filho; comparar o alvo
+      // com a própria caixa evita o indicador piscar dentro do grupo.
+      onDragLeave={(e) => {
+        if (!caixa.current?.contains(e.relatedTarget as Node | null)) definirZona(null);
+      }}
+      onDrop={aoSoltar}
       sx={{
         flex: 1,
         minWidth: 0,
+        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
-        // A divisa entre os dois lados. Só a partir do segundo, para o primeiro
-        // não ganhar uma borda solta na esquerda.
-        ...(grupo > 0 ? { borderLeft: 1, borderColor: 'divider' } : {}),
+        // `relative` porque o indicador de soltura é posicionado sobre o grupo.
+        position: 'relative',
       }}
     >
+      <ZonaDeSoltura zona={zona} />
       <TabBar
         tabs={abas}
         activeId={ativaId}

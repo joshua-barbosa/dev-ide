@@ -18,6 +18,7 @@ import { Icon } from '../Icon';
 import type { FileNode } from '../api';
 import type { PastaAberta } from './usePasta';
 import { TreeRow } from '../tree/TreeRow';
+import { codificarCarga, MIME_DE_ARRASTE } from '../../shared/arrastar';
 
 export interface FilesPanelProps {
   readonly pasta: PastaAberta;
@@ -66,6 +67,17 @@ export function FilesPanel({
             aberto={aberta}
             ativo={no.path === caminhoAtivo}
             onClick={() => (no.type === 'dir' ? alternar(no.path) : abrir(no.path))}
+            aoArrastar={
+              no.type === 'dir'
+                ? undefined
+                : (e) => {
+                    e.dataTransfer.setData(
+                      MIME_DE_ARRASTE,
+                      codificarCarga({ tipo: 'arquivo', caminho: no.path })
+                    );
+                    e.dataTransfer.effectAllowed = 'copyMove';
+                  }
+            }
           />
           {no.type === 'dir' && aberta && renderizar(no.children ?? [], nivel + 1)}
         </Box>
