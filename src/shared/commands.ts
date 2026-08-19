@@ -40,6 +40,8 @@ export interface ContextoDeComandos {
   readonly temSelecao: boolean;
   readonly temConexaoAtiva: boolean;
   readonly cofreDestrancado: boolean;
+  /** Há código rodando agora (spec 013). */
+  readonly executando: boolean;
 }
 
 export type ChaveDeContexto = keyof ContextoDeComandos;
@@ -132,7 +134,7 @@ const DECLARADOS = [
   // ---- Run ----
   { id: 'run.file', label: 'Run File', menu: 'run', group: 1, keybinding: 'Ctrl+Enter', when: 'temEditor' },
   { id: 'run.selection', label: 'Run Selection', menu: 'run', group: 1, when: 'temEditor' },
-  { id: 'run.stop', label: 'Stop', menu: 'run', group: 2, pending: true },
+  { id: 'run.stop', label: 'Stop', menu: 'run', group: 2, when: 'executando' },
   { id: 'run.disconnect', label: 'Disconnect Connection', menu: 'run', group: 3, when: 'temConexaoAtiva' },
 
   // ---- Terminal ----

@@ -18,6 +18,7 @@ import { TerminalRegistry } from './terminal/registry';
 import { montarSocketDeTerminal } from './terminal/socket';
 import { criarResolvedorDeAbertura } from './terminal/abertura';
 import { runCode, RunRequest } from './runner';
+import { RegistroDeExecucoes } from './execucoes';
 import { EXTENSOES_DE_SIMBOLO, extractSymbols, SymbolInfo } from './symbols';
 
 const PORT = Number(process.env.PORT ?? 4321);
@@ -35,6 +36,9 @@ const prefs = new PreferencesStore(PreferencesStore.defaultPath());
 
 // ---- Espaço de trabalho (pasta aberta, recentes) ----
 const estado = new EstadoStore(EstadoStore.defaultPath());
+
+// ---- Execuções em andamento (para poder parar) ----
+const execucoes = new RegistroDeExecucoes();
 
 // ---- Conexões (banco, redis, arquivos remotos, ssh) ----
 const registry = registerBuiltinDrivers(new DriverRegistry());
@@ -165,9 +169,20 @@ app.post('/api/run', wrap(async (req, res) => {
     functionName: typeof body.functionName === 'string' ? body.functionName : undefined,
     args: body.args,
     language: typeof body.language === 'string' ? body.language : undefined,
+    runId: typeof body.runId === 'string' ? body.runId : undefined,
   };
-  const result = await runCode(request);
+  const result = await runCode(request, execucoes);
   res.json({ success: true, data: result, error: null });
+}));
+
+/**
+ * Encerra uma execução em andamento.
+ *
+ * `parou: false` não é erro: clicar em parar duas vezes, ou parar o que já
+ * terminou, é comportamento normal de quem está com pressa.
+ */
+app.post('/api/run/:id/stop', wrap((req, res) => {
+  res.json({ success: true, data: { parou: execucoes.parar(req.params.id) }, error: null });
 }));
 
 // ---- Erros ----
@@ -197,6 +212,7 @@ if (require.main === module) {
       // Terminais primeiro: são processos de fora, e ficariam órfãos com o
       // arquivo de credencial ainda em disco.
       terminais.fecharTodos();
+      execucoes.pararTudo();
       pool.closeAll().finally(() => server.close(() => process.exit(0)));
     });
   }

@@ -27,6 +27,7 @@ const NADA: ContextoDeComandos = {
   temSelecao: false,
   temConexaoAtiva: false,
   cofreDestrancado: false,
+  executando: false,
 };
 
 const TUDO: ContextoDeComandos = {
@@ -37,6 +38,7 @@ const TUDO: ContextoDeComandos = {
   temSelecao: true,
   temConexaoAtiva: true,
   cofreDestrancado: true,
+  executando: true,
 };
 
 // ---- integridade do registro (AC-1, AC-4) ----

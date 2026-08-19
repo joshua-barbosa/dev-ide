@@ -17,7 +17,7 @@ export interface OutputPanelProps {
 
 export function OutputPanel({ linhas, status, onLimpar }: OutputPanelProps) {
   return (
-    <Box sx={{ height: 160, display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+    <Box data-output sx={{ height: 160, display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
       <Box
         sx={{
           display: 'flex', alignItems: 'center', gap: 1.5, px: 1.25, py: 0.4,
@@ -26,7 +26,9 @@ export function OutputPanel({ linhas, status, onLimpar }: OutputPanelProps) {
         }}
       >
         <Box sx={{ textTransform: 'uppercase', letterSpacing: '0.5px' }}>Output</Box>
-        <Box sx={{ color: status.erro ? 'error.main' : 'success.main' }}>{status.texto}</Box>
+        <Box data-status-execucao sx={{ color: status.erro ? 'error.main' : 'success.main' }}>
+          {status.texto}
+        </Box>
         <Button sx={{ ml: 'auto' }} onClick={onLimpar}>limpar</Button>
       </Box>
 

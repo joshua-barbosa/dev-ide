@@ -276,6 +276,7 @@ export function App() {
     temSelecao: true,
     temConexaoAtiva: exec.conexaoAtiva !== null,
     cofreDestrancado: conexoes.estado?.vault.unlocked === true,
+    executando: exec.executando,
   };
 
   const avisar = (p: Promise<unknown>): void => {
@@ -327,6 +328,7 @@ export function App() {
 
     'run.file': () => executar('file'),
     'run.selection': () => executar('block'),
+    'run.stop': () => avisar(exec.parar()),
     'run.disconnect': () => {
       const id = exec.conexaoAtiva;
       if (id !== null) avisar(conexoes.desconectar(id));

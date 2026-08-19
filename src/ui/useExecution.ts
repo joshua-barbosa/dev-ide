@@ -28,8 +28,12 @@ export interface Execution {
   readonly status: { readonly texto: string; readonly erro: boolean };
   /** Conexão contra a qual uma aba SQL sem vínculo será executada. */
   readonly conexaoAtiva: string | null;
+  /** Há código rodando agora — é o que habilita o `Stop`. */
+  readonly executando: boolean;
   definirConexaoAtiva(id: string | null): void;
   executar(modo: ModoExecucao, linguagem: string): Promise<void>;
+  /** Encerra a execução em andamento, se houver. */
+  parar(): Promise<void>;
   limparSaida(): void;
 }
 
@@ -41,6 +45,10 @@ export function useExecution(ws: Workspace): Execution {
   // Espelho em estado: o ref não provoca render, e o menu precisa saber
   // agora se há conexão para desconectar.
   const [conexaoVisivel, setConexaoVisivel] = useState<string | null>(null);
+  // O id vive num ref porque `parar()` precisa dele SEM depender de re-render,
+  // e num estado espelhado porque o menu precisa saber agora se há o que parar.
+  const execucaoAtual = useRef<string | null>(null);
+  const [executando, setExecutando] = useState(false);
 
   const escrever = useCallback((texto: string, erro: boolean) => {
     setSaida((atual) => [...atual, { texto, erro }]);
@@ -116,20 +124,34 @@ export function useExecution(ws: Workspace): Execution {
         if (args !== undefined) payload.args = args;
       }
 
+      // O id é gerado AQUI, e não no servidor: a resposta de `/api/run` só chega
+      // no fim, e um id vindo dela não daria como parar antes disso.
+      const runId = crypto.randomUUID();
+      payload.runId = runId;
+      execucaoAtual.current = runId;
+      setExecutando(true);
+
       setStatus({ texto: 'executando…', erro: false });
       try {
         const r = await Api.run(payload);
         if (r.stdout !== '') escrever(r.stdout, false);
         if (r.stderr !== '') escrever(r.stderr, true);
         if (r.stdout === '' && r.stderr === '') escrever('(sem saída)\n', false);
-        const ok = r.exitCode === 0 && !r.timedOut;
-        setStatus({
-          texto: r.timedOut ? 'tempo esgotado (15s)' : `exit ${r.exitCode} · ${r.durationMs}ms`,
-          erro: !ok,
-        });
+        const ok = r.exitCode === 0 && !r.timedOut && !r.cancelled;
+        // Três desfechos, não dois: cancelado e tempo esgotado viram os dois
+        // `exitCode: null` (morte por sinal) e seriam indistinguíveis na tela.
+        const texto = r.cancelled
+          ? 'cancelado'
+          : r.timedOut
+            ? 'tempo esgotado (15s)'
+            : `exit ${r.exitCode} · ${r.durationMs}ms`;
+        setStatus({ texto, erro: !ok });
       } catch (e) {
         escrever(`${(e as Error).message}\n`, true);
         setStatus({ texto: 'erro', erro: true });
+      } finally {
+        execucaoAtual.current = null;
+        setExecutando(false);
       }
     },
     [escrever, ws]
@@ -156,11 +178,19 @@ export function useExecution(ws: Workspace): Execution {
     saida,
     status,
     conexaoAtiva: conexaoVisivel,
+    executando,
     definirConexaoAtiva: (id: string | null) => {
       conexaoAtiva.current = id;
       setConexaoVisivel(id);
     },
     executar,
+    parar: async () => {
+      const id = execucaoAtual.current;
+      if (id === null) return;
+      // O `parou: false` do servidor não é tratado como erro: a execução pode
+      // ter acabado entre o clique e a chamada.
+      await Api.stopRun(id);
+    },
     limparSaida: () => {
       setSaida([]);
       setStatus({ texto: '', erro: false });

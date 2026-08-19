@@ -70,6 +70,8 @@ export interface RunResult {
   readonly exitCode: number | null;
   readonly durationMs: number;
   readonly timedOut: boolean;
+  /** Encerrado pelo usuário — distinto de tempo esgotado. */
+  readonly cancelled: boolean;
 }
 
 interface Envelope<T> {
@@ -131,6 +133,8 @@ export const Api = {
   saveFile: (path: string, content: string) =>
     request<{ path: string; bytes: number }>('POST', '/api/file', { path, content }),
   run: (payload: Record<string, unknown>) => request<RunResult>('POST', '/api/run', payload),
+  stopRun: (id: string) =>
+    request<{ parou: boolean }>('POST', `/api/run/${encodeURIComponent(id)}/stop`),
 
   // ---- espaço de trabalho (spec 012) ----
   browseFolders: (caminho?: string) =>

@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import ts from 'typescript';
+import type { RegistroDeExecucoes } from './execucoes';
 
 export type RunMode = 'file' | 'block' | 'function';
 export type RunLanguage = 'javascript' | 'typescript' | 'php' | 'c' | 'csharp';
@@ -19,6 +20,13 @@ export interface RunRequest {
   args?: unknown[];
   /** Linguagem explícita; caso contrário é inferida pela extensão. */
   language?: string;
+  /**
+   * Identificador desta execução, para poder pará-la.
+   *
+   * Vem do CLIENTE de propósito: a resposta de `/api/run` só chega no fim, e um
+   * id gerado aqui não daria como parar antes disso.
+   */
+  runId?: string;
 }
 
 export interface RunResult {
@@ -27,6 +35,13 @@ export interface RunResult {
   exitCode: number | null;
   durationMs: number;
   timedOut: boolean;
+  /**
+   * Encerrado pelo usuário.
+   *
+   * Separado de `timedOut` porque os dois viram `exitCode: null` (morte por
+   * sinal) e seriam indistinguíveis na tela.
+   */
+  cancelled: boolean;
 }
 
 const RUN_TIMEOUT_MS = 15_000;
@@ -41,16 +56,32 @@ const EXT_LANG: Record<string, RunLanguage> = {
   '.cs': 'csharp',
 };
 
-export async function runCode(req: RunRequest): Promise<RunResult> {
+export async function runCode(
+  req: RunRequest,
+  registro?: RegistroDeExecucoes
+): Promise<RunResult> {
   const lang = resolveLanguage(req);
   const { source, cwd } = buildSource(req, lang);
 
   const runDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-ide-run-'));
+  const controle: Controle | undefined =
+    req.runId === undefined || registro === undefined
+      ? undefined
+      : { registro, id: req.runId };
   try {
-    return await execute(lang, source, cwd, runDir);
+    return await execute(lang, source, cwd, runDir, controle);
   } finally {
+    // Sai do registro aconteça o que acontecer: id que sobrevive à execução
+    // mataria a próxima.
+    if (controle !== undefined) controle.registro.concluir(controle.id);
     fs.rmSync(runDir, { recursive: true, force: true });
   }
+}
+
+/** O par que permite parar: onde registrar e sob que nome. */
+interface Controle {
+  readonly registro: RegistroDeExecucoes;
+  readonly id: string;
 }
 
 function resolveLanguage(req: RunRequest): RunLanguage {
@@ -158,7 +189,8 @@ async function execute(
   lang: RunLanguage,
   source: string,
   cwd: string,
-  runDir: string
+  runDir: string,
+  controle?: Controle
 ): Promise<RunResult> {
   switch (lang) {
     case 'typescript':
@@ -166,28 +198,32 @@ async function execute(
       const js = lang === 'typescript' ? transpile(source) : source;
       const file = path.join(runDir, 'main.cjs');
       fs.writeFileSync(file, js, 'utf8');
-      return execProcess(process.execPath, [file], cwd, RUN_TIMEOUT_MS);
+      return execProcess(process.execPath, [file], cwd, RUN_TIMEOUT_MS, { controle });
     }
     case 'php': {
       const file = path.join(runDir, 'main.php');
       fs.writeFileSync(file, source, 'utf8');
-      return execProcess('php', [file], cwd, RUN_TIMEOUT_MS);
+      return execProcess('php', [file], cwd, RUN_TIMEOUT_MS, { controle });
     }
     case 'c': {
       const src = path.join(runDir, 'main.c');
       const bin = path.join(runDir, 'main.out');
       fs.writeFileSync(src, source, 'utf8');
-      const compile = await execProcess('gcc', [src, '-o', bin, '-lm'], runDir, COMPILE_TIMEOUT_MS);
+      // A compilação entra sob o MESMO id: parar durante o `gcc` e parar durante o
+      // programa são o mesmo botão para quem clica.
+      const compile = await execProcess('gcc', [src, '-o', bin, '-lm'], runDir, COMPILE_TIMEOUT_MS, { controle });
       if (compile.exitCode !== 0) {
         return { ...compile, stderr: '[compilação]\n' + compile.stderr };
       }
-      return execProcess(bin, [], cwd, RUN_TIMEOUT_MS);
+      if (compile.cancelled) return compile;
+      return execProcess(bin, [], cwd, RUN_TIMEOUT_MS, { controle });
     }
     case 'csharp': {
       // .NET 10+ executa arquivos .cs diretamente com "dotnet run <arquivo>"
       const file = path.join(runDir, 'main.cs');
       fs.writeFileSync(file, source, 'utf8');
       return execProcess('dotnet', ['run', file], runDir, COMPILE_TIMEOUT_MS, {
+        controle,
         missingHint:
           'Runtime "dotnet" não encontrado. Instale o .NET SDK 10+ para executar C# ' +
           '(https://dotnet.microsoft.com/download).',
@@ -212,18 +248,42 @@ function execProcess(
   args: string[],
   cwd: string,
   timeoutMs: number,
-  options?: { missingHint?: string }
+  options?: { missingHint?: string; controle?: Controle }
 ): Promise<RunResult> {
   return new Promise((resolve) => {
     const start = Date.now();
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let cancelled = false;
 
-    const child = spawn(command, args, { cwd, env: process.env });
+    // `detached` cria um GRUPO de processos próprio, e é o que permite matar os
+    // filhos junto. Conserta um defeito que já existia no caminho do tempo
+    // esgotado: `dotnet run` e `gcc` lançam subprocessos, e `child.kill()`
+    // atingia só o pai — a IDE anunciava "tempo esgotado" com o neto vivo,
+    // segurando CPU.
+    const child = spawn(command, args, { cwd, env: process.env, detached: true });
+
+    const encerrar = (): void => {
+      try {
+        // O sinal para `-pid` vai ao grupo inteiro. Entre decidir matar e
+        // matar, o processo pode ter terminado — daí o `catch` para `ESRCH`.
+        if (child.pid !== undefined) process.kill(-child.pid, 'SIGKILL');
+      } catch {
+        child.kill('SIGKILL');
+      }
+    };
+
+    // Direto no SIGKILL: um botão "parar" tem que parar. Cortesia de
+    // encerramento faz sentido para servidor, não para script abandonado.
+    options?.controle?.registro.registrar(options.controle.id, () => {
+      cancelled = true;
+      encerrar();
+    });
+
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGKILL');
+      encerrar();
     }, timeoutMs);
 
     const append = (current: string, chunk: Buffer): string =>
@@ -233,7 +293,9 @@ function execProcess(
     child.stderr.on('data', (chunk: Buffer) => (stderr = append(stderr, chunk)));
     child.on('close', (exitCode) => {
       clearTimeout(timer);
-      resolve({ stdout, stderr, exitCode, durationMs: Date.now() - start, timedOut });
+      // O parcial vai junto: a saída até o cancelamento costuma ser exatamente
+      // o que se queria ver antes de desistir.
+      resolve({ stdout, stderr, exitCode, durationMs: Date.now() - start, timedOut, cancelled });
     });
     child.on('error', (err: NodeJS.ErrnoException) => {
       clearTimeout(timer);
@@ -248,6 +310,7 @@ function execProcess(
         exitCode: 1,
         durationMs: Date.now() - start,
         timedOut,
+        cancelled,
       });
     });
   });

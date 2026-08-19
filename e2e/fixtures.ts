@@ -42,6 +42,13 @@ export async function cursorDoEditor(page: Page): Promise<string> {
 
 export const rodape = (page: Page): Locator => page.locator('footer');
 
+/** O painel inferior de saída. */
+export const saida = (page: Page): Locator => page.locator('[data-output]');
+
+/** O texto de status da execução ("executando…", "cancelado", "exit 0 · 12ms"). */
+export const statusDaExecucao = (page: Page): Locator =>
+  page.locator('[data-status-execucao]');
+
 export const painelLateral = (page: Page, nome: string): Locator =>
   page.getByRole('tab', { name: nome });
 
