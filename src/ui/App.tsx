@@ -11,15 +11,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
-import { aplicarVariaveis, criarTema, tokens } from './theme';
+import { aplicarVariaveis, criarTema } from './theme';
 import { NOMES_DE_TEMA, ROTULO_DO_TEMA, TEMAS, type NomeDoTema } from '../shared/temas';
 import { Sidebar } from './Sidebar';
 import { Resizer } from './Resizer';
 import { useSidebarWidth } from './useSidebarWidth';
 import { useWorkspace } from './useWorkspace';
-import { EditorHost } from './editor/EditorHost';
+import { EditorGroup } from './EditorGroup';
 import { ACAO_DO_MONACO } from '../shared/editor/acoes-monaco';
-import { TabBar } from './tabs/TabBar';
 import type { PublicConnection, TreeNode } from '../shared/contracts';
 import { useConnections } from './connections/useConnections';
 import { VaultDialog } from './connections/VaultDialog';
@@ -37,7 +36,6 @@ import {
   comandoDoAtalho, filtrarComandos, formatarAtalho,
   type ContextoDeComandos, type IdImplementado,
 } from '../shared/commands';
-import { ResultGrid } from './grid/ResultGrid';
 import { BottomPanel } from './BottomPanel';
 import { ResizerHorizontal } from './ResizerHorizontal';
 import { useLayout, ALTURA_PADRAO_PAINEL } from './useLayout';
@@ -708,6 +706,7 @@ export function App() {
     'view.problems': () => layout.mostrarPainel('problems'),
     'view.toggleSidebar': layout.alternarLateral,
     'view.togglePanel': layout.alternarPainel,
+    'view.splitEditor': ws.dividir,
     // Alterna e PERSISTE. A ação do Monaco alternaria e esqueceria — e o
     // usuário espera que a escolha sobreviva a recarregar a página.
     'view.wordWrap': () =>
@@ -842,12 +841,32 @@ export function App() {
   };
   const abaAtual = ws.activeId ?? '';
 
-  const semAbas = ws.tabs.length === 0;
-  const mostrarEditor =
-    !semAbas &&
-    ws.active?.type !== 'grid' &&
-    ws.active?.type !== 'conexao' &&
-    ws.active?.type !== 'terminal';
+  /**
+   * O formulário de conexão, montado aqui porque é o `App` que conhece os
+   * drivers. O grupo só decide ONDE ele aparece.
+   */
+  const formularioDeConexao =
+    ws.active?.type !== 'conexao' ? null : (
+      <ConnectionForm
+        // Remonta ao trocar de conexão: o formulário guarda estado próprio, e
+        // reaproveitar a instância misturaria os campos de duas conexões.
+        key={ws.active.id}
+        drivers={[...conexoes.drivers.values()]}
+        gruposConhecidos={conexoes.grupos}
+        conexao={conexoes.acharConexao(ws.active.meta.connectionId)}
+        grupoInicial={
+          typeof ws.active.meta.grupoInicial === 'string' ? ws.active.meta.grupoInicial : ''
+        }
+        onSujar={(sujo) => ws.marcarAbaSuja(abaAtual, sujo)}
+        onCancelar={() => ws.fechar(abaAtual)}
+        onSalvar={async (input, conectar) => {
+          const id = ws.active?.meta.connectionId;
+          await conexoes.salvarConexao(input, typeof id === 'string' ? id : null, conectar);
+          ws.marcarAbaSuja(abaAtual, false);
+          ws.fechar(abaAtual);
+        }}
+      />
+    );
 
   return (
     <ThemeProvider theme={temaMui}>
@@ -939,98 +958,36 @@ export function App() {
           component="section"
           sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}
         >
-          <TabBar
-            tabs={ws.tabs}
-            activeId={ws.activeId}
-            onActivate={ws.ativar}
-            onClose={ws.fechar}
-            onExecutar={contexto.temEditor ? () => executar('file') : undefined}
-            ehSql={ws.active?.type === 'sql'}
-          />
-
-          {/* O editor fica montado sempre: desmontá-lo ao ficar sem abas perderia
-              a instância e a ref imperativa. Some de vista, não do DOM. */}
-          <Box sx={{ flex: 1, display: mostrarEditor ? 'flex' : 'none', minHeight: 0 }}>
-            <EditorHost
-              ref={ws.editorRef}
-              onChange={ws.marcarSujo}
-              onCursor={ws.aoMoverCursor}
-              fontSize={prefs.prefs['editor.fontSize']}
-              tabSize={prefs.prefs['editor.tabSize']}
-              wordWrap={prefs.prefs['editor.wordWrap']}
-              tema={tema}
-              snippets={snippets.lista}
-            />
-          </Box>
-
-          {ws.active?.type === 'grid' && (
-            <ResultGrid {...(exec.grades.get(ws.active.id) ?? { resultado: null })} />
-          )}
-
-          {/* Cada terminal aberto fica MONTADO, e apenas some de vista.
-              Renderizar só o ativo desmontaria o componente ao trocar de aba —
-              o que mataria o processo e jogaria fora o que estava na tela.
-              É a mesma regra do editor, algumas linhas acima. Desmontar só
-              acontece quando a aba é fechada, e aí matar é o certo. */}
-          {ws.tabs
-            .filter((t) => t.type === 'terminal')
-            .map((t) => (
-              <Box
-                key={t.id}
-                sx={{
-                  flex: 1,
-                  minHeight: 0,
-                  display: ws.activeId === t.id ? 'flex' : 'none',
-                }}
-              >
-                <TerminalHost
-                  ativo={ws.activeId === t.id}
-                  fontSize={prefs.prefs['terminal.fontSize']}
-                  tema={tema}
-                  connectionId={
-                    typeof t.meta.connectionId === 'string' ? t.meta.connectionId : null
-                  }
-                />
-              </Box>
+          {/* Os grupos, lado a lado. Com um só, é exatamente a tela de antes. */}
+          <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
+            {ws.grupos.map((g) => (
+              <EditorGroup
+                key={g}
+                grupo={g}
+                abas={ws.tabs.filter((t) => t.grupo === g)}
+                ativaId={ws.store.ativaDoGrupo(g)}
+                focado={ws.grupoFocado === g}
+                dividido={ws.grupos.length > 1}
+                fontSize={prefs.prefs['editor.fontSize']}
+                tabSize={prefs.prefs['editor.tabSize']}
+                wordWrap={prefs.prefs['editor.wordWrap']}
+                terminalFontSize={prefs.prefs['terminal.fontSize']}
+                tema={tema}
+                snippets={snippets.lista}
+                grades={exec.grades}
+                registrarEditor={ws.registrarEditor(g)}
+                onFocar={() => ws.focarGrupo(g)}
+                onAtivar={ws.ativar}
+                onFechar={ws.fechar}
+                onMudar={ws.marcarSujo}
+                onCursor={ws.aoMoverCursor}
+                onExecutar={
+                  ws.grupoFocado === g && contexto.temEditor ? () => executar('file') : undefined
+                }
+                formulario={formularioDeConexao}
+              />
             ))}
-
-          {ws.active?.type === 'conexao' && (
-            <ConnectionForm
-              // Remonta ao trocar de conexão: o formulário guarda estado próprio,
-              // e reaproveitar a instância misturaria os campos de duas conexões.
-              key={ws.active.id}
-              drivers={[...conexoes.drivers.values()]}
-              gruposConhecidos={conexoes.grupos}
-              conexao={conexoes.acharConexao(ws.active.meta.connectionId)}
-              grupoInicial={
-                typeof ws.active.meta.grupoInicial === 'string' ? ws.active.meta.grupoInicial : ''
-              }
-              onSujar={(sujo) => ws.marcarAbaSuja(abaAtual, sujo)}
-              onCancelar={() => ws.fechar(abaAtual)}
-              onSalvar={async (input, conectar) => {
-                const id = ws.active?.meta.connectionId;
-                await conexoes.salvarConexao(input, typeof id === 'string' ? id : null, conectar);
-                ws.marcarAbaSuja(abaAtual, false);
-                ws.fechar(abaAtual);
-              }}
-            />
-          )}
-
-          {semAbas && (
-            <Box
-              sx={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                bgcolor: tokens.bgEditor,
-                color: 'text.secondary',
-                fontSize: 13,
-              }}
-            >
-              Nenhuma aba aberta — abra um arquivo pela árvore lateral.
-            </Box>
-          )}
+          </Box>
 
           {/* SEMPRE montado, escondido com `display: none`.
               Usar `&&` aqui desmontava o painel inteiro — e com ele os

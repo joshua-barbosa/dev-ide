@@ -165,7 +165,11 @@ test('Cmd do Mac conta como Ctrl', () => {
 
 test('todo atalho declarado bate com o que a formatação produz', () => {
   // Sem isto, uma declaração como "Ctrl+shift+P" nunca dispararia e ninguém veria.
-  const validas = /^(Ctrl\+)?(Shift\+)?(Alt\+)?([A-Z]|Enter|Tab|Escape|Arrow(Up|Down|Left|Right)|\/|`)$/;
+  //
+  // A lista de teclas cresce quando um comando novo usa uma que ainda não
+  // aparecia — foi o caso do `\` do Split Editor. O critério para acrescentar é
+  // um só: `formatarAtalho` precisa **produzir** aquele texto.
+  const validas = /^(Ctrl\+)?(Shift\+)?(Alt\+)?([A-Z]|Enter|Tab|Escape|Arrow(Up|Down|Left|Right)|\/|\\|`)$/;
   for (const cmd of COMMANDS) {
     if (cmd.keybinding === undefined) continue;
     assert.match(cmd.keybinding, validas, `atalho fora do formato em ${cmd.id}`);
@@ -320,4 +324,14 @@ test('todo atalho que escapa pertence a um comando declarado', () => {
       `nenhum comando declara ${atalho}`
     );
   }
+});
+
+test('a barra invertida do Split Editor é mesmo o que a formatação produz', () => {
+  // O teste acima só confere o FORMATO. Este confere que a tecla real chega
+  // como esperado — foi o que faltou quando a regex recusou `Ctrl+\`.
+  assert.equal(
+    formatarAtalho({ key: '\\', ctrlKey: true, shiftKey: false, altKey: false, metaKey: false }),
+    'Ctrl+\\'
+  );
+  assert.equal(comandoDoAtalho('Ctrl+\\', TUDO)?.id, 'view.splitEditor');
 });

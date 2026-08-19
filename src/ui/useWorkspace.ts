@@ -10,8 +10,8 @@
 // 2. `null` significa "nenhuma aba". Usá-lo também para "aba fechada" faz a
 //    guarda engolir o evento de fechar a última, e a barra de status fica presa
 //    no arquivo anterior.
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Tab, TabStore } from '../shared/tabs';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GRUPO_PADRAO, type Tab, type TabStore } from '../shared/tabs';
 import { proximoSemTitulo } from '../shared/untitled';
 import { ICONE_DE_ARQUIVO, iconeDeArquivo } from '../shared/editor/arquivos';
 import type { EditorHandle, ViewState } from './editor/EditorHost';
@@ -38,12 +38,31 @@ export function linguagemDe(caminho: string): string {
   return EXT_TO_LANG[ext] ?? 'plain';
 }
 
+/**
+ * Ponteiro de leitura para o editor do grupo focado.
+ *
+ * Não é um `ref` do React: é um objeto com **getter**, que resolve na hora para
+ * a instância certa. Foi o que permitiu a divisão da tela não vazar para os
+ * quinze lugares que já escreviam `ws.editorRef.current?.getValue()` — eles
+ * continuam iguais e passam a falar com o editor que está em foco.
+ */
+export interface PonteiroDeEditor {
+  readonly current: EditorHandle | null;
+}
+
 export interface Workspace {
   readonly store: TabStore;
   readonly tabs: readonly Tab[];
   readonly activeId: string | null;
   readonly active: Tab | null;
-  readonly editorRef: React.RefObject<EditorHandle | null>;
+  readonly grupos: readonly number[];
+  readonly grupoFocado: number;
+  readonly editorRef: PonteiroDeEditor;
+  /** Ref de callback para o `EditorHost` de um grupo se registrar. */
+  registrarEditor(grupo: number): (handle: EditorHandle | null) => void;
+  /** Manda a aba ativa para o outro grupo, criando-o se preciso. */
+  dividir(): void;
+  focarGrupo(grupo: number): void;
   readonly cursor: { readonly linha: number; readonly coluna: number };
   /**
    * Contador de edições do usuário.
@@ -90,19 +109,74 @@ export interface WorkspaceDeps {
 }
 
 export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
-  const { store, tabs, activeId, active } = useTabs();
-  const editorRef = useRef<EditorHandle>(null);
+  const { store, tabs, activeId, active, grupos, grupoFocado } = useTabs();
+  /** Uma instância de editor por grupo, preenchida por ref de callback. */
+  const editores = useRef(new Map<number, EditorHandle | null>());
+  const focoAtual = useRef(grupoFocado);
+  focoAtual.current = grupoFocado;
+
+  const editorRef = useMemo<PonteiroDeEditor>(
+    () => ({
+      get current(): EditorHandle | null {
+        return editores.current.get(focoAtual.current) ?? null;
+      },
+    }),
+    []
+  );
+
+  /**
+   * Quantos editores existem agora. Muda quando um grupo ganha ou perde o seu.
+   *
+   * Existe porque a chegada de um editor é o gatilho para carregar a aba dele:
+   * o grupo novo é renderizado no mesmo commit em que passa a existir, e sem
+   * este contador o efeito rodaria com o mapa ainda vazio, marcaria a aba como
+   * carregada e **nunca tentaria de novo** — foi exatamente o que aconteceu, e
+   * o lado direito da tela dividida nascia em branco.
+   */
+  const [versaoDosEditores, setVersaoDosEditores] = useState(0);
+
+  /**
+   * Uma função por grupo, guardada.
+   *
+   * Devolver uma closure nova a cada render faria o React chamar a antiga com
+   * `null` e a nova com o handle **a cada render** — e, como registrar mexe em
+   * estado, isso viraria laço infinito.
+   */
+  const refsPorGrupo = useRef(new Map<number, (h: EditorHandle | null) => void>());
+  const registrarEditor = useCallback((grupo: number) => {
+    const existente = refsPorGrupo.current.get(grupo);
+    if (existente !== undefined) return existente;
+
+    const fn = (handle: EditorHandle | null): void => {
+      if (handle === null) editores.current.delete(grupo);
+      else editores.current.set(grupo, handle);
+      setVersaoDosEditores((n) => n + 1);
+    };
+    refsPorGrupo.current.set(grupo, fn);
+    return fn;
+  }, []);
+
   const [cursor, setCursor] = useState({ linha: 1, coluna: 1 });
   const [edicoes, setEdicoes] = useState(0);
 
   /** Suprime o "sujou" que a própria troca de aba dispara ao recarregar o editor. */
   const carregando = useRef(false);
-  const ultimaAtiva = useRef<string | null>(null);
+  /** A última aba carregada em CADA grupo — a guarda de reentrância, por grupo. */
+  const ultimaAtiva = useRef(new Map<number, string | null>());
 
+  /**
+   * Guarda no store o que está no editor de `grupoDoEditor`.
+   *
+   * **O grupo é parâmetro, e não `aba.grupo`.** A diferença já custou um
+   * defeito: ao dividir a tela, a aba muda de grupo ANTES de o efeito salvá-la,
+   * e usar `aba.grupo` pegava o editor do lado novo — que ainda está em branco.
+   * O resultado era o arquivo aparecer vazio do outro lado. Quem sabe de que
+   * editor o conteúdo veio é quem chama.
+   */
   const salvarNaAba = useCallback(
-    (id: string) => {
+    (id: string, grupoDoEditor: number) => {
       const aba = store.get(id);
-      const editor = editorRef.current;
+      const editor = editores.current.get(grupoDoEditor) ?? null;
       if (aba === null || editor === null || !ehEditavel(aba)) return;
       store.update(id, {
         meta: {
@@ -116,33 +190,59 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     [store]
   );
 
+  /**
+   * Carrega em cada grupo a aba ativa dele.
+   *
+   * O laço é por grupo porque a divisão da tela tem **dois editores**, cada um
+   * com a própria aba — e a troca de um não pode mexer no outro. As duas
+   * armadilhas do topo continuam valendo, agora por grupo.
+   */
   useEffect(() => {
-    if (activeId === ultimaAtiva.current) return;
+    for (const grupo of grupos) {
+      const ativa = store.ativaDoGrupo(grupo);
+      if (ativa === ultimaAtiva.current.get(grupo)) continue;
 
-    // (1) marca ANTES de salvar — ver o comentário do topo
-    const anterior = ultimaAtiva.current;
-    ultimaAtiva.current = activeId;
-    if (anterior !== null) salvarNaAba(anterior);
+      const editor = editores.current.get(grupo) ?? null;
+      const aba = ativa === null ? null : store.get(ativa);
 
-    const editor = editorRef.current;
-    const aba = activeId === null ? null : store.get(activeId);
-    if (aba === null) {
-      // Sem aba, a posição do cursor anterior é estado velho na barra de status.
-      setCursor({ linha: 1, coluna: 1 });
-      return;
+      // O editor do grupo ainda não existe: NÃO marca como carregada e sai. O
+      // contador de editores traz o efeito de volta assim que ele nascer.
+      if (aba !== null && ehEditavel(aba) && editor === null) continue;
+
+      // (1) marca ANTES de salvar — ver o comentário do topo
+      const anterior = ultimaAtiva.current.get(grupo) ?? null;
+      ultimaAtiva.current.set(grupo, ativa);
+      if (anterior !== null) salvarNaAba(anterior, grupo);
+
+      if (aba === null) {
+        // Sem aba, a posição do cursor anterior é estado velho na barra de status.
+        if (grupo === grupoFocado) setCursor({ linha: 1, coluna: 1 });
+        continue;
+      }
+      if (editor === null || !ehEditavel(aba)) continue;
+
+      const meta = metaDe(aba);
+      carregando.current = true;
+      try {
+        editor.setLanguage(meta.language);
+        editor.setValue(meta.content);
+        editor.setViewState(meta.view);
+      } finally {
+        carregando.current = false;
+      }
     }
-    if (editor === null || !ehEditavel(aba)) return;
 
-    const meta = metaDe(aba);
-    carregando.current = true;
-    try {
-      editor.setLanguage(meta.language);
-      editor.setValue(meta.content);
-      editor.setViewState(meta.view);
-    } finally {
-      carregando.current = false;
+    // Grupo que sumiu não pode deixar rastro na guarda.
+    for (const grupo of [...ultimaAtiva.current.keys()]) {
+      if (!grupos.includes(grupo)) ultimaAtiva.current.delete(grupo);
     }
-  }, [activeId, salvarNaAba, store]);
+  }, [activeId, grupoFocado, grupos, salvarNaAba, store, tabs, versaoDosEditores]);
+
+  /** Salva no store o que está no editor do grupo em foco. */
+  const salvarGrupoFocado = useCallback(() => {
+    const id = ultimaAtiva.current.get(focoAtual.current) ?? null;
+    if (id !== null) salvarNaAba(id, focoAtual.current);
+  }, [salvarNaAba]);
 
   const abrirArquivo = useCallback(
     async (caminho: string) => {
@@ -157,7 +257,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
       const language = linguagemDe(dados.path);
 
       // Salva a aba corrente antes de abrir a nova, senão o conteúdo se perde.
-      if (ultimaAtiva.current !== null) salvarNaAba(ultimaAtiva.current);
+      salvarGrupoFocado();
 
       store.open({
         id: `file:${dados.path}`,
@@ -167,12 +267,12 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         meta: { path: dados.path, content: dados.content, language, view: null },
       });
     },
-    [salvarNaAba, store]
+    [salvarGrupoFocado, store]
   );
 
   const abrirQuery = useCallback(
     (id: string, titulo: string, conteudo: string, connectionId: string) => {
-      if (ultimaAtiva.current !== null) salvarNaAba(ultimaAtiva.current);
+      salvarGrupoFocado();
       store.open({
         id,
         type: 'sql',
@@ -180,7 +280,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         meta: { path: null, content: conteudo, language: 'sql', view: null, connectionId },
       });
     },
-    [salvarNaAba, store]
+    [salvarGrupoFocado, store]
   );
 
   /**
@@ -192,7 +292,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
    */
   const abrirTexto = useCallback(
     (id: string, titulo: string, conteudo: string, linguagem: string) => {
-      if (ultimaAtiva.current !== null) salvarNaAba(ultimaAtiva.current);
+      salvarGrupoFocado();
       store.open({
         id,
         type: 'file',
@@ -200,7 +300,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         meta: { path: null, content: conteudo, language: linguagem, view: null },
       });
     },
-    [salvarNaAba, store]
+    [salvarGrupoFocado, store]
   );
 
   /**
@@ -211,7 +311,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
    */
   const abrirFormulario = useCallback(
     (connectionId: string | null, titulo: string, grupoInicial?: string) => {
-      if (ultimaAtiva.current !== null) salvarNaAba(ultimaAtiva.current);
+      salvarGrupoFocado();
       store.open({
         id: connectionId === null ? 'conexao:nova' : `conexao:${connectionId}`,
         type: 'conexao',
@@ -220,7 +320,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         meta: { connectionId, grupoInicial: grupoInicial ?? null },
       });
     },
-    [salvarNaAba, store]
+    [salvarGrupoFocado, store]
   );
 
   /**
@@ -232,7 +332,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   const proximoTerminal = useRef(0);
   const abrirTerminal = useCallback(
     (connectionId: string | null, titulo: string) => {
-      if (ultimaAtiva.current !== null) salvarNaAba(ultimaAtiva.current);
+      salvarGrupoFocado();
       proximoTerminal.current += 1;
       store.open({
         id: `terminal:${proximoTerminal.current}`,
@@ -242,7 +342,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         meta: { connectionId },
       });
     },
-    [salvarNaAba, store]
+    [salvarGrupoFocado, store]
   );
 
   const marcarAbaSuja = useCallback(
@@ -262,7 +362,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
    * de não salvo significa.
    */
   const novoSemTitulo = useCallback(() => {
-    if (ultimaAtiva.current !== null) salvarNaAba(ultimaAtiva.current);
+    salvarGrupoFocado();
     const titulo = proximoSemTitulo(store.list().map((t) => t.title));
     store.open({
       id: `untitled:${titulo}`,
@@ -272,7 +372,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
       icon: ICONE_DE_ARQUIVO,
       meta: { path: null, content: '', language: 'plain', view: null },
     });
-  }, [salvarNaAba, store]);
+  }, [salvarGrupoFocado, store]);
 
   const fechar = useCallback(
     async (id: string) => {
@@ -294,7 +394,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
 
   const marcarSujo = useCallback(() => {
     if (carregando.current) return; // troca de aba não é edição do usuário
-    const id = ultimaAtiva.current;
+    const id = ultimaAtiva.current.get(focoAtual.current) ?? null;
     if (id === null) return;
     setEdicoes((n) => n + 1);
     const aba = store.get(id);
@@ -329,7 +429,9 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
    * de antes da última tecla (AC-2).
    */
   const salvarTodas = useCallback(async (): Promise<{ gravadas: number; semNome: number }> => {
-    if (ultimaAtiva.current !== null) salvarNaAba(ultimaAtiva.current);
+    // Todos os grupos, não só o focado: "Save All" com a tela dividida tem que
+    // gravar os dois lados.
+    for (const [grupo, id] of ultimaAtiva.current) if (id !== null) salvarNaAba(id, grupo);
 
     const sujas = store.list().filter((aba) => aba.dirty && ehEditavel(aba));
     let gravadas = 0;
@@ -346,7 +448,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
       gravadas += 1;
     }
     return { gravadas, semNome };
-  }, [salvarNaAba, store]);
+  }, [salvarGrupoFocado, store]);
 
   /**
    * Volta a aba ativa ao que está em disco.
@@ -354,6 +456,21 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
    * Deixa o erro subir quando o arquivo sumiu: reverter para o nada seria
    * destruir o que restou no editor (AC-14).
    */
+  /**
+   * Manda a aba ativa para o outro grupo.
+   *
+   * Com um grupo, cria o segundo; com dois, alterna de lado. Dois grupos é o
+   * limite desta spec: cobre o pedido ("dividir a tela com mais de um arquivo")
+   * e mantém a barra de abas legível numa janela de tamanho normal.
+   */
+  const dividir = useCallback(() => {
+    const id = store.activeId();
+    if (id === null) return;
+    salvarGrupoFocado();
+    const atual = store.get(id)?.grupo ?? GRUPO_PADRAO;
+    store.mover(id, atual === GRUPO_PADRAO ? 1 : GRUPO_PADRAO);
+  }, [salvarGrupoFocado, store]);
+
   const reverter = useCallback(async (): Promise<void> => {
     const aba = active;
     const editor = editorRef.current;
@@ -406,7 +523,12 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     tabs,
     activeId,
     active,
+    grupos,
+    grupoFocado,
     editorRef,
+    registrarEditor,
+    dividir,
+    focarGrupo: (grupo: number) => store.focarGrupo(grupo),
     cursor,
     edicoes,
     abrirArquivo,

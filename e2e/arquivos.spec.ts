@@ -5,7 +5,9 @@
 // preferência ao padrão — deixá-la ligada faria testes de outros arquivos
 // salvarem sozinhos e falharem por motivo que não mencionam.
 import { expect, test, type Page } from '@playwright/test';
-import { aba, esperarEditorPronto, entradaRapida, linhaArvore, menu, textoDoEditor } from './fixtures';
+import {
+  aba, editor, esperarEditorPronto, entradaRapida, linhaArvore, menu, textoDoEditor,
+} from './fixtures';
 
 async function autoSave(page: Page): Promise<string> {
   return page.evaluate(async () => {
@@ -51,7 +53,7 @@ test('Save All grava as abas com arquivo e avisa das que ainda não têm nome', 
   await novoArquivoSalvo(page, 'save-all-a.ts', 'const a = 1;');
 
   // Suja a aba já salva…
-  await page.locator('[data-editor]').click();
+  await editor(page).click();
   await page.keyboard.insertText('\n// mexido');
   await expect(aba(page, 'save-all-a.ts')).toHaveAttribute('data-tab-dirty', 'true');
 
@@ -87,7 +89,7 @@ test('com Auto Save ligado, parar de digitar grava sozinho', async ({ page }) =>
   await page.getByRole('menuitem', { name: /Auto Save/ }).click();
   await expect.poll(() => autoSave(page)).toBe('afterDelay');
 
-  await page.locator('[data-editor]').click();
+  await editor(page).click();
   await page.keyboard.insertText('\nconst gravado_sozinho = 2;');
   await expect(aba(page, 'auto-save.ts')).toHaveAttribute('data-tab-dirty', 'true');
 
@@ -116,7 +118,7 @@ test('Auto Save NUNCA grava aba sem título', async ({ page }) => {
 test('Revert File volta ao disco, depois de confirmar', async ({ page }) => {
   await novoArquivoSalvo(page, 'revert.ts', 'const original = 1;');
 
-  await page.locator('[data-editor]').click();
+  await editor(page).click();
   await page.keyboard.insertText('\nconst vai_sumir = 2;');
   await expect.poll(() => textoDoEditor(page)).toMatch(/vai_sumir/);
 

@@ -3,7 +3,7 @@
 // Estes testes mexem em estado guardado no navegador (visibilidade e altura do
 // painel) e abrem terminais, que são processos. Cada um devolve o que mudou.
 import { expect, test, type Page } from '@playwright/test';
-import { menu, saida } from './fixtures';
+import { editor, menu, saida } from './fixtures';
 
 const painel = (page: Page) => page.locator('[data-painel-inferior]');
 const abaDoPainel = (page: Page, id: string) => page.locator(`[data-aba-painel="${id}"]`);
@@ -134,8 +134,8 @@ test('um erro de execução vira problema, com contagem na aba', async ({ page }
 
   await menu(page, 'File');
   await page.getByRole('menuitem', { name: 'New Text File' }).click();
-  await page.locator('[data-editor] .monaco-editor').waitFor();
-  await page.locator('[data-editor]').click();
+  await editor(page).locator('.monaco-editor').waitFor();
+  await editor(page).click();
   await page.keyboard.insertText('throw new Error("erro-de-proposito");');
 
   await menu(page, 'Run');
@@ -153,8 +153,8 @@ test('um erro de execução vira problema, com contagem na aba', async ({ page }
 test('a saída pode ser aberta no editor', async ({ page }) => {
   await menu(page, 'File');
   await page.getByRole('menuitem', { name: 'New Text File' }).click();
-  await page.locator('[data-editor] .monaco-editor').waitFor();
-  await page.locator('[data-editor]').click();
+  await editor(page).locator('.monaco-editor').waitFor();
+  await editor(page).click();
   await page.keyboard.insertText('console.log("vai-para-o-editor");');
 
   await menu(page, 'Run');

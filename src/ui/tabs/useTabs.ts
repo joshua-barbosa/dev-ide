@@ -12,6 +12,9 @@ export interface TabsEstado {
   readonly tabs: readonly Tab[];
   readonly activeId: string | null;
   readonly active: Tab | null;
+  /** Números dos grupos que existem agora, em ordem. */
+  readonly grupos: readonly number[];
+  readonly grupoFocado: number;
 }
 
 export function useTabs(): TabsEstado {
@@ -24,5 +27,14 @@ export function useTabs(): TabsEstado {
   useEffect(() => store.onChange((tabs, activeId) => setEstado({ tabs, activeId })), [store]);
 
   const active = estado.activeId === null ? null : (store.get(estado.activeId) ?? null);
-  return { store, tabs: estado.tabs, activeId: estado.activeId, active };
+  // Derivados das abas, e não guardados: um estado paralelo poderia divergir do
+  // store, e a divisão da tela é justamente o que não pode piscar errado.
+  return {
+    store,
+    tabs: estado.tabs,
+    activeId: estado.activeId,
+    active,
+    grupos: store.grupos(),
+    grupoFocado: store.grupoFocado(),
+  };
 }

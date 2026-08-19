@@ -199,3 +199,137 @@ test('um listener que estoura não impede os outros', () => {
   store.open({ id: 'a', type: 'editor', title: 'a' });
   assert.equal(chamado, true);
 });
+
+// ---------------------------------------------------------------------------
+// Grupos de editor (spec 020)
+// ---------------------------------------------------------------------------
+//
+// A regra que orientou o desenho: **com um grupo só, tudo se comporta como
+// antes.** Os vinte testes acima passaram sem uma linha de mudança, e isso é a
+// afirmação mais importante desta seção — o resto verifica o que é novo.
+
+function comAbas(...ids: string[]) {
+  const store = createTabStore();
+  for (const id of ids) store.open({ id, type: 'editor', title: id });
+  return store;
+}
+
+test('sem aba nenhuma, ainda existe um grupo', () => {
+  // O editor precisa de onde morar mesmo com a tela vazia.
+  assert.deepEqual(createTabStore().grupos(), [0]);
+});
+
+test('abas novas nascem no grupo focado', () => {
+  const store = comAbas('a', 'b');
+  assert.deepEqual(store.grupos(), [0]);
+  assert.deepEqual(store.doGrupo(0).map((t) => t.id), ['a', 'b']);
+});
+
+test('mover cria o segundo grupo e leva o foco junto', () => {
+  const store = comAbas('a', 'b');
+  store.mover('b', 1);
+
+  assert.deepEqual(store.grupos(), [0, 1]);
+  assert.deepEqual(store.doGrupo(0).map((t) => t.id), ['a']);
+  assert.deepEqual(store.doGrupo(1).map((t) => t.id), ['b']);
+  assert.equal(store.grupoFocado(), 1);
+  assert.equal(store.activeId(), 'b');
+});
+
+test('cada grupo guarda a PRÓPRIA ativa', () => {
+  const store = comAbas('a', 'b', 'c');
+  store.mover('c', 1);
+  store.activate('a');
+
+  assert.equal(store.ativaDoGrupo(0), 'a');
+  assert.equal(store.ativaDoGrupo(1), 'c', 'o outro lado não perdeu a dele');
+  assert.equal(store.activeId(), 'a', 'a ativa global é a do grupo focado');
+});
+
+test('focar um grupo troca qual ativa é a global, sem mexer nas abas', () => {
+  const store = comAbas('a', 'b');
+  store.mover('b', 1);
+  store.focarGrupo(0);
+
+  assert.equal(store.activeId(), 'a');
+  store.focarGrupo(1);
+  assert.equal(store.activeId(), 'b');
+});
+
+test('mover a ativa faz o grupo de origem escolher outra', () => {
+  const store = comAbas('a', 'b', 'c');
+  store.activate('b');
+  store.mover('b', 1);
+
+  // Vizinha à direita, dentro do grupo — a mesma regra de sempre.
+  assert.equal(store.ativaDoGrupo(0), 'c');
+  assert.equal(store.ativaDoGrupo(1), 'b');
+});
+
+test('fechar a última aba de um grupo faz o grupo sumir', () => {
+  const store = comAbas('a', 'b');
+  store.mover('b', 1);
+  store.close('b');
+
+  assert.deepEqual(store.grupos(), [0], 'sobrar uma metade em branco seria pior');
+  assert.equal(store.grupoFocado(), 0);
+  assert.equal(store.activeId(), 'a');
+});
+
+test('fechar aba de um grupo não mexe na ativa do outro', () => {
+  const store = comAbas('a', 'b', 'c');
+  store.mover('c', 1);
+  store.activate('a');
+  store.close('b');
+
+  assert.equal(store.ativaDoGrupo(1), 'c');
+});
+
+test('reabrir aba que está no outro grupo leva o foco até ela', () => {
+  const store = comAbas('a', 'b');
+  store.mover('b', 1);
+  store.focarGrupo(0);
+
+  store.open({ id: 'b', type: 'editor', title: 'b' });
+  assert.equal(store.grupoFocado(), 1, 'reabrir não pode duplicar nem ficar parado');
+  assert.equal(store.doGrupo(1).length, 1);
+});
+
+test('mover para o mesmo grupo não faz nada', () => {
+  const store = comAbas('a', 'b');
+  store.activate('a');
+  store.mover('a', 0);
+  assert.equal(store.ativaDoGrupo(0), 'a');
+  assert.deepEqual(store.grupos(), [0]);
+});
+
+test('mover id inexistente é ignorado', () => {
+  const store = comAbas('a');
+  store.mover('zzz', 1);
+  assert.deepEqual(store.grupos(), [0]);
+});
+
+test('abrir com grupo explícito respeita o pedido', () => {
+  const store = comAbas('a');
+  store.open({ id: 'b', type: 'editor', title: 'b', grupo: 1 });
+  assert.equal(store.get('b')?.grupo, 1);
+  assert.equal(store.grupoFocado(), 1);
+});
+
+test('update preserva o grupo quando o patch não o menciona', () => {
+  const store = comAbas('a');
+  store.mover('a', 1);
+  store.update('a', { title: 'outro' });
+  assert.equal(store.get('a')?.grupo, 1);
+});
+
+test('o listener recebe a ativa do grupo focado', () => {
+  const store = comAbas('a', 'b');
+  let visto: string | null = 'nada';
+  store.onChange((_tabs, activeId) => { visto = activeId; });
+
+  store.mover('b', 1);
+  assert.equal(visto, 'b');
+  store.focarGrupo(0);
+  assert.equal(visto, 'a');
+});

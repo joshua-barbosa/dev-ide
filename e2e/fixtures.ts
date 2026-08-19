@@ -12,14 +12,19 @@ export const aba = (page: Page, titulo: string): Locator =>
   page.locator(`[data-tab="${titulo}"]`);
 
 /**
- * A área do editor.
+ * A área do editor **do grupo em foco**.
  *
  * Desde a spec 010 é o Monaco, e não uma `textarea` — então `toHaveValue` não
  * serve mais: o conteúdo vive no modelo do editor, não num atributo do DOM.
  * Para ler o texto, use `textoDoEditor`. Para digitar, clique aqui e use o
  * teclado; o Monaco tem uma textarea escondida que recebe as teclas.
+ *
+ * O filtro por foco entrou na spec 020: com a tela dividida há **dois**
+ * `[data-editor]`, e um seletor sem qualificação passou a casar os dois. Com um
+ * grupo só, o foco é dele, e nada muda para os testes anteriores.
  */
-export const editor = (page: Page): Locator => page.locator('[data-editor]');
+export const editor = (page: Page): Locator =>
+  page.locator('[data-grupo-focado="true"] [data-editor]');
 
 /**
  * O texto visível no editor. Substitui as asserções de `value`.
@@ -30,7 +35,7 @@ export const editor = (page: Page): Locator => page.locator('[data-editor]');
  * comparar os códigos dos caracteres.
  */
 export async function textoDoEditor(page: Page): Promise<string> {
-  const bruto = await page.locator('[data-editor] .view-lines').innerText();
+  const bruto = await editor(page).locator('.view-lines').innerText();
   return bruto.replace(/\u00a0/g, ' ');
 }
 
