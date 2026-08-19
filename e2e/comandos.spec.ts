@@ -25,11 +25,12 @@ test('o menu mostra o não implementado desabilitado, em vez de esconder', async
 
   // Declarado e ainda sem implementação — o usuário pediu ver o mapa inteiro.
   //
-  // O exemplo é o Emmet, e não um item de File, de propósito: ele está no fim
-  // da fila do lote, então este teste não vira manutenção a cada entrega. O
-  // `Open Recent`, que estava aqui antes, deixou de ser pendente na spec 012.
+  // O exemplo já mudou duas vezes, e isso é boa notícia: `Open Recent` saiu na
+  // spec 012 e o Emmet na 022. Agora é o `Find in Files`, que é da parte 2 do
+  // roteiro e deve durar. Quando ele também sair, troque — ou remova o teste, se
+  // não sobrar item pendente nenhum.
   await menu(page, 'Edit');
-  const pendente = page.getByRole('menuitem', { name: /Emmet/ });
+  const pendente = page.getByRole('menuitem', { name: /Find in Files/ });
   await expect(pendente).toBeVisible();
   await expect(pendente).toBeDisabled();
   await expect(pendente).toContainText('em breve');
@@ -214,4 +215,14 @@ test('mover linha com Alt+seta', async ({ page }) => {
   await expect
     .poll(async () => (await textoDoEditor(page)).split('\n')[0])
     .toContain('segunda');
+});
+
+test('Help → Documentation abre o README da IDE', async ({ page }) => {
+  // Decisão do lote: destino honesto em vez de remover o item. A IDE não tem
+  // documentação escrita, mas tem um README.
+  await menu(page, 'Help');
+  await page.getByRole('menuitem', { name: 'Documentation' }).click();
+
+  await expect(page.locator('[data-tab="README.md"]')).toBeVisible();
+  await expect.poll(() => textoDoEditor(page)).toMatch(/dev-ide/);
 });

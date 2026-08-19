@@ -166,6 +166,7 @@ export const Api = {
       caminho === undefined ? '/api/folders' : `/api/folders?path=${encodeURIComponent(caminho)}`
     ),
   workspace: () => request<RetratoDoEspaco>('GET', '/api/workspace'),
+  docs: () => request<{ path: string }>('GET', '/api/docs'),
   openFolder: (path: string) => request<RetratoDoEspaco>('POST', '/api/workspace', { path }),
   closeFolder: () => request<RetratoDoEspaco>('DELETE', '/api/workspace'),
   forgetFolder: (path: string) =>

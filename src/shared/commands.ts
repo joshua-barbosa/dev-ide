@@ -162,7 +162,7 @@ const DECLARADOS = [
   // ---- Help ----
   { id: 'help.commands', label: 'Show All Commands', menu: 'help', group: 1, keybinding: 'Ctrl+Shift+P' },
   { id: 'help.about', label: 'About dev-ide', menu: 'help', group: 2 },
-  { id: 'help.docs', label: 'Documentation', menu: 'help', group: 2, pending: true },
+  { id: 'help.docs', label: 'Documentation', menu: 'help', group: 2 },
 ] as const satisfies readonly Command[];
 
 export const COMMANDS: readonly Command[] = DECLARADOS;

@@ -462,6 +462,9 @@ export function App() {
     },
 
     'help.commands': () => avisar(abrirPaleta()),
+    // Destino honesto em vez de remoção: a IDE não tem documentação escrita,
+    // mas tem um README — e é para ele que o usuário deve ser levado.
+    'help.docs': () => avisar(Api.docs().then(({ path }) => ws.abrirArquivo(path))),
     'help.about': () => void dialogs.avisar(
       'IDE local com painéis de banco e serviço, sem licença e sem limite de conexões.',
       'dev-ide'

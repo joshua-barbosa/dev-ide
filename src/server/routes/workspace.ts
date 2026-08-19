@@ -34,7 +34,7 @@ const VAZIO: RetratoDoEspaco = {
   pasta: null, recentes: [], arvore: [], simbolos: [], truncated: false,
 };
 
-export function createWorkspaceRouter(estado: EstadoStore): Router {
+export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string): Router {
   const router = Router();
   const ok = (data: unknown) => ({ success: true, data, error: null });
 
@@ -76,6 +76,19 @@ export function createWorkspaceRouter(estado: EstadoStore): Router {
       ? req.query.path
       : os.homedir();
     res.json(ok(listarSubpastas(pastaValida(bruto))));
+  }));
+
+  /**
+   * O `README.md` da própria IDE — o destino do `Help → Documentation`.
+   *
+   * A decisão do lote foi dar um destino honesto em vez de remover o item: a
+   * IDE não tem documentação escrita, mas tem um README, e é para ele que o
+   * usuário deve ser levado.
+   */
+  router.get('/docs', wrap((_req, res) => {
+    const caminho = path.join(raizDoProjeto, 'README.md');
+    if (!fs.existsSync(caminho)) throw new Error('O README.md da IDE não foi encontrado.');
+    res.json(ok({ path: caminho }));
   }));
 
   router.get('/workspace', wrap((_req, res) => {

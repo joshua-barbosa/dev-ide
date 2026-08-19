@@ -79,7 +79,7 @@ app.use(express.json({ limit: '4mb' }));
 app.use(express.static(UI_DIR));
 app.use('/api/connections', createConnectionsRouter({ registry, vault, pool, remember, prefs }));
 app.use('/api/prefs', createPrefsRouter(prefs));
-app.use('/api', createWorkspaceRouter(estado));
+app.use('/api', createWorkspaceRouter(estado, ROOT));
 app.use('/api/commands', createComandosRouter(comandos, estado));
 app.use('/api/snippets', createSnippetsRouter(snippets));
 

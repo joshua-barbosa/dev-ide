@@ -35,7 +35,7 @@ async function comServidor(
 
   const app = express();
   app.use(express.json());
-  app.use('/api', createWorkspaceRouter(new EstadoStore(path.join(dir, 'state.json'))));
+  app.use('/api', createWorkspaceRouter(new EstadoStore(path.join(dir, 'state.json')), dir));
   app.use(errorEnvelope);
 
   const server = app.listen(0, '127.0.0.1');
@@ -58,6 +58,22 @@ async function comServidor(
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
+
+test('a rota de documentação aponta para o README da IDE', async () => {
+  await comServidor(async (call, dados) => {
+    fs.writeFileSync(path.join(dados, 'README.md'), '# dev-ide\n');
+    const r = (await call('GET', '/docs')).data as { path: string };
+    assert.equal(r.path, path.join(dados, 'README.md'));
+  });
+});
+
+test('sem README, a rota diz o que faltou em vez de devolver caminho torto', async () => {
+  await comServidor(async (call) => {
+    const r = await call('GET', '/docs');
+    assert.equal(r.success, false);
+    assert.match(r.error ?? '', /README/);
+  });
+});
 
 test('a IDE começa sem pasta aberta', async () => {
   await comServidor(async (call) => {
