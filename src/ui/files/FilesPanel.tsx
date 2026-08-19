@@ -7,7 +7,7 @@
 // clicado vira uma chamada ao servidor. Antes vinha tudo de uma vez, com teto
 // global de nós, e uma `.venv` gastava o teto sozinha: a árvore chegava cortada
 // e o conserto de então foi esconder pastas, o que era pior que o defeito.
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ICONE_DE_PASTA, ICONE_DE_PASTA_ABERTA, iconeDeArquivo,
 } from '../../shared/editor/arquivos';
@@ -37,33 +37,57 @@ export function FilesPanel({
   /** Pastas cujo conteúdo está sendo pedido agora — a linha mostra "…". */
   const [carregando, setCarregando] = useState<ReadonlySet<string>>(new Set());
 
-  const alternar = useCallback(
-    (no: FileNode) => {
-      setAbertas((atual) => {
-        const proximo = new Set(atual);
-        if (proximo.has(no.path)) proximo.delete(no.path);
-        else proximo.add(no.path);
-        return proximo;
-      });
+  /** Pedidos em voo, para o efeito não disparar dois pelo mesmo caminho. */
+  const pedidos = useRef(new Set<string>());
 
-      // `children` ausente é "ainda não carregada". Lista vazia é "carregada e
-      // vazia" — só a primeira pede ao servidor, e é por isso que as duas não
-      // podem ser a mesma coisa.
-      if (no.children !== undefined) return;
-      setCarregando((atual) => new Set(atual).add(no.path));
+  const alternar = useCallback((no: FileNode) => {
+    setAbertas((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(no.path)) proximo.delete(no.path);
+      else proximo.add(no.path);
+      return proximo;
+    });
+  }, []);
+
+  /**
+   * Garante que toda pasta ABERTA tenha o conteúdo dela.
+   *
+   * Não basta carregar ao clicar: `recarregar()` devolve só o primeiro nível, e
+   * qualquer coisa que o chame — salvar um arquivo, criar uma pasta, trocar de
+   * projeto — apagava os filhos de tudo que estava aberto. A pasta continuava
+   * com o `v` de aberta e o conteúdo sumia, sem ninguém ter fechado nada.
+   *
+   * Aqui a regra é declarativa: aberta e sem filhos significa "vai buscar".
+   * O clique só mexe no conjunto de abertas; quem busca é este efeito.
+   */
+  useEffect(() => {
+    const faltando: string[] = [];
+    const procurar = (nos: readonly FileNode[]): void => {
+      for (const no of nos) {
+        if (no.type !== 'dir' || !abertas.has(no.path)) continue;
+        if (no.children === undefined) faltando.push(no.path);
+        else procurar(no.children);
+      }
+    };
+    procurar(pasta.arvore);
+
+    for (const caminho of faltando) {
+      if (pedidos.current.has(caminho)) continue;
+      pedidos.current.add(caminho);
+      setCarregando((atual) => new Set(atual).add(caminho));
       pasta
-        .carregarFilhos(no.path)
+        .carregarFilhos(caminho)
         .catch(onErro)
-        .finally(() =>
+        .finally(() => {
+          pedidos.current.delete(caminho);
           setCarregando((atual) => {
             const proximo = new Set(atual);
-            proximo.delete(no.path);
+            proximo.delete(caminho);
             return proximo;
-          })
-        );
-    },
-    [onErro, pasta]
-  );
+          });
+        });
+    }
+  }, [abertas, onErro, pasta]);
 
   const abrir = useCallback(
     (caminho: string) => {

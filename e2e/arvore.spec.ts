@@ -5,7 +5,7 @@
 // teto sozinha, deixando a árvore truncada em silêncio. A saída não foi
 // esconder mais pastas: foi parar de descer sem ser pedido.
 import { expect, test } from '@playwright/test';
-import { linhaArvore, painelLateral } from './fixtures';
+import { entradaRapida, esperarEditorPronto, linhaArvore, menu, painelLateral } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -56,4 +56,24 @@ test('a BUSCA não entra na pasta de dependência', async ({ page }) => {
   await expect(page.locator('[data-resumo-busca]')).toHaveText('1 em 1 arquivo(s)');
   await expect(page.locator('[data-arquivo-busca="dentro.txt"]')).toBeVisible();
   await expect(page.locator('[data-arquivo-busca="dep.js"]')).toHaveCount(0);
+});
+
+test('recarregar a árvore NÃO esvazia as pastas já abertas', async ({ page }) => {
+  // `recarregar()` devolve só o primeiro nível — é o que a spec 034 fez dele.
+  // Criar um arquivo chama `recarregar()`, e sem cuidado toda pasta aberta
+  // perde os filhos e some da tela sem ninguém ter fechado nada.
+  await linhaArvore(page, 'sub').click();
+  await expect(linhaArvore(page, 'dentro.txt')).toBeVisible();
+
+  await menu(page, 'File');
+  await page.getByRole('menuitem', { name: 'New Text File' }).click();
+  await esperarEditorPronto(page);
+  await page.keyboard.insertText('x');
+  await menu(page, 'File');
+  await page.getByRole('menuitem', { name: /^Save/ }).first().click();
+  await entradaRapida(page).fill('recarrega.txt');
+  await page.keyboard.press('Enter');
+  await expect(linhaArvore(page, 'recarrega.txt')).toBeVisible();
+
+  await expect(linhaArvore(page, 'dentro.txt')).toBeVisible();
 });
