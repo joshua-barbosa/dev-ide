@@ -34,8 +34,32 @@ export interface ArquivoAcoes {
 export function useArquivoAcoes(deps: ArquivoAcoesDeps): ArquivoAcoes {
   const { qi, ws, pasta, prefs, avisar, confirmar } = deps;
 
+  /**
+   * Confirma antes de sobrescrever um arquivo que mudou em disco (spec 037).
+   *
+   * É o buraco que o vigia existe para fechar: com o arquivo alterado por fora
+   * — um `git checkout`, um script, o outro editor —, salvar apagava aquilo sem
+   * uma palavra. A IDE não tem como saber qual das duas versões vale, e por
+   * isso não escolhe.
+   */
+  const podeSobrescrever = async (): Promise<boolean> => {
+    const aba = ws.active;
+    if (aba === null || !ws.conflitos.has(aba.id)) return true;
+    const ok = await confirmar({
+      titulo: 'O arquivo mudou em disco',
+      mensagem:
+        `"${aba.title}" foi alterado fora da IDE depois de você começar a editar.\n\n` +
+        'Salvar agora substitui a versão do disco pela que está na tela.',
+      rotuloConfirmar: 'sobrescrever',
+      destrutivo: true,
+    });
+    if (ok) ws.limparConflito(aba.id);
+    return ok;
+  };
+
   /** Grava a aba ativa, pedindo o nome se ela ainda não tem arquivo. */
   const salvarArquivo = async (): Promise<void> => {
+    if (!(await podeSobrescrever())) return;
     const caminho = await ws.salvar();
     if (caminho !== null) {
       // Salvou o próprio `config.json`? Relê — é o que faz editar a preferência

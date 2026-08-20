@@ -22,6 +22,7 @@ import { SnippetsStore } from './snippets';
 import { EstadoStore } from './estado';
 import { TerminalRegistry } from './terminal/registry';
 import { montarSocketDeTerminal } from './terminal/socket';
+import { montarSocketDoVigia } from './vigia-socket';
 import { criarResolvedorDeAbertura } from './terminal/abertura';
 import { runCode, RunRequest } from './runner';
 import { RegistroDeExecucoes } from './execucoes';
@@ -215,6 +216,7 @@ if (require.main === module) {
 
   // O socket compartilha o servidor HTTP: mesma porta, mesma guarda de origem.
   montarSocketDeTerminal(server, { registry: terminais, resolverAbertura });
+  montarSocketDoVigia(server, estado);
 
   const sweeper = setInterval(() => {
     pool.sweep().catch((err: Error) => console.error('Falha ao fechar sessões ociosas:', err.message));

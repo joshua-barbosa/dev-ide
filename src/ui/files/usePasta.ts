@@ -84,7 +84,13 @@ export function usePasta(): PastaAberta {
    */
   const carregarFilhos = useCallback(async (caminho: string): Promise<void> => {
     const { nodes } = await Api.fileChildren(caminho);
-    setRetrato((atual) => ({ ...atual, arvore: enxertar(atual.arvore, caminho, nodes) }));
+    setRetrato((atual) => ({
+      ...atual,
+      // A RAIZ não é um nó da árvore: ela É a árvore. Sem este caso, recarregar
+      // a pasta aberta não fazia nada — `enxertar` procurava um nó com aquele
+      // caminho e não achava. Custou o primeiro teste do vigia.
+      arvore: caminho === atual.pasta ? nodes : enxertar(atual.arvore, caminho, nodes),
+    }));
   }, []);
 
   useEffect(() => {

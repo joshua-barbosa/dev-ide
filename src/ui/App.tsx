@@ -54,6 +54,7 @@ import { usePasta } from './files/usePasta';
 import { usePrefs } from './usePrefs';
 import { useAutoSave } from './useAutoSave';
 import { useSessaoDeAbas } from './useSessaoDeAbas';
+import { useVigia } from './useVigia';
 import { useHistorico } from './useHistorico';
 import { useSnippets } from './useSnippets';
 import { useBusca } from './files/useBusca';
@@ -104,6 +105,13 @@ export function App() {
   useAutoSave({ ws, prefs: prefs.prefs, aoFalhar: falhaDaIde });
   // As abas do editor voltam depois do F5, como os terminais do painel (spec 030).
   useSessaoDeAbas({ ws, pasta: pasta.pasta, aoFalhar: falhaDaIde });
+  // O disco mudando por fora da IDE deixa de passar despercebido (spec 037).
+  useVigia({
+    ws,
+    pasta,
+    aoAvisar: (mensagem) => problemas.registrar('ide', mensagem),
+    aoFalhar: falhaDaIde,
+  });
   // Terminais de SHELL, que desde a decisão D6 moram no painel inferior. O de
   // conexão continua sendo aba do editor — saída longa de query merece tela
   // cheia, comando curto de shell não.

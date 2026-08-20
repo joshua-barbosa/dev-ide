@@ -126,6 +126,17 @@ export interface Workspace {
   reverter(): Promise<void>;
   /** Relê do disco as abas abertas dos caminhos dados. */
   recarregarDoDisco(caminhos: readonly string[]): Promise<void>;
+  /**
+   * Reage a mudanças vindas do DISCO (spec 037).
+   *
+   * Diferente de `recarregarDoDisco`: a aba com trabalho não salvo **não** é
+   * recarregada — ela entra em conflito, e quem decide é o usuário na hora de
+   * salvar. Devolve os títulos das abas que ficaram em conflito.
+   */
+  sincronizarComDisco(caminhos: readonly string[]): Promise<readonly string[]>;
+  /** Abas cujo arquivo mudou em disco desde que foram carregadas. */
+  readonly conflitos: ReadonlySet<string>;
+  limparConflito(id: string): void;
   /** Reabre as abas de uma sessão guardada. */
   restaurarSessao(sessao: SessaoDeAbas): Promise<void>;
   marcarAbaSuja(id: string, sujo: boolean): void;
@@ -150,6 +161,13 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   const [edicoes, setEdicoes] = useState(0);
   const [emPreview, setEmPreview] = useState<ReadonlySet<string>>(new Set());
   const [layout, setLayout] = useState<NoDeLayout>(LAYOUT_INICIAL);
+  /**
+   * Abas cujo arquivo mudou em disco por fora da IDE.
+   *
+   * Salvar por cima disso é a perda de trabalho que o vigia existe para evitar
+   * — e a IDE não decide sozinha qual das duas versões vale.
+   */
+  const [conflitos, setConflitos] = useState<ReadonlySet<string>>(new Set());
 
   // Sem aba, a posição do cursor anterior é estado velho na barra de status.
   const aoEsvaziarFoco = useCallback(() => setCursor({ linha: 1, coluna: 1 }), []);
@@ -603,6 +621,36 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     [ed, store]
   );
 
+  const sincronizarComDisco = useCallback(
+    async (caminhos: readonly string[]): Promise<readonly string[]> => {
+      const emConflito: string[] = [];
+      const limpos: string[] = [];
+
+      for (const caminho of caminhos) {
+        const aba = store.get(`file:${caminho}`);
+        if (aba === null || !ehEditavel(aba)) continue;
+        if (aba.dirty) emConflito.push(aba.title);
+        else limpos.push(caminho);
+      }
+
+      if (emConflito.length > 0) {
+        setConflitos((atual) => {
+          const proximo = new Set(atual);
+          for (const caminho of caminhos) {
+            const aba = store.get(`file:${caminho}`);
+            if (aba !== null && aba.dirty) proximo.add(aba.id);
+          }
+          return proximo;
+        });
+      }
+      // A aba sem alteração pode ser trocada sem perguntar nada: não há duas
+      // versões, há uma só, e ela está no disco.
+      if (limpos.length > 0) await recarregarDoDisco(limpos);
+      return emConflito;
+    },
+    [recarregarDoDisco, store]
+  );
+
   /**
    * Liga a aba sem título ao arquivo recém-criado.
    *
@@ -676,6 +724,15 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     salvarTodas,
     reverter,
     recarregarDoDisco,
+    sincronizarComDisco,
+    conflitos,
+    limparConflito: (id: string) =>
+      setConflitos((atual) => {
+        if (!atual.has(id)) return atual;
+        const proximo = new Set(atual);
+        proximo.delete(id);
+        return proximo;
+      }),
     restaurarSessao,
     aoMoverCursor: (linha, coluna) => setCursor({ linha, coluna }),
   };
