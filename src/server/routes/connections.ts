@@ -239,6 +239,15 @@ export function createConnectionsRouter(
     })));
   }));
 
+  /** A estrutura de uma tabela ou view (spec 045). Só leitura. */
+  router.get('/:id/structure', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (typeof session.tableStructure !== 'function') {
+      throw new Error(`A conexão "${req.params.id}" não expõe estrutura de tabela.`);
+    }
+    res.json(ok(await session.tableStructure(queryList(req.query.path))));
+  }));
+
   router.post('/:id/execute', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
     if (typeof session.execute !== 'function') {

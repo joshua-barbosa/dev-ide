@@ -15,6 +15,7 @@ import {
   CONTAGENS_SQL,
 } from './mysql-sql';
 import { escrever, lerTabela } from './mysql-tabela';
+import { estruturaDaTabela } from './mysql-estrutura';
 import { executar, qualificar, query } from './mysql-base';
 import {
   ACOES_DE_TABELA,
@@ -472,6 +473,11 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       exigirViva();
       await usar(conn, request.nodePath[1]);
       return lerTabela(conn, request, exibicao.rowLimit);
+    },
+    tableStructure: async (nodePath) => {
+      exigirViva();
+      await usar(conn, nodePath[1]);
+      return estruturaDaTabela(conn, nodePath);
     },
     writeTable: async (request) => {
       exigirViva();

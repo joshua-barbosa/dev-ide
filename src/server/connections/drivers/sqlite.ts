@@ -14,6 +14,7 @@ import {
 } from './tabela';
 import { DEFAULT_ROW_LIMIT } from './sql-base';
 import { escreverNaTabela } from './transacao';
+import { estruturaDaTabela } from './sqlite-estrutura';
 import {
   ACOES_DE_TABELA_SQLITE,
   ACOES_DE_VIEW,
@@ -405,6 +406,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     children: async (nodePath, opcoes) => navegar(db, file, nodePath, opcoes),
     readTable: async (request) => lerTabela(db, request, DEFAULT_ROW_LIMIT),
     writeTable: (request) => escrever(db, request),
+    tableStructure: async (nodePath) => estruturaDaTabela(db, nodePath),
     execute: async (request) => executar(db, request),
     runAction: async (request) => acao(db, request),
     close: async () => {

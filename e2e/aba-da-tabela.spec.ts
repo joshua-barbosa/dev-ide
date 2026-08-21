@@ -156,7 +156,7 @@ test('SQL errado mostra o erro SEM perder o que foi digitado', async ({ page }) 
   await campoSql(page).fill('SELECT * FROM nao_existe_mesmo');
   await page.keyboard.press('Control+Enter');
 
-  await expect(page.getByText(/no such table|nao_existe_mesmo/i)).toBeVisible();
+  await expect(page.locator('[data-erro-tabela]')).toContainText(/no such table/i);
   await expect(campoSql(page)).toHaveValue('SELECT * FROM nao_existe_mesmo');
 });
 

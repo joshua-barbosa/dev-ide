@@ -6,7 +6,10 @@
 // uma guarda a sua página, a sua ordenação, os seus filtros e o seu rascunho —
 // que é exatamente o que se perderia se elas dividissem um gancho só.
 import { useState } from 'react';
+import Box from '@mui/material/Box';
 import { Api } from '../api';
+import { EstruturaPanel } from './EstruturaPanel';
+import { useEstrutura } from './useEstrutura';
 import { TablePanel } from './TablePanel';
 import { useTabela } from './useTabela';
 import { chaveDoId, useRascunho } from './useRascunho';
@@ -34,6 +37,9 @@ export function TabelaHost({ aba, onExportar, onConfirmar, somenteLeitura }: Tab
   const estado = useTabela({ connectionId, nodePath, database: meta.database ?? null });
   const rascunho = useRascunho();
   const [gravando, setGravando] = useState(false);
+  const [subAba, setSubAba] = useState<'dados' | 'estrutura'>('dados');
+  // Só busca quando a sub-aba é aberta: ninguém paga por uma aba que não abriu.
+  const estrutura = useEstrutura(connectionId, nodePath, subAba === 'estrutura');
 
   const colunas = estado.pagina?.columns ?? [];
   const temChave = colunas.some((c) => c.chave);
@@ -98,14 +104,70 @@ export function TabelaHost({ aba, onExportar, onConfirmar, somenteLeitura }: Tab
   };
 
   return (
-    <TablePanel
+    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <SubAbas ativa={subAba} onTrocar={setSubAba} />
+
+      {/* As duas ficam MONTADAS: trocar de sub-aba não pode custar outra ida ao
+          banco nem apagar página, filtros e rascunho. É a regra constitucional
+          do editor e do terminal, aplicada aqui. */}
+      <Box sx={{ flex: 1, minHeight: 0, display: subAba === 'dados' ? 'flex' : 'none' }}>
+        <TablePanel
       estado={estado}
       titulo={aba.title}
       onExportar={onExportar}
       rascunho={somenteLeitura ? undefined : rascunho}
       gravando={gravando}
       onGravar={somenteLeitura ? undefined : () => void gravar()}
-      motivoSemEdicao={motivoSemEdicao}
-    />
+          motivoSemEdicao={motivoSemEdicao}
+        />
+      </Box>
+
+      <Box sx={{ flex: 1, minHeight: 0, display: subAba === 'estrutura' ? 'flex' : 'none' }}>
+        <EstruturaPanel
+          estrutura={estrutura.estrutura}
+          carregando={estrutura.carregando}
+          erro={estrutura.erro}
+          onRecarregar={estrutura.recarregar}
+        />
+      </Box>
+    </Box>
+  );
+}
+
+/** As duas metades da aba de tabela: os dados e a estrutura (spec 045). */
+function SubAbas({
+  ativa, onTrocar,
+}: {
+  readonly ativa: 'dados' | 'estrutura';
+  readonly onTrocar: (a: 'dados' | 'estrutura') => void;
+}) {
+  return (
+    <Box
+      role="tablist"
+      aria-label="Partes da tabela"
+      sx={{
+        display: 'flex', gap: 0.5, px: 1, borderBottom: 1, borderColor: 'divider',
+        bgcolor: 'background.paper', flexShrink: 0,
+      }}
+    >
+      {(['dados', 'estrutura'] as const).map((a) => (
+        <Box
+          key={a}
+          component="button"
+          role="tab"
+          aria-selected={ativa === a}
+          onClick={() => onTrocar(a)}
+          sx={{
+            border: 0, borderBottom: 2,
+            borderColor: ativa === a ? 'primary.main' : 'transparent',
+            bgcolor: 'transparent', color: ativa === a ? 'text.primary' : 'text.secondary',
+            font: 'inherit', fontSize: 11.5, px: 1, py: 0.5, cursor: 'pointer',
+            textTransform: 'capitalize',
+          }}
+        >
+          {a}
+        </Box>
+      ))}
+    </Box>
   );
 }

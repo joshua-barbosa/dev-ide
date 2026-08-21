@@ -30,6 +30,7 @@ import {
   normalizarPedidoDeTabela,
 } from './tabela';
 import { escreverNaTabela } from './transacao';
+import { estruturaDaTabela } from './postgres-estrutura';
 import {
   ACOES_DE_TABELA,
   ACOES_DE_VIEW,
@@ -447,6 +448,56 @@ async function lerTabela(
   return { resultado, columns: colunas, sql, total, totalEstimado: aproximado };
 }
 
+/**
+ * O DDL de uma tabela ou view.
+ *
+ * Extraído da ação `Ver DDL` quando a aba de estrutura (spec 045) passou a
+ * precisar do mesmo texto: duas reconstruções do mesmo DDL divergiriam, e a
+ * divergência apareceria só num caso de canto.
+ */
+export async function ddlDe(
+  client: Client,
+  schema: string,
+  objeto: string,
+  ehView: boolean
+): Promise<string> {
+  const alvo = `${quoteIdentifier(schema, 'double')}.${quoteIdentifier(objeto, 'double')}`;
+  if (ehView) {
+    const { rows } = await client.query<{ def: string }>(
+      'SELECT pg_get_viewdef($1::regclass, true) AS def',
+      [alvo]
+    );
+    return `CREATE OR REPLACE VIEW ${alvo} AS\n${rows[0]?.def ?? ''}`;
+  }
+
+  // O Postgres não tem SHOW CREATE TABLE: o DDL é reconstruído do catálogo.
+  // Cobre colunas, NOT NULL, DEFAULT e chave primária — não índices,
+  // constraints de checagem nem chaves estrangeiras. A aba de estrutura mostra
+  // esses três em listas próprias, que é onde eles ficam legíveis mesmo.
+  const [colunas, pk] = await Promise.all([
+    client.query<{ nome: string; tipo: string; obrigatorio: boolean; padrao: string | null }>(
+      DDL_COLUNAS_SQL, [schema, objeto]
+    ),
+    client.query<{ nome: string }>(DDL_PK_SQL, [schema, objeto]),
+  ]);
+
+  const linhas = colunas.rows.map((coluna) => {
+    const partes = [`  ${quoteIdentifier(coluna.nome, 'double')} ${coluna.tipo}`];
+    if (coluna.padrao !== null) partes.push(`DEFAULT ${coluna.padrao}`);
+    if (coluna.obrigatorio) partes.push('NOT NULL');
+    return partes.join(' ');
+  });
+  if (pk.rows.length > 0) {
+    const cols = pk.rows.map((r) => quoteIdentifier(r.nome, 'double')).join(', ');
+    linhas.push(`  PRIMARY KEY (${cols})`);
+  }
+
+  return (
+    '-- Reconstruído do catálogo: sem índices, FKs e constraints de checagem.\n' +
+    `CREATE TABLE ${alvo} (\n${linhas.join(',\n')}\n);\n`
+  );
+}
+
 /** Escrever pela grade (spec 044), em uma transação. */
 async function escrever(
   client: Client,
@@ -514,49 +565,8 @@ async function acao(clienteDe: ClienteDe, principal: string, request: ActionRequ
       };
     }
 
-    case 'ddl': {
-      if (categoria === 'views') {
-        const { rows } = await client.query<{ def: string }>(
-          'SELECT pg_get_viewdef($1::regclass, true) AS def',
-          [alvo]
-        );
-        return {
-          kind: 'text',
-          title: `${objeto} (DDL)`,
-          content: `CREATE OR REPLACE VIEW ${alvo} AS\n${rows[0]?.def ?? ''}`,
-        };
-      }
-
-      // O Postgres não tem SHOW CREATE TABLE: o DDL é reconstruído do catálogo.
-      // Cobre colunas, NOT NULL, DEFAULT e chave primária — não índices,
-      // constraints de checagem nem chaves estrangeiras.
-      const [colunas, pk] = await Promise.all([
-        client.query<{ nome: string; tipo: string; obrigatorio: boolean; padrao: string | null }>(
-          DDL_COLUNAS_SQL, [schema, objeto]
-        ),
-        client.query<{ nome: string }>(DDL_PK_SQL, [schema, objeto]),
-      ]);
-
-      const linhas = colunas.rows.map((coluna) => {
-        const partes = [`  ${quoteIdentifier(coluna.nome, 'double')} ${coluna.tipo}`];
-        if (coluna.padrao !== null) partes.push(`DEFAULT ${coluna.padrao}`);
-        if (coluna.obrigatorio) partes.push('NOT NULL');
-        return partes.join(' ');
-      });
-
-      if (pk.rows.length > 0) {
-        const cols = pk.rows.map((r) => quoteIdentifier(r.nome, 'double')).join(', ');
-        linhas.push(`  PRIMARY KEY (${cols})`);
-      }
-
-      return {
-        kind: 'text',
-        title: `${objeto} (DDL)`,
-        content:
-          `-- Reconstruído do catálogo: sem índices, FKs e constraints de checagem.\n` +
-          `CREATE TABLE ${alvo} (\n${linhas.join(',\n')}\n);\n`,
-      };
-    }
+    case 'ddl':
+      return { kind: 'text', title: `${objeto} (DDL)`, content: await ddlDe(client, schema, objeto, categoria === 'views') };
 
     case 'count': {
       const { rows } = await client.query<{ n: string }>(`SELECT count(*) AS n FROM ${alvo}`);
@@ -642,6 +652,12 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       lerTabela(await clienteDe(request.nodePath[1] ?? principal), request, exibicao.rowLimit),
     writeTable: async (request) =>
       escrever(await clienteDe(request.nodePath[1] ?? principal), request),
+    tableStructure: async (nodePath) => {
+      // O MESMO cliente para a estrutura e para o DDL: pedir dois seria abrir
+      // outra conexão ao mesmo banco só para reconstruir um texto.
+      const client = await clienteDe(nodePath[1] ?? principal);
+      return estruturaDaTabela(client, nodePath, (e, o, v) => ddlDe(client, e, o, v));
+    },
     execute: async (request) => {
       // O vínculo do arquivo manda (spec 038); depois o nó ativo; depois o
       // principal. A ordem importa: uma query amarrada a `nuntius` não pode

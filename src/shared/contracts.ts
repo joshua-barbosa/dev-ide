@@ -188,6 +188,78 @@ export interface TablePage {
   readonly sql: string;
 }
 
+// ---------------------------------------------------------------------------
+// A estrutura de uma tabela (spec 045)
+// ---------------------------------------------------------------------------
+
+export interface ColunaDetalhada {
+  readonly name: string;
+  readonly type: string;
+  /** Tamanho declarado, quando o tipo tem um: `varchar(255)` dá 255. */
+  readonly tamanho: number | null;
+  readonly comentario: string | null;
+  readonly padrao: string | null;
+  readonly obrigatoria: boolean;
+  readonly chave: boolean;
+  readonly unica: boolean;
+  readonly autoIncremento: boolean;
+}
+
+export interface ChaveEstrangeira {
+  readonly nome: string;
+  readonly coluna: string;
+  readonly tabelaReferenciada: string;
+  readonly colunaReferenciada: string;
+  readonly aoAtualizar: string | null;
+  readonly aoApagar: string | null;
+}
+
+export interface IndiceDaTabela {
+  readonly nome: string;
+  readonly colunas: readonly string[];
+  readonly unico: boolean;
+  readonly tipo: string | null;
+}
+
+export interface GatilhoDaTabela {
+  readonly nome: string;
+  /** `BEFORE` ou `AFTER`. */
+  readonly momento: string;
+  /** `INSERT`, `UPDATE` ou `DELETE`. */
+  readonly evento: string;
+  readonly orientacao: string | null;
+  readonly corpo: string;
+}
+
+export interface ChecagemDaTabela {
+  readonly nome: string;
+  readonly expressao: string;
+}
+
+/**
+ * Uma lista que o banco **não sabe** responder.
+ *
+ * Diferente de lista vazia: "este banco não tem chave estrangeira ligada" não é
+ * a mesma coisa que "esta tabela não tem nenhuma", e mostrar as duas igual seria
+ * o mesmo erro do total estimado da spec 041.
+ */
+export type ListaOuNaoSei<T> = { readonly itens: readonly T[] } | { readonly naoSei: string };
+
+export interface TableStructure {
+  readonly nome: string;
+  readonly comentario: string | null;
+  readonly motor: string | null;
+  readonly colacao: string | null;
+  /** `true` quando o objeto é uma view: a tela esconde o que não se aplica. */
+  readonly ehView: boolean;
+  readonly ddl: string;
+  readonly colunas: readonly ColunaDetalhada[];
+  readonly chavesEstrangeiras: ListaOuNaoSei<ChaveEstrangeira>;
+  readonly indices: ListaOuNaoSei<IndiceDaTabela>;
+  readonly gatilhos: ListaOuNaoSei<GatilhoDaTabela>;
+  readonly checagens: ListaOuNaoSei<ChecagemDaTabela>;
+}
+
 /** Escrever pela grade (spec 044). Valores vão parametrizados, sempre. */
 export interface TableWriteRequest {
   readonly nodePath: readonly string[];

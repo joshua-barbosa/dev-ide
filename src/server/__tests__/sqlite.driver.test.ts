@@ -693,3 +693,92 @@ test('gravar NULL grava NULL, e texto vazio grava texto vazio', async () => {
   }
 });
 
+
+// ---------------------------------------------------------------------------
+// A estrutura da tabela (spec 045)
+// ---------------------------------------------------------------------------
+
+test('a estrutura traz colunas, DDL e índices num pedido só', async () => {
+  const { session } = await abrir();
+  try {
+    const e = await session.tableStructure!(['main', 'tables', 'alunos']);
+    assert.equal(e.nome, 'alunos');
+    assert.equal(e.ehView, false);
+    assert.match(e.ddl, /CREATE TABLE/);
+
+    const porNome = new Map(e.colunas.map((c) => [c.name, c]));
+    assert.equal(porNome.get('id')?.chave, true);
+    assert.equal(porNome.get('id')?.autoIncremento, true, 'INTEGER PRIMARY KEY é o rowid');
+    assert.equal(porNome.get('nome')?.obrigatoria, true);
+    assert.equal(porNome.get('foto')?.obrigatoria, false);
+
+    assert.equal('itens' in e.indices, true);
+  } finally {
+    await session.close();
+  }
+});
+
+test('a view é reconhecida como view', async () => {
+  const { session } = await abrir();
+  try {
+    const e = await session.tableStructure!(['main', 'views', 'alunos_view']);
+    assert.equal(e.ehView, true);
+    assert.match(e.ddl, /CREATE VIEW/i);
+  } finally {
+    await session.close();
+  }
+});
+
+test('o que o SQLite não sabe responder vem como "não sei", não como lista vazia', async () => {
+  // Confundir "este banco não tem o conceito" com "não há nenhum" é o mesmo
+  // erro do total estimado da spec 041.
+  const { session } = await abrir();
+  try {
+    const e = await session.tableStructure!(['main', 'tables', 'alunos']);
+    assert.equal('naoSei' in e.gatilhos, true);
+    assert.equal('naoSei' in e.checagens, true);
+    // Índice e chave estrangeira ELE sabe: aí é lista, mesmo que vazia.
+    assert.equal('itens' in e.indices, true);
+    assert.equal('itens' in e.chavesEstrangeiras, true);
+  } finally {
+    await session.close();
+  }
+});
+
+test('índice único e chave estrangeira aparecem quando existem', async () => {
+  const { session, file } = await abrir();
+  try {
+    await session.execute!({ statement: 'CREATE UNIQUE INDEX idx_nome ON alunos(nome)' });
+    await session.execute!({
+      statement: 'CREATE TABLE notas2 (id INTEGER PRIMARY KEY, aluno_id INTEGER REFERENCES alunos(id))',
+    });
+
+    const e = await session.tableStructure!(['main', 'tables', 'alunos']);
+    const indices = 'itens' in e.indices ? e.indices.itens : [];
+    const unico = indices.find((i) => i.nome === 'idx_nome');
+    assert.equal(unico?.unico, true);
+    assert.deepEqual(unico?.colunas, ['nome']);
+    // E a coluna passa a ser marcada como única.
+    assert.equal(e.colunas.find((c) => c.name === 'nome')?.unica, true);
+
+    const outra = await session.tableStructure!(['main', 'tables', 'notas2']);
+    const fks = 'itens' in outra.chavesEstrangeiras ? outra.chavesEstrangeiras.itens : [];
+    assert.equal(fks[0]?.tabelaReferenciada, 'alunos');
+    assert.equal(fks[0]?.coluna, 'aluno_id');
+    assert.equal(typeof file, 'string');
+  } finally {
+    await session.close();
+  }
+});
+
+test('objeto que não existe dá erro claro, não estrutura vazia', async () => {
+  const { session } = await abrir();
+  try {
+    await assert.rejects(
+      () => session.tableStructure!(['main', 'tables', 'nao_existe']),
+      /não encontrado/i
+    );
+  } finally {
+    await session.close();
+  }
+});

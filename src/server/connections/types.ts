@@ -28,6 +28,7 @@ import type {
   QueryResult,
   TablePage,
   TableRequest,
+  TableStructure,
   TableWriteRequest,
   TableWriteResult,
   TreeNode,
@@ -39,6 +40,14 @@ export type {
   TableRequest,
   TableWriteRequest,
   TableWriteResult,
+} from '../../shared/contracts';
+export type {
+  ChaveEstrangeira,
+  ChecagemDaTabela,
+  ColunaDetalhada,
+  GatilhoDaTabela,
+  IndiceDaTabela,
+  TableStructure,
 } from '../../shared/contracts';
 import type { NodeIcon } from '../../shared/icons';
 import type { ClienteDeLinhaDeComando } from '../../shared/terminal/comando';
@@ -204,6 +213,13 @@ export interface Session {
    * linha mudou por baixo entre a leitura e a gravação.
    */
   readonly writeTable?: (request: TableWriteRequest) => Promise<TableWriteResult>;
+  /**
+   * A estrutura de uma tabela ou view (spec 045).
+   *
+   * Uma ida ao servidor traz as seis listas: seis idas para desenhar uma tela
+   * seriam seis vezes a latência, e o usuário abre a aba inteira.
+   */
+  readonly tableStructure?: (nodePath: readonly string[]) => Promise<TableStructure>;
   readonly files?: RemoteFiles;
   readonly shell?: RemoteShell;
   readonly monitor?: HostMonitor;

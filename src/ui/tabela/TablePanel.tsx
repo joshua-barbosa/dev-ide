@@ -579,6 +579,11 @@ function Celula({
 function Aviso({ texto, erro = false }: { readonly texto: string; readonly erro?: boolean }) {
   return (
     <Box
+      // Marcado para o teste poder apontar o ERRO, e não qualquer texto que
+      // contenha a mesma palavra: o SQL digitado está no campo acima, e um
+      // seletor por texto casava com os dois — passando quando a resposta
+      // demorava e falhando quando ela chegava a tempo.
+      {...(erro ? { 'data-erro-tabela': true } : {})}
       sx={{
         flex: 1, p: 1.75, color: erro ? 'error.main' : 'text.secondary', fontSize: 12,
         whiteSpace: 'pre-wrap', fontFamily: erro ? tokens.fontMono : 'inherit',
