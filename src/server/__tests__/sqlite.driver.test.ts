@@ -313,3 +313,123 @@ test('a mesma conexão SEM somente-leitura escreve', async () => {
     await session.close();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Modelos de SQL do menu (spec 040)
+// ---------------------------------------------------------------------------
+//
+// `modelos.test.ts` prova a montagem sem banco. Aqui se prova o que só um banco
+// responde: que as colunas lidas do catálogo chegam certas ao modelo, e que o
+// SQL gerado **roda de verdade**. Um modelo que não compila no motor é pior que
+// nenhum modelo.
+
+async function acao(session: Session, objeto: string, actionId: string): Promise<string> {
+  const r = await session.runAction!({ nodePath: ['main', 'tables', objeto], actionId });
+  return r.content;
+}
+
+test('o menu de uma tabela oferece os modelos; o de uma view, menos', async () => {
+  const { session } = await abrir();
+  try {
+    const tabelas = await session.children(['main', 'tables']);
+    const ids = (tabelas.find((n) => n.id === 'alunos')?.actions ?? []).map((a) => a.id);
+    assert.deepEqual(ids.includes('template-insert'), true);
+    assert.deepEqual(ids.includes('drop'), true);
+    // AC-7: numa view não há o que inserir nem o que esvaziar.
+    const views = await session.children(['main', 'views']);
+    const idsView = (views.find((n) => n.id === 'alunos_view')?.actions ?? []).map((a) => a.id);
+    assert.deepEqual(idsView.includes('template-insert'), false);
+    assert.deepEqual(idsView.includes('drop-view'), true);
+  } finally {
+    await session.close();
+  }
+});
+
+test('o SQLite não oferece TRUNCATE, porque não tem', async () => {
+  const { session } = await abrir();
+  try {
+    const tabelas = await session.children(['main', 'tables']);
+    const ids = (tabelas.find((n) => n.id === 'alunos')?.actions ?? []).map((a) => a.id);
+    assert.deepEqual(ids.includes('truncate'), false);
+    assert.deepEqual(ids.includes('esvaziar'), true);
+  } finally {
+    await session.close();
+  }
+});
+
+test('o INSERT gerado pula a chave e RODA no banco', async () => {
+  const { session } = await abrir();
+  try {
+    const sql = await acao(session, 'alunos', 'template-insert');
+    assert.equal(sql.includes('"id"'), false, 'a chave INTEGER PRIMARY KEY é o rowid');
+    assert.match(sql, /"nome", "foto"/);
+
+    // Trocar os marcadores por valores e rodar: é a prova de que o modelo
+    // compila no motor, e não só de que a string tem a cara certa.
+    const pronto = sql.replace(':nome', "'novo'").replace(':foto', 'NULL');
+    await session.execute!({ statement: pronto.split('\n').filter((l) => !l.startsWith('--')).join('\n') });
+    const r = await session.execute!({ statement: "SELECT nome FROM alunos WHERE nome = 'novo'" });
+    assert.equal(r.rowCount, 1);
+  } finally {
+    await session.close();
+  }
+});
+
+test('o UPDATE e o DELETE gerados trazem o WHERE da chave e RODAM', async () => {
+  const { session } = await abrir();
+  try {
+    const update = await acao(session, 'alunos', 'template-update');
+    assert.match(update, /WHERE "id" = /);
+    const pronto = update.replace(':nome', "'trocado'").replace(':foto', 'NULL').replace(':id', '1');
+    await session.execute!({ statement: pronto.split('\n').filter((l) => !l.startsWith('--')).join('\n') });
+    const r = await session.execute!({ statement: 'SELECT nome FROM alunos WHERE id = 1' });
+    assert.equal(r.rows[0]?.[0], 'trocado');
+
+    const del = await acao(session, 'alunos', 'template-delete');
+    assert.match(del, /WHERE "id" = /);
+  } finally {
+    await session.close();
+  }
+});
+
+test('o SELECT gerado lista as colunas e RODA', async () => {
+  const { session } = await abrir();
+  try {
+    const sql = await acao(session, 'alunos', 'template-select');
+    const r = await session.execute!({ statement: sql });
+    assert.deepEqual(r.columns.map((c) => c.name), ['id', 'nome', 'foto']);
+  } finally {
+    await session.close();
+  }
+});
+
+test('os destrutivos vêm com aviso e NÃO são executados por serem gerados', async () => {
+  const { session } = await abrir();
+  try {
+    const drop = await acao(session, 'alunos', 'drop');
+    assert.match(drop, /^--/);
+    assert.match(drop, /DROP TABLE "alunos"/);
+
+    // O ponto da spec: pedir a ação NÃO apaga nada. A tabela continua lá.
+    const r = await session.execute!({ statement: 'SELECT COUNT(*) FROM alunos' });
+    assert.equal(Number(r.rows[0]?.[0]) > 0, true, 'gerar o DROP não apagou a tabela');
+  } finally {
+    await session.close();
+  }
+});
+
+test('copiar tabela gera criação e carga que RODAM', async () => {
+  const { session } = await abrir();
+  try {
+    const sql = await acao(session, 'alunos', 'copiar');
+    for (const comando of sql.split(';').map((c) =>
+      c.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n').trim()
+    )) {
+      if (comando !== '') await session.execute!({ statement: comando });
+    }
+    const r = await session.execute!({ statement: 'SELECT COUNT(*) FROM alunos_copia' });
+    assert.equal(Number(r.rows[0]?.[0]), 2, 'a cópia levou os dados junto');
+  } finally {
+    await session.close();
+  }
+});

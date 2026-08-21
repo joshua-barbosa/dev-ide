@@ -14,6 +14,7 @@ export const SENHA_MESTRA = 'senha-de-teste';
 export const PASTA_DEMO = (dados: string): string => path.join(dados, 'projects', 'demo');
 export const CONEXAO = 'escola';
 export const TABELA = 'alunos';
+export const VIEW = 'alunos_view';
 /**
  * Caminho do banco semeado, para o teste do formulário cadastrar uma conexão
  * apontando para um arquivo que existe de verdade.
@@ -121,6 +122,9 @@ export default async function globalSetup(): Promise<void> {
   process.env.E2E_BANCO = banco;
   const db = new DatabaseSync(banco);
   db.exec(`CREATE TABLE ${TABELA} (id INTEGER PRIMARY KEY, nome TEXT NOT NULL, nota REAL)`);
+  // Uma view, para a spec 040 poder provar que o menu dela é MENOR que o de uma
+  // tabela — não há o que inserir nem o que esvaziar numa view.
+  db.exec(`CREATE VIEW ${VIEW} AS SELECT nome, nota FROM ${TABELA}`);
   const inserir = db.prepare(`INSERT INTO ${TABELA}(nome, nota) VALUES (?, ?)`);
   inserir.run('joshua', 9.5);
   inserir.run('maria', 8);

@@ -587,19 +587,16 @@ export function App() {
               menu.abrir(e, [
                 { label: 'Copiar nome', onClick: () => copiar(no.label) },
                 ...(no.actions === undefined || no.actions.length === 0 ? [] : [null]),
+                // Sem diálogo de confirmação, e de propósito (spec 040): uma
+                // ação de menu GERA o SQL e o abre — nada é executado. O
+                // diálogo que existia aqui afirmava "esta ação altera o
+                // servidor", o que era falso. O `danger` continua, pintando o
+                // item de vermelho, e o aviso de verdade vai no SQL gerado,
+                // que é onde ele é lido. Rodar é o `▷ Run` da spec 038.
                 ...(no.actions ?? []).map((acao) => ({
                   label: acao.label,
                   danger: acao.danger,
                   onClick: async () => {
-                    if (acao.danger === true) {
-                      const ok = await dialogs.confirmar({
-                        titulo: acao.label,
-                        mensagem: `"${acao.label}" em ${no.label}.\n\nEsta ação altera o servidor.`,
-                        rotuloConfirmar: acao.label.toLowerCase(),
-                        destrutivo: true,
-                      });
-                      if (!ok) return;
-                    }
                     const r = await Api.runAction(id, { nodePath: caminho, actionId: acao.id });
                     // O database vem herdado da subárvore: o menu de contexto
                     // sabe onde clicou, e a aba precisa nascer amarrada.

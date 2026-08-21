@@ -9,6 +9,12 @@
 // o mesmo mecanismo do comando `db`; não há filtro de texto no SQL.
 import * as fs from 'fs';
 import mysql, { Connection, FieldPacket, Types } from 'mysql2';
+import {
+  ACOES_DE_TABELA,
+  ACOES_DE_VIEW,
+  modeloSql,
+  type ColunaDeModelo,
+} from './modelos';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import { TEMPLATES_MYSQL } from '../../../shared/tree/templates';
 import { CLI_MYSQL } from '../../../shared/terminal/clientes/mysql';
@@ -197,11 +203,9 @@ async function listarObjetos(
       // TABLE_ROWS é estimativa no InnoDB — suficiente para orientar, não para contar.
       detail: linha.TABLE_ROWS === null ? undefined : contagem(linha.TABLE_ROWS),
       hasChildren: true,
-      actions: [
-        { id: 'select', label: 'Abrir Query' },
-        { id: 'ddl', label: 'Ver DDL' },
-        { id: 'count', label: 'Contar linhas (exato)' },
-      ],
+      // O menu de tabela e o de view são diferentes: numa view não há o que
+      // inserir nem o que esvaziar (spec 040, AC-7).
+      actions: categoria === 'tables' ? ACOES_DE_TABELA : ACOES_DE_VIEW,
       meta: { schema, object: linha.TABLE_NAME, category: categoria },
     }));
   }
@@ -360,6 +364,39 @@ function qualificar(schema: string, objeto: string): string {
   return `${quoteIdentifier(schema, 'backtick')}.${quoteIdentifier(objeto, 'backtick')}`;
 }
 
+/**
+ * As colunas de um objeto, no formato que os modelos de SQL pedem.
+ *
+ * Consulta própria, e não reaproveitando `listarColunas`: aquela monta nós de
+ * árvore (rótulo, ícone, detalhe em texto), e reler `PK` de uma string montada
+ * para desenhar seria adivinhar o que já se sabia.
+ */
+async function colunasParaModelo(
+  conn: Connection,
+  schema: string,
+  objeto: string
+): Promise<ColunaDeModelo[]> {
+  const linhas = await query<{
+    COLUMN_NAME: string;
+    COLUMN_TYPE: string;
+    COLUMN_KEY: string;
+    EXTRA: string;
+  }>(
+    conn,
+    `SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_KEY, EXTRA
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+      ORDER BY ORDINAL_POSITION`,
+    [schema, objeto]
+  );
+  return linhas.map((linha) => ({
+    nome: linha.COLUMN_NAME,
+    tipo: linha.COLUMN_TYPE,
+    chave: linha.COLUMN_KEY === 'PRI',
+    autoIncremento: /auto_increment/i.test(linha.EXTRA ?? ''),
+  }));
+}
+
 /** nodePath de um objeto é [server, schema, categoria, objeto]. */
 async function acao(conn: Connection, request: ActionRequest): Promise<ActionResult> {
   const [, schema, categoria, objeto] = request.nodePath;
@@ -399,8 +436,16 @@ async function acao(conn: Connection, request: ActionRequest): Promise<ActionRes
       };
     }
 
-    default:
-      throw new Error(`Ação desconhecida: ${request.actionId}`);
+    default: {
+      // Modelos e destrutivos (spec 040): o driver monta o SQL, a interface o
+      // ABRE. Nada aqui executa.
+      const colunas = await colunasParaModelo(conn, schema, objeto);
+      return {
+        kind: 'statement',
+        title: objeto,
+        content: modeloSql(request.actionId, { alvo, colunas, estilo: 'backtick' }),
+      };
+    }
   }
 }
 

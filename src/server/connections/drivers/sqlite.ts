@@ -7,6 +7,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
+import {
+  ACOES_DE_TABELA_SQLITE,
+  ACOES_DE_VIEW,
+  modeloSql,
+  type ColunaDeModelo,
+} from './modelos';
 import { TEMPLATES_SQLITE } from '../../../shared/tree/templates';
 import type {
   OpcoesDeNavegacao,
@@ -110,17 +116,14 @@ function listarObjetos(
     icon: categoria.icon,
     detail: categoria.sqliteType === 'index' ? undefined : contarLinhas(db, linha.name),
     hasChildren: categoria.sqliteType !== 'index',
+    // Spec 040. O índice fica com o menu curto: não há o que selecionar nem o
+    // que esvaziar num índice.
     actions:
       categoria.sqliteType === 'table'
-        ? [
-            { id: 'select', label: 'Abrir Query' },
-            { id: 'ddl', label: 'Ver DDL' },
-            { id: 'count', label: 'Contar linhas (exato)' },
-          ]
-        : [
-            { id: 'select', label: 'Abrir Query' },
-            { id: 'ddl', label: 'Ver DDL' },
-          ],
+        ? ACOES_DE_TABELA_SQLITE
+        : categoria.sqliteType === 'view'
+          ? ACOES_DE_VIEW
+          : [{ id: 'ddl', label: 'Ver DDL' }],
     meta: { object: linha.name, category: categoria.id },
   }));
 }
@@ -246,6 +249,38 @@ function acao(db: DatabaseSync, request: ActionRequest): ActionResult {
   switch (request.actionId) {
     case 'select':
       return { kind: 'statement', title: objeto, content: `SELECT * FROM ${quote(objeto)} LIMIT 100;` };
+
+    case 'template-select':
+    case 'template-insert':
+    case 'template-update':
+    case 'template-delete':
+    case 'copiar':
+    case 'esvaziar':
+    case 'drop':
+    case 'drop-view': {
+      // `PRAGMA table_info` marca a chave, mas não o auto-incremento: no SQLite
+      // ele é `INTEGER PRIMARY KEY` (com ou sem `AUTOINCREMENT`), que é um
+      // apelido do `rowid`. Reconhecer pelo tipo é o que o próprio motor faz.
+      const linhas = db.prepare(`PRAGMA table_info(${quote(objeto)})`).all() as Array<{
+        name: string; type: string; pk: number;
+      }>;
+      const soUmaChave = linhas.filter((c) => c.pk > 0).length === 1;
+      const colunas: ColunaDeModelo[] = linhas.map((c) => ({
+        nome: c.name,
+        tipo: c.type || 'ANY',
+        chave: c.pk > 0,
+        autoIncremento: c.pk > 0 && soUmaChave && /^integer$/i.test(c.type ?? ''),
+      }));
+      return {
+        kind: 'statement',
+        title: objeto,
+        content: modeloSql(request.actionId, {
+          alvo: quote(objeto),
+          colunas,
+          estilo: 'double',
+        }),
+      };
+    }
 
     case 'ddl': {
       // O SQLite guarda o DDL original, então aqui não há reconstrução.

@@ -12,6 +12,12 @@ import * as fs from 'fs';
 import { Client, type ClientConfig, type FieldDef } from 'pg';
 import Cursor from 'pg-cursor';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
+import {
+  ACOES_DE_TABELA,
+  ACOES_DE_VIEW,
+  modeloSql,
+  type ColunaDeModelo,
+} from './modelos';
 import { TEMPLATES_POSTGRES } from '../../../shared/tree/templates';
 import { CLI_POSTGRES } from '../../../shared/terminal/clientes/postgres';
 import type {
@@ -288,11 +294,8 @@ async function listarObjetos(
     icon: (categoria === 'tables' ? 'table' : 'view') as TreeNode['icon'],
     detail: linha.linhas === null ? undefined : contagem(linha.linhas),
     hasChildren: true,
-    actions: [
-      { id: 'select', label: 'Abrir Query' },
-      { id: 'ddl', label: 'Ver DDL' },
-      { id: 'count', label: 'Contar linhas (exato)' },
-    ],
+    // Spec 040: numa view não há o que inserir nem o que esvaziar (AC-7).
+    actions: categoria === 'tables' ? ACOES_DE_TABELA : ACOES_DE_VIEW,
     meta: { schema, object: linha.nome, category: categoria },
   }));
 }
@@ -432,6 +435,26 @@ const DDL_PK_SQL = `
    WHERE n.nspname = $1 AND c.relname = $2 AND i.indisprimary
 `;
 
+/**
+ * As colunas no formato dos modelos de SQL (spec 040).
+ *
+ * `pg_get_serial_sequence` é o que revela um `serial`/`identity`: no PostgreSQL
+ * o auto-incremento não é uma marca na coluna, é uma sequência ligada a ela.
+ */
+const COLUNAS_MODELO_SQL = `
+  SELECT a.attname AS nome,
+         format_type(a.atttypid, a.atttypmod) AS tipo,
+         COALESCE(i.indisprimary, false) AS pk,
+         (pg_get_serial_sequence(c.oid::regclass::text, a.attname) IS NOT NULL
+          OR a.attidentity <> '') AS auto
+    FROM pg_attribute a
+    JOIN pg_class c ON c.oid = a.attrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    LEFT JOIN pg_index i ON i.indrelid = c.oid AND a.attnum = ANY(i.indkey) AND i.indisprimary
+   WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped
+   ORDER BY a.attnum
+`;
+
 /** nodePath de um objeto é [server, banco, schema, categoria, objeto]. */
 async function acao(clienteDe: ClienteDe, principal: string, request: ActionRequest): Promise<ActionResult> {
   const [, banco, schema, categoria, objeto] = request.nodePath;
@@ -444,6 +467,31 @@ async function acao(clienteDe: ClienteDe, principal: string, request: ActionRequ
   switch (request.actionId) {
     case 'select':
       return { kind: 'statement', title: objeto, content: `SELECT * FROM ${alvo} LIMIT 100;` };
+
+    case 'template-select':
+    case 'template-insert':
+    case 'template-update':
+    case 'template-delete':
+    case 'copiar':
+    case 'truncate':
+    case 'drop':
+    case 'drop-view': {
+      // O driver monta; a interface ABRE. Nada aqui executa (spec 040).
+      const { rows } = await client.query<{
+        nome: string; tipo: string; pk: boolean; auto: boolean;
+      }>(COLUNAS_MODELO_SQL, [schema, objeto]);
+      const colunas: ColunaDeModelo[] = rows.map((r) => ({
+        nome: r.nome,
+        tipo: r.tipo,
+        chave: r.pk,
+        autoIncremento: r.auto,
+      }));
+      return {
+        kind: 'statement',
+        title: objeto,
+        content: modeloSql(request.actionId, { alvo, colunas, estilo: 'double' }),
+      };
+    }
 
     case 'ddl': {
       if (categoria === 'views') {
