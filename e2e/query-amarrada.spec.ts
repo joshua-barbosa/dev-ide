@@ -122,7 +122,10 @@ test('a categoria Query lista, cria e apaga arquivo', async ({ page }) => {
   await expect(linhaArvore(page, 'main')).toBeVisible();
 
   await query.hover();
-  await page.getByRole('button', { name: 'Nova query' }).click();
+  await page.getByRole('button', { name: /Nova query/ }).click();
+  // O `+` pergunta O QUE criar antes do nome (spec 049): sem isso, só criava
+  // caderno quem soubesse digitar `.sqlbook`.
+  await page.getByRole('option', { name: /Query SQL/ }).click();
   await page.getByRole('textbox').fill('relatorio');
   await page.keyboard.press('Enter');
   await expect(aba(page, 'relatorio.sql')).toBeVisible();

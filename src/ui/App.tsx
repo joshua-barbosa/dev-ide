@@ -308,6 +308,11 @@ export function App() {
     abrirTerminalDaConexao: conexoesAcoes.abrirTerminalDaConexao,
     recarregarMetadados: conexoes.recarregarMetadados,
     abrirProcessos: (conexao) => ws.abrirProcessos(conexao.id, conexao.label),
+    novaQuery: async (connectionId, no, tipo) => {
+      const database = typeof no.meta?.database === 'string' ? no.meta.database : null;
+      if (database === null) return;
+      await conexoesAcoes.novaQuery({ connectionId, database }, tipo);
+    },
     estaAberta: (id) => conexoes.estado?.openIds.includes(id) === true,
     desconectar: conexoes.desconectar,
     abrirConexao: conexoes.abrirConexao,

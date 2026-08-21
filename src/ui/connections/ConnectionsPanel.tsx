@@ -240,7 +240,7 @@ export function ConnectionsPanel({
               no.meta?.queries === true ? (
                 <AcaoDaLinha
                   icone="lucide:plus"
-                  rotulo="Nova query"
+                  rotulo="Nova query — SQL ou Query Book"
                   // `recarregarNo` e não `recarregar`: o segundo recarrega a
                   // lista de CONEXÕES, e os arquivos são filhos deste nó. Sem
                   // isto o arquivo novo só aparecia no F5 seguinte.

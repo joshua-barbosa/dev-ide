@@ -46,7 +46,7 @@ export interface ConexoesAcoes {
   /** `Abrir Query` no nó de um database: abre o arquivo dele, já amarrado. */
   abrirQueryDoDatabase(id: string, no: TreeNode): Promise<void>;
   /** Cria, renomeia ou apaga um arquivo da categoria `Query`. */
-  novaQuery(vinculo: Vinculo): Promise<void>;
+  novaQuery(vinculo: Vinculo, tipo?: 'sql' | 'sqlbook'): Promise<void>;
   renomearQuery(vinculo: Vinculo, nome: string): Promise<void>;
   apagarQuery(vinculo: Vinculo, nome: string, caminho: string): Promise<void>;
 }
@@ -153,12 +153,50 @@ export function useConexoesAcoes(deps: ConexoesAcoesDeps): ConexoesAcoes {
     await ws.abrirArquivo(caminho);
   };
 
-  const novaQuery = async (vinculo: Vinculo): Promise<void> => {
+  /**
+   * Cria um arquivo na pasta `Query`, perguntando O QUÊ antes do nome.
+   *
+   * A primeira versão (spec 038) só perguntava o nome, e decidia o tipo em
+   * silêncio pela extensão: quem não soubesse digitar `.sqlbook` nunca criaria
+   * um caderno. Um botão `+` que não diz o que acrescenta é um botão que só
+   * serve para quem já sabe — e a ferramenta de referência pergunta.
+   *
+   * `tipo` vem preenchido quando a escolha já foi feita no menu do botão
+   * direito; do `+` ele vem vazio e a pergunta acontece.
+   */
+  const novaQuery = async (vinculo: Vinculo, tipo?: 'sql' | 'sqlbook'): Promise<void> => {
+    const escolhido = tipo ?? (await qi.pedir({
+      titulo: 'O que criar nesta conexão?',
+      placeholder: 'Tipo de arquivo',
+      opcoes: [
+        {
+          valor: 'sql',
+          rotulo: 'Query SQL',
+          detalhe: 'um arquivo .sql — uma ou várias consultas soltas',
+          icone: 'lucide:file-code',
+        },
+        {
+          valor: 'sqlbook',
+          rotulo: 'Query Book',
+          detalhe: 'um caderno .sqlbook — blocos de SQL com texto explicando',
+          icone: 'lucide:notebook-pen',
+        },
+      ],
+    }));
+    if (escolhido === null) return;
+
+    const extensao = escolhido === 'sqlbook' ? '.sqlbook' : '.sql';
     const nome = await pedirComRetentativa(
       qi,
-      { titulo: 'Nova query', placeholder: 'nome do arquivo' },
+      {
+        titulo: escolhido === 'sqlbook' ? 'Novo Query Book' : 'Nova query SQL',
+        placeholder: `nome do arquivo (${extensao})`,
+      },
       async (valor) => {
-        const { caminho } = await Api.createQuery(vinculo, valor);
+        // A extensão é acrescentada aqui, e não deixada por conta do servidor:
+        // lá o padrão é `.sql`, e um caderno pedido pelo menu viraria `.sql`.
+        const comExtensao = valor.toLowerCase().endsWith(extensao) ? valor : `${valor}${extensao}`;
+        const { caminho } = await Api.createQuery(vinculo, comExtensao);
         await ws.abrirArquivo(caminho);
       }
     );

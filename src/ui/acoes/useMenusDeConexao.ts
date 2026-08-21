@@ -38,6 +38,8 @@ export interface DepsDosMenus {
   recarregarMetadados(id: string): Promise<void>;
   /** Abre a lista de processos do servidor (spec 047). */
   abrirProcessos(conexao: PublicConnection): void;
+  /** Cria um arquivo na pasta `Query`, do tipo escolhido (spec 049). */
+  novaQuery(connectionId: string, no: TreeNode, tipo: 'sql' | 'sqlbook'): Promise<void>;
   estaAberta(id: string): boolean;
   desconectar(id: string): Promise<void>;
   abrirConexao(conexao: PublicConnection): Promise<void>;
@@ -55,6 +57,24 @@ export function useMenusDeConexao(deps: DepsDosMenus): MenusDeConexao {
         onMenuNo: (e, id, caminho, no, database) =>
           menuAbrir(e, [
             { label: 'Copiar nome', onClick: () => copiar(no.label) },
+
+            // A categoria `Query` (spec 038) cria ARQUIVO, não objeto de banco.
+            // As duas opções aparecem por extenso porque o `+` sozinho não diz
+            // o que acrescenta — foi o que o usuário notou depois da spec 048.
+            ...(no.meta?.queries === true
+              ? [
+                  null,
+                  {
+                    label: 'Nova query SQL…',
+                    onClick: () => deps.novaQuery(id, no, 'sql'),
+                  },
+                  {
+                    label: 'Novo Query Book…',
+                    onClick: () => deps.novaQuery(id, no, 'sqlbook'),
+                  },
+                ]
+              : []),
+
             ...(no.actions === undefined || no.actions.length === 0 ? [] : [null]),
             // Sem diálogo de confirmação, e de propósito (spec 040): uma
             // ação de menu GERA o SQL e o abre — nada é executado. O

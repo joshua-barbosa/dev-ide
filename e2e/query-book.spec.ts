@@ -19,9 +19,11 @@ async function novoCaderno(page: Page, nome: string): Promise<void> {
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await expandir(page, 'escola.db');
 
+  // Pelo `+`: ele PERGUNTA o tipo antes do nome (spec 049).
   await linhaArvore(page, 'Query').hover();
-  await page.getByRole('button', { name: 'Nova query' }).click();
-  await entradaRapida(page).fill(`${nome}.sqlbook`);
+  await page.getByRole('button', { name: /Nova query/ }).click();
+  await page.getByRole('option', { name: /Query Book/ }).click();
+  await entradaRapida(page).fill(nome);
   await page.keyboard.press('Enter');
   await expect(aba(page, `${nome}.sqlbook`)).toBeVisible();
 }
@@ -105,4 +107,50 @@ test('Ctrl+S grava o caderno, e ele volta igual depois do F5', async ({ page }) 
   await page.reload();
   await esperarIdePronta(page);
   await expect(page.getByRole('textbox', { name: /Bloco 1/ })).toHaveValue('SELECT 42');
+});
+
+
+// ---------------------------------------------------------------------------
+// Escolher o que criar (spec 049)
+// ---------------------------------------------------------------------------
+
+test('o + PERGUNTA o tipo antes do nome', async ({ page }) => {
+  // O botão sozinho não dizia o que acrescentava: quem não soubesse digitar
+  // `.sqlbook` nunca criaria um caderno.
+  await painelLateral(page, 'Database').click();
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+  const senha = page.getByLabel('Senha mestra');
+  if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
+  await expandir(page, 'escola.db');
+
+  await linhaArvore(page, 'Query').hover();
+  await page.getByRole('button', { name: /Nova query/ }).click();
+  await expect(page.getByRole('option', { name: /Query SQL/ })).toBeVisible();
+  await expect(page.getByRole('option', { name: /Query Book/ })).toBeVisible();
+});
+
+test('escolher Query SQL cria .sql; escolher Query Book cria .sqlbook', async ({ page }) => {
+  await painelLateral(page, 'Database').click();
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+  const senha = page.getByLabel('Senha mestra');
+  if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
+  await expandir(page, 'escola.db');
+
+  // Pelo menu do botão direito, que é onde as duas aparecem por extenso.
+  await linhaArvore(page, 'Query').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Nova query SQL…' }).click();
+  await entradaRapida(page).fill('so-sql');
+  await page.keyboard.press('Enter');
+  await expect(aba(page, 'so-sql.sql')).toBeVisible();
+
+  await painelLateral(page, 'Database').click();
+  await linhaArvore(page, 'Query').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Novo Query Book…' }).click();
+  await entradaRapida(page).fill('so-caderno');
+  await page.keyboard.press('Enter');
+  await expect(aba(page, 'so-caderno.sqlbook')).toBeVisible();
+  // E abriu como CADERNO, não como texto.
+  await expect(page.getByRole('button', { name: 'Add Code' })).toBeVisible();
 });
