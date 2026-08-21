@@ -101,6 +101,15 @@ const ICONES_DA_INTERFACE = [
   'lucide:play',
   'lucide:save',
   'lucide:x',
+  // A aba de tabela (spec 041): abrir a tabela, e exportar a página em dois
+  // formatos. `braces` são as chaves do JSON; `file-down` é a seta de baixar.
+  'lucide:table-2',
+  'lucide:file-down',
+  'lucide:braces',
+  // `Abrir Query` num database (spec 038). Ficou de fora na entrega e saía como
+  // bolinha — o guard de ícones só olhava literal entre aspas simples, e JSX usa
+  // aspas duplas.
+  'lucide:file-plus-2',
   // Navegador de pastas (spec 012): confirmar a pasta atual e subir um nível.
   'lucide:check',
   'lucide:corner-left-up',

@@ -89,7 +89,10 @@ function iconesLiteraisDaInterface(): ReadonlySet<string> {
       }
       if (!/\.tsx?$/.test(entrada.name)) continue;
       const conteudo = fs.readFileSync(alvo, 'utf8');
-      for (const casamento of conteudo.matchAll(/'([a-z0-9-]+:[a-z0-9-]+)'/g)) {
+      // Aspas simples E duplas: atributo de JSX usa `icone="lucide:x"`, e a
+      // versão anterior só via `'lucide:x'`. Três ícones da spec 041 passaram
+      // pelo buraco e apareceram como bolinha na tela do usuário.
+      for (const casamento of conteudo.matchAll(/['"]([a-z0-9-]+:[a-z0-9-]+)['"]/g)) {
         const nome = casamento[1];
         // Só conjuntos de ícone; `data:`, `http:` e afins não contam.
         if (nome !== undefined && /^(lucide|devicon|vscode-icons|logos):/.test(nome)) {

@@ -433,7 +433,12 @@ export function ConnectionsPanel({
           onClick={comErro(ctrl.recarregar)}
         />
         <AcaoDoPainel
-          icone="lucide:chevrons-down-up"
+          // `list-collapse`, como a árvore de arquivos: os dois chevrons
+          // convergindo do `chevrons-down-up` desenham um X em 14px, e X ao
+          // lado de outros botões lê como "fechar". A decisão está registrada
+          // em `shared/icons.ts` desde a spec 012 — este painel tinha
+          // divergido, e o ícone saía como bolinha por não estar empacotado.
+          icone="lucide:list-collapse"
           rotulo="Recolher tudo"
           desabilitada={!vault.unlocked}
           onClick={() => ctrl.recolherTudo()}
