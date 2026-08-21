@@ -16,6 +16,7 @@ import { EditorHost, type EditorHandle } from './editor/EditorHost';
 import { TerminalHost } from './terminal/TerminalHost';
 import { ResultGrid } from './grid/ResultGrid';
 import { TabelaHost } from './tabela/TabelaHost';
+import { ProcessosHost } from './processos/ProcessosHost';
 import type { QuickInputController } from './useQuickInput';
 import { MarkdownPreview } from './editor/MarkdownPreview';
 import { tokens } from './theme';
@@ -141,7 +142,7 @@ export function EditorGroup({
     !semAbas &&
     ativa !== null &&
     !mostrandoPreview &&
-    !['grid', 'conexao', 'terminal', 'tabela'].includes(ativa.type);
+    !['grid', 'conexao', 'terminal', 'tabela', 'processos'].includes(ativa.type);
 
   return (
     <Box
@@ -207,6 +208,24 @@ export function EditorGroup({
       {ativa?.type === 'grid' && (
         <ResultGrid {...(grades.get(ativa.id) ?? { resultado: null })} />
       )}
+
+      {/* A aba de processos (spec 047). Montada e escondida como as outras:
+          voltar a ela não pode custar outra consulta ao servidor. */}
+      {abas
+        .filter((t) => t.type === 'processos')
+        .map((t) => (
+          <Box
+            key={t.id}
+            sx={{ flex: 1, minHeight: 0, display: ativaId === t.id ? 'flex' : 'none' }}
+          >
+            <ProcessosHost
+              aba={t}
+              somenteLeitura={conexaoSomenteLeitura(t)}
+              onConfirmar={onConfirmarEscrita}
+              onErro={onErroDaTabela}
+            />
+          </Box>
+        ))}
 
       {/* A aba de tabela (spec 041). Cada uma fica MONTADA e apenas some de
           vista: remontar perderia a página, a ordenação e os filtros, e

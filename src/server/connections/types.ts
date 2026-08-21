@@ -31,6 +31,7 @@ import type {
   AlterRequest,
   AlterResult,
   AlterCapabilities,
+  ProcessoDoBanco,
   TableStructure,
   TableWriteRequest,
   TableWriteResult,
@@ -49,6 +50,7 @@ export type {
   AlterRequest,
   AlterResult,
   ChaveEstrangeira,
+  ProcessoDoBanco,
   ChecagemDaTabela,
   ColunaDetalhada,
   GatilhoDaTabela,
@@ -235,6 +237,15 @@ export interface Session {
   readonly alterStructure?: (request: AlterRequest) => Promise<AlterResult>;
   /** O que este banco sabe alterar. A interface só oferece o que está aqui. */
   readonly alterCapabilities?: () => AlterCapabilities;
+  /**
+   * Os processos rodando no servidor (spec 047).
+   *
+   * `null` quando o banco não tem o conceito — diferente de lista vazia, pela
+   * mesma razão da spec 045.
+   */
+  readonly processList?: () => Promise<readonly ProcessoDoBanco[] | null>;
+  /** Mata um processo. Só existe onde `processList` existe. */
+  readonly killProcess?: (id: string) => Promise<void>;
   readonly files?: RemoteFiles;
   readonly shell?: RemoteShell;
   readonly monitor?: HostMonitor;

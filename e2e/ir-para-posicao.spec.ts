@@ -8,7 +8,7 @@
 // `shared/__tests__/posicao.test.ts`; aqui se prova o caminho — clicar, digitar,
 // e o cursor estar onde se pediu.
 import { expect, test, type Page } from '@playwright/test';
-import { abrirArquivo, cursorDoEditor, entradaRapida, menu } from './fixtures';
+import { abrirArquivo, cursorDoEditor, entradaRapida, menu, esperarIdePronta } from './fixtures';
 
 const indicador = (page: Page) => page.getByRole('button', { name: 'Ir para linha e coluna' });
 
@@ -21,6 +21,7 @@ async function irPara(page: Page, texto: string): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('sem arquivo aberto o indicador fica inerte', async ({ page }) => {

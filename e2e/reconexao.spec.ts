@@ -4,7 +4,7 @@
 // de matar o terminal. O que se prova aqui é que o PROCESSO é o mesmo — não um
 // novo com a mesma aparência.
 import { expect, test, type Page } from '@playwright/test';
-import { menu } from './fixtures';
+import { menu, esperarIdePronta } from './fixtures';
 
 const terminal = (page: Page) => page.locator('[data-terminal="shell"]');
 
@@ -16,6 +16,7 @@ async function novoTerminal(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
   // Estado limpo: outro teste pode ter deixado terminal guardado.
   await page.evaluate(() => localStorage.removeItem('dev-ide.terminais'));
   await page.reload();

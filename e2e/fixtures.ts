@@ -57,6 +57,26 @@ export const statusDaExecucao = (page: Page): Locator =>
 export const painelLateral = (page: Page, nome: string): Locator =>
   page.getByRole('tab', { name: nome });
 
+/**
+ * Espera a IDE ficar interativa.
+ *
+ * O pacote da interface tem 5 MB (o Monaco responde pela maior parte), e o
+ * PRIMEIRO teste da suíte paga o Chrome a frio: contexto novo, cache vazio,
+ * nada compilado. O servidor entrega o arquivo em 13 ms; quem demora é o
+ * navegador analisando e executando.
+ *
+ * Sem esta espera, o primeiro clique de um `beforeEach` estourava o tempo de
+ * ação e o erro dizia "esperando por getByRole tab Database" — que parece
+ * seletor errado, e não é. Aconteceu três vezes em oito rodadas completas,
+ * sempre no primeiro arquivo em ordem alfabética.
+ *
+ * A suíte NÃO tem `retries` de propósito (ver `playwright.config.ts`), então a
+ * saída certa é esperar pelo que se está esperando de verdade.
+ */
+export async function esperarIdePronta(page: Page): Promise<void> {
+  await expect(painelLateral(page, 'Arquivos')).toBeVisible({ timeout: 60_000 });
+}
+
 /** Abre um arquivo pela árvore e espera a aba aparecer. */
 export async function abrirArquivo(page: Page, nome: string): Promise<void> {
   await linhaArvore(page, nome).click();

@@ -6,7 +6,7 @@
 // e — o ponto da spec — que escolher `Apagar` **não apaga nada**.
 import { expect, test, type Page } from '@playwright/test';
 import { CONEXAO, SENHA_MESTRA, TABELA, VIEW } from './global-setup';
-import { aba, destrancarCofre, expandir, linhaArvore, painelLateral, textoDoEditor } from './fixtures';
+import { aba, destrancarCofre, expandir, linhaArvore, painelLateral, textoDoEditor, esperarIdePronta } from './fixtures';
 
 async function menuDaTabela(page: Page, objeto = TABELA): Promise<void> {
   await painelLateral(page, 'Database').click();
@@ -27,6 +27,7 @@ async function menuDaTabela(page: Page, objeto = TABELA): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('o menu da tabela traz os modelos e os destrutivos', async ({ page }) => {

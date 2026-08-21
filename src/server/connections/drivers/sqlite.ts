@@ -408,6 +408,9 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     readTable: async (request) => lerTabela(db, request, DEFAULT_ROW_LIMIT),
     writeTable: (request) => escrever(db, request),
     tableStructure: async (nodePath) => estruturaDaTabela(db, nodePath),
+    // O SQLite é um arquivo, não um servidor: não há processo alheio para
+    // listar nem para matar. `null` diz isso; lista vazia diria outra coisa.
+    processList: async () => null,
     alterCapabilities: () => ({
       dialeto: DIALETOS.sqlite.nome,
       operacoes: [...operacoesDisponiveis(DIALETOS.sqlite)],

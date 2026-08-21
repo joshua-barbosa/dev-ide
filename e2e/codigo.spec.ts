@@ -5,7 +5,7 @@
 // `grep`, o mesmo nome em escopos diferentes. Aqui se prova o caminho: cursor,
 // atalho, salto e a lista quando há mais de um lugar.
 import { expect, test, type Page } from '@playwright/test';
-import { abrirArquivo, editor, esperarEditorPronto, menu, rodape } from './fixtures';
+import { abrirArquivo, editor, esperarEditorPronto, menu, rodape, esperarIdePronta } from './fixtures';
 
 /** Põe o cursor sobre a primeira ocorrência de um trecho da linha dada. */
 async function cursorEm(page: Page, linha: number, coluna: number): Promise<void> {
@@ -18,6 +18,7 @@ async function cursorEm(page: Page, linha: number, coluna: number): Promise<void
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('F12 atravessa para o arquivo onde a função foi definida', async ({ page }) => {

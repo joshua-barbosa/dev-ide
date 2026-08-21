@@ -7,6 +7,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { CONEXAO, SENHA_MESTRA, TABELA } from './global-setup';
 import {
   aba, destrancarCofre, entradaRapida, expandir, linhaArvore, painelLateral, textoDoEditor,
+  esperarIdePronta,
 } from './fixtures';
 
 const estrutura = (page: Page) => page.getByRole('tab', { name: 'estrutura' });
@@ -26,6 +27,7 @@ async function abrirTabela(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('a aba abre em Dados, e a Estrutura só busca quando é aberta', async ({ page }) => {

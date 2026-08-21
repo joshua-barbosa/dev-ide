@@ -7,7 +7,7 @@
 // arquivo que está ABERTO no editor, que é onde uma substituição silenciosa
 // mais estraga.
 import { expect, test, type Page } from '@playwright/test';
-import { entradaRapida, esperarEditorPronto, menu, painelLateral, textoDoEditor } from './fixtures';
+import { entradaRapida, esperarEditorPronto, menu, painelLateral, textoDoEditor, esperarIdePronta } from './fixtures';
 
 /**
  * Um termo por teste.
@@ -46,6 +46,7 @@ async function procurar(page: Page, termo: string): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('acha o termo, agrupado por arquivo, com a linha certa', async ({ page }) => {

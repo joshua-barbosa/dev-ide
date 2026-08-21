@@ -317,6 +317,7 @@ export function App() {
     excluir: conexoes.excluir,
     abrirTerminalDaConexao: conexoesAcoes.abrirTerminalDaConexao,
     recarregarMetadados: conexoes.recarregarMetadados,
+    abrirProcessos: (conexao) => ws.abrirProcessos(conexao.id, conexao.label),
     estaAberta: (id) => conexoes.estado?.openIds.includes(id) === true,
     desconectar: conexoes.desconectar,
     abrirConexao: conexoes.abrirConexao,
@@ -386,7 +387,7 @@ export function App() {
     // tabela é o botão da própria aba.
     temEditor:
       ws.active !== null &&
-      !['grid', 'conexao', 'tabela'].includes(ws.active.type),
+      !['grid', 'conexao', 'tabela', 'processos'].includes(ws.active.type),
     temProjeto: pasta.pasta !== '',
     abaSuja: ws.active?.dirty === true,
     temAba: ws.active !== null,

@@ -13,6 +13,7 @@ import {
   COLUNAS_ARVORE_SQL,
   COLUNAS_MODELO_SQL,
   CONTAGENS_SQL,
+  PROCESSOS_SQL,
 } from './mysql-sql';
 import { escrever, lerTabela } from './mysql-tabela';
 import { estruturaDaTabela } from './mysql-estrutura';
@@ -474,6 +475,31 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       exigirViva();
       await usar(conn, request.nodePath[1]);
       return lerTabela(conn, request, exibicao.rowLimit);
+    },
+    processList: async () => {
+      exigirViva();
+      const linhas = await query<{
+        id: number; usuario: string | null; banco: string | null; comando: string | null;
+        estado: string | null; segundos: number | null; sql_texto: string | null;
+        eu_mesmo: number;
+      }>(conn, PROCESSOS_SQL);
+      return linhas.map((l) => ({
+        id: String(l.id),
+        usuario: l.usuario,
+        banco: l.banco,
+        comando: l.comando,
+        estado: l.estado,
+        segundos: l.segundos === null ? null : Number(l.segundos),
+        sql: l.sql_texto,
+        euMesmo: Number(l.eu_mesmo) === 1,
+      }));
+    },
+    killProcess: async (id) => {
+      exigirViva();
+      // O id vem da lista que ESTE servidor devolveu, mas chega pela rede: se
+      // não for um número, não vira SQL. `KILL` não aceita parâmetro.
+      if (!/^\d+$/.test(id)) throw new Error(`Id de processo inválido: ${id}.`);
+      await query(conn, `KILL ${id}`);
     },
     alterCapabilities: () => ({
       dialeto: DIALETOS.mysql.nome,

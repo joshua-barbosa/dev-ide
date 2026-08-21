@@ -2,10 +2,12 @@
 import { expect, test } from '@playwright/test';
 import {
   aba, abrirArquivo, confirmar, cursorDoEditor, digitar, rodape, textoDoEditor,
+  esperarIdePronta,
 } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('trocar de aba preserva conteúdo, cursor e a marca de não salvo', async ({ page }) => {

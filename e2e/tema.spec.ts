@@ -4,7 +4,7 @@
 // fim, senão os testes de cor de outros arquivos falhariam por motivo que não
 // mencionam.
 import { expect, test, type Page } from '@playwright/test';
-import { entradaRapida, menu } from './fixtures';
+import { entradaRapida, menu, esperarIdePronta } from './fixtures';
 
 /** A cor de fundo do editor, resolvida pelo navegador. */
 async function fundoDoEditor(page: Page): Promise<string> {
@@ -29,6 +29,7 @@ async function escolherTema(page: Page, rotulo: string): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test.afterEach(async ({ page }) => {

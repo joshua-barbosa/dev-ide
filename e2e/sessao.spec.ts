@@ -9,10 +9,12 @@ import { expect, test } from '@playwright/test';
 import { PASTA_DEMO } from './global-setup';
 import {
   abrirArquivo, aba, editor, entradaRapida, esperarEditorPronto, menu, textoDoEditor,
+  esperarIdePronta,
 } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('as abas abertas voltam depois de recarregar', async ({ page }) => {

@@ -9,7 +9,7 @@
 // Aqui se prova o caminho: arrastar de verdade, ver o indicador, soltar, e o
 // conteúdo aparecer do lado certo.
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { linhaArvore, menu } from './fixtures';
+import { linhaArvore, menu, esperarIdePronta } from './fixtures';
 
 const grupo = (page: Page, n: number) => page.locator(`[data-grupo-editor="${n}"]`);
 const grupos = (page: Page) => page.locator('[data-grupo-editor]');
@@ -55,6 +55,7 @@ async function ponto(alvo: Locator, fx: number, fy: number): Promise<{ x: number
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('a IDE começa com um grupo só', async ({ page }) => {

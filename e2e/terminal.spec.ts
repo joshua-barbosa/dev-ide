@@ -11,10 +11,11 @@
 // `painel.spec.ts`; aqui fica o caminho até o PTY.
 import { expect, test } from '@playwright/test';
 import { CONEXAO, SENHA_MESTRA } from './global-setup';
-import { expandir, garantirCofreAberto, linhaArvore, menu, painelLateral } from './fixtures';
+import { expandir, garantirCofreAberto, linhaArvore, menu, painelLateral, esperarIdePronta } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('o menu Terminal deixou de ser promessa', async ({ page }) => {

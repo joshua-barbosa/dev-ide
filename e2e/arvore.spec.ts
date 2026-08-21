@@ -5,10 +5,11 @@
 // teto sozinha, deixando a árvore truncada em silêncio. A saída não foi
 // esconder mais pastas: foi parar de descer sem ser pedido.
 import { expect, test } from '@playwright/test';
-import { entradaRapida, esperarEditorPronto, linhaArvore, menu, painelLateral } from './fixtures';
+import { entradaRapida, esperarEditorPronto, linhaArvore, menu, painelLateral, esperarIdePronta } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('a pasta de dependência APARECE na árvore', async ({ page }) => {

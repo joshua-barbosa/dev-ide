@@ -276,6 +276,30 @@ export function createConnectionsRouter(
     res.json(ok(session.alterCapabilities()));
   }));
 
+  /** Os processos do servidor (spec 047). `null` = o banco não tem o conceito. */
+  router.get('/:id/processes', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (typeof session.processList !== 'function') {
+      res.json(ok(null));
+      return;
+    }
+    res.json(ok(await session.processList()));
+  }));
+
+  router.post('/:id/processes/:pid/kill', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (typeof session.killProcess !== 'function') {
+      throw new Error(`A conexão "${req.params.id}" não mata processos.`);
+    }
+    // A marca de somente-leitura vale aqui: matar um processo MUDA o servidor,
+    // e o sentido da marca é "esta conexão não muda nada".
+    if (vault.list().find((c) => c.id === req.params.id)?.readOnly === true) {
+      throw new Error('Esta conexão está marcada como somente-leitura.');
+    }
+    await session.killProcess(req.params.pid);
+    res.json(ok({ morto: req.params.pid }));
+  }));
+
   router.post('/:id/execute', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
     if (typeof session.execute !== 'function') {

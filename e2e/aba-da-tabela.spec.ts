@@ -5,7 +5,7 @@
 // caminho: abrir pela árvore, paginar, ordenar, filtrar e exportar.
 import { expect, test, type Page } from '@playwright/test';
 import { CONEXAO, SENHA_MESTRA, TABELA } from './global-setup';
-import { aba, destrancarCofre, expandir, linhaArvore, painelLateral, textoDoEditor } from './fixtures';
+import { aba, destrancarCofre, expandir, linhaArvore, painelLateral, textoDoEditor, esperarIdePronta } from './fixtures';
 
 const total = (page: Page) => page.locator('[data-total-da-tabela]');
 const paginaAtual = (page: Page) => page.locator('[data-pagina-atual]');
@@ -29,6 +29,7 @@ async function abrirTabela(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('abre com as linhas, o total REAL e o SQL à vista', async ({ page }) => {

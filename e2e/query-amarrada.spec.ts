@@ -12,6 +12,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { CONEXAO, SENHA_MESTRA } from './global-setup';
 import {
   aba, destrancarCofre, esperarEditorPronto, expandir, linhaArvore, painelLateral, rodape,
+  esperarIdePronta,
 } from './fixtures';
 
 /** As lentes do CodeLens, na ordem em que aparecem na tela. */
@@ -38,6 +39,7 @@ async function abrirQueryDoBanco(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('Abrir Query num database abre o arquivo dele, já amarrado', async ({ page }) => {

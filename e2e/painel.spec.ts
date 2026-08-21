@@ -3,7 +3,7 @@
 // Estes testes mexem em estado guardado no navegador (visibilidade e altura do
 // painel) e abrem terminais, que são processos. Cada um devolve o que mudou.
 import { expect, test, type Page } from '@playwright/test';
-import { editor, menu, saida } from './fixtures';
+import { editor, menu, saida, esperarIdePronta } from './fixtures';
 
 const painel = (page: Page) => page.locator('[data-painel-inferior]');
 const abaDoPainel = (page: Page, id: string) => page.locator(`[data-aba-painel="${id}"]`);
@@ -20,6 +20,7 @@ async function textoDoTerminal(page: Page): Promise<string> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
   // Estado limpo: outro teste pode ter deixado o painel escondido.
   await page.evaluate(() => {
     localStorage.removeItem('dev-ide.painel-visivel');

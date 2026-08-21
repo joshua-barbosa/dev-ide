@@ -4,13 +4,14 @@
 // recarregar e recolher tudo. E o que NÃO fica aqui: abrir pasta, que mora em
 // File → Open Folder.
 import { expect, test } from '@playwright/test';
-import { entradaRapida, linhaArvore, menu } from './fixtures';
+import { entradaRapida, linhaArvore, menu, esperarIdePronta } from './fixtures';
 
 const acao = (page: import('@playwright/test').Page, nome: string) =>
   page.getByRole('button', { name: nome, exact: true });
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('as quatro ações estão no cabeçalho, e abrir pasta NÃO está', async ({ page }) => {

@@ -8,7 +8,7 @@
 // um servidor, e preferência é estado global: deixar a fonte em 22 faria um
 // teste de outro arquivo falhar por motivo que ele não menciona.
 import { expect, test } from '@playwright/test';
-import { editor, esperarEditorPronto, menu, textoDoEditor } from './fixtures';
+import { editor, esperarEditorPronto, menu, textoDoEditor, esperarIdePronta } from './fixtures';
 
 /**
  * Substitui todo o conteúdo do editor pelo texto dado.
@@ -56,6 +56,7 @@ async function preferencias(page: import('@playwright/test').Page): Promise<Reco
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test.afterEach(async ({ page }) => {

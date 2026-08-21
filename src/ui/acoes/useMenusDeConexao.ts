@@ -36,6 +36,8 @@ export interface DepsDosMenus {
   excluir(conexao: PublicConnection): Promise<void>;
   abrirTerminalDaConexao(conexao: PublicConnection): Promise<void>;
   recarregarMetadados(id: string): Promise<void>;
+  /** Abre a lista de processos do servidor (spec 047). */
+  abrirProcessos(conexao: PublicConnection): void;
   estaAberta(id: string): boolean;
   desconectar(id: string): Promise<void>;
   abrirConexao(conexao: PublicConnection): Promise<void>;
@@ -80,6 +82,7 @@ export function useMenusDeConexao(deps: DepsDosMenus): MenusDeConexao {
               ? { label: 'Desconectar', onClick: () => deps.desconectar(conexao.id) }
               : { label: 'Conectar', onClick: () => deps.abrirConexao(conexao) },
             { label: 'Recarregar metadados', onClick: () => deps.recarregarMetadados(conexao.id) },
+            { label: 'Ver processos…', onClick: () => deps.abrirProcessos(conexao) },
             null,
             { label: 'Editar conexão…', onClick: () => deps.abrirFormulario(conexao) },
             { label: 'Excluir conexão', danger: true, onClick: () => deps.excluir(conexao) },

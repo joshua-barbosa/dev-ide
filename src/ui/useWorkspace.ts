@@ -118,6 +118,8 @@ export interface Workspace {
   abrirTexto(id: string, titulo: string, conteudo: string, linguagem: string): void;
   abrirFormulario(connectionId: string | null, titulo: string, grupoInicial?: string): void;
   abrirTerminal(connectionId: string | null, titulo: string): void;
+  /** A lista de processos de uma conexão (spec 047). */
+  abrirProcessos(connectionId: string, titulo: string): void;
   /**
    * A aba de uma TABELA (spec 041), com página, ordenação e filtros próprios.
    *
@@ -694,6 +696,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     abrirTexto: dados.abrirTexto,
     abrirFormulario: dados.abrirFormulario,
     abrirTerminal: dados.abrirTerminal,
+    abrirProcessos: dados.abrirProcessos,
     abrirTabela: dados.abrirTabela,
     abrirSemTitulo,
     fecharPorCaminho: (caminho: string) => {

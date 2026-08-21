@@ -7,7 +7,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { abrirArquivo, editor, esperarEditorPronto, linhaArvore, menu, textoDoEditor } from './fixtures';
+import { abrirArquivo, editor, esperarEditorPronto, linhaArvore, menu, textoDoEditor, esperarIdePronta } from './fixtures';
 import { PASTA_DEMO } from './global-setup';
 
 const demo = (): string => PASTA_DEMO(process.env.E2E_DATA ?? '');
@@ -29,6 +29,7 @@ async function comVigiaDePe(page: import('@playwright/test').Page): Promise<void
     timeout: 10_000,
   });
   await page.goto('/');
+  await esperarIdePronta(page);
   await conectado;
   await expect(linhaArvore(page, 'utils.ts')).toBeVisible();
 }

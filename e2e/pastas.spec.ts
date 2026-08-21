@@ -8,7 +8,7 @@
 // devolve a `demo` no fim, senão os testes de árvore de outros arquivos
 // falhariam por motivo que eles não mencionam.
 import { expect, test, type Page } from '@playwright/test';
-import { entradaRapida, linhaArvore, menu } from './fixtures';
+import { entradaRapida, linhaArvore, menu, esperarIdePronta } from './fixtures';
 
 /** A pasta aberta agora, lida do próprio painel. */
 async function pastaAberta(page: Page): Promise<string> {
@@ -28,6 +28,7 @@ async function escolher(page: Page, rotulo: string | RegExp): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test.afterEach(async ({ page }) => {

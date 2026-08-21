@@ -31,6 +31,8 @@ export interface AbasDeDados {
   ): void;
   abrirFormulario(connectionId: string | null, titulo: string, grupoInicial?: string): void;
   abrirTerminal(connectionId: string | null, titulo: string): void;
+  /** A lista de processos de uma conexão (spec 047). */
+  abrirProcessos(connectionId: string, titulo: string): void;
 }
 
 export function useAbasDeDados(store: TabStore, salvarGrupoFocado: () => void): AbasDeDados {
@@ -144,5 +146,22 @@ export function useAbasDeDados(store: TabStore, salvarGrupoFocado: () => void): 
   );
 
 
-  return { abrirQuery, abrirTexto, abrirTabela, abrirFormulario, abrirTerminal };
+  const abrirProcessos = useCallback(
+    (connectionId: string, titulo: string) => {
+      salvarGrupoFocado();
+      // Uma aba por conexão: reabrir foca a existente em vez de duplicar.
+      store.open({
+        id: `processos:${connectionId}`,
+        type: 'processos',
+        title: `Processos · ${titulo}`,
+        icon: 'lucide:activity',
+        meta: { connectionId },
+      });
+    },
+    [salvarGrupoFocado, store]
+  );
+
+  return {
+    abrirQuery, abrirTexto, abrirTabela, abrirFormulario, abrirTerminal, abrirProcessos,
+  };
 }

@@ -4,7 +4,7 @@
 // espelhado**. O backlog dava isso como impossível — exigia multi-cursor, e a
 // `textarea` de então tinha um cursor por definição do HTML. O Monaco resolve.
 import { expect, test, type Page } from '@playwright/test';
-import { entradaRapida, esperarEditorPronto, menu, textoDoEditor } from './fixtures';
+import { entradaRapida, esperarEditorPronto, menu, textoDoEditor, esperarIdePronta } from './fixtures';
 
 async function limparSnippets(page: Page): Promise<void> {
   await page.evaluate(async () => {
@@ -46,6 +46,7 @@ async function novoArquivo(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
   await limparSnippets(page);
 });
 

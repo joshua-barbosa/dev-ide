@@ -6,10 +6,12 @@ import { expect, test } from '@playwright/test';
 import {
   abrirArquivo, cursores, editor, entradaRapida, esperarEditorPronto, menu, rodape,
   textoDoEditor,
+  esperarIdePronta,
 } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('a barra traz os oito menus do VS Code', async ({ page }) => {

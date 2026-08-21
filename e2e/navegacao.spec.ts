@@ -4,13 +4,14 @@
 // a cada tecla digitada — registrar movimento de cursor faria o comando não
 // servir para nada.
 import { expect, test } from '@playwright/test';
-import { abrirArquivo, esperarEditorPronto, menu } from './fixtures';
+import { abrirArquivo, esperarEditorPronto, menu, esperarIdePronta } from './fixtures';
 
 const abaAtiva = (page: import('@playwright/test').Page) =>
   page.locator('[data-tab-active="true"]');
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('Back e Forward começam cinza', async ({ page }) => {

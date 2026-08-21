@@ -4,10 +4,11 @@
 // O teste PRECISA de um laço de verdade — com um script curto, `Stop` chegaria
 // depois do fim e o teste passaria sem provar nada.
 import { expect, test } from '@playwright/test';
-import { esperarEditorPronto, menu, saida, statusDaExecucao } from './fixtures';
+import { esperarEditorPronto, menu, saida, statusDaExecucao, esperarIdePronta } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('Stop fica cinza quando não há nada rodando', async ({ page }) => {

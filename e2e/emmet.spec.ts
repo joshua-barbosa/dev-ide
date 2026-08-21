@@ -4,7 +4,7 @@
 // pelo `emmet-monaco-es`, que o registra como **provedor de conclusão** — a
 // expansão aparece na lista de sugestões e é aceita com Tab.
 import { expect, test } from '@playwright/test';
-import { entradaRapida, esperarEditorPronto, menu, textoDoEditor } from './fixtures';
+import { entradaRapida, esperarEditorPronto, menu, textoDoEditor, esperarIdePronta } from './fixtures';
 
 /** Cria um arquivo sem título e escolhe a linguagem. */
 async function arquivoEm(
@@ -25,6 +25,7 @@ const arquivoHtml = (page: import('@playwright/test').Page) => arquivoEm(page, '
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('Emmet deixou de ser promessa no menu Edit', async ({ page }) => {

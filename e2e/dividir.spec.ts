@@ -5,7 +5,7 @@
 // como antes** — os vinte testes do store de abas passaram sem uma linha de
 // mudança.
 import { expect, test, type Page } from '@playwright/test';
-import { abrirArquivo, esperarEditorPronto, menu } from './fixtures';
+import { abrirArquivo, esperarEditorPronto, menu, esperarIdePronta } from './fixtures';
 
 const grupo = (page: Page, n: number) => page.locator(`[data-grupo-editor="${n}"]`);
 
@@ -22,6 +22,7 @@ async function dividir(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('a IDE começa com um grupo só', async ({ page }) => {

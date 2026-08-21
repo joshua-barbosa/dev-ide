@@ -6,6 +6,7 @@ import { expect, test } from '@playwright/test';
 import { bancoDeTeste, CONEXAO, SENHA_MESTRA, TABELA } from './global-setup';
 import {
   aba, confirmar, destrancarCofre, expandir, linhaArvore, painelLateral, textoDoEditor,
+  esperarIdePronta,
 } from './fixtures';
 
 /** Deixa o cofre trancado, que é o estado com que a IDE sempre inicia de fato. */
@@ -35,6 +36,7 @@ async function destrancarPeloBotao(page: import('@playwright/test').Page): Promi
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
   await painelLateral(page, 'Database').click();
   await expect(linhaArvore(page, 'ACME')).toBeVisible();
   await trancarCofre(page);

@@ -121,3 +121,21 @@ export const COLUNAS_MODELO_SQL = `
    WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped
    ORDER BY a.attnum
 `;
+
+/**
+ * Os processos do servidor (spec 047).
+ *
+ * `pg_backend_pid()` marca a linha da própria conexão da IDE. `state` e `query`
+ * só vêm preenchidos para quem tem privilégio — um usuário comum vê os próprios
+ * processos com detalhe e os alheios sem, e isso é do servidor, não da IDE.
+ */
+export const PROCESSOS_SQL = `
+  SELECT pid AS id, usename AS usuario, datname AS banco, state AS comando,
+         wait_event_type AS estado,
+         EXTRACT(EPOCH FROM (now() - query_start))::int AS segundos,
+         query AS sql_texto,
+         (pid = pg_backend_pid()) AS eu_mesmo
+    FROM pg_stat_activity
+   WHERE backend_type = 'client backend'
+   ORDER BY segundos DESC NULLS LAST
+`;

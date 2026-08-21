@@ -12,6 +12,7 @@ import type {
   ConnectionInput,
   ConnectionsState,
   ExecuteRequest,
+  ProcessoDoBanco,
   PublicConnection,
   QueryResult,
   SessionCapabilities,
@@ -282,6 +283,10 @@ export const Api = {
     request<TablePage>('POST', `${conexoes}/${id}/table`, payload),
   tableStructure: (id: string, nodePath: readonly string[]) =>
     request<TableStructure>('GET', comCaminho(`${conexoes}/${id}/structure`, nodePath)),
+  processList: (id: string) =>
+    request<ProcessoDoBanco[] | null>('GET', `${conexoes}/${id}/processes`),
+  killProcess: (id: string, pid: string) =>
+    request<{ morto: string }>('POST', `${conexoes}/${id}/processes/${encodeURIComponent(pid)}/kill`),
   alterStructure: (id: string, payload: AlterRequest) =>
     request<AlterResult>('POST', `${conexoes}/${id}/alter`, payload),
   alterCapabilities: (id: string) =>

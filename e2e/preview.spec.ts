@@ -5,7 +5,7 @@
 // chega ao DOM como marcação. As cargas de ataque em si são testadas sem
 // navegador, em `shared/__tests__/markdown.test.ts`; aqui se prova o caminho.
 import { expect, test, type Page } from '@playwright/test';
-import { editor, esperarEditorPronto, entradaRapida, menu, textoDoEditor } from './fixtures';
+import { editor, esperarEditorPronto, entradaRapida, menu, textoDoEditor, esperarIdePronta } from './fixtures';
 
 const preview = (page: Page) => page.locator('[data-markdown-preview]');
 // `exact`: o botão de fechar aba passou a se chamar "Fechar <arquivo>", e num
@@ -28,6 +28,7 @@ async function arquivoMarkdown(page: Page, nome: string, conteudo: string): Prom
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('um .md abre COMO markdown, e não como texto puro', async ({ page }) => {

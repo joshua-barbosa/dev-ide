@@ -7,6 +7,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
   aba, editor, esperarEditorPronto, entradaRapida, linhaArvore, menu, textoDoEditor,
+  esperarIdePronta,
 } from './fixtures';
 
 async function autoSave(page: Page): Promise<string> {
@@ -32,6 +33,7 @@ async function novoArquivoSalvo(page: Page, nome: string, conteudo: string): Pro
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test.afterEach(async ({ page }) => {

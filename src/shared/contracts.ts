@@ -260,6 +260,23 @@ export interface TableStructure {
   readonly checagens: ListaOuNaoSei<ChecagemDaTabela>;
 }
 
+// ---------------------------------------------------------------------------
+// A lista de processos (spec 047)
+// ---------------------------------------------------------------------------
+
+export interface ProcessoDoBanco {
+  readonly id: string;
+  readonly usuario: string | null;
+  readonly banco: string | null;
+  readonly comando: string | null;
+  readonly estado: string | null;
+  /** Há quanto tempo está assim, em segundos. */
+  readonly segundos: number | null;
+  readonly sql: string | null;
+  /** É a conexão da própria IDE — matá-la derrubaria a sessão. */
+  readonly euMesmo: boolean;
+}
+
 /**
  * Pedir o comando de uma alteração de estrutura (spec 046).
  *

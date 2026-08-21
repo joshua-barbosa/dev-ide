@@ -1,9 +1,10 @@
 // Execução de código e painel de saída.
 import { expect, test } from '@playwright/test';
-import { abrirArquivo } from './fixtures';
+import { abrirArquivo, esperarIdePronta } from './fixtures';
 
 test('executar código mostra a saída e o término no painel', async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
   await abrirArquivo(page, 'utils.ts');
 
   await page.getByRole('button', { name: 'Executar arquivo' }).click();

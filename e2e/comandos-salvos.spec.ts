@@ -4,7 +4,7 @@
 // senão a lista cresceria entre execuções e os testes veriam entradas que não
 // criaram.
 import { expect, test, type Page } from '@playwright/test';
-import { aba, entradaRapida, menu } from './fixtures';
+import { aba, entradaRapida, menu, esperarIdePronta } from './fixtures';
 
 async function abrirCaixa(page: Page): Promise<void> {
   await menu(page, 'Terminal');
@@ -22,6 +22,7 @@ async function limparSalvos(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test.afterEach(async ({ page }) => {

@@ -19,18 +19,13 @@ import {
   CONTAGENS_SQL,
   DDL_COLUNAS_SQL,
   DDL_PK_SQL,
-  ESTIMATIVA_SQL,
   FUNCOES_SQL,
+  PROCESSOS_SQL,
   SCHEMAS_SQL,
   TABELAS_SQL,
 } from './postgres-sql';
-import {
-  APELIDO_DA_CONTAGEM,
-  montarConsultaDeTabela,
-  normalizarPedidoDeTabela,
-} from './tabela';
-import { escreverNaTabela } from './transacao';
 import { estruturaDaTabela } from './postgres-estrutura';
+import { escrever, lerTabela } from './postgres-tabela';
 import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
 import {
   ACOES_DE_TABELA,
@@ -49,11 +44,6 @@ import type {
   Driver,
   ExecuteRequest,
   QueryResult,
-  TableColumn,
-  TablePage,
-  TableRequest,
-  TableWriteRequest,
-  TableWriteResult,
   ResolvedConfig,
   Session,
   TreeNode,
@@ -396,58 +386,6 @@ async function executar(
 
 
 
-/**
- * O total, contado — ou estimado, quando contar custaria caro.
- *
- * `COUNT(*)` no PostgreSQL varre a tabela. Acima do teto usa-se `reltuples` do
- * catálogo, **dizendo que é estimativa**. Com filtro em vigor conta-se sempre:
- * não há estimativa possível para um `WHERE`.
- */
-const MAX_LINHAS_PARA_CONTAR = 5_000_000;
-
-async function lerTabela(
-  client: Client,
-  request: TableRequest,
-  limitePadrao: number
-): Promise<TablePage> {
-  const [, , schema, , objeto] = request.nodePath;
-  if (schema === undefined || objeto === undefined) {
-    throw new Error('A aba de tabela exige um objeto selecionado.');
-  }
-
-  const { rows: cols } = await client.query<{
-    nome: string; tipo: string; obrigatorio: boolean; pk: boolean;
-  }>(COLUNAS_SQL, [schema, objeto]);
-  if (cols.length === 0) throw new Error(`Tabela não encontrada: ${schema}.${objeto}`);
-  const colunas: TableColumn[] = cols.map((c) => ({
-    name: c.nome, type: c.tipo, chave: c.pk, obrigatoria: c.obrigatorio,
-  }));
-
-  const pedido = normalizarPedidoDeTabela(
-    { ...request, porPagina: request.porPagina || limitePadrao },
-    colunas.map((c) => c.name)
-  );
-  const alvo = `${quoteIdentifier(schema, 'double')}.${quoteIdentifier(objeto, 'double')}`;
-  const { sql, contagem, params } = montarConsultaDeTabela(
-    { alvo, colunas: colunas.map((c) => c.name), estilo: 'double', marcador: 'numerado' },
-    pedido
-  );
-
-  const { rows: est } = await client.query<{ n: string | null }>(ESTIMATIVA_SQL, [schema, objeto]);
-  const bruto = est[0]?.n;
-  const aproximado = bruto === null || bruto === undefined ? null : Number(bruto);
-
-  let total: number | null = null;
-  if (params.length > 0 || aproximado === null || aproximado <= MAX_LINHAS_PARA_CONTAR) {
-    const { rows } = await client.query<Record<string, unknown>>(contagem, [...params]);
-    total = Number(rows[0]?.[APELIDO_DA_CONTAGEM] ?? 0);
-  }
-
-  const resultado = await executar(
-    client, { statement: sql, rowLimit: pedido.porPagina }, pedido.porPagina, params
-  );
-  return { resultado, columns: colunas, sql, total, totalEstimado: aproximado };
-}
 
 /**
  * O DDL de uma tabela ou view.
@@ -499,34 +437,6 @@ export async function ddlDe(
   );
 }
 
-/** Escrever pela grade (spec 044), em uma transação. */
-async function escrever(
-  client: Client,
-  request: TableWriteRequest
-): Promise<TableWriteResult> {
-  const [, , schema, , objeto] = request.nodePath;
-  if (schema === undefined || objeto === undefined) {
-    throw new Error('A escrita exige um objeto selecionado.');
-  }
-  const { rows } = await client.query<{ nome: string; pk: boolean }>(COLUNAS_SQL, [schema, objeto]);
-  if (rows.length === 0) throw new Error(`Tabela não encontrada: ${schema}.${objeto}`);
-
-  return escreverNaTabela(
-    {
-      alvo: `${quoteIdentifier(schema, 'double')}.${quoteIdentifier(objeto, 'double')}`,
-      colunas: rows.map((c) => ({ name: c.nome, chave: c.pk })),
-      estilo: 'double',
-      marcador: 'numerado',
-    },
-    request,
-    {
-      comecar: async () => { await client.query('BEGIN'); },
-      confirmar: async () => { await client.query('COMMIT'); },
-      desfazer: async () => { await client.query('ROLLBACK'); },
-      rodar: async (sql, params) => (await client.query(sql, [...params])).rowCount ?? 0,
-    }
-  );
-}
 
 /** nodePath de um objeto é [server, banco, schema, categoria, objeto]. */
 async function acao(clienteDe: ClienteDe, principal: string, request: ActionRequest): Promise<ActionResult> {
@@ -650,9 +560,39 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     onClosed: aoMorrer,
     children: (nodePath, opcoes) => navegar(clienteDe, rotulo, versao, exibicao, nodePath, opcoes),
     readTable: async (request) =>
-      lerTabela(await clienteDe(request.nodePath[1] ?? principal), request, exibicao.rowLimit),
+      lerTabela(
+        await clienteDe(request.nodePath[1] ?? principal),
+        request,
+        exibicao.rowLimit,
+        executar
+      ),
     writeTable: async (request) =>
       escrever(await clienteDe(request.nodePath[1] ?? principal), request),
+    processList: async () => {
+      const client = await clienteDe(principal);
+      const { rows } = await client.query<{
+        id: number; usuario: string | null; banco: string | null; comando: string | null;
+        estado: string | null; segundos: number | null; sql_texto: string | null;
+        eu_mesmo: boolean;
+      }>(PROCESSOS_SQL);
+      return rows.map((l) => ({
+        id: String(l.id),
+        usuario: l.usuario,
+        banco: l.banco,
+        comando: l.comando,
+        estado: l.estado,
+        segundos: l.segundos,
+        sql: l.sql_texto,
+        euMesmo: l.eu_mesmo,
+      }));
+    },
+    killProcess: async (id) => {
+      if (!/^\d+$/.test(id)) throw new Error(`Id de processo inválido: ${id}.`);
+      const client = await clienteDe(principal);
+      // `pg_terminate_backend` aceita parâmetro — ao contrário do `KILL` do
+      // MySQL —, então aqui o id vai parametrizado de verdade.
+      await client.query('SELECT pg_terminate_backend($1)', [Number(id)]);
+    },
     alterCapabilities: () => ({
       dialeto: DIALETOS.postgres.nome,
       operacoes: [...operacoesDisponiveis(DIALETOS.postgres)],

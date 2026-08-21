@@ -8,7 +8,7 @@
 // spec: que **nada é gravado sem o usuário ler o SQL e dizer sim**.
 import { expect, test, type Page } from '@playwright/test';
 import { CONEXAO, SENHA_MESTRA, TABELA_EDITAVEL } from './global-setup';
-import { aba, destrancarCofre, expandir, linhaArvore, painelLateral } from './fixtures';
+import { aba, destrancarCofre, expandir, linhaArvore, painelLateral, esperarIdePronta } from './fixtures';
 
 /**
  * Responde ao diálogo de gravação.
@@ -46,6 +46,7 @@ async function editarPrimeiroNome(page: Page, valor: string): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await esperarIdePronta(page);
 });
 
 test('editar uma célula deixa a alteração PENDENTE, sem tocar no banco', async ({ page }) => {

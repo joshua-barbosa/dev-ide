@@ -53,3 +53,20 @@ export const ESTIMATIVA_SQL = `
     FROM information_schema.TABLES
    WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
 `;
+
+/**
+ * Os processos do servidor (spec 047).
+ *
+ * `CONNECTION_ID()` marca a linha da PRÓPRIA conexão da IDE: ela aparece na
+ * lista como qualquer outra, e matá-la derrubaria a sessão do usuário.
+ *
+ * Ordenado por tempo decrescente porque o processo que incomoda é o mais
+ * antigo — e quem abre esta tela está caçando exatamente esse.
+ */
+export const PROCESSOS_SQL = `
+  SELECT ID AS id, USER AS usuario, DB AS banco, COMMAND AS comando,
+         STATE AS estado, TIME AS segundos, INFO AS sql_texto,
+         (ID = CONNECTION_ID()) AS eu_mesmo
+    FROM information_schema.PROCESSLIST
+   ORDER BY TIME DESC
+`;
