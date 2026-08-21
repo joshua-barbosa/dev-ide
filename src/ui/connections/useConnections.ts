@@ -11,6 +11,49 @@ import type {
 import { gruposExistentes } from '../../shared/connections/form';
 import { padraoDeFiltro } from '../../shared/tree/filtro';
 import { Api, type DriverInfo } from '../api';
+import type { ArquivoDeQuery, Vinculo } from '../../shared/sql/vinculo';
+
+/**
+ * O nó da categoria `Query`, injetado pela interface sob cada database.
+ *
+ * `__queries__` com underscores dos dois lados para não colidir com nome de
+ * categoria vindo de driver — `tables`, `views`, `functions`, `procedures`.
+ */
+export const ID_DE_QUERIES = '__queries__';
+
+function noDeQueries(database: string): TreeNode {
+  return {
+    id: ID_DE_QUERIES,
+    label: 'Query',
+    icon: 'query',
+    hasChildren: true,
+    meta: { queries: true, database },
+  };
+}
+
+/** Um arquivo `.sql` salvo, como nó de árvore. */
+function noDeArquivo(arquivo: ArquivoDeQuery): TreeNode {
+  return {
+    id: arquivo.nome,
+    label: arquivo.nome.replace(/\.sql$/i, ''),
+    icon: 'query',
+    hasChildren: false,
+    meta: { arquivoDeQuery: true, nome: arquivo.nome, caminho: arquivo.caminho },
+  };
+}
+
+/**
+ * O vínculo de um caminho de árvore que termina na categoria `Query`.
+ *
+ * O database é o penúltimo pedaço, e isso vale para os três drivers:
+ * `[main, __queries__]` no SQLite, `[server, servidor-2, __queries__]` no MySQL,
+ * `[server, nuntius, __queries__]` no PostgreSQL.
+ */
+function vinculoDoCaminho(connectionId: string, caminho: readonly string[]): Vinculo | null {
+  if (caminho[caminho.length - 1] !== ID_DE_QUERIES) return null;
+  const database = caminho[caminho.length - 2];
+  return database === undefined ? null : { connectionId, database };
+}
 
 /** Chave de cache: id da conexão mais o caminho do nó. */
 const chaveDe = (id: string, caminho: readonly string[]): string =>
@@ -39,12 +82,14 @@ export interface ConnectionsController {
   recolherTudo(): void;
   abrirConexao(conexao: PublicConnection): Promise<void>;
   desconectar(id: string): Promise<void>;
-  alternarNo(id: string, caminho: readonly string[]): Promise<void>;
+  alternarNo(id: string, caminho: readonly string[], no?: TreeNode): Promise<void>;
   recarregarMetadados(id: string): Promise<void>;
   excluir(conexao: PublicConnection): Promise<void>;
   salvarConexao(input: ConnectionInput, id: string | null, conectar: boolean): Promise<void>;
   readonly grupos: readonly string[];
   acharConexao(id: unknown): PublicConnection | null;
+  /** Todas as conexões, achatadas — a árvore é aninhada, a escolha não é. */
+  todasAsConexoes(): readonly PublicConnection[];
   /** Filtro em vigor num nó de categoria, ou `null`. */
   filtroDe(id: string, caminho: readonly string[]): string | null;
   definirFiltro(id: string, caminho: readonly string[], bruto: string): Promise<void>;
@@ -188,14 +233,32 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
   filtrosRef.current = filtros;
 
   const buscarFilhos = useCallback(
-    async (id: string, caminho: readonly string[]) => {
+    async (id: string, caminho: readonly string[], noPai?: TreeNode) => {
       const chave = chaveDe(id, caminho);
       setCarregando((atual) => marcar(atual, chave, true));
       try {
+        // A categoria `Query` é NOSSA, não do driver: os arquivos são da IDE, e
+        // pedir que cada driver liste arquivos que ele não conhece inverteria o
+        // Artigo III. O driver declara que o nó é um database (`meta.database`);
+        // a interface decide que isso merece uma pasta de queries (spec 038).
+        // Reconhecido pelo CAMINHO, e não pelo nó: `recarregarNo` só recebe o
+        // caminho, e sem isto criar um arquivo não o fazia aparecer — a árvore
+        // ia pedir filhos ao DRIVER, que não sabe dos nossos arquivos. Achado
+        // pelo teste de ponta a ponta.
+        const vinculo = vinculoDoCaminho(id, caminho);
+        if (vinculo !== null) {
+          const arquivos = await Api.listQueries(vinculo);
+          setFilhos((atual) => new Map(atual).set(chave, arquivos.map(noDeArquivo)));
+          return;
+        }
+
         // Lido por ref: `buscarFilhos` é chamado de dentro de outros callbacks,
         // e depender do valor capturado buscaria com o filtro de um render atrás.
         const nos = await Api.children(id, caminho, padraoDeFiltro(filtrosRef.current.get(chave) ?? ''));
-        setFilhos((atual) => new Map(atual).set(chave, nos));
+        const database = typeof noPai?.meta?.database === 'string' ? noPai.meta.database : null;
+        setFilhos((atual) =>
+          new Map(atual).set(chave, database === null ? nos : [noDeQueries(database), ...nos])
+        );
       } finally {
         setCarregando((atual) => marcar(atual, chave, false));
       }
@@ -238,7 +301,7 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
   );
 
   const alternarNo = useCallback(
-    async (id: string, caminho: readonly string[]) => {
+    async (id: string, caminho: readonly string[], no?: TreeNode) => {
       const chave = `no:${chaveDe(id, caminho)}`;
       if (expandidos.has(chave)) {
         setExpandidos((atual) => marcar(atual, chave, false));
@@ -247,7 +310,7 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
       setExpandidos((atual) => marcar(atual, chave, true));
       if (!filhos.has(chaveDe(id, caminho))) {
         try {
-          await buscarFilhos(id, caminho);
+          await buscarFilhos(id, caminho, no);
         } catch (e) {
           setExpandidos((atual) => marcar(atual, chave, false));
           throw e;
@@ -343,6 +406,15 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
 
   /** Conexão por id, achatando a árvore. Aceita `unknown` porque a origem é o
    *  `meta` da aba, que é um registro sem tipo. */
+  const todasAsConexoes = useCallback((): readonly PublicConnection[] => {
+    if (estado === null) return [];
+    const juntar = (grupo: GroupNode): PublicConnection[] => [
+      ...grupo.connections,
+      ...grupo.groups.flatMap(juntar),
+    ];
+    return juntar(estado.tree);
+  }, [estado]);
+
   const acharConexao = useCallback(
     (id: unknown): PublicConnection | null => {
       if (typeof id !== 'string' || estado === null) return null;
@@ -384,6 +456,7 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
       salvarConexao,
       grupos,
       acharConexao,
+      todasAsConexoes,
       filtroDe,
       definirFiltro,
       recarregarNo,
@@ -395,7 +468,7 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
       desconectar, destrancar, drivers, erro, estado, excluir, expandidos, filhos,
       garantirDestrancado,
       grupos, pedidoDeSenha, recarregar, recarregarMetadados, responderSenha,
-      salvarConexao, trancar,
+      salvarConexao, todasAsConexoes, trancar,
     ]
   );
 }

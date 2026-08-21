@@ -5,10 +5,14 @@
 // "▶ arquivo" mandar SQL para o Node na versão anterior.
 import { useCallback, useRef, useState } from 'react';
 import type { QueryResult } from '../shared/contracts';
+import type { Vinculo } from '../shared/sql/vinculo';
 import { Api } from './api';
 import type { Workspace } from './useWorkspace';
 
 export type ModoExecucao = 'file' | 'block' | 'function';
+
+/** De onde o resultado de um statement vai aparecer. */
+export type ModoDeStatement = 'run' | 'tab' | 'json';
 
 export interface EstadoGrade {
   readonly resultado: QueryResult | null;
@@ -32,9 +36,46 @@ export interface Execution {
   readonly executando: boolean;
   definirConexaoAtiva(id: string | null): void;
   executar(modo: ModoExecucao, linguagem: string): Promise<void>;
+  /**
+   * Executa UM statement, vindo do `Run | +Tab | JSON` do editor (spec 038).
+   *
+   * `modo` decide onde o resultado cai: `run` repinta a aba daquele arquivo,
+   * `tab` abre uma nova ao lado, `json` abre o texto numa aba sem título.
+   */
+  executarStatement(
+    modo: ModoDeStatement,
+    statement: string,
+    caminho: string | null,
+    titulo: string,
+    /**
+     * O vínculo que a ABA já traz, para aba que não é arquivo.
+     *
+     * Uma aba nascida de um nó da árvore (dois cliques numa tabela, `Ver DDL`,
+     * `Criar em Tables`) já sabe conexão e database, e não tem caminho — o
+     * vínculo por caminho não a alcança. Sem isto ela passava a PERGUNTAR o que
+     * já sabia; foi assim que a spec 038 quebrou um teste da spec 009.
+     */
+    daAba?: Vinculo | null
+  ): Promise<void>;
   /** Encerra a execução em andamento, se houver. */
   parar(): Promise<void>;
   limparSaida(): void;
+}
+
+/**
+ * O resultado como o usuário espera ver em JSON: uma lista de OBJETOS.
+ *
+ * A grade guarda linhas como vetores, com as colunas à parte — bom para desenhar
+ * tabela, ilegível como JSON. Aqui as duas metades se juntam.
+ */
+function paraObjetos(r: QueryResult): Record<string, unknown>[] {
+  return r.rows.map((linha) => {
+    const objeto: Record<string, unknown> = {};
+    r.columns.forEach((coluna, i) => {
+      objeto[coluna.name] = linha[i] ?? null;
+    });
+    return objeto;
+  });
 }
 
 /**
@@ -45,7 +86,22 @@ export interface Execution {
  */
 export type AoFalharExecucao = (mensagem: string) => void;
 
-export function useExecution(ws: Workspace, aoFalhar: AoFalharExecucao = () => {}): Execution {
+/**
+ * Como descobrir contra quem um arquivo roda (spec 038).
+ *
+ * Injetado, e não importado, pelo mesmo motivo do `aoFalhar`: o gancho continua
+ * testável, e quem sabe perguntar ao usuário é o App.
+ */
+export interface DepsDeVinculoNaExecucao {
+  vinculoDe(caminho: string | null): Vinculo | null;
+  garantir(caminho: string | null): Promise<Vinculo | null>;
+}
+
+export function useExecution(
+  ws: Workspace,
+  aoFalhar: AoFalharExecucao = () => {},
+  vinculos: DepsDeVinculoNaExecucao = { vinculoDe: () => null, garantir: async () => null }
+): Execution {
   const [grades, setGrades] = useState<ReadonlyMap<string, EstadoGrade>>(new Map());
   const [saida, setSaida] = useState<readonly LinhaSaida[]>([]);
   const [status, setStatus] = useState({ texto: '', erro: false });
@@ -66,37 +122,104 @@ export function useExecution(ws: Workspace, aoFalhar: AoFalharExecucao = () => {
     setGrades((atual) => new Map(atual).set(id, estado));
   }, []);
 
+
+
+  /**
+   * Onde o resultado de um arquivo mora.
+   *
+   * Era `grid:<conexão>` — uma aba por CONEXÃO, o que fazia duas queries do
+   * mesmo banco brigarem pela mesma. Por ARQUIVO, `Run` tem onde repintar e
+   * `+Tab` tem de onde se distinguir. O contador é global de propósito: o que
+   * ele precisa garantir é um id novo, não uma sequência bonita.
+   */
+  const proximaAba = useRef(0);
+
+  const executarStatement = useCallback(
+    async (
+      modo: ModoDeStatement,
+      statement: string,
+      caminho: string | null,
+      titulo: string,
+      daAba: Vinculo | null = null
+    ): Promise<void> => {
+      const texto = statement.trim();
+      if (texto === '') return;
+
+      // Perguntar ANTES de abrir a aba: desistir da escolha não pode deixar uma
+      // aba de resultado vazia para trás (AC-18).
+      let vinculo: Vinculo | null;
+      try {
+        // O da aba tem precedência sobre perguntar, e menos que o do caminho:
+        // um arquivo salvo manda mais que a memória de como a aba nasceu.
+        vinculo = vinculos.vinculoDe(caminho) ?? daAba ?? (await vinculos.garantir(caminho));
+      } catch (e) {
+        const msg = (e as Error).message;
+        setStatus({ texto: 'erro', erro: true });
+        aoFalhar(msg);
+        return;
+      }
+      if (vinculo === null) return;
+
+      const base = `grid:${caminho ?? titulo}`;
+      const gridId = modo === 'tab' ? `${base}#${(proximaAba.current += 1)}` : base;
+      const rotulo = `${titulo} · ${vinculo.database}`;
+
+      if (modo !== 'json') {
+        ws.store.open({ id: gridId, type: 'grid', title: 'Resultado', meta: {} });
+        atualizarGrade(gridId, { resultado: null, erro: null, carregando: true, rotulo });
+      }
+
+      try {
+        const resultado = await Api.execute(vinculo.connectionId, {
+          statement: texto,
+          database: vinculo.database,
+          rowLimit: 500,
+        });
+        if (modo === 'json') {
+          ws.abrirSemTitulo(JSON.stringify(paraObjetos(resultado), null, 2), 'json');
+        } else {
+          atualizarGrade(gridId, { resultado, erro: null, carregando: false, rotulo });
+        }
+        setStatus({
+          texto: `${resultado.rowCount} linha(s) · ${resultado.durationMs}ms`,
+          erro: false,
+        });
+      } catch (e) {
+        const msg = (e as Error).message;
+        if (modo !== 'json') {
+          atualizarGrade(gridId, { resultado: null, erro: msg, carregando: false, rotulo });
+        }
+        setStatus({ texto: 'erro', erro: true });
+        aoFalhar(msg);
+      }
+    },
+    [aoFalhar, atualizarGrade, vinculos, ws]
+  );
+
+  /**
+   * O `Ctrl+Enter` de sempre, agora obedecendo ao vínculo do arquivo (spec 038).
+   *
+   * Antes ele caía na `conexaoAtiva` — a conexão que estava aberta na árvore —,
+   * e era assim que uma query rodava no banco errado sem dar erro. Agora é o
+   * MESMO caminho do `Run` do CodeLens: dois caminhos que discordassem sobre
+   * onde a query roda seriam pior que nenhum.
+   */
   const executarSql = useCallback(async () => {
     const aba = ws.active;
     const editor = ws.editorRef.current;
     if (aba === null || editor === null) return;
 
-    const meta = aba.meta as { connectionId?: string };
-    const connectionId = meta.connectionId ?? conexaoAtiva.current;
-    if (connectionId === null || connectionId === undefined) {
-      escrever('Nenhuma conexão ativa. Abra uma conexão no painel Database.\n', true);
-      return;
-    }
-
-    // Havendo seleção, executa só ela — é como se depura uma query longa.
+    // Havendo seleção, executa só ela — é como se depura uma query longa (AC-17).
     const statement = (editor.getSelection() || editor.getValue()).trim();
     if (statement === '') return;
 
-    const gridId = `grid:${connectionId}`;
-    ws.store.open({ id: gridId, type: 'grid', title: 'Resultado', meta: {} });
-    atualizarGrade(gridId, { resultado: null, erro: null, carregando: true, rotulo: aba.title });
-
-    try {
-      const resultado = await Api.execute(connectionId, { statement, rowLimit: 500 });
-      atualizarGrade(gridId, { resultado, erro: null, carregando: false, rotulo: aba.title });
-      setStatus({ texto: `${resultado.rowCount} linha(s) · ${resultado.durationMs}ms`, erro: false });
-    } catch (e) {
-      const msg = (e as Error).message;
-      atualizarGrade(gridId, { resultado: null, erro: msg, carregando: false, rotulo: aba.title });
-      setStatus({ texto: 'erro', erro: true });
-      aoFalhar(msg);
-    }
-  }, [aoFalhar, atualizarGrade, escrever, ws]);
+    const meta = aba.meta as { path?: string | null; connectionId?: string; database?: string };
+    const daAba =
+      typeof meta.connectionId === 'string' && typeof meta.database === 'string'
+        ? { connectionId: meta.connectionId, database: meta.database }
+        : null;
+    await executarStatement('run', statement, meta.path ?? null, aba.title, daAba);
+  }, [executarStatement, ws]);
 
   const executarCodigo = useCallback(
     async (modo: ModoExecucao, linguagem: string, funcao?: string, args?: unknown[]) => {
@@ -202,6 +325,7 @@ export function useExecution(ws: Workspace, aoFalhar: AoFalharExecucao = () => {
       setConexaoVisivel(id);
     },
     executar,
+    executarStatement,
     parar: async () => {
       const id = execucaoAtual.current;
       if (id === null) return;

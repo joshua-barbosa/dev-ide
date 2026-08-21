@@ -17,6 +17,8 @@ import { createComandosRouter } from './routes/comandos';
 import { ComandosStore } from './comandos';
 import { createSnippetsRouter } from './routes/snippets';
 import { createBuscaRouter } from './routes/busca';
+import { createQueriesRouter } from './routes/queries';
+import { VinculosStore } from './vinculos';
 import { createLinguagemRouter } from './routes/linguagem';
 import { SnippetsStore } from './snippets';
 import { EstadoStore } from './estado';
@@ -51,6 +53,7 @@ const execucoes = new RegistroDeExecucoes();
 
 // ---- Conexões (banco, redis, arquivos remotos, ssh) ----
 const registry = registerBuiltinDrivers(new DriverRegistry());
+const vinculos = new VinculosStore();
 const vault = new Vault(process.env.DEV_IDE_VAULT ?? Vault.defaultPath());
 const pool = new SessionPool(async (connectionId) => {
   const config = vault.resolve(connectionId);
@@ -86,6 +89,14 @@ app.use('/api', createWorkspaceRouter(estado, ROOT));
 app.use('/api/commands', createComandosRouter(comandos, estado));
 app.use('/api/snippets', createSnippetsRouter(snippets));
 app.use('/api/search', createBuscaRouter(estado));
+app.use(
+  '/api/queries',
+  createQueriesRouter({
+    vinculos,
+    // Lembrança de conexão apagada não pode sobreviver à conexão (AC-11).
+    idsDeConexao: () => vault.list().map((c) => c.id),
+  })
+);
 app.use('/api/language', createLinguagemRouter(estado));
 
 function validateFilePath(raw: string): string {

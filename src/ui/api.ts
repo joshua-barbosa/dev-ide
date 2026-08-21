@@ -16,6 +16,7 @@ import type {
 } from '../shared/contracts';
 import type { DriverPanel, ConnectionKind, FieldSpec } from '../shared/contracts';
 import type { PatchDePreferencias, Preferencias } from '../shared/prefs';
+import type { ArquivoDeQuery, Vinculo } from '../shared/sql/vinculo';
 import type {
   ComandoDescoberto, ComandoSalvo, DestinoDeComando,
 } from '../shared/comandos-salvos';
@@ -271,4 +272,31 @@ export const Api = {
     request<QueryResult>('POST', `${conexoes}/${id}/execute`, payload),
   runAction: (id: string, payload: ActionRequest) =>
     request<ActionResult>('POST', `${conexoes}/${id}/action`, payload),
+
+  // ---- Arquivos de query (spec 038) ----
+  //
+  // Abrir e salvar NÃO estão aqui: passam por `readFile`/`saveFile`, para o
+  // arquivo de query ser um arquivo como qualquer outro no editor. Estas rotas
+  // fazem só o que aquelas não fazem.
+  listQueries: (v: Vinculo) =>
+    request<ArquivoDeQuery[]>(
+      'GET',
+      `/api/queries?connectionId=${encodeURIComponent(v.connectionId)}` +
+        `&database=${encodeURIComponent(v.database)}`
+    ),
+  openQuery: (v: Vinculo, nome?: string) =>
+    request<{ caminho: string }>('POST', '/api/queries/open', { ...v, nome }),
+  createQuery: (v: Vinculo, nome: string) =>
+    request<{ caminho: string }>('POST', '/api/queries', { ...v, nome }),
+  renameQuery: (v: Vinculo, de: string, para: string) =>
+    request<{ caminho: string }>('POST', '/api/queries/rename', { ...v, de, para }),
+  deleteQuery: (v: Vinculo, nome: string) =>
+    request<{ caminho: string }>('DELETE', '/api/queries', { ...v, nome }),
+
+  listLinks: () =>
+    request<{ raiz: string; links: Record<string, Vinculo> }>('GET', '/api/queries/links'),
+  rememberLink: (caminho: string, v: Vinculo) =>
+    request<{ caminho: string }>('POST', '/api/queries/links', { caminho, ...v }),
+  forgetLink: (caminho: string) =>
+    request<{ caminho: string }>('DELETE', '/api/queries/links', { caminho }),
 };

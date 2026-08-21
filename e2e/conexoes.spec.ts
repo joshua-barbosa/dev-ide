@@ -94,7 +94,13 @@ test('executar consulta abre a grade com colunas tipadas e as linhas', async ({ 
   await expect(grade).toContainText('maria');
   // Qualificado pelo nome da aba: a contagem também aparece no painel de saída,
   // e um seletor ambíguo falharia por modo estrito em vez de por regressão.
-  await expect(page.getByText(new RegExp(`${TABELA}\\.sql · 2 linha\\(s\\)`))).toBeVisible();
+  //
+  // O `· main ·` no meio entrou com a spec 038: o cabeçalho passou a dizer
+  // contra qual DATABASE a query rodou. Numa IDE em que a mesma conexão fala
+  // com vários bancos, saber de qual vieram as linhas não é enfeite.
+  await expect(
+    page.getByText(new RegExp(`${TABELA}\\.sql · main · 2 linha\\(s\\)`))
+  ).toBeVisible();
 });
 
 test('menu do botão direito oferece as ações do nó e abre o DDL', async ({ page }) => {

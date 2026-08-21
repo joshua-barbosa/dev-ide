@@ -122,6 +122,10 @@ async function listarBancos(conn: Connection, exibicao: Exibicao): Promise<TreeN
     hasChildren: true,
     meta: {
       schema: linha.SCHEMA_NAME,
+      // `database` é o que diz à interface que este nó pode abrir uma query
+      // (spec 038). Quem declara é o driver; quem decide que isso merece um
+      // botão é a interface — Artigo III.
+      database: linha.SCHEMA_NAME,
       main: linha.SCHEMA_NAME.toLowerCase() === exibicao.main.trim().toLowerCase(),
     },
   }));
@@ -283,6 +287,23 @@ function colunasDe(fields: FieldPacket[] | undefined): ColumnInfo[] {
     name: field.name,
     type: TYPE_NAMES.get(field.columnType ?? -1),
   }));
+}
+
+/**
+ * Põe a conexão no database do vínculo antes de executar (spec 038).
+ *
+ * Uma conexão MySQL enxerga TODOS os schemas a que o usuário tem acesso — o que
+ * torna `SELECT * FROM alunos` uma consulta ambígua: ela roda no schema em que a
+ * conexão está, e responde de um banco qualquer sem dar erro. É a mesma
+ * armadilha que o comando `db` do usuário resolve qualificando com `banco.tabela`.
+ *
+ * O `USE` é emitido a cada execução, e não uma vez na abertura, porque a conexão
+ * é compartilhada entre abas: sem isto, abrir uma query de `servidor-2` mudaria o
+ * banco da query de `servidor-4` que já estava aberta ao lado.
+ */
+async function usar(conn: Connection, database: string | undefined): Promise<void> {
+  if (database === undefined || database === '') return;
+  await query(conn, `USE ${quoteIdentifier(database, 'backtick')}`);
 }
 
 function executar(conn: Connection, request: ExecuteRequest): Promise<QueryResult> {
@@ -484,8 +505,9 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       exigirViva();
       return navegar(conn, rotulo, versao, exibicao, nodePath, opcoes);
     },
-    execute: (request) => {
+    execute: async (request) => {
       exigirViva();
+      await usar(conn, request.database);
       return executar(conn, { ...request, rowLimit: request.rowLimit ?? exibicao.rowLimit });
     },
     runAction: (request) => {

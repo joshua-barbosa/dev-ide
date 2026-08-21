@@ -14,7 +14,6 @@ import { ThemeProvider } from '@mui/material/styles';
 import { aplicarVariaveis, criarTema } from './theme';
 import { NOMES_DE_TEMA, ROTULO_DO_TEMA, TEMAS, type NomeDoTema } from '../shared/temas';
 import { temPreview } from '../shared/markdown';
-import { dicaDePosicao, interpretarPosicao } from '../shared/editor/posicao';
 import { Sidebar } from './Sidebar';
 import { Resizer } from './Resizer';
 import { useSidebarWidth } from './useSidebarWidth';
@@ -34,7 +33,6 @@ import { MenuBar } from './MenuBar';
 import { StatusBar } from './StatusBar';
 import { QuickInput } from './QuickInput';
 import { pedirComRetentativa, useQuickInput } from './useQuickInput';
-import { LINGUAGENS } from '../shared/editor/idiomas';
 import {
   comandoDoAtalho, filtrarComandos, formatarAtalho,
   type ContextoDeComandos, type IdImplementado,
@@ -50,6 +48,8 @@ import {
   normalizarTerminais, paneisVisiveis, SEM_TERMINAIS,
 } from '../shared/terminais';
 import { useExecution } from './useExecution';
+import { useVinculo } from './query/useVinculo';
+import { ligarCodeLensDeSql, propsDeVinculo, useAcoesDeQuery } from './query/useAcoesDeQuery';
 import { usePasta } from './files/usePasta';
 import { usePrefs } from './usePrefs';
 import { useAutoSave } from './useAutoSave';
@@ -63,6 +63,7 @@ import { useArquivoAcoes } from './acoes/useArquivoAcoes';
 import { useCodigoAcoes } from './acoes/useCodigoAcoes';
 import { usePastaAcoes } from './acoes/usePastaAcoes';
 import { useConexoesAcoes } from './acoes/useConexoesAcoes';
+import { useStatusAcoes } from './acoes/useStatusAcoes';
 import { useSnippetsAcoes } from './acoes/useSnippetsAcoes';
 
 export function App() {
@@ -88,9 +89,20 @@ export function App() {
   const ws = useWorkspace({ confirmar: dialogs.confirmar });
   const conexoes = useConnections({ confirmar: dialogs.confirmar });
   const menu = useContextMenu(falhaDaIde);
-  const exec = useExecution(ws, (mensagem) => problemas.registrar('execução', mensagem));
   const pasta = usePasta();
   const qi = useQuickInput();
+  // O vínculo precisa existir ANTES da execução: é ele que diz contra quem cada
+  // arquivo roda (spec 038).
+  const vinculos = useVinculo({
+    qi,
+    conexoes: () => conexoes.todasAsConexoes(),
+    garantirDestrancado: conexoes.garantirDestrancado,
+  });
+  const exec = useExecution(
+    ws,
+    (mensagem) => problemas.registrar('execução', mensagem),
+    vinculos
+  );
   const prefs = usePrefs(falhaDaIde);
   const tema = prefs.prefs['workbench.theme'] as NomeDoTema;
   // As variáveis CSS precisam existir ANTES da primeira pintura: escrevê-las
@@ -180,7 +192,7 @@ export function App() {
    * linha obriga a decidir a linguagem antes de saber o que se vai escrever.
    */
   const novoArquivo = (): void => {
-    ws.novoSemTitulo();
+    ws.abrirSemTitulo();
   };
 
   const arquivoAcoes = useArquivoAcoes({
@@ -190,7 +202,21 @@ export function App() {
   const pastaAcoes = usePastaAcoes({
     qi, pasta, avisar: dialogs.avisar, abrirArquivo: ws.abrirArquivo,
   });
-  const conexoesAcoes = useConexoesAcoes({ qi, ws, exec, conexoes });
+  /** O caminho do arquivo em foco — a chave do vínculo e do painel de símbolos. */
+  const caminhoAtivo =
+    (ws.active?.meta as { path?: string | null } | undefined)?.path ?? null;
+
+  const conexoesAcoes = useConexoesAcoes({
+    qi,
+    ws,
+    exec,
+    conexoes,
+    vinculos,
+    confirmar: dialogs.confirmar,
+  });
+
+  const acoesDeQuery = useAcoesDeQuery(ws, conexoesAcoes);
+
 
   /**
    * Abre o `config.json` como aba do editor.
@@ -228,40 +254,12 @@ export function App() {
     if (escolhido !== null) await prefs.definir({ 'workbench.theme': escolhido as NomeDoTema });
   };
 
-  const escolherLinguagem = async (): Promise<void> => {
-    const escolhida = await qi.pedir({
-      titulo: 'Selecionar linguagem',
-      placeholder: 'Linguagem',
-      opcoes: LINGUAGENS.map(([valor, rotulo, icone]) => ({ valor, rotulo, icone })),
-    });
-    if (escolhida !== null) trocarLinguagem(escolhida);
-  };
-
-  /**
-   * A caixa de "ir para", do `Ctrl+G` e do clique em "Ln x, Col y".
-   *
-   * Aceita `12` e `12:5`, como o VS Code — e também `12,5`, que é o formato que
-   * a própria barra de status mostra e que a mão copia de lá.
-   */
-  const irParaLinha = async (): Promise<void> => {
-    const editor = ws.editorRef.current;
-    if (editor === null) return;
-    const total = editor.totalDeLinhas();
-
-    const alvo = await qi.pedir({
-      titulo: 'Ir para linha e coluna',
-      placeholder: dicaDePosicao(total),
-    });
-    if (alvo === null) return;
-
-    const posicao = interpretarPosicao(alvo, total);
-    if (posicao === null) return;
-
-    editor.goToPosition(posicao.linha, posicao.coluna);
-    if (ws.activeId !== null) {
-      nav.registrarSalto({ abaId: ws.activeId, linha: posicao.linha });
-    }
-  };
+  const { escolherLinguagem, irParaLinha } = useStatusAcoes({
+    qi,
+    ws,
+    trocarLinguagem,
+    registrarSalto: nav.registrarSalto,
+  });
 
   /** Leva a uma posição do histórico: ativa a aba e pula para a linha. */
   const irPara = (posicao: { abaId: string; linha: number } | null): void => {
@@ -360,6 +358,9 @@ export function App() {
   const avisar = (p: Promise<unknown>): void => {
     void p.catch(falhaDaIde);
   };
+
+  // O `Run | +Tab | JSON` do editor precisa de alguém que saiba executar.
+  ligarCodeLensDeSql(ws, exec, avisar);
 
   /**
    * Liga cada id declarado à função que o executa.
@@ -570,7 +571,7 @@ export function App() {
           onAbrirArquivo={ws.abrirArquivo}
           pasta={pasta}
           onIrParaSimbolo={irParaSimbolo}
-          caminhoAtivo={(ws.active?.meta as { path?: string | null } | undefined)?.path ?? null}
+          caminhoAtivo={caminhoAtivo}
           conexoes={{
             ctrl: conexoes,
             onAbrirQuery: conexoesAcoes.abrirQueryDoNo,
@@ -579,8 +580,10 @@ export function App() {
             onAbrirTerminal: (conexao: PublicConnection) => avisar(conexoesAcoes.abrirTerminalDaConexao(conexao)),
             onFiltrar: (id, caminho, atual) => avisar(conexoesAcoes.filtrarCategoria(id, caminho, atual)),
             onNovoObjeto: conexoesAcoes.novoObjeto,
+            // Arquivos de query (spec 038) — ver `query/useAcoesDeQuery`.
+            ...acoesDeQuery,
             onErro: falhaDeConexao,
-            onMenuNo: (e, id, caminho, no) =>
+            onMenuNo: (e, id, caminho, no, database) =>
               menu.abrir(e, [
                 { label: 'Copiar nome', onClick: () => copiar(no.label) },
                 ...(no.actions === undefined || no.actions.length === 0 ? [] : [null]),
@@ -598,7 +601,11 @@ export function App() {
                       if (!ok) return;
                     }
                     const r = await Api.runAction(id, { nodePath: caminho, actionId: acao.id });
-                    ws.abrirQuery(`acao:${id}:${r.title}`, r.title, r.content, id);
+                    // O database vem herdado da subárvore: o menu de contexto
+                    // sabe onde clicou, e a aba precisa nascer amarrada.
+                    ws.abrirQuery(
+                      `acao:${id}:${r.title}`, r.title, r.content, id, database
+                    );
                   },
                 })),
               ]),
@@ -740,6 +747,7 @@ export function App() {
           contexto.temEditor ? () => avisar(escolherLinguagem()) : undefined
         }
         onIrParaPosicao={contexto.temEditor ? () => avisar(irParaLinha()) : undefined}
+        {...propsDeVinculo(linguagem, caminhoAtivo, contexto.temEditor, vinculos, avisar)}
       />
 
       <QuickInput

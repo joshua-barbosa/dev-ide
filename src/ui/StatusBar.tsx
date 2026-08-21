@@ -6,6 +6,7 @@
 import Box from '@mui/material/Box';
 import { rotuloDaLinguagem } from '../shared/editor/idiomas';
 import { tokens } from './theme';
+import type { Vinculo } from '../shared/sql/vinculo';
 
 export interface StatusBarProps {
   readonly titulo: string | null;
@@ -17,10 +18,20 @@ export interface StatusBarProps {
   readonly onTrocarLinguagem?: () => void;
   /** Ausente quando não há editor: aí a posição é só informação (spec 026). */
   readonly onIrParaPosicao?: () => void;
+  /**
+   * Contra quem o arquivo SQL em foco roda (spec 038).
+   *
+   * `null` quando não há vínculo, e ausente quando o arquivo nem é SQL — são
+   * coisas diferentes: a primeira mostra "sem conexão" e convida a escolher, a
+   * segunda não mostra nada.
+   */
+  readonly vinculo?: Vinculo | null;
+  readonly onTrocarVinculo?: () => void;
 }
 
 export function StatusBar({
   titulo, sujo, linha, coluna, linguagem, onTrocarLinguagem, onIrParaPosicao,
+  vinculo, onTrocarVinculo,
 }: StatusBarProps) {
   const rotulo = rotuloDaLinguagem(linguagem);
 
@@ -54,13 +65,37 @@ export function StatusBar({
         </Box>
       )}
 
+      {onTrocarVinculo !== undefined && (
+        <Box
+          component="button"
+          onClick={onTrocarVinculo}
+          aria-label="Trocar a conexão desta query"
+          title={
+            vinculo === null || vinculo === undefined
+              ? 'Esta query ainda não tem conexão. Clique para escolher.'
+              : `Roda em ${vinculo.database}. Clique para trocar.`
+          }
+          data-vinculo={vinculo === null || vinculo === undefined ? '' : vinculo.database}
+          sx={{ ml: 'auto', ...estiloDeBotao(true) }}
+        >
+          {vinculo === null || vinculo === undefined
+            ? '⚠ sem conexão'
+            : `⛁ ${vinculo.database}`}
+        </Box>
+      )}
+
       <Box
         component="button"
         disabled={onIrParaPosicao === undefined}
         onClick={onIrParaPosicao}
         aria-label="Ir para linha e coluna"
         title="Ir para linha e coluna (Ctrl+G)"
-        sx={{ ml: 'auto', ...estiloDeBotao(onIrParaPosicao !== undefined) }}
+        sx={{
+          // `ml: auto` empurra tudo para a direita, e só pode estar no PRIMEIRO
+          // botão da direita — que é o do vínculo quando ele aparece.
+          ...(onTrocarVinculo === undefined ? { ml: 'auto' } : {}),
+          ...estiloDeBotao(onIrParaPosicao !== undefined),
+        }}
       >
         Ln {linha}, Col {coluna}
       </Box>

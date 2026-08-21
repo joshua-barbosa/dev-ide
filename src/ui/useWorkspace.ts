@@ -106,12 +106,33 @@ export interface Workspace {
   abrirArquivo(caminho: string): Promise<void>;
   /** Abre o arquivo e leva o cursor à linha e coluna dadas. */
   abrirArquivoEm(caminho: string, linha: number, coluna: number): Promise<void>;
-  abrirQuery(id: string, titulo: string, conteudo: string, connectionId: string): void;
+  abrirQuery(
+    id: string,
+    titulo: string,
+    conteudo: string,
+    connectionId: string,
+    database: string | null
+  ): void;
   /** Abre texto solto numa aba, sem arquivo em disco por trás. */
   abrirTexto(id: string, titulo: string, conteudo: string, linguagem: string): void;
   abrirFormulario(connectionId: string | null, titulo: string, grupoInicial?: string): void;
   abrirTerminal(connectionId: string | null, titulo: string): void;
-  novoSemTitulo(): void;
+  /** Aba sem título; sem argumentos é o `New Text File` do menu. */
+  abrirSemTitulo(conteudo?: string, linguagem?: string): void;
+  /**
+   * A aba ativa do editor cujo modelo é esta URI (spec 038).
+   *
+   * O CodeLens dá a URI do modelo em que foi clicado; com a tela dividida, é o
+   * que distingue "o Run da esquerda" do "Run da direita".
+   */
+  abaDaUri(uri: string): Tab | null;
+  /**
+   * Fecha a aba de um arquivo pelo CAMINHO, sem perguntar nada.
+   *
+   * Nasce do apagar da categoria `Query` (spec 038, AC-29): a aba de um arquivo
+   * que não existe mais não pode ficar aberta — o próximo `Ctrl+S` o recriaria.
+   */
+  fecharPorCaminho(caminho: string): void;
   adotarArquivo(idAntigo: string, caminho: string): void;
   /** Devolve o caminho gravado, ou `null` se não havia o que salvar. */
   salvar(): Promise<string | null>;
@@ -183,6 +204,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     store, tabs, activeId, grupos, grupoFocado, aoEsvaziarFoco, ehEditavel, metaDe,
   });
   const { editorRef, registrarEditor, salvarNaAba, salvarGrupoFocado, salvarTodosOsGrupos } = ed;
+  const { grupoDaUri } = ed;
 
 
   /**
@@ -256,13 +278,24 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   );
 
   const abrirQuery = useCallback(
-    (id: string, titulo: string, conteudo: string, connectionId: string) => {
+    (
+      id: string,
+      titulo: string,
+      conteudo: string,
+      connectionId: string,
+      database: string | null
+    ) => {
       salvarGrupoFocado();
       store.open({
         id,
         type: 'sql',
         title: titulo,
-        meta: { path: null, content: conteudo, language: 'sql', view: null, connectionId },
+        // O `database` viaja no `meta` porque esta aba NÃO é um arquivo: não
+        // tem caminho, e o vínculo por caminho (spec 038) não a alcança. Ela já
+        // nasce sabendo — veio de um nó da árvore.
+        meta: {
+          path: null, content: conteudo, language: 'sql', view: null, connectionId, database,
+        },
       });
     },
     [salvarGrupoFocado, store]
@@ -346,18 +379,31 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
    * Nasce suja porque conteúdo que não está em disco é exatamente o que a marca
    * de não salvo significa.
    */
-  const novoSemTitulo = useCallback(() => {
-    salvarGrupoFocado();
-    const titulo = proximoSemTitulo(store.list().map((t) => t.title));
-    store.open({
-      id: `untitled:${titulo}`,
-      type: 'editor',
-      title: titulo,
-      dirty: true,
-      icon: ICONE_DE_ARQUIVO,
-      meta: { path: null, content: '', language: 'plain', view: null },
-    });
-  }, [salvarGrupoFocado, store]);
+  /**
+   * Abre uma aba sem título, com o conteúdo e a linguagem dados.
+   *
+   * Nasce suja porque conteúdo que não está em disco é exatamente o que a marca
+   * de não salvo significa.
+   *
+   * O `JSON` do CodeLens de SQL (spec 038) usa a forma com conteúdo: o
+   * resultado como texto é algo para LER e copiar, não uma grade, e uma aba sem
+   * título é o lugar do que ainda não decidiu se vira arquivo.
+   */
+  const abrirSemTitulo = useCallback(
+    (conteudo = '', linguagem = 'plain') => {
+      salvarGrupoFocado();
+      const titulo = proximoSemTitulo(store.list().map((t) => t.title));
+      store.open({
+        id: `untitled:${titulo}`,
+        type: 'editor',
+        title: titulo,
+        dirty: true,
+        icon: ICONE_DE_ARQUIVO,
+        meta: { path: null, content: conteudo, language: linguagem, view: null },
+      });
+    },
+    [salvarGrupoFocado, store]
+  );
 
   const fechar = useCallback(
     async (id: string) => {
@@ -714,7 +760,21 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     abrirTexto,
     abrirFormulario,
     abrirTerminal,
-    novoSemTitulo,
+    abrirSemTitulo,
+    fecharPorCaminho: (caminho: string) => {
+      for (const aba of store.list()) {
+        const meta = aba.meta as { path?: string | null };
+        // `store.close` e não `fechar`: `fechar` pergunta sobre alteração não
+        // salva, e não há o que salvar num arquivo que acabou de ser apagado.
+        if (meta.path === caminho) store.close(aba.id);
+      }
+    },
+    abaDaUri: (uri: string) => {
+      const grupo = grupoDaUri(uri);
+      if (grupo === null) return null;
+      const id = store.ativaDoGrupo(grupo);
+      return id === null ? null : store.get(id);
+    },
     adotarArquivo,
     marcarAbaSuja,
     ativar: (id) => store.activate(id),

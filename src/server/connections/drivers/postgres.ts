@@ -570,8 +570,12 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     onClosed: aoMorrer,
     children: (nodePath, opcoes) => navegar(clienteDe, rotulo, versao, exibicao, nodePath, opcoes),
     execute: async (request) => {
-      // O banco do nó ativo manda; sem ele, cai no principal.
-      const banco = request.nodePath?.[1] ?? principal;
+      // O vínculo do arquivo manda (spec 038); depois o nó ativo; depois o
+      // principal. A ordem importa: uma query amarrada a `nuntius` não pode
+      // rodar em `postgres` só porque a árvore estava aberta em outro lugar —
+      // é a mesma armadilha do `pgdb` sem `-d`, que responde do banco errado
+      // sem dar erro.
+      const banco = request.database ?? request.nodePath?.[1] ?? principal;
       return executar(await clienteDe(banco), request, exibicao.rowLimit);
     },
     runAction: (request) => acao(clienteDe, principal, request),

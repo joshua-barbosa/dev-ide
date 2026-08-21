@@ -117,6 +117,15 @@ export interface ColumnInfo {
 
 export interface ExecuteRequest {
   readonly statement: string;
+  /**
+   * Contra qual database rodar (spec 038).
+   *
+   * Existe como campo próprio, e não como `nodePath` montado pela interface,
+   * porque **quem sabe alcançar um database é o driver**: o PostgreSQL abre
+   * outra conexão, o MySQL emite `USE`, e o SQLite não tem o conceito. Fazer a
+   * UI montar o caminho seria pedir que ela soubesse as três coisas.
+   */
+  readonly database?: string;
   readonly nodePath?: readonly string[];
   readonly rowLimit?: number;
   readonly timeoutMs?: number;

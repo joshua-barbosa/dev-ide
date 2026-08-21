@@ -8,6 +8,7 @@ import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import type { DriverPanel, GroupNode, PublicConnection, TreeNode } from '../../shared/contracts';
+import type { Vinculo } from '../../shared/sql/vinculo';
 import { Icon } from '../Icon';
 import { TreeRow } from '../tree/TreeRow';
 import type { ConnectionsController } from './useConnections';
@@ -15,16 +16,51 @@ import type { ConnectionsController } from './useConnections';
 export interface ConnectionsPanelProps {
   readonly painel: DriverPanel;
   readonly ctrl: ConnectionsController;
-  readonly onMenuNo: (e: React.MouseEvent, id: string, caminho: string[], no: TreeNode) => void;
+  readonly onMenuNo: (
+    e: React.MouseEvent,
+    id: string,
+    caminho: string[],
+    no: TreeNode,
+    database: string | null
+  ) => void;
   readonly onMenuConexao: (e: React.MouseEvent, conexao: PublicConnection) => void;
-  readonly onAbrirQuery: (id: string, no: TreeNode) => void;
+  readonly onAbrirQuery: (id: string, no: TreeNode, database: string | null) => void;
   /** Recebe o grupo quando vem do botão de uma pasta, para já vir preenchido. */
   readonly onNovaConexao: (grupo?: string) => void;
   readonly onRenomearGrupo: (caminho: string) => void;
   readonly onAbrirTerminal: (conexao: PublicConnection) => void;
   readonly onFiltrar: (id: string, caminho: readonly string[], atual: string | null) => void;
-  readonly onNovoObjeto: (id: string, caminho: readonly string[], no: TreeNode) => void;
+  readonly onNovoObjeto: (
+    id: string,
+    caminho: readonly string[],
+    no: TreeNode,
+    database: string | null
+  ) => void;
+  // ---- Arquivos de query (spec 038) ----
+  readonly onAbrirQueryDoDatabase: (connectionId: string, no: TreeNode) => Promise<void>;
+  readonly onAbrirArquivoDeQuery: (no: TreeNode) => Promise<void>;
+  readonly onNovaQuery: (vinculo: Vinculo | null) => Promise<void>;
+  readonly onRenomearQuery: (vinculo: Vinculo | null, no: TreeNode) => Promise<void>;
+  readonly onApagarQuery: (vinculo: Vinculo | null, no: TreeNode) => Promise<void>;
   readonly onErro: (erro: unknown) => void;
+}
+
+/** O vínculo do nó `Query`, que carrega o database no `meta`. */
+function vinculoDoNo(connectionId: string, no: TreeNode): Vinculo | null {
+  const database = typeof no.meta?.database === 'string' ? no.meta.database : null;
+  return database === null ? null : { connectionId, database };
+}
+
+/**
+ * O vínculo de um ARQUIVO, lido do caminho da árvore.
+ *
+ * O nó do arquivo não carrega o database — quem carrega é a pasta `Query` acima
+ * dele, e o caminho da árvore é `[server, <database>, __queries__]`. Pegar dali
+ * evita repetir o database em cada arquivo listado.
+ */
+function vinculoDaPasta(connectionId: string, caminho: readonly string[]): Vinculo | null {
+  const database = caminho[caminho.length - 2];
+  return database === undefined ? null : { connectionId, database };
 }
 
 /** Botão de ação do cabeçalho: só ícone, com dica. */
@@ -103,6 +139,11 @@ export function ConnectionsPanel({
   onAbrirTerminal,
   onFiltrar,
   onNovoObjeto,
+  onAbrirQueryDoDatabase,
+  onAbrirArquivoDeQuery,
+  onNovaQuery,
+  onRenomearQuery,
+  onApagarQuery,
   onErro,
 }: ConnectionsPanelProps) {
   const aceita = (tipo: string): boolean => {
@@ -123,7 +164,18 @@ export function ConnectionsPanel({
     acao().catch(onErro);
   };
 
-  const renderNos = (id: string, caminho: string[], nivel: number): React.ReactNode => {
+  /**
+   * @param database O database declarado por um ancestral, herdado subárvore
+   * abaixo. É o que faz uma tabela saber em que banco ela vive sem que a
+   * interface precise conhecer a forma do caminho de cada driver — que difere:
+   * `[main, ...]` no SQLite, `[server, servidor-2, ...]` no MySQL.
+   */
+  const renderNos = (
+    id: string,
+    caminho: string[],
+    nivel: number,
+    database: string | null = null
+  ): React.ReactNode => {
     const chave = ctrl.chaveDe(id, caminho);
     const nos = ctrl.filhos.get(chave);
 
@@ -144,6 +196,7 @@ export function ConnectionsPanel({
     return nos.map((no) => {
       const filho = [...caminho, no.id];
       const aberto = ctrl.expandidos.has(`no:${ctrl.chaveDe(id, filho)}`);
+      const bancoAqui = typeof no.meta?.database === 'string' ? no.meta.database : database;
       return (
         <Box key={no.id}>
           <TreeRow
@@ -155,14 +208,65 @@ export function ConnectionsPanel({
             aberto={aberto}
             titulo={no.hasChildren ? undefined : 'Clique duplo abre uma query'}
             onClick={
-              no.hasChildren ? comErro(() => ctrl.alternarNo(id, filho)) : () => onAbrirQuery(id, no)
+              // O arquivo de query abre no editor; o resto segue como antes.
+              no.meta?.arquivoDeQuery === true
+                ? comErro(() => onAbrirArquivoDeQuery(no))
+                : no.hasChildren
+                  ? comErro(() => ctrl.alternarNo(id, filho, no))
+                  : () => onAbrirQuery(id, no, bancoAqui)
             }
-            onDoubleClick={() => onAbrirQuery(id, no)}
-            onContextMenu={(e) => onMenuNo(e, id, filho, no)}
+            onDoubleClick={
+              no.meta?.arquivoDeQuery === true ? undefined : () => onAbrirQuery(id, no, bancoAqui)
+            }
+            onContextMenu={(e) => onMenuNo(e, id, filho, no, bancoAqui)}
             acoes={
               // Só nas categorias: bancos e schemas já são controlados pelos
               // campos "Bancos visíveis" e "excluídos" da conexão.
-              no.meta?.categoria === true ? (
+              // A categoria `Query` tem ações próprias: nela se CRIA arquivo, e
+              // não objeto de banco. Filtrar não faz sentido numa pasta com
+              // meia dúzia de arquivos.
+              no.meta?.queries === true ? (
+                <AcaoDaLinha
+                  icone="lucide:plus"
+                  rotulo="Nova query"
+                  // `recarregarNo` e não `recarregar`: o segundo recarrega a
+                  // lista de CONEXÕES, e os arquivos são filhos deste nó. Sem
+                  // isto o arquivo novo só aparecia no F5 seguinte.
+                  onClick={comErro(async () => {
+                    await onNovaQuery(vinculoDoNo(id, no));
+                    await ctrl.recarregarNo(id, filho);
+                  })}
+                />
+              ) : no.meta?.arquivoDeQuery === true ? (
+                <>
+                  <AcaoDaLinha
+                    icone="lucide:pencil"
+                    rotulo={`Renomear ${no.label}`}
+                    onClick={comErro(async () => {
+                      await onRenomearQuery(vinculoDaPasta(id, caminho), no);
+                      await ctrl.recarregarNo(id, caminho);
+                    })}
+                  />
+                  <AcaoDaLinha
+                    icone="lucide:trash-2"
+                    rotulo={`Apagar ${no.label}`}
+                    onClick={comErro(async () => {
+                      await onApagarQuery(vinculoDaPasta(id, caminho), no);
+                      await ctrl.recarregarNo(id, caminho);
+                    })}
+                  />
+                </>
+              ) : typeof no.meta?.database === 'string' ? (
+                // `Abrir Query` no database — o botão que o usuário anotou da
+                // ferramenta de referência. Aparece porque o DRIVER declarou que
+                // este nó é um database; quem decide que isso vira botão é a
+                // interface (Artigo III).
+                <AcaoDaLinha
+                  icone="lucide:file-plus-2"
+                  rotulo={`Abrir Query em ${no.label}`}
+                  onClick={comErro(() => onAbrirQueryDoDatabase(id, no))}
+                />
+              ) : no.meta?.categoria === true ? (
                 <>
                   <AcaoDaLinha
                     icone="lucide:refresh-cw"
@@ -179,14 +283,14 @@ export function ConnectionsPanel({
                     <AcaoDaLinha
                       icone="lucide:plus"
                       rotulo={`Criar em ${no.label}`}
-                      onClick={() => onNovoObjeto(id, filho, no)}
+                      onClick={() => onNovoObjeto(id, filho, no, bancoAqui)}
                     />
                   )}
                 </>
               ) : undefined
             }
           />
-          {aberto && renderNos(id, filho, nivel + 1)}
+          {aberto && renderNos(id, filho, nivel + 1, bancoAqui)}
         </Box>
       );
     });

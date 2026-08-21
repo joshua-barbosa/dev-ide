@@ -201,6 +201,7 @@ export function createConnectionsRouter(
     const body = (req.body ?? {}) as Record<string, unknown>;
     const resultado = await session.execute({
       statement: requireString(body.statement, 'statement'),
+      database: typeof body.database === 'string' && body.database !== '' ? body.database : undefined,
       nodePath: Array.isArray(body.nodePath) ? body.nodePath.map(String) : undefined,
       rowLimit: typeof body.rowLimit === 'number' ? body.rowLimit : undefined,
       timeoutMs: typeof body.timeoutMs === 'number' ? body.timeoutMs : undefined,

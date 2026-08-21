@@ -28,6 +28,7 @@ import { idDoMonaco } from '../../shared/editor/monaco-ids';
 import { tokens } from '../theme';
 import type { NomeDoTema } from '../../shared/temas';
 import { LINGUAGEM_TODAS, type Snippet } from '../../shared/snippets';
+import { registrarCodeLensDeSql } from '../query/codelens';
 import { emmetCSS, emmetHTML, emmetJSX } from 'emmet-monaco-es';
 import { NOME_DO_TEMA, registrarTema } from './tema';
 
@@ -66,6 +67,14 @@ export interface EditorHandle {
   goToPosition(linha: number, coluna: number): void;
   /** Quantas linhas o arquivo tem. Serve para limitar o salto. */
   totalDeLinhas(): number;
+  /**
+   * A URI do modelo deste editor.
+   *
+   * Existe por causa do CodeLens (spec 038): há um modelo POR GRUPO, e o clique
+   * num `Run` precisa dizer de QUAL editor veio. Sem isto, com a tela dividida,
+   * a query da esquerda rodaria com o arquivo da direita.
+   */
+  uriDoModelo(): string | null;
   getViewState(): ViewState;
   setViewState(view: ViewState | null): void;
   focus(): void;
@@ -249,6 +258,13 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     return () => provedor.dispose();
   }, []);
 
+  // O `Run | +Tab | JSON` acima de cada query (spec 038). Registrado por
+  // LINGUAGEM e não por editor, então a função se protege de ser chamada duas
+  // vezes — com a tela dividida, este efeito roda uma vez por grupo.
+  useEffect(() => {
+    registrarCodeLensDeSql();
+  }, []);
+
   // Trocar de tema: re-registrar a definição com o mesmo nome faz o Monaco
   // repintar os editores que já a usam — sem remontar, sem perder histórico.
   useEffect(() => {
@@ -317,6 +333,7 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
       },
 
       totalDeLinhas: () => editor.current?.getModel()?.getLineCount() ?? 0,
+      uriDoModelo: () => editor.current?.getModel()?.uri.toString() ?? null,
 
       // O nosso `ViewState` é por deslocamento em caracteres, e não por
       // linha/coluna: é o formato que as abas já guardam, e mudá-lo obrigaria a

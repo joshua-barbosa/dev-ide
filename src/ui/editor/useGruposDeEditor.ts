@@ -27,6 +27,8 @@ export interface GruposDeEditor {
   readonly editorRef: PonteiroDeEditor;
   /** Ref de callback para o `EditorHost` de um grupo se registrar. */
   registrarEditor(grupo: number): (handle: EditorHandle | null) => void;
+  /** Qual grupo tem o editor cujo modelo é esta URI (spec 038). */
+  grupoDaUri(uri: string): number | null;
   /** Guarda no store o que está no editor de `grupoDoEditor`. */
   salvarNaAba(id: string, grupoDoEditor: number): void;
   /** Salva no store o que está no editor do grupo em foco. */
@@ -111,6 +113,13 @@ export function useGruposDeEditor({
   const refsPorGrupo = useRef(
     new Map<number, (h: EditorHandle | null) => void>(),
   );
+  const grupoDaUri = useCallback((uri: string): number | null => {
+    for (const [grupo, handle] of editores.current) {
+      if (handle?.uriDoModelo() === uri) return grupo;
+    }
+    return null;
+  }, []);
+
   const registrarEditor = useCallback((grupo: number) => {
     const existente = refsPorGrupo.current.get(grupo);
     if (existente !== undefined) return existente;
@@ -285,9 +294,11 @@ export function useGruposDeEditor({
         }
       },
       estaCarregando: () => carregando.current,
+      grupoDaUri,
     }),
     [
       editorRef,
+      grupoDaUri,
       registrarEditor,
       salvarGrupoFocado,
       salvarNaAba,

@@ -139,7 +139,9 @@ function navegar(
         icon: 'database',
         detail: tamanhoLegivel(file),
         hasChildren: true,
-        meta: { file },
+        // O arquivo É o banco: um database só, e ele se chama `main` no próprio
+        // SQLite. Declarado para a interface poder abrir query aqui também.
+        meta: { file, database: 'main' },
       },
     ];
   }

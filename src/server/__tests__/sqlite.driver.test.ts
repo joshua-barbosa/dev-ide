@@ -232,3 +232,84 @@ test('o filtro não vaza para a listagem seguinte', async () => {
 
   await session.close();
 });
+
+// ---------------------------------------------------------------------------
+// Somente-leitura (AC-30 da spec 038)
+// ---------------------------------------------------------------------------
+//
+// A trava já existia nos três drivers — SQLite pela flag do motor, MySQL com
+// `SET SESSION TRANSACTION READ ONLY`, PostgreSQL com
+// `SET default_transaction_read_only = on`. O que NÃO existia era teste, e por
+// isso desfazê-la não quebrava nada.
+//
+// Importa mais a partir daqui: as fases F5 (editar pela grade) e F6 (Edit Table)
+// vão escrever no banco, e esta é a única coisa entre elas e o banco do usuário.
+//
+// O SQLite é quem prova isto na suíte porque roda sem servidor externo. O
+// mecanismo é diferente em cada driver, mas o contrato é o mesmo: quem recusa é
+// o BANCO, não um filtro de texto no SQL nosso — que qualquer comentário
+// enganaria.
+
+test('conexão somente-leitura recusa INSERT', async () => {
+  const { session } = await abrir(true);
+  try {
+    await assert.rejects(
+      () => session.execute!({ statement: "INSERT INTO alunos(nome) VALUES ('novo')" }),
+      /readonly|read-only|somente/i
+    );
+  } finally {
+    await session.close();
+  }
+});
+
+test('conexão somente-leitura recusa UPDATE, DELETE e DDL', async () => {
+  const { session } = await abrir(true);
+  try {
+    for (const sql of [
+      "UPDATE alunos SET nome = 'x'",
+      'DELETE FROM alunos',
+      'DROP TABLE alunos',
+      'CREATE TABLE nova (id INTEGER)',
+      'ALTER TABLE alunos ADD COLUMN extra TEXT',
+    ]) {
+      await assert.rejects(() => session.execute!({ statement: sql }), `aceitou: ${sql}`);
+    }
+  } finally {
+    await session.close();
+  }
+});
+
+test('conexão somente-leitura continua LENDO', async () => {
+  // A trava não pode virar uma conexão inútil.
+  const { session } = await abrir(true);
+  try {
+    const r = await session.execute!({ statement: 'SELECT nome FROM alunos ORDER BY nome' });
+    assert.equal(r.rowCount, 2);
+  } finally {
+    await session.close();
+  }
+});
+
+test('o banco em disco não muda depois de uma escrita recusada', async () => {
+  // Recusar com o dado já gravado seria pior que não recusar.
+  const { session, file } = await abrir(true);
+  const antes = fs.readFileSync(file);
+  try {
+    await session.execute!({ statement: "INSERT INTO alunos(nome) VALUES ('novo')" }).catch(() => {});
+  } finally {
+    await session.close();
+  }
+  assert.deepEqual(fs.readFileSync(file), antes);
+});
+
+test('a mesma conexão SEM somente-leitura escreve', async () => {
+  // Prova que o teste acima mede a trava, e não uma falha geral de escrita.
+  const { session } = await abrir(false);
+  try {
+    await session.execute!({ statement: "INSERT INTO alunos(nome) VALUES ('novo')" });
+    const r = await session.execute!({ statement: 'SELECT COUNT(*) AS n FROM alunos' });
+    assert.equal(r.rows[0]?.[0], 3);
+  } finally {
+    await session.close();
+  }
+});
