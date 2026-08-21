@@ -26,9 +26,9 @@ test('validar recusa nome ou comando vazio', () => {
 test('validar recusa destino inválido, dizendo quais valem', () => {
   assert.throws(
     () => validarComando({ nome: 'a', comando: 'b', destino: 'email' }),
-    /shell, sql/
+    /shell/
   );
-  assert.throws(() => validarComando({ nome: 'a', comando: 'b' }), /shell, sql/);
+  assert.throws(() => validarComando({ nome: 'a', comando: 'b' }), /shell/);
 });
 
 test('validar recusa nome repetido, sem diferenciar maiúsculas', () => {
@@ -122,4 +122,15 @@ test('valor de script que não é texto nem lista é ignorado', () => {
     'package.json'
   );
   assert.deepEqual(achados.map((c) => c.nome), ['bom']);
+});
+
+test('comando salvo com destino "sql" é descartado na leitura do arquivo', () => {
+  // A outra metade da trava (spec 039, decisão D3): a rota recusa, e o ARQUIVO
+  // descarta. Um `commands.json` gravado por uma versão anterior não pode fazer
+  // um SQL virar comando de shell — o `sql` só ABRIA numa aba, o shell EXECUTA.
+  const lista = normalizarLista([
+    { id: '1', nome: 'ok', comando: 'npm test', destino: 'shell' },
+    { id: '2', nome: 'perigo', comando: 'DELETE FROM alunos', destino: 'sql' },
+  ]);
+  assert.deepEqual(lista.map((c) => c.nome), ['ok']);
 });

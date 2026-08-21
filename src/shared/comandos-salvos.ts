@@ -13,10 +13,24 @@
 // O conceito de `tasks.json` do VS Code fica de fora — configuração, tarefas
 // compostas, de fundo e grupos são máquina demais para um projeto de uma pessoa.
 
-/** Para onde o comando vai ao ser escolhido. */
-export type DestinoDeComando = 'shell' | 'sql';
+/**
+ * Para onde o comando vai ao ser escolhido.
+ *
+ * **O destino `sql` saiu na spec 039** (decisão D3): a pasta `Query` da spec 038
+ * guarda query por conexão e database, com nome, arquivo e lugar na árvore. Dois
+ * lugares para guardar uma query é como eles divergem — o mesmo raciocínio que
+ * tirou o `Export Logs` na D8.
+ *
+ * **O campo continua existindo com um valor só, e isso NÃO é resto a limpar.**
+ * É ele que faz um `commands.json` de antes ser tratado direito: um comando com
+ * `destino: "sql"` falha na validação e é **descartado** pelo leitor tolerante.
+ * Removendo o campo, aquele mesmo comando passaria a ser lido como shell — e um
+ * `DELETE FROM alunos` que antes só ABRIA numa aba passaria a ser EXECUTADO num
+ * terminal. O campo é a diferença entre perder um comando e destruir uma tabela.
+ */
+export type DestinoDeComando = 'shell';
 
-export const DESTINOS: readonly DestinoDeComando[] = ['shell', 'sql'];
+export const DESTINOS: readonly DestinoDeComando[] = ['shell'];
 
 export interface ComandoSalvo {
   readonly id: string;

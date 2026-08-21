@@ -333,7 +333,7 @@ export function App() {
   };
 
   const comandosAcoes = useComandosAcoes({
-    qi, ws, avisar: dialogs.avisar, rodarNoTerminal: (c) => novoTerminalNoPainel(c),
+    qi, avisar: dialogs.avisar, rodarNoTerminal: (c) => novoTerminalNoPainel(c),
   });
   const snippetsAcoes = useSnippetsAcoes({ qi, ws, snippets, linguagem });
 

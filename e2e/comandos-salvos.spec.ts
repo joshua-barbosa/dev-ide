@@ -57,7 +57,7 @@ test('salvar um comando e vê-lo na lista, marcado como salvo', async ({ page })
   await page.keyboard.press('Enter');
   await entradaRapida(page).fill('echo COMANDO-SALVO-OK');
   await page.keyboard.press('Enter');
-  await page.getByRole('option', { name: /Terminal \(shell\)/ }).click();
+  // Não há mais pergunta de destino: só existe um (spec 039, decisão D3).
 
   // O aviso sobre texto puro é parte do que se deve ao usuário.
   await expect(page.getByRole('dialog')).toContainText('texto puro');
@@ -74,7 +74,6 @@ test('rodar um comando de shell abre um terminal e executa', async ({ page }) =>
   await page.keyboard.press('Enter');
   await entradaRapida(page).fill('echo EXECUTADO-PELO-COMANDO-SALVO');
   await page.keyboard.press('Enter');
-  await page.getByRole('option', { name: /Terminal \(shell\)/ }).click();
   await page.getByRole('button', { name: /ok|fechar/i }).click();
 
   await abrirCaixa(page);
@@ -85,23 +84,24 @@ test('rodar um comando de shell abre um terminal e executa', async ({ page }) =>
   await expect(terminal).toContainText('EXECUTADO-PELO-COMANDO-SALVO', { timeout: 20_000 });
 });
 
-test('comando SQL ABRE numa aba, sem executar', async ({ page }) => {
+test('não há mais destino SQL a escolher', async ({ page }) => {
+  // O destino `sql` saiu na spec 039 (decisão D3): a pasta `Query` da spec 038
+  // já guarda query por conexão e database, com nome, arquivo e lugar na
+  // árvore. Dois lugares para guardar uma query é como eles divergem.
+  //
+  // O teste que existia aqui provava que um comando SQL ABRIA sem executar.
+  // Fica no lugar dele o que garante que ninguém consegue criar um: o caminho
+  // de salvar não pergunta mais nada depois do texto.
   await abrirCaixa(page);
   await page.getByRole('option', { name: /Salvar um comando novo/ }).click();
-  await entradaRapida(page).fill('consulta-salva');
+  await entradaRapida(page).fill('so-shell');
   await page.keyboard.press('Enter');
-  await entradaRapida(page).fill('SELECT 1;');
+  await entradaRapida(page).fill('echo oi');
   await page.keyboard.press('Enter');
-  await page.getByRole('option', { name: /Consulta \(SQL\)/ }).click();
-  await page.getByRole('button', { name: /ok|fechar/i }).click();
 
-  await abrirCaixa(page);
-  await page.getByRole('option', { name: /consulta-salva/ }).click();
-
-  // Abre e para. Um comando de shell o usuário escolheu rodar; um SQL pode ser
-  // um DELETE, e o gatilho fica com ele.
-  await expect(aba(page, 'comando.sql')).toBeVisible();
-  await expect(page.locator('[data-terminal="shell"]')).toHaveCount(0);
+  await expect(page.getByRole('option', { name: /Consulta \(SQL\)/ })).toHaveCount(0);
+  // Vai direto para o aviso, sem passar por escolha de destino.
+  await expect(page.getByRole('dialog')).toContainText('texto puro');
 });
 
 test('nome repetido é recusado pela rota', async ({ page }) => {

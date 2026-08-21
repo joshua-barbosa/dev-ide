@@ -121,13 +121,30 @@ test('destino inválido é recusado', async () => {
   await comServidor(async (call) => {
     const r = await call('POST', '/', { nome: 'x', comando: 'y', destino: 'email' });
     assert.equal(r.success, false);
-    assert.match(r.error ?? '', /shell, sql/);
+    assert.match(r.error ?? '', /shell/);
+  });
+});
+
+test('destino "sql" de um commands.json antigo é RECUSADO, não convertido', async () => {
+  // O destino `sql` saiu na spec 039 (decisão D3). Aceitá-lo como shell seria o
+  // pior desfecho possível: um `DELETE FROM alunos` que antes só ABRIA numa aba
+  // passaria a ser EXECUTADO num terminal. Recusar perde um comando; converter
+  // perde uma tabela.
+  await comServidor(async (call) => {
+    const r = await call('POST', '/', {
+      nome: 'limpeza',
+      comando: 'DELETE FROM alunos',
+      destino: 'sql',
+    });
+    assert.equal(r.success, false);
+    const lista = (await call('GET', '/')).data as { salvos: unknown[] };
+    assert.equal(lista.salvos.length, 0, 'e não entrou na lista por outro caminho');
   });
 });
 
 test('remover tira da lista; remover de novo diz que não havia', async () => {
   await comServidor(async (call) => {
-    const criado = (await call('POST', '/', { nome: 'a', comando: 'b', destino: 'sql' }))
+    const criado = (await call('POST', '/', { nome: 'a', comando: 'b', destino: 'shell' }))
       .data as { id: string };
 
     const r1 = (await call('DELETE', `/${criado.id}`)).data as { removido: boolean };
