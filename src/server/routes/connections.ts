@@ -248,6 +248,34 @@ export function createConnectionsRouter(
     res.json(ok(await session.tableStructure(queryList(req.query.path))));
   }));
 
+  /**
+   * O comando de uma alteração de estrutura (spec 046).
+   *
+   * Devolve SQL e **não executa**. Esconder o botão não basta: a rota também
+   * recusa o que o dialeto não faz — a conferência está no `montarAlteracao`.
+   */
+  router.post('/:id/alter', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (typeof session.alterStructure !== 'function') {
+      throw new Error(`A conexão "${req.params.id}" não altera estrutura.`);
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    res.json(ok(await session.alterStructure({
+      nodePath: Array.isArray(body.nodePath) ? body.nodePath.map(String) : [],
+      operacao: (body.operacao ?? {}) as Record<string, unknown>,
+    })));
+  }));
+
+  /** O que este banco sabe alterar. A interface só oferece o que vier aqui. */
+  router.get('/:id/alter/capabilities', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (typeof session.alterCapabilities !== 'function') {
+      res.json(ok({ dialeto: '', operacoes: [] }));
+      return;
+    }
+    res.json(ok(session.alterCapabilities()));
+  }));
+
   router.post('/:id/execute', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
     if (typeof session.execute !== 'function') {

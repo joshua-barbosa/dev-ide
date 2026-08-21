@@ -16,6 +16,7 @@ import { EditorHost, type EditorHandle } from './editor/EditorHost';
 import { TerminalHost } from './terminal/TerminalHost';
 import { ResultGrid } from './grid/ResultGrid';
 import { TabelaHost } from './tabela/TabelaHost';
+import type { QuickInputController } from './useQuickInput';
 import { MarkdownPreview } from './editor/MarkdownPreview';
 import { tokens } from './theme';
 import type { Tab } from '../shared/tabs';
@@ -36,6 +37,10 @@ export interface EditorGroupProps {
   readonly onConfirmarEscrita: (mensagem: string, titulo: string) => Promise<boolean>;
   /** A conexão desta aba é somente-leitura? Aí a edição nem aparece. */
   readonly conexaoSomenteLeitura: (aba: Tab) => boolean;
+  /** A entrada rápida e a abertura de comando, para as alterações (spec 046). */
+  readonly qi: QuickInputController;
+  readonly abrirComando: (id: string, titulo: string, sql: string) => void;
+  readonly onErroDaTabela: (erro: unknown) => void;
   /** Verdadeiro no grupo que recebe os comandos e dita a barra de status. */
   readonly focado: boolean;
   /** Verdadeiro quando há mais de um grupo — muda o que a tela vazia diz. */
@@ -77,6 +82,7 @@ export function EditorGroup({
   grades, formulario, emPreview, conteudoDaAba, onPreview,
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
   onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
+  qi, abrirComando, onErroDaTabela,
 }: EditorGroupProps) {
   const caixa = useRef<HTMLDivElement>(null);
   // A zona vive num `ref` E num estado: o `ref` é a verdade que a soltura lê, o
@@ -217,6 +223,9 @@ export function EditorGroup({
               onExportar={onExportar}
               onConfirmar={onConfirmarEscrita}
               somenteLeitura={conexaoSomenteLeitura(t)}
+              qi={qi}
+              abrirComando={abrirComando}
+              onErro={onErroDaTabela}
             />
           </Box>
         ))}

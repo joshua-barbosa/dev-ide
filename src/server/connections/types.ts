@@ -28,6 +28,9 @@ import type {
   QueryResult,
   TablePage,
   TableRequest,
+  AlterRequest,
+  AlterResult,
+  AlterCapabilities,
   TableStructure,
   TableWriteRequest,
   TableWriteResult,
@@ -42,6 +45,9 @@ export type {
   TableWriteResult,
 } from '../../shared/contracts';
 export type {
+  AlterCapabilities,
+  AlterRequest,
+  AlterResult,
   ChaveEstrangeira,
   ChecagemDaTabela,
   ColunaDetalhada,
@@ -220,6 +226,15 @@ export interface Session {
    * seriam seis vezes a latência, e o usuário abre a aba inteira.
    */
   readonly tableStructure?: (nodePath: readonly string[]) => Promise<TableStructure>;
+  /**
+   * O comando de uma alteração de estrutura (spec 046).
+   *
+   * Devolve SQL, e **não executa**: um `ALTER TABLE` em tabela grande reescreve
+   * a tabela e tranca por minutos. Quem roda é o usuário, quando decidir.
+   */
+  readonly alterStructure?: (request: AlterRequest) => Promise<AlterResult>;
+  /** O que este banco sabe alterar. A interface só oferece o que está aqui. */
+  readonly alterCapabilities?: () => AlterCapabilities;
   readonly files?: RemoteFiles;
   readonly shell?: RemoteShell;
   readonly monitor?: HostMonitor;

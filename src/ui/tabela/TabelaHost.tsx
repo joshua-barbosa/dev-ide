@@ -10,6 +10,8 @@ import Box from '@mui/material/Box';
 import { Api } from '../api';
 import { EstruturaPanel } from './EstruturaPanel';
 import { useEstrutura } from './useEstrutura';
+import { useAlteracoes } from './useAlteracoes';
+import type { QuickInputController } from '../useQuickInput';
 import { TablePanel } from './TablePanel';
 import { useTabela } from './useTabela';
 import { chaveDoId, useRascunho } from './useRascunho';
@@ -23,9 +25,16 @@ export interface TabelaHostProps {
   readonly onConfirmar: (mensagem: string, titulo: string) => Promise<boolean>;
   /** A conexão é somente-leitura: a edição nem aparece. */
   readonly somenteLeitura: boolean;
+  /** A entrada rápida, para as perguntas das alterações (spec 046). */
+  readonly qi: QuickInputController;
+  /** Abre o comando gerado numa aba de query, amarrada à conexão. */
+  readonly abrirComando: (id: string, titulo: string, sql: string) => void;
+  readonly onErro: (erro: unknown) => void;
 }
 
-export function TabelaHost({ aba, onExportar, onConfirmar, somenteLeitura }: TabelaHostProps) {
+export function TabelaHost({
+  aba, onExportar, onConfirmar, somenteLeitura, qi, abrirComando, onErro,
+}: TabelaHostProps) {
   const meta = aba.meta as {
     connectionId?: string;
     nodePath?: readonly string[];
@@ -38,6 +47,14 @@ export function TabelaHost({ aba, onExportar, onConfirmar, somenteLeitura }: Tab
   const rascunho = useRascunho();
   const [gravando, setGravando] = useState(false);
   const [subAba, setSubAba] = useState<'dados' | 'estrutura'>('dados');
+  const alteracoes = useAlteracoes({
+    qi,
+    connectionId,
+    nodePath,
+    database: meta.database ?? null,
+    abrirComando,
+    somenteLeitura,
+  });
   // Só busca quando a sub-aba é aberta: ninguém paga por uma aba que não abriu.
   const estrutura = useEstrutura(connectionId, nodePath, subAba === 'estrutura');
 
@@ -128,6 +145,8 @@ export function TabelaHost({ aba, onExportar, onConfirmar, somenteLeitura }: Tab
           carregando={estrutura.carregando}
           erro={estrutura.erro}
           onRecarregar={estrutura.recarregar}
+          permitidas={alteracoes.permitidas}
+          onAlterar={(tipo, ctx) => void alteracoes.executar(tipo, ctx).catch(onErro)}
         />
       </Box>
     </Box>

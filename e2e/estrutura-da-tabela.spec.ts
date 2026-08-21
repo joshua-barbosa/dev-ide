@@ -5,7 +5,9 @@
 // busca, e a distinção entre "nenhum" e "este banco não sabe responder".
 import { expect, test, type Page } from '@playwright/test';
 import { CONEXAO, SENHA_MESTRA, TABELA } from './global-setup';
-import { aba, destrancarCofre, expandir, linhaArvore, painelLateral } from './fixtures';
+import {
+  aba, destrancarCofre, entradaRapida, expandir, linhaArvore, painelLateral, textoDoEditor,
+} from './fixtures';
 
 const estrutura = (page: Page) => page.getByRole('tab', { name: 'estrutura' });
 
@@ -92,4 +94,68 @@ test('a view mostra menos sub-abas que a tabela', async ({ page }) => {
   // Numa view não há índice, chave estrangeira nem checagem que valha mostrar.
   await expect(page.getByRole('tab', { name: 'Índices' })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: 'DDL' })).toBeVisible();
+});
+
+// ---------------------------------------------------------------------------
+// Alterar a estrutura (spec 046)
+// ---------------------------------------------------------------------------
+
+test('acrescentar coluna GERA o comando, e não o executa', async ({ page }) => {
+  // É a decisão central da spec 046: um ALTER numa tabela grande é operação de
+  // janela de manutenção, e você escolhe quando.
+  await abrirTabela(page);
+  await estrutura(page).click();
+
+  await page.getByRole('button', { name: '+ coluna' }).click();
+  await entradaRapida(page).fill('criado_em');
+  await page.keyboard.press('Enter');
+  await entradaRapida(page).fill('TEXT');
+  await page.keyboard.press('Enter');
+  await page.getByRole('option', { name: 'Não' }).click();
+  await page.keyboard.press('Enter');
+
+  await expect.poll(() => textoDoEditor(page)).toContain('ADD COLUMN');
+  expect(await textoDoEditor(page)).toContain('"criado_em"');
+
+  // A coluna NÃO existe ainda: o comando só foi aberto numa aba nova, que
+  // passou a ser a ativa — por isso o caminho de volta pela aba da tabela.
+  await aba(page, TABELA).click();
+  await page.getByRole('tab', { name: 'estrutura' }).click();
+  await page.getByLabel('Recarregar a estrutura').click();
+  await expect(page.locator('[data-coluna-estrutura="criado_em"]')).toHaveCount(0);
+});
+
+test('apagar coluna vem com o aviso de que reescreve a tabela', async ({ page }) => {
+  await abrirTabela(page);
+  await estrutura(page).click();
+
+  await page.locator('[data-coluna-estrutura="nome"]').getByRole('button', { name: 'apagar' }).click();
+  await expect.poll(() => textoDoEditor(page)).toContain('DROP COLUMN');
+  const texto = await textoDoEditor(page);
+  expect(texto).toContain('ainda NÃO rodou');
+  expect(texto).toContain('REESCREVE');
+});
+
+test('o SQLite NÃO oferece alterar coluna, porque não faz', async ({ page }) => {
+  // Botão que sempre dá erro é pior que nenhum botão.
+  await abrirTabela(page);
+  await estrutura(page).click();
+
+  const linha = page.locator('[data-coluna-estrutura="nome"]');
+  await expect(linha.getByRole('button', { name: 'renomear' })).toBeVisible();
+  await expect(linha.getByRole('button', { name: 'alterar' })).toHaveCount(0);
+  // E comentário de tabela também não.
+  await expect(page.getByRole('button', { name: 'Comentário' })).toHaveCount(0);
+});
+
+test('a view NÃO oferece alteração nenhuma', async ({ page }) => {
+  await abrirTabela(page);
+  await painelLateral(page, 'Database').click();
+  await linhaArvore(page, 'Views').click({ position: { x: 24, y: 8 } });
+  await linhaArvore(page, 'alunos_view').hover();
+  await page.getByRole('button', { name: 'Abrir tabela alunos_view', exact: true }).click();
+  await estrutura(page).click();
+
+  await expect(page.getByRole('button', { name: 'Renomear tabela' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '+ coluna' })).toHaveCount(0);
 });

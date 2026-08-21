@@ -25,6 +25,9 @@ export interface EstruturaPanelProps {
   readonly carregando: boolean;
   readonly erro: string | null;
   readonly onRecarregar: () => void;
+  /** O que este banco sabe alterar (spec 046). Vazio = aba só de leitura. */
+  readonly permitidas?: ReadonlySet<string>;
+  readonly onAlterar?: (tipo: string, ctx?: Record<string, unknown>) => void;
 }
 
 type Sessao = 'ddl' | 'colunas' | 'fks' | 'indices' | 'gatilhos' | 'checagens';
@@ -39,12 +42,17 @@ const ROTULOS: Record<Sessao, string> = {
 };
 
 export function EstruturaPanel({
-  estrutura, carregando, erro, onRecarregar,
+  estrutura, carregando, erro, onRecarregar, permitidas, onAlterar,
 }: EstruturaPanelProps) {
   const [sessao, setSessao] = useState<Sessao>('colunas');
 
   if (erro !== null) return <Aviso texto={erro} erro />;
   if (estrutura === null) return <Aviso texto={carregando ? 'carregando…' : 'sem estrutura'} />;
+
+  // Numa view a estrutura não se altera (AC-11), e o que o dialeto não faz nem
+  // vira botão. As duas coisas se resolvem num `pode` só.
+  const pode = (tipo: string): boolean =>
+    !estrutura.ehView && permitidas !== undefined && permitidas.has(tipo) && onAlterar !== undefined;
 
   // Numa view não há chave estrangeira, índice nem checagem que valha mostrar.
   const sessoes: Sessao[] = estrutura.ehView
@@ -53,7 +61,12 @@ export function EstruturaPanel({
 
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <Cabecalho estrutura={estrutura} onRecarregar={onRecarregar} />
+      <Cabecalho
+        estrutura={estrutura}
+        onRecarregar={onRecarregar}
+        pode={pode}
+        onAlterar={onAlterar}
+      />
 
       <Box
         role="tablist"
@@ -83,9 +96,38 @@ export function EstruturaPanel({
 
       <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {sessao === 'ddl' && <Ddl texto={estrutura.ddl} />}
-        {sessao === 'colunas' && <TabelaDeColunas colunas={estrutura.colunas} />}
-        {sessao === 'fks' && <Lista lista={estrutura.chavesEstrangeiras} desenhar={desenharFk} />}
-        {sessao === 'indices' && <Lista lista={estrutura.indices} desenhar={desenharIndice} />}
+        {sessao === 'colunas' && (
+          <TabelaDeColunas colunas={estrutura.colunas} pode={pode} onAlterar={onAlterar} />
+        )}
+        {sessao === 'fks' && (
+          <Lista
+            lista={estrutura.chavesEstrangeiras}
+            desenhar={desenharFk}
+            acao={
+              pode('apagar-chave-estrangeira')
+                ? { rotulo: 'Apagar', tipo: 'apagar-chave-estrangeira', chave: 'nome' }
+                : undefined
+            }
+            onAlterar={onAlterar}
+          />
+        )}
+        {sessao === 'indices' && (
+          <>
+            {pode('criar-indice') && (
+              <Acao rotulo="+ índice" onClick={() => onAlterar?.('criar-indice')} />
+            )}
+            <Lista
+              lista={estrutura.indices}
+              desenhar={desenharIndice}
+              acao={
+                pode('apagar-indice')
+                  ? { rotulo: 'Apagar', tipo: 'apagar-indice', chave: 'nome' }
+                  : undefined
+              }
+              onAlterar={onAlterar}
+            />
+          </>
+        )}
         {sessao === 'gatilhos' && <Lista lista={estrutura.gatilhos} desenhar={desenharGatilho} />}
         {sessao === 'checagens' && (
           <Lista lista={estrutura.checagens} desenhar={desenharChecagem} />
@@ -96,10 +138,12 @@ export function EstruturaPanel({
 }
 
 function Cabecalho({
-  estrutura, onRecarregar,
+  estrutura, onRecarregar, pode, onAlterar,
 }: {
   readonly estrutura: TableStructure;
   readonly onRecarregar: () => void;
+  readonly pode: (tipo: string) => boolean;
+  readonly onAlterar?: (tipo: string, ctx?: Record<string, unknown>) => void;
 }) {
   const campos: [string, string | null][] = [
     ['Nome', estrutura.nome],
@@ -130,6 +174,18 @@ function Cabecalho({
           </Box>
         ))}
       <Box sx={{ flex: 1 }} />
+      {pode('renomear-tabela') && (
+        <Acao
+          rotulo="Renomear tabela"
+          onClick={() => onAlterar?.('renomear-tabela', { nome: estrutura.nome })}
+        />
+      )}
+      {pode('comentario-tabela') && (
+        <Acao
+          rotulo="Comentário"
+          onClick={() => onAlterar?.('comentario-tabela', { comentario: estrutura.comentario })}
+        />
+      )}
       <Box
         component="button"
         type="button"
@@ -186,11 +242,41 @@ const estiloDeGrade = {
 /** `✓` e vazio, em vez de `true`/`false`: a coluna é para varrer com os olhos. */
 const marca = (ligado: boolean): string => (ligado ? '✓' : '');
 
-function TabelaDeColunas({ colunas }: { readonly colunas: readonly ColunaDetalhada[] }) {
+/** Um botão de ação em texto. Discreto de propósito: isto GERA SQL, não roda. */
+function Acao({ rotulo, onClick }: { readonly rotulo: string; readonly onClick: () => void }) {
+  return (
+    <Box
+      component="button"
+      type="button"
+      aria-label={rotulo}
+      onClick={onClick}
+      sx={{
+        border: 0, bgcolor: 'transparent', color: 'primary.main', font: 'inherit',
+        fontSize: 11, cursor: 'pointer', textDecoration: 'underline', px: 0.5,
+      }}
+    >
+      {rotulo}
+    </Box>
+  );
+}
+
+function TabelaDeColunas({
+  colunas, pode, onAlterar,
+}: {
+  readonly colunas: readonly ColunaDetalhada[];
+  readonly pode: (tipo: string) => boolean;
+  readonly onAlterar?: (tipo: string, ctx?: Record<string, unknown>) => void;
+}) {
+  const acoes = ['renomear-coluna', 'alterar-coluna', 'apagar-coluna'].filter(pode);
   const cabecalhos = [
     'Nome', 'Tipo', 'Tam.', 'Padrão', 'Not null', 'Chave', 'Única', 'Auto', 'Comentário',
+    ...(acoes.length === 0 ? [] : ['Ações']),
   ];
   return (
+    <>
+      {pode('acrescentar-coluna') && (
+        <Acao rotulo="+ coluna" onClick={() => onAlterar?.('acrescentar-coluna')} />
+      )}
     <Box component="table" data-lista="colunas" sx={estiloDeGrade}>
       <thead>
         <tr>
@@ -211,12 +297,33 @@ function TabelaDeColunas({ colunas }: { readonly colunas: readonly ColunaDetalha
             <td>{marca(c.unica)}</td>
             <td>{marca(c.autoIncremento)}</td>
             <td>{c.comentario ?? ''}</td>
+            {acoes.length > 0 && (
+              <td>
+                {acoes.map((tipo) => (
+                  <Acao
+                    key={tipo}
+                    rotulo={ROTULO_DE_ACAO[tipo] ?? tipo}
+                    onClick={() =>
+                      onAlterar?.(tipo, { coluna: c.name, tipoAtual: c.type })
+                    }
+                  />
+                ))}
+              </td>
+            )}
           </Box>
         ))}
       </tbody>
     </Box>
+    </>
   );
 }
+
+/** Rótulos curtos: a coluna de ações é estreita, e o verbo já diz tudo. */
+const ROTULO_DE_ACAO: Record<string, string> = {
+  'renomear-coluna': 'renomear',
+  'alterar-coluna': 'alterar',
+  'apagar-coluna': 'apagar',
+};
 
 interface Desenho<T> {
   readonly cabecalhos: readonly string[];
@@ -252,10 +359,12 @@ const desenharChecagem: Desenho<ChecagemDaTabela> = {
 };
 
 function Lista<T>({
-  lista, desenhar,
+  lista, desenhar, acao, onAlterar,
 }: {
   readonly lista: ListaOuNaoSei<T>;
   readonly desenhar: Desenho<T>;
+  readonly acao?: { readonly rotulo: string; readonly tipo: string; readonly chave: string };
+  readonly onAlterar?: (tipo: string, ctx?: Record<string, unknown>) => void;
 }) {
   // "Este banco não sabe responder" é diferente de "não há nenhum", e aparece
   // diferente: um é limitação da IDE ou do servidor, o outro é um fato sobre a
@@ -270,6 +379,7 @@ function Lista<T>({
           {desenhar.cabecalhos.map((c) => (
             <th key={c}>{c}</th>
           ))}
+          {acao !== undefined && <th>Ações</th>}
         </tr>
       </thead>
       <tbody>
@@ -285,6 +395,18 @@ function Lista<T>({
                 {celula}
               </Box>
             ))}
+            {acao !== undefined && (
+              <td>
+                <Acao
+                  rotulo={acao.rotulo}
+                  onClick={() =>
+                    onAlterar?.(acao.tipo, {
+                      nome: (item as Record<string, unknown>)[acao.chave],
+                    })
+                  }
+                />
+              </td>
+            )}
           </tr>
         ))}
       </tbody>

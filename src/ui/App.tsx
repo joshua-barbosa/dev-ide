@@ -48,6 +48,8 @@ import {
   normalizarTerminais, paneisVisiveis, SEM_TERMINAIS,
 } from '../shared/terminais';
 import { useExecution } from './useExecution';
+import type { Tab } from '../shared/tabs';
+import { useMenusDeConexao } from './acoes/useMenusDeConexao';
 import { useVinculo } from './query/useVinculo';
 import { ligarCodeLensDeSql, propsDeVinculo, useAcoesDeQuery } from './query/useAcoesDeQuery';
 import { usePasta } from './files/usePasta';
@@ -219,6 +221,28 @@ export function App() {
 
 
   /**
+   * O que a ABA DE TABELA precisa, num objeto só.
+   *
+   * Extraído do JSX quando o portão do Artigo IV pegou o `App` em 806 linhas:
+   * são sete props que só a aba de tabela usa, e passá-las inline fazia o
+   * `EditorGroup` parecer ter dezenove responsabilidades em vez de duas.
+   */
+  const propsDeTabela = {
+    onExportar: ws.abrirSemTitulo,
+    onConfirmarEscrita: (mensagem: string, titulo: string) =>
+      dialogs.confirmar({ titulo, mensagem, rotuloConfirmar: 'Gravar', destrutivo: true }),
+    qi,
+    abrirComando: (id: string, titulo: string, sql: string) => {
+      const meta = (ws.active?.meta ?? {}) as { connectionId?: string; database?: string | null };
+      ws.abrirQuery(id, titulo, sql, meta.connectionId ?? '', meta.database ?? null);
+    },
+    onErroDaTabela: falhaDeConexao,
+    conexaoSomenteLeitura: (t: Tab) =>
+      conexoes.acharConexao((t.meta as { connectionId?: string }).connectionId)?.readOnly === true,
+  };
+
+
+  /**
    * Abre o `config.json` como aba do editor.
    *
    * É a "tela de configurações" desta IDE, e de propósito: a IDE já sabe abrir,
@@ -284,6 +308,20 @@ export function App() {
   const copiar = (texto: string): void => {
     void navigator.clipboard?.writeText(texto);
   };
+
+  const menusDeConexao = useMenusDeConexao({
+    abrir: menu.abrir,
+    copiar,
+    abrirQuery: ws.abrirQuery,
+    abrirFormulario: (conexao) => conexoesAcoes.abrirFormulario(conexao),
+    excluir: conexoes.excluir,
+    abrirTerminalDaConexao: conexoesAcoes.abrirTerminalDaConexao,
+    recarregarMetadados: conexoes.recarregarMetadados,
+    estaAberta: (id) => conexoes.estado?.openIds.includes(id) === true,
+    desconectar: conexoes.desconectar,
+    abrirConexao: conexoes.abrirConexao,
+    confirmar: dialogs.confirmar,
+  });
 
   /**
    * Abre um terminal de shell NO PAINEL (decisão D6).
@@ -589,40 +627,7 @@ export function App() {
             // Arquivos de query (spec 038) — ver `query/useAcoesDeQuery`.
             ...acoesDeQuery,
             onErro: falhaDeConexao,
-            onMenuNo: (e, id, caminho, no, database) =>
-              menu.abrir(e, [
-                { label: 'Copiar nome', onClick: () => copiar(no.label) },
-                ...(no.actions === undefined || no.actions.length === 0 ? [] : [null]),
-                // Sem diálogo de confirmação, e de propósito (spec 040): uma
-                // ação de menu GERA o SQL e o abre — nada é executado. O
-                // diálogo que existia aqui afirmava "esta ação altera o
-                // servidor", o que era falso. O `danger` continua, pintando o
-                // item de vermelho, e o aviso de verdade vai no SQL gerado,
-                // que é onde ele é lido. Rodar é o `▷ Run` da spec 038.
-                ...(no.actions ?? []).map((acao) => ({
-                  label: acao.label,
-                  danger: acao.danger,
-                  onClick: async () => {
-                    const r = await Api.runAction(id, { nodePath: caminho, actionId: acao.id });
-                    // O database vem herdado da subárvore: o menu de contexto
-                    // sabe onde clicou, e a aba precisa nascer amarrada.
-                    ws.abrirQuery(
-                      `acao:${id}:${r.title}`, r.title, r.content, id, database
-                    );
-                  },
-                })),
-              ]),
-            onMenuConexao: (e, conexao) =>
-              menu.abrir(e, [
-                { label: 'Copiar nome', onClick: () => copiar(conexao.label) },
-                conexoes.estado?.openIds.includes(conexao.id) === true
-                  ? { label: 'Desconectar', onClick: () => conexoes.desconectar(conexao.id) }
-                  : { label: 'Conectar', onClick: () => conexoes.abrirConexao(conexao) },
-                { label: 'Recarregar metadados', onClick: () => conexoes.recarregarMetadados(conexao.id) },
-                null,
-                { label: 'Editar conexão…', onClick: () => conexoesAcoes.abrirFormulario(conexao) },
-                { label: 'Excluir conexão', danger: true, onClick: () => conexoes.excluir(conexao) },
-              ]),
+            ...menusDeConexao,
           }}
         />
         <Resizer dragging={lateral.dragging} onStart={lateral.startDrag} onReset={lateral.reset} />
@@ -641,20 +646,7 @@ export function App() {
                   grupo={g}
                   abas={ws.tabs.filter((t) => t.grupo === g)}
                   ativaId={ws.store.ativaDoGrupo(g)}
-                  onExportar={ws.abrirSemTitulo}
-                  onConfirmarEscrita={(mensagem, titulo) =>
-                    dialogs.confirmar({
-                      titulo,
-                      mensagem,
-                      rotuloConfirmar: 'Gravar',
-                      destrutivo: true,
-                    })
-                  }
-                  conexaoSomenteLeitura={(t) =>
-                    conexoes.acharConexao((t.meta as { connectionId?: string }).connectionId)
-                      ?.readOnly === true
-                  }
-                  focado={ws.grupoFocado === g}
+                  {...propsDeTabela}                  focado={ws.grupoFocado === g}
                   dividido={ws.grupos.length > 1}
                   fontSize={prefs.prefs['editor.fontSize']}
                   tabSize={prefs.prefs['editor.tabSize']}

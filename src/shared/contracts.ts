@@ -260,6 +260,27 @@ export interface TableStructure {
   readonly checagens: ListaOuNaoSei<ChecagemDaTabela>;
 }
 
+/**
+ * Pedir o comando de uma alteração de estrutura (spec 046).
+ *
+ * A resposta é o SQL como TEXTO: a IDE gera e abre; quem roda é o usuário.
+ */
+export interface AlterRequest {
+  readonly nodePath: readonly string[];
+  readonly operacao: Readonly<Record<string, unknown>>;
+}
+
+export interface AlterResult {
+  readonly sql: string;
+  readonly titulo: string;
+}
+
+/** O que ESTE banco sabe alterar. O que não vier aqui não vira botão. */
+export interface AlterCapabilities {
+  readonly dialeto: string;
+  readonly operacoes: readonly string[];
+}
+
 /** Escrever pela grade (spec 044). Valores vão parametrizados, sempre. */
 export interface TableWriteRequest {
   readonly nodePath: readonly string[];

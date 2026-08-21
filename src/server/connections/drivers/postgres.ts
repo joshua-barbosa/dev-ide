@@ -31,6 +31,7 @@ import {
 } from './tabela';
 import { escreverNaTabela } from './transacao';
 import { estruturaDaTabela } from './postgres-estrutura';
+import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
 import {
   ACOES_DE_TABELA,
   ACOES_DE_VIEW,
@@ -652,6 +653,21 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       lerTabela(await clienteDe(request.nodePath[1] ?? principal), request, exibicao.rowLimit),
     writeTable: async (request) =>
       escrever(await clienteDe(request.nodePath[1] ?? principal), request),
+    alterCapabilities: () => ({
+      dialeto: DIALETOS.postgres.nome,
+      operacoes: [...operacoesDisponiveis(DIALETOS.postgres)],
+    }),
+    alterStructure: async (request) => {
+      const [, , schema, , objeto] = request.nodePath;
+      if (schema === undefined || objeto === undefined) {
+        throw new Error('A alteração exige um objeto selecionado.');
+      }
+      const alvo = `${quoteIdentifier(schema, 'double')}.${quoteIdentifier(objeto, 'double')}`;
+      return {
+        titulo: objeto,
+        sql: montarAlteracao({ alvo, dialeto: DIALETOS.postgres }, request.operacao as never),
+      };
+    },
     tableStructure: async (nodePath) => {
       // O MESMO cliente para a estrutura e para o DDL: pedir dois seria abrir
       // outra conexão ao mesmo banco só para reconstruir um texto.

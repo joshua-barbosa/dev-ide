@@ -6,6 +6,9 @@
 import type {
   ActionRequest,
   ActionResult,
+  AlterCapabilities,
+  AlterRequest,
+  AlterResult,
   ConnectionInput,
   ConnectionsState,
   ExecuteRequest,
@@ -279,6 +282,10 @@ export const Api = {
     request<TablePage>('POST', `${conexoes}/${id}/table`, payload),
   tableStructure: (id: string, nodePath: readonly string[]) =>
     request<TableStructure>('GET', comCaminho(`${conexoes}/${id}/structure`, nodePath)),
+  alterStructure: (id: string, payload: AlterRequest) =>
+    request<AlterResult>('POST', `${conexoes}/${id}/alter`, payload),
+  alterCapabilities: (id: string) =>
+    request<AlterCapabilities>('GET', `${conexoes}/${id}/alter/capabilities`),
   writeTable: (id: string, payload: TableWriteRequest) =>
     request<TableWriteResult>('POST', `${conexoes}/${id}/table/write`, payload),
   runAction: (id: string, payload: ActionRequest) =>

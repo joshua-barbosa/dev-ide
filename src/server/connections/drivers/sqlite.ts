@@ -15,6 +15,7 @@ import {
 import { DEFAULT_ROW_LIMIT } from './sql-base';
 import { escreverNaTabela } from './transacao';
 import { estruturaDaTabela } from './sqlite-estrutura';
+import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
 import {
   ACOES_DE_TABELA_SQLITE,
   ACOES_DE_VIEW,
@@ -407,6 +408,21 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     readTable: async (request) => lerTabela(db, request, DEFAULT_ROW_LIMIT),
     writeTable: (request) => escrever(db, request),
     tableStructure: async (nodePath) => estruturaDaTabela(db, nodePath),
+    alterCapabilities: () => ({
+      dialeto: DIALETOS.sqlite.nome,
+      operacoes: [...operacoesDisponiveis(DIALETOS.sqlite)],
+    }),
+    alterStructure: async (request) => {
+      const objeto = request.nodePath[2];
+      if (objeto === undefined) throw new Error('A alteração exige um objeto selecionado.');
+      return {
+        titulo: objeto,
+        sql: montarAlteracao(
+          { alvo: quote(objeto), dialeto: DIALETOS.sqlite },
+          request.operacao as never
+        ),
+      };
+    },
     execute: async (request) => executar(db, request),
     runAction: async (request) => acao(db, request),
     close: async () => {

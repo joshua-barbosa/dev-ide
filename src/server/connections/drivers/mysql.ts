@@ -16,6 +16,7 @@ import {
 } from './mysql-sql';
 import { escrever, lerTabela } from './mysql-tabela';
 import { estruturaDaTabela } from './mysql-estrutura';
+import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
 import { executar, qualificar, query } from './mysql-base';
 import {
   ACOES_DE_TABELA,
@@ -473,6 +474,23 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       exigirViva();
       await usar(conn, request.nodePath[1]);
       return lerTabela(conn, request, exibicao.rowLimit);
+    },
+    alterCapabilities: () => ({
+      dialeto: DIALETOS.mysql.nome,
+      operacoes: [...operacoesDisponiveis(DIALETOS.mysql)],
+    }),
+    alterStructure: async (request) => {
+      const [, schema, , objeto] = request.nodePath;
+      if (schema === undefined || objeto === undefined) {
+        throw new Error('A alteração exige um objeto selecionado.');
+      }
+      return {
+        titulo: objeto,
+        sql: montarAlteracao(
+          { alvo: qualificar(schema, objeto), dialeto: DIALETOS.mysql },
+          request.operacao as never
+        ),
+      };
     },
     tableStructure: async (nodePath) => {
       exigirViva();
