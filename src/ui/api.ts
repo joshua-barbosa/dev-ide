@@ -14,6 +14,8 @@ import type {
   SessionCapabilities,
   TablePage,
   TableRequest,
+  TableWriteRequest,
+  TableWriteResult,
   TreeNode,
 } from '../shared/contracts';
 import type { DriverPanel, ConnectionKind, FieldSpec } from '../shared/contracts';
@@ -274,6 +276,8 @@ export const Api = {
     request<QueryResult>('POST', `${conexoes}/${id}/execute`, payload),
   readTable: (id: string, payload: TableRequest) =>
     request<TablePage>('POST', `${conexoes}/${id}/table`, payload),
+  writeTable: (id: string, payload: TableWriteRequest) =>
+    request<TableWriteResult>('POST', `${conexoes}/${id}/table/write`, payload),
   runAction: (id: string, payload: ActionRequest) =>
     request<ActionResult>('POST', `${conexoes}/${id}/action`, payload),
 

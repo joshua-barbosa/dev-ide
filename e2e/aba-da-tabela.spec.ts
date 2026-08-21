@@ -21,7 +21,9 @@ async function abrirTabela(page: Page): Promise<void> {
   await linhaArvore(page, 'Tables').click({ position: { x: 24, y: 8 } });
 
   await linhaArvore(page, TABELA).hover();
-  await page.getByRole('button', { name: `Abrir tabela ${TABELA}` }).click();
+    // `exact`: `alunos` é prefixo de `alunos_edicao`, a tabela que a spec 044 usa
+  // para escrever. Sem isto o seletor casa com as duas.
+  await page.getByRole('button', { name: `Abrir tabela ${TABELA}`, exact: true }).click();
   await expect(aba(page, TABELA)).toBeVisible();
 }
 
@@ -59,7 +61,9 @@ test('paginar traz a outra linha, e o SQL mostra o OFFSET', async ({ page }) => 
 
 test('ordenar pela coluna inverte a ordem na tela', async ({ page }) => {
   await abrirTabela(page);
-  const primeira = () => page.locator('tbody tr').first().locator('td').nth(2);
+  // `nth(3)`, e não `nth(2)`: numa tabela editável (spec 044) a grade tem uma
+  // coluna a mais na frente, com a caixa de marcar para apagar.
+  const primeira = () => page.locator('tbody tr').first().locator('td').nth(3);
 
   await page.getByLabel('Ordenar por nome').click();
   await expect(primeira()).toHaveText('joshua');

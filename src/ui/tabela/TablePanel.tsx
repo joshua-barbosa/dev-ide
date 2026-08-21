@@ -16,6 +16,8 @@ import { tokens } from '../theme';
 import { paraCsv, paraJson } from '../../shared/exportar';
 import { TAMANHOS_DE_PAGINA, type EstadoDaTabela } from './useTabela';
 import type { CellValue, TableColumn } from '../../shared/contracts';
+import { BarraDeRascunho } from './BarraDeRascunho';
+import { idDaLinha, type Rascunho } from './useRascunho';
 
 /** Largura máxima de coluna, para um BLOB não empurrar a tabela inteira. */
 const LARGURA_MAX = 420;
@@ -77,9 +79,23 @@ export interface TablePanelProps {
   readonly titulo: string;
   /** Abre o texto exportado numa aba sem título — o mesmo caminho do JSON da 038. */
   readonly onExportar: (conteudo: string, linguagem: string) => void;
+  /** O rascunho de edição (spec 044). Ausente = a aba é só de leitura. */
+  readonly rascunho?: Rascunho;
+  readonly gravando?: boolean;
+  readonly onGravar?: () => void;
+  /**
+   * Por que não dá para editar, quando não dá.
+   *
+   * Texto em vez de booleano: "não responde ao clique" é a pior interface
+   * possível. O usuário precisa saber se falta chave primária, se a conexão é
+   * somente-leitura, ou se ele está em modo livre.
+   */
+  readonly motivoSemEdicao?: string | null;
 }
 
-export function TablePanel({ estado, titulo, onExportar }: TablePanelProps) {
+export function TablePanel({
+  estado, titulo, onExportar, rascunho, gravando = false, onGravar, motivoSemEdicao = null,
+}: TablePanelProps) {
   const { pagina, carregando, erro } = estado;
   const [busca, setBusca] = useState('');
 
@@ -111,7 +127,13 @@ export function TablePanel({ estado, titulo, onExportar }: TablePanelProps) {
         onBusca={setBusca}
         onExportar={exportar}
         mostrando={visiveis.length}
+        podeEditar={rascunho !== undefined && motivoSemEdicao === null}
+        onAcrescentar={() => rascunho?.acrescentarLinha()}
       />
+
+      {rascunho !== undefined && onGravar !== undefined && (
+        <BarraDeRascunho rascunho={rascunho} gravando={gravando} onGravar={onGravar} />
+      )}
 
       {erro !== null ? (
         <Aviso texto={erro} erro />
@@ -120,20 +142,28 @@ export function TablePanel({ estado, titulo, onExportar }: TablePanelProps) {
       ) : colunas.length === 0 ? (
         <Aviso texto={`Sem colunas em ${titulo}.`} />
       ) : (
-        <Grade estado={estado} colunas={colunas} linhas={visiveis} />
+        <Grade
+          estado={estado}
+          colunas={colunas}
+          linhas={visiveis}
+          rascunho={rascunho}
+          motivoSemEdicao={motivoSemEdicao}
+        />
       )}
     </Box>
   );
 }
 
 function BarraDeComando({
-  estado, busca, onBusca, onExportar, mostrando,
+  estado, busca, onBusca, onExportar, mostrando, podeEditar, onAcrescentar,
 }: {
   readonly estado: EstadoDaTabela;
   readonly busca: string;
   readonly onBusca: (v: string) => void;
   readonly onExportar: (formato: 'csv' | 'json') => void;
   readonly mostrando: number;
+  readonly podeEditar: boolean;
+  readonly onAcrescentar: () => void;
 }) {
   const { pagina, numero, totalDePaginas, carregando } = estado;
   const ultima = totalDePaginas !== null && numero >= totalDePaginas;
@@ -157,7 +187,12 @@ function BarraDeComando({
         }}
       />
 
-      <Acao icone="lucide:refresh-cw" rotulo="Recarregar" onClick={estado.recarregar} />
+      {/* "a tabela" no rótulo: a lateral já tem vários "Recarregar", e um nome
+          ambíguo é ruim para quem usa leitor de tela e para quem escreve teste. */}
+      <Acao icone="lucide:refresh-cw" rotulo="Recarregar a tabela" onClick={estado.recarregar} />
+      {podeEditar && (
+        <Acao icone="lucide:plus" rotulo="Acrescentar linha" onClick={onAcrescentar} />
+      )}
       <Acao icone="lucide:file-down" rotulo="Exportar CSV" onClick={() => onExportar('csv')} />
       <Acao icone="lucide:braces" rotulo="Exportar JSON" onClick={() => onExportar('json')} />
 
@@ -275,12 +310,15 @@ function Acao({
 }
 
 function Grade({
-  estado, colunas, linhas,
+  estado, colunas, linhas, rascunho, motivoSemEdicao,
 }: {
   readonly estado: EstadoDaTabela;
   readonly colunas: readonly TableColumn[];
   readonly linhas: readonly (readonly CellValue[])[];
+  readonly rascunho?: Rascunho;
+  readonly motivoSemEdicao: string | null;
 }) {
+  const editavel = rascunho !== undefined && motivoSemEdicao === null;
   return (
     <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
       <Box
@@ -298,27 +336,61 @@ function Grade({
         <thead>
           <tr>
             <Box component="th" sx={{ bgcolor: 'background.paper' }} />
+            {editavel && <Box component="th" sx={{ bgcolor: 'background.paper' }} />}
             {colunas.map((coluna) => (
               <Cabecalho key={coluna.name} coluna={coluna} estado={estado} />
             ))}
           </tr>
         </thead>
         <tbody>
-          {linhas.map((linha, i) => (
-            <tr key={i}>
-              <Box
-                component="td"
-                sx={{
-                  color: 'text.secondary', bgcolor: 'background.paper',
-                  textAlign: 'right', userSelect: 'none',
-                }}
-              >
-                {(estado.numero - 1) * estado.porPagina + i + 1}
-              </Box>
-              {linha.map((valor, j) => (
-                <Celula key={j} valor={valor} />
-              ))}
-            </tr>
+          {linhas.map((linha, i) => {
+            const id = idDaLinha(colunas, linha);
+            const aApagar = rascunho?.remocoes.has(id) === true;
+            return (
+              <tr key={i}>
+                <Box
+                  component="td"
+                  sx={{
+                    color: 'text.secondary', bgcolor: 'background.paper',
+                    textAlign: 'right', userSelect: 'none',
+                  }}
+                >
+                  {(estado.numero - 1) * estado.porPagina + i + 1}
+                </Box>
+                {editavel && (
+                  <Box component="td" sx={{ bgcolor: 'background.paper', textAlign: 'center' }}>
+                    <Box
+                      component="input"
+                      type="checkbox"
+                      aria-label={`Marcar linha ${i + 1} para apagar`}
+                      checked={aApagar}
+                      onChange={() => rascunho?.alternarRemocao(id)}
+                      sx={{ m: 0, cursor: 'pointer' }}
+                    />
+                  </Box>
+                )}
+                {linha.map((valor, j) => {
+                  const coluna = colunas[j];
+                  if (coluna === undefined) return null;
+                  return (
+                    <Celula
+                      key={j}
+                      valor={editavel ? rascunho.valorDe(id, coluna.name, valor) : valor}
+                      // A chave NÃO se edita: trocá-la aqui mudaria a linha que
+                      // o `WHERE` usa para achar a própria linha.
+                      editavel={editavel && !coluna.chave}
+                      mexida={editavel && rascunho.mexida(id, coluna.name)}
+                      riscada={aApagar}
+                      titulo={motivoSemEdicao ?? undefined}
+                      onEditar={(novo) => rascunho?.alterar(id, coluna.name, valor, novo)}
+                    />
+                  );
+                })}
+              </tr>
+            );
+          })}
+          {rascunho?.novas.map((nova) => (
+            <LinhaNovaTr key={nova.id} nova={nova} colunas={colunas} rascunho={rascunho} />
           ))}
         </tbody>
       </Box>
@@ -386,20 +458,117 @@ function Cabecalho({
   );
 }
 
-function Celula({ valor }: { readonly valor: CellValue }) {
+/**
+ * Uma linha nova, ainda em rascunho.
+ *
+ * Fica no fim da grade, com fundo próprio. Não tem chave — o banco a gera — e
+ * por isso nenhuma célula dela é intocável.
+ */
+function LinhaNovaTr({
+  nova, colunas, rascunho,
+}: {
+  readonly nova: { readonly id: string; readonly valores: Readonly<Record<string, CellValue>> };
+  readonly colunas: readonly TableColumn[];
+  readonly rascunho: Rascunho;
+}) {
+  return (
+    <Box component="tr" data-linha-nova sx={{ bgcolor: 'action.selected' }}>
+      <Box component="td" sx={{ textAlign: 'center', userSelect: 'none' }}>
+        <Box
+          component="button"
+          type="button"
+          aria-label="Descartar esta linha nova"
+          onClick={() => rascunho.descartarNova(nova.id)}
+          sx={{ border: 0, bgcolor: 'transparent', color: 'inherit', cursor: 'pointer', p: 0 }}
+        >
+          ×
+        </Box>
+      </Box>
+      <Box component="td" />
+      {colunas.map((coluna) => (
+        <Celula
+          key={coluna.name}
+          valor={nova.valores[coluna.name] ?? null}
+          editavel
+          mexida
+          riscada={false}
+          rotulo={`Nova linha, ${coluna.name}`}
+          onEditar={(novo) => rascunho.alterarNova(nova.id, coluna.name, novo)}
+        />
+      ))}
+    </Box>
+  );
+}
+
+function Celula({
+  valor, editavel = false, mexida = false, riscada = false, titulo, rotulo, onEditar,
+}: {
+  readonly valor: CellValue;
+  readonly editavel?: boolean;
+  readonly mexida?: boolean;
+  readonly riscada?: boolean;
+  readonly titulo?: string;
+  readonly rotulo?: string;
+  readonly onEditar?: (novo: CellValue) => void;
+}) {
   const nulo = valor === null;
+  const [editando, setEditando] = useState(false);
+
+  if (editando && editavel) {
+    return (
+      <Box component="td" sx={{ p: 0 }}>
+        <Box
+          component="input"
+          autoFocus
+          aria-label={rotulo ?? 'Valor da célula'}
+          defaultValue={nulo ? '' : String(valor)}
+          onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
+            setEditando(false);
+            onEditar?.(e.target.value);
+          }}
+          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+            // `Escape` desiste: sai sem chamar `onEditar`, e o valor fica como
+            // estava. Sem isto, começar a editar por engano já sujaria o rascunho.
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              setEditando(false);
+            }
+            // `Ctrl+0` põe NULL. Um botão por célula seria ruído; digitar a
+            // palavra "NULL" gravaria o TEXTO, que é outra coisa.
+            if (e.key === '0' && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              setEditando(false);
+              onEditar?.(null);
+            }
+          }}
+          sx={{
+            width: '100%', border: 0, outline: 'none', px: 1, py: '3px',
+            bgcolor: 'primary.main', color: 'background.default',
+            font: 'inherit', fontFamily: tokens.fontMono, fontSize: 12,
+          }}
+        />
+      </Box>
+    );
+  }
+
   return (
     <Box
       component="td"
-      title={nulo ? 'NULL' : String(valor)}
+      title={titulo ?? (nulo ? 'NULL' : String(valor))}
+      onDoubleClick={editavel ? () => setEditando(true) : undefined}
       // Clicar copia: o caso mais comum é levar um id para a próxima consulta.
+      // Editar é DUPLO clique, para não brigar com isso.
       onClick={() => void navigator.clipboard?.writeText(nulo ? '' : String(valor))}
       sx={{
         cursor: 'pointer',
         color: nulo ? 'text.secondary' : 'text.primary',
         fontStyle: nulo ? 'italic' : 'normal',
-        '&:hover': { bgcolor: 'action.hover' },
-        '&:active': { bgcolor: 'primary.main', color: 'background.default' },
+        textDecoration: riscada ? 'line-through' : 'none',
+        opacity: riscada ? 0.5 : 1,
+        bgcolor: mexida ? 'warning.main' : undefined,
+        ...(mexida ? { color: 'background.default' } : {}),
+        '&:hover': { bgcolor: mexida ? 'warning.main' : 'action.hover' },
       }}
     >
       {nulo ? 'NULL' : String(valor)}

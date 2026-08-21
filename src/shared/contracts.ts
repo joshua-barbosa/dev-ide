@@ -188,6 +188,33 @@ export interface TablePage {
   readonly sql: string;
 }
 
+/** Escrever pela grade (spec 044). Valores vão parametrizados, sempre. */
+export interface TableWriteRequest {
+  readonly nodePath: readonly string[];
+  readonly insercoes?: readonly Readonly<Record<string, CellValue>>[];
+  readonly alteracoes?: readonly {
+    readonly chave: Readonly<Record<string, CellValue>>;
+    readonly antes: Readonly<Record<string, CellValue>>;
+    readonly depois: Readonly<Record<string, CellValue>>;
+  }[];
+  readonly remocoes?: readonly { readonly chave: Readonly<Record<string, CellValue>> }[];
+  /**
+   * Só monta o SQL, sem executar.
+   *
+   * A prévia e a gravação passam pelo MESMO código, com esta bandeira como
+   * única diferença — montar duas vezes é como a prévia passa a mentir.
+   */
+  readonly simular?: boolean;
+}
+
+export interface TableWriteResult {
+  /** O SQL exato, com os valores como `?` — é o que a confirmação mostra. */
+  readonly comandos: readonly { readonly sql: string; readonly params: readonly CellValue[] }[];
+  /** `false` quando foi só simulação. */
+  readonly executado: boolean;
+  readonly linhasAfetadas: number;
+}
+
 // ---------------------------------------------------------------------------
 // Ações de menu
 // ---------------------------------------------------------------------------

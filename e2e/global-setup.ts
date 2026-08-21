@@ -15,6 +15,8 @@ export const PASTA_DEMO = (dados: string): string => path.join(dados, 'projects'
 export const CONEXAO = 'escola';
 export const TABELA = 'alunos';
 export const VIEW = 'alunos_view';
+/** Tabela de uso exclusivo dos testes que escrevem (spec 044). */
+export const TABELA_EDITAVEL = 'alunos_edicao';
 /**
  * Caminho do banco semeado, para o teste do formulário cadastrar uma conexão
  * apontando para um arquivo que existe de verdade.
@@ -125,6 +127,15 @@ export default async function globalSetup(): Promise<void> {
   // Uma view, para a spec 040 poder provar que o menu dela é MENOR que o de uma
   // tabela — não há o que inserir nem o que esvaziar numa view.
   db.exec(`CREATE VIEW ${VIEW} AS SELECT nome, nota FROM ${TABELA}`);
+
+  // Tabela SÓ para a spec 044, que ESCREVE. A suíte compartilha um banco, e sem
+  // uma tabela própria a edição de um teste vaza para os outros — foi o que
+  // aconteceu: `alunos` chegou a `gravado-de-verdade` e três testes de specs
+  // anteriores quebraram procurando por `joshua`.
+  db.exec(`CREATE TABLE ${TABELA_EDITAVEL} (id INTEGER PRIMARY KEY, nome TEXT NOT NULL, nota REAL)`);
+  const inserirEdicao = db.prepare(`INSERT INTO ${TABELA_EDITAVEL}(nome, nota) VALUES (?, ?)`);
+  inserirEdicao.run('joshua', 9.5);
+  inserirEdicao.run('maria', 8);
   const inserir = db.prepare(`INSERT INTO ${TABELA}(nome, nota) VALUES (?, ?)`);
   inserir.run('joshua', 9.5);
   inserir.run('maria', 8);

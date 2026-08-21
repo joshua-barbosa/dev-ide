@@ -536,3 +536,160 @@ test('valor de filtro com aspa não quebra a consulta', async () => {
     await session.close();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Escrever pela grade (spec 044)
+// ---------------------------------------------------------------------------
+//
+// A montagem do SQL é testada sem banco em `escrita.test.ts`. Aqui se prova o
+// que só um motor responde: que a transação desfaz, que a alteração concorrente
+// é detectada, e que somente-leitura recusa.
+
+const NODE = ['main', 'tables', 'alunos'];
+
+test('a prévia monta o SQL e NÃO toca no banco', async () => {
+  const { session } = await abrir();
+  try {
+    const r = await session.writeTable!({
+      nodePath: NODE,
+      alteracoes: [{ chave: { id: 1 }, antes: { nome: 'joshua' }, depois: { nome: 'x' } }],
+      simular: true,
+    });
+    assert.equal(r.executado, false);
+    assert.match(r.comandos[0]?.sql ?? '', /UPDATE/);
+
+    const depois = await session.execute!({ statement: 'SELECT nome FROM alunos WHERE id = 1' });
+    assert.equal(depois.rows[0]?.[0], 'joshua', 'a simulação não gravou nada');
+  } finally {
+    await session.close();
+  }
+});
+
+test('gravar altera de verdade, e o SQL é o MESMO da prévia', async () => {
+  const { session } = await abrir();
+  try {
+    const pedido = {
+      nodePath: NODE,
+      alteracoes: [{ chave: { id: 1 }, antes: { nome: 'joshua' }, depois: { nome: 'josh' } }],
+    };
+    const previa = await session.writeTable!({ ...pedido, simular: true });
+    const feito = await session.writeTable!(pedido);
+
+    assert.deepEqual(feito.comandos, previa.comandos, 'o que se leu é o que rodou');
+    assert.equal(feito.executado, true);
+    assert.equal(feito.linhasAfetadas, 1);
+
+    const r = await session.execute!({ statement: 'SELECT nome FROM alunos WHERE id = 1' });
+    assert.equal(r.rows[0]?.[0], 'josh');
+  } finally {
+    await session.close();
+  }
+});
+
+test('linha alterada por baixo é DETECTADA, e nada é gravado', async () => {
+  // É a razão de o valor antigo entrar no `WHERE`.
+  const { session } = await abrir();
+  try {
+    // Alguém mexeu na linha depois que a página foi lida.
+    await session.execute!({ statement: "UPDATE alunos SET nome = 'outro' WHERE id = 1" });
+
+    await assert.rejects(
+      () => session.writeTable!({
+        nodePath: NODE,
+        alteracoes: [{ chave: { id: 1 }, antes: { nome: 'joshua' }, depois: { nome: 'josh' } }],
+      }),
+      /mudou no banco/i
+    );
+
+    const r = await session.execute!({ statement: 'SELECT nome FROM alunos WHERE id = 1' });
+    assert.equal(r.rows[0]?.[0], 'outro', 'a alteração de terceiros sobreviveu');
+  } finally {
+    await session.close();
+  }
+});
+
+test('uma linha ruim desfaz a gravação INTEIRA', async () => {
+  // Gravar metade seria pior que não gravar.
+  const { session } = await abrir();
+  try {
+    await assert.rejects(() => session.writeTable!({
+      nodePath: NODE,
+      alteracoes: [
+        { chave: { id: 1 }, antes: { nome: 'joshua' }, depois: { nome: 'novo-1' } },
+        // Esta não casa: o valor antigo está errado de propósito.
+        { chave: { id: 2 }, antes: { nome: 'ERRADO' }, depois: { nome: 'novo-2' } },
+      ],
+    }));
+
+    const r = await session.execute!({ statement: 'SELECT nome FROM alunos ORDER BY id' });
+    assert.deepEqual(r.rows.map((l) => l[0]), ['joshua', 'maria'], 'nenhuma das duas entrou');
+  } finally {
+    await session.close();
+  }
+});
+
+test('inserir e apagar pela grade funcionam', async () => {
+  const { session } = await abrir();
+  try {
+    await session.writeTable!({ nodePath: NODE, insercoes: [{ nome: 'novato' }] });
+    let r = await session.execute!({ statement: "SELECT id FROM alunos WHERE nome = 'novato'" });
+    assert.equal(r.rowCount, 1);
+
+    const id = r.rows[0]?.[0];
+    await session.writeTable!({ nodePath: NODE, remocoes: [{ chave: { id: id as number } }] });
+    r = await session.execute!({ statement: "SELECT id FROM alunos WHERE nome = 'novato'" });
+    assert.equal(r.rowCount, 0);
+  } finally {
+    await session.close();
+  }
+});
+
+test('apagar linha que já sumiu é DETECTADO, não ignorado', async () => {
+  const { session } = await abrir();
+  try {
+    await assert.rejects(
+      () => session.writeTable!({ nodePath: NODE, remocoes: [{ chave: { id: 9999 } }] }),
+      /mudou no banco/i
+    );
+  } finally {
+    await session.close();
+  }
+});
+
+test('conexão somente-leitura recusa a escrita pela grade', async () => {
+  // A trava é do motor, não da tela: mesmo que a interface deixasse clicar.
+  const { session } = await abrir(true);
+  try {
+    await assert.rejects(() => session.writeTable!({
+      nodePath: NODE,
+      alteracoes: [{ chave: { id: 1 }, antes: { nome: 'joshua' }, depois: { nome: 'x' } }],
+    }));
+    const r = await session.execute!({ statement: 'SELECT nome FROM alunos WHERE id = 1' });
+    assert.equal(r.rows[0]?.[0], 'joshua');
+  } finally {
+    await session.close();
+  }
+});
+
+test('gravar NULL grava NULL, e texto vazio grava texto vazio', async () => {
+  // Na linha 2, cuja `foto` nasce NULL — a da linha 1 é um BLOB.
+  const { session } = await abrir();
+  try {
+    await session.writeTable!({
+      nodePath: NODE,
+      alteracoes: [{ chave: { id: 2 }, antes: { foto: null }, depois: { foto: '' } }],
+    });
+    let r = await session.execute!({ statement: 'SELECT foto IS NULL FROM alunos WHERE id = 2' });
+    assert.equal(r.rows[0]?.[0], 0, 'virou string vazia, não NULL');
+
+    await session.writeTable!({
+      nodePath: NODE,
+      alteracoes: [{ chave: { id: 2 }, antes: { foto: '' }, depois: { foto: null } }],
+    });
+    r = await session.execute!({ statement: 'SELECT foto IS NULL FROM alunos WHERE id = 2' });
+    assert.equal(r.rows[0]?.[0], 1, 'e agora é NULL de verdade');
+  } finally {
+    await session.close();
+  }
+});
+

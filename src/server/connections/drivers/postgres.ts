@@ -29,6 +29,7 @@ import {
   montarConsultaDeTabela,
   normalizarPedidoDeTabela,
 } from './tabela';
+import { escreverNaTabela } from './transacao';
 import {
   ACOES_DE_TABELA,
   ACOES_DE_VIEW,
@@ -49,6 +50,8 @@ import type {
   TableColumn,
   TablePage,
   TableRequest,
+  TableWriteRequest,
+  TableWriteResult,
   ResolvedConfig,
   Session,
   TreeNode,
@@ -444,6 +447,35 @@ async function lerTabela(
   return { resultado, columns: colunas, sql, total, totalEstimado: aproximado };
 }
 
+/** Escrever pela grade (spec 044), em uma transação. */
+async function escrever(
+  client: Client,
+  request: TableWriteRequest
+): Promise<TableWriteResult> {
+  const [, , schema, , objeto] = request.nodePath;
+  if (schema === undefined || objeto === undefined) {
+    throw new Error('A escrita exige um objeto selecionado.');
+  }
+  const { rows } = await client.query<{ nome: string; pk: boolean }>(COLUNAS_SQL, [schema, objeto]);
+  if (rows.length === 0) throw new Error(`Tabela não encontrada: ${schema}.${objeto}`);
+
+  return escreverNaTabela(
+    {
+      alvo: `${quoteIdentifier(schema, 'double')}.${quoteIdentifier(objeto, 'double')}`,
+      colunas: rows.map((c) => ({ name: c.nome, chave: c.pk })),
+      estilo: 'double',
+      marcador: 'numerado',
+    },
+    request,
+    {
+      comecar: async () => { await client.query('BEGIN'); },
+      confirmar: async () => { await client.query('COMMIT'); },
+      desfazer: async () => { await client.query('ROLLBACK'); },
+      rodar: async (sql, params) => (await client.query(sql, [...params])).rowCount ?? 0,
+    }
+  );
+}
+
 /** nodePath de um objeto é [server, banco, schema, categoria, objeto]. */
 async function acao(clienteDe: ClienteDe, principal: string, request: ActionRequest): Promise<ActionResult> {
   const [, banco, schema, categoria, objeto] = request.nodePath;
@@ -608,6 +640,8 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     children: (nodePath, opcoes) => navegar(clienteDe, rotulo, versao, exibicao, nodePath, opcoes),
     readTable: async (request) =>
       lerTabela(await clienteDe(request.nodePath[1] ?? principal), request, exibicao.rowLimit),
+    writeTable: async (request) =>
+      escrever(await clienteDe(request.nodePath[1] ?? principal), request),
     execute: async (request) => {
       // O vínculo do arquivo manda (spec 038); depois o nó ativo; depois o
       // principal. A ordem importa: uma query amarrada a `nuntius` não pode

@@ -13,6 +13,7 @@ import {
   normalizarPedidoDeTabela,
 } from './tabela';
 import { DEFAULT_ROW_LIMIT } from './sql-base';
+import { escreverNaTabela } from './transacao';
 import {
   ACOES_DE_TABELA_SQLITE,
   ACOES_DE_VIEW,
@@ -32,6 +33,8 @@ import type {
   TableColumn,
   TablePage,
   TableRequest,
+  TableWriteRequest,
+  TableWriteResult,
   ResolvedConfig,
   Session,
   TreeNode,
@@ -298,6 +301,34 @@ function lerTabela(db: DatabaseSync, request: TableRequest, limitePadrao: number
   };
 }
 
+/** Escrever pela grade (spec 044), em uma transação. */
+async function escrever(
+  db: DatabaseSync,
+  request: TableWriteRequest
+): Promise<TableWriteResult> {
+  const objeto = request.nodePath[2];
+  if (objeto === undefined) throw new Error('A escrita exige um objeto selecionado.');
+  const info = db.prepare(`PRAGMA table_info(${quote(objeto)})`).all() as Array<{
+    name: string; pk: number;
+  }>;
+  if (info.length === 0) throw new Error(`Tabela não encontrada: ${objeto}`);
+
+  return escreverNaTabela(
+    {
+      alvo: quote(objeto),
+      colunas: info.map((c) => ({ name: c.name, chave: c.pk > 0 })),
+      estilo: 'double',
+    },
+    request,
+    {
+      comecar: async () => { db.exec('BEGIN'); },
+      confirmar: async () => { db.exec('COMMIT'); },
+      desfazer: async () => { db.exec('ROLLBACK'); },
+      rodar: async (sql, params) => Number(db.prepare(sql).run(...(params as never[])).changes),
+    }
+  );
+}
+
 /** nodePath de um objeto é [main, categoria, objeto]. */
 function acao(db: DatabaseSync, request: ActionRequest): ActionResult {
   const objeto = request.nodePath[2];
@@ -373,6 +404,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     kind: 'sql',
     children: async (nodePath, opcoes) => navegar(db, file, nodePath, opcoes),
     readTable: async (request) => lerTabela(db, request, DEFAULT_ROW_LIMIT),
+    writeTable: (request) => escrever(db, request),
     execute: async (request) => executar(db, request),
     runAction: async (request) => acao(db, request),
     close: async () => {

@@ -8,12 +8,14 @@
 // Somente-leitura é imposto pelo servidor com SET SESSION TRANSACTION READ ONLY,
 // o mesmo mecanismo do comando `db`; não há filtro de texto no SQL.
 import * as fs from 'fs';
-import mysql, { Connection, FieldPacket, Types } from 'mysql2';
+import mysql, { Connection } from 'mysql2';
 import {
-  APELIDO_DA_CONTAGEM,
-  montarConsultaDeTabela,
-  normalizarPedidoDeTabela,
-} from './tabela';
+  COLUNAS_ARVORE_SQL,
+  COLUNAS_MODELO_SQL,
+  CONTAGENS_SQL,
+} from './mysql-sql';
+import { escrever, lerTabela } from './mysql-tabela';
+import { executar, qualificar, query } from './mysql-base';
 import {
   ACOES_DE_TABELA,
   ACOES_DE_VIEW,
@@ -27,21 +29,13 @@ import type {
   OpcoesDeNavegacao,
   ActionRequest,
   ActionResult,
-  CellValue,
-  ColumnInfo,
   Driver,
-  ExecuteRequest,
-  QueryResult,
-  TableColumn,
-  TablePage,
-  TableRequest,
   ResolvedConfig,
   Session,
   TreeNode,
 } from '../types';
 import {
   applyVisibility,
-  formatCell,
   mainFirst,
   parseNameList,
   quoteIdentifier,
@@ -63,12 +57,6 @@ interface Exibicao {
   readonly rowLimit: number;
 }
 
-/** Códigos numéricos de tipo -> nome legível, para o cabeçalho do grid. */
-const TYPE_NAMES = new Map<number, string>(
-  Object.entries(Types)
-    .filter((entry): entry is [string, number] => typeof entry[1] === 'number')
-    .map(([name, code]) => [code, name.toLowerCase()])
-);
 
 interface Categoria {
   readonly id: string;
@@ -83,14 +71,6 @@ const CATEGORIAS: readonly Categoria[] = [
   { id: 'procedures', label: 'Procedures', icon: 'procedure' },
 ];
 
-function query<T>(conn: Connection, sql: string, params: unknown[] = []): Promise<T[]> {
-  return new Promise((resolve, reject) => {
-    conn.query(sql, params, (err, rows) => {
-      if (err) reject(new Error(err.message));
-      else resolve(rows as T[]);
-    });
-  });
-}
 
 /** Formata bytes como "64.1G", igual ao que a árvore mostra ao lado do banco. */
 function tamanho(bytes: number | null): string | undefined {
@@ -145,16 +125,6 @@ async function listarBancos(conn: Connection, exibicao: Exibicao): Promise<TreeN
   }));
 }
 
-const CONTAGENS_SQL = `
-  SELECT
-    (SELECT COUNT(*) FROM information_schema.TABLES
-      WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE') AS tables,
-    (SELECT COUNT(*) FROM information_schema.VIEWS  WHERE TABLE_SCHEMA = ?) AS views,
-    (SELECT COUNT(*) FROM information_schema.ROUTINES
-      WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'FUNCTION')  AS functions,
-    (SELECT COUNT(*) FROM information_schema.ROUTINES
-      WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'PROCEDURE') AS procedures
-`;
 
 async function listarCategorias(conn: Connection, schema: string): Promise<TreeNode[]> {
   const [contagens = {}] = await query<Record<string, unknown>>(conn, CONTAGENS_SQL, [
@@ -246,10 +216,7 @@ async function listarColunas(conn: Connection, schema: string, objeto: string): 
     COLUMN_KEY: string;
   }>(
     conn,
-    `SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY
-       FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-      ORDER BY ORDINAL_POSITION`,
+    COLUNAS_ARVORE_SQL,
     [schema, objeto]
   );
   return linhas.map((linha) => {
@@ -294,12 +261,6 @@ async function navegar(
 // Execução
 // ---------------------------------------------------------------------------
 
-function colunasDe(fields: FieldPacket[] | undefined): ColumnInfo[] {
-  return (fields ?? []).map((field) => ({
-    name: field.name,
-    type: TYPE_NAMES.get(field.columnType ?? -1),
-  }));
-}
 
 /**
  * Põe a conexão no database do vínculo antes de executar (spec 038).
@@ -318,157 +279,11 @@ async function usar(conn: Connection, database: string | undefined): Promise<voi
   await query(conn, `USE ${quoteIdentifier(database, 'backtick')}`);
 }
 
-function executar(
-  conn: Connection,
-  request: ExecuteRequest,
-  params: readonly string[] = []
-): Promise<QueryResult> {
-  const limite = resolveRowLimit(request.rowLimit);
-  const inicio = Date.now();
-
-  return new Promise((resolve, reject) => {
-    const q = params.length === 0
-      ? conn.query(request.statement)
-      : conn.query(request.statement, [...params]);
-    let colunas: ColumnInfo[] = [];
-    // 'fields' só dispara em result set; a ausência dele identifica DML/DDL.
-    q.on('fields', (fields: FieldPacket[]) => {
-      colunas = colunasDe(fields);
-    });
-
-    const rows: CellValue[][] = [];
-    let truncated = false;
-    let afetadas = 0;
-
-    const stream = q.stream();
-    stream.on('data', (registro: Record<string, unknown>) => {
-      if (colunas.length === 0) {
-        // OkPacket de INSERT/UPDATE/DDL: não há linhas, só o total afetado.
-        afetadas = Number(registro.affectedRows ?? 0);
-        return;
-      }
-      if (rows.length >= limite) {
-        truncated = true;
-        stream.destroy(); // para de puxar do servidor em vez de baixar tudo
-        return;
-      }
-      rows.push(colunas.map((coluna) => formatCell(registro[coluna.name])));
-    });
-
-    stream.on('error', (err: Error) => reject(new Error(err.message)));
-    const finalizar = () =>
-      resolve({
-        columns: colunas,
-        rows,
-        rowCount: colunas.length === 0 ? afetadas : rows.length,
-        durationMs: Date.now() - inicio,
-        truncated,
-        message: colunas.length === 0 ? `${afetadas} linha(s) afetada(s).` : undefined,
-      });
-    stream.on('end', finalizar);
-    stream.on('close', finalizar); // destroy() encerra por aqui
-  });
-}
-
-// ---------------------------------------------------------------------------
-// A aba de tabela (spec 041)
-// ---------------------------------------------------------------------------
-
-/**
- * O total de linhas, contado de verdade — ou estimado, quando contar custaria caro.
- *
- * `COUNT(*)` no InnoDB varre o índice: numa tabela de 169 milhões de linhas
- * (a `alternativas` do usuário) isso é dezenas de segundos, e a aba ficaria
- * pendurada. Acima do teto, devolve-se a estimativa do catálogo **dizendo que é
- * estimativa** — mostrar um número exato que não é seria pior que não mostrar.
- *
- * Com filtro em vigor não há estimativa possível: aí conta-se, porque o filtro
- * costuma reduzir muito, e um total errado faria a paginação mentir.
- */
-const MAX_LINHAS_PARA_CONTAR = 5_000_000;
-
-async function totalDaTabela(
-  conn: Connection,
-  schema: string,
-  objeto: string,
-  contagemSql: string,
-  params: readonly string[]
-): Promise<{ total: number | null; totalEstimado: number | null }> {
-  const [estimativa] = await query<{ n: number | null }>(
-    conn,
-    'SELECT TABLE_ROWS AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
-    [schema, objeto]
-  );
-  const aproximado = estimativa?.n === null || estimativa?.n === undefined
-    ? null
-    : Number(estimativa.n);
-
-  if (params.length === 0 && aproximado !== null && aproximado > MAX_LINHAS_PARA_CONTAR) {
-    return { total: null, totalEstimado: aproximado };
-  }
-  const [linha] = await query<Record<string, unknown>>(conn, contagemSql, [...params]);
-  return { total: Number(linha?.[APELIDO_DA_CONTAGEM] ?? 0), totalEstimado: aproximado };
-}
-
-async function lerTabela(
-  conn: Connection,
-  request: TableRequest,
-  limitePadrao: number
-): Promise<TablePage> {
-  const [, schema, , objeto] = request.nodePath;
-  if (schema === undefined || objeto === undefined) {
-    throw new Error('A aba de tabela exige um objeto selecionado.');
-  }
-  const colunas = await colunasDaTabela(conn, schema, objeto);
-  const pedido = normalizarPedidoDeTabela(
-    { ...request, porPagina: request.porPagina || limitePadrao },
-    colunas.map((c) => c.name)
-  );
-  const alvo = qualificar(schema, objeto);
-  const { sql, contagem, params } = montarConsultaDeTabela(
-    { alvo, colunas: colunas.map((c) => c.name), estilo: 'backtick' },
-    pedido
-  );
-
-  const [resultado, totais] = await Promise.all([
-    executar(conn, { statement: sql, rowLimit: pedido.porPagina }, params),
-    totalDaTabela(conn, schema, objeto, contagem, params),
-  ]);
-  return { resultado, columns: colunas, sql, ...totais };
-}
-
-/** As colunas da tabela, com chave e obrigatoriedade — o cabeçalho da aba. */
-async function colunasDaTabela(
-  conn: Connection,
-  schema: string,
-  objeto: string
-): Promise<TableColumn[]> {
-  const linhas = await query<{
-    COLUMN_NAME: string; COLUMN_TYPE: string; COLUMN_KEY: string; IS_NULLABLE: string;
-  }>(
-    conn,
-    `SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_KEY, IS_NULLABLE
-       FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-      ORDER BY ORDINAL_POSITION`,
-    [schema, objeto]
-  );
-  if (linhas.length === 0) throw new Error(`Tabela não encontrada: ${schema}.${objeto}`);
-  return linhas.map((l) => ({
-    name: l.COLUMN_NAME,
-    type: l.COLUMN_TYPE,
-    chave: l.COLUMN_KEY === 'PRI',
-    obrigatoria: l.IS_NULLABLE === 'NO',
-  }));
-}
 
 // ---------------------------------------------------------------------------
 // Ações do menu de contexto
 // ---------------------------------------------------------------------------
 
-function qualificar(schema: string, objeto: string): string {
-  return `${quoteIdentifier(schema, 'backtick')}.${quoteIdentifier(objeto, 'backtick')}`;
-}
 
 /**
  * As colunas de um objeto, no formato que os modelos de SQL pedem.
@@ -489,10 +304,7 @@ async function colunasParaModelo(
     EXTRA: string;
   }>(
     conn,
-    `SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_KEY, EXTRA
-       FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-      ORDER BY ORDINAL_POSITION`,
+    COLUNAS_MODELO_SQL,
     [schema, objeto]
   );
   return linhas.map((linha) => ({
@@ -660,6 +472,11 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       exigirViva();
       await usar(conn, request.nodePath[1]);
       return lerTabela(conn, request, exibicao.rowLimit);
+    },
+    writeTable: async (request) => {
+      exigirViva();
+      await usar(conn, request.nodePath[1]);
+      return escrever(conn, request);
     },
     execute: async (request) => {
       exigirViva();

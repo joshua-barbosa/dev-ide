@@ -32,6 +32,10 @@ export interface EditorGroupProps {
   readonly ativaId: string | null;
   /** Abre um texto exportado numa aba sem título (spec 041). */
   readonly onExportar: (conteudo: string, linguagem: string) => void;
+  /** Mostra o SQL de escrita e espera o sim (spec 044). */
+  readonly onConfirmarEscrita: (mensagem: string, titulo: string) => Promise<boolean>;
+  /** A conexão desta aba é somente-leitura? Aí a edição nem aparece. */
+  readonly conexaoSomenteLeitura: (aba: Tab) => boolean;
   /** Verdadeiro no grupo que recebe os comandos e dita a barra de status. */
   readonly focado: boolean;
   /** Verdadeiro quando há mais de um grupo — muda o que a tela vazia diz. */
@@ -72,7 +76,7 @@ export function EditorGroup({
   fontSize, tabSize, wordWrap, terminalFontSize, tema, snippets,
   grades, formulario, emPreview, conteudoDaAba, onPreview,
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
-  onComando, onExportar,
+  onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
 }: EditorGroupProps) {
   const caixa = useRef<HTMLDivElement>(null);
   // A zona vive num `ref` E num estado: o `ref` é a verdade que a soltura lê, o
@@ -208,7 +212,12 @@ export function EditorGroup({
             key={t.id}
             sx={{ flex: 1, minHeight: 0, display: ativaId === t.id ? 'flex' : 'none' }}
           >
-            <TabelaHost aba={t} onExportar={onExportar} />
+            <TabelaHost
+              aba={t}
+              onExportar={onExportar}
+              onConfirmar={onConfirmarEscrita}
+              somenteLeitura={conexaoSomenteLeitura(t)}
+            />
           </Box>
         ))}
 

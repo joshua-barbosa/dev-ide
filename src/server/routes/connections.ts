@@ -217,6 +217,28 @@ export function createConnectionsRouter(
     })));
   }));
 
+  /**
+   * Escrever pela grade (spec 044).
+   *
+   * `simular: true` devolve o SQL sem executar — é o que a confirmação mostra.
+   * O caminho é o MESMO da gravação; a bandeira é a única diferença.
+   */
+  router.post('/:id/table/write', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (typeof session.writeTable !== 'function') {
+      throw new Error(`A conexão "${req.params.id}" não aceita escrita pela grade.`);
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    res.json(ok(await session.writeTable({
+      nodePath: Array.isArray(body.nodePath) ? body.nodePath.map(String) : [],
+      // O conteúdo é conferido contra as colunas REAIS dentro do driver.
+      insercoes: (body.insercoes ?? []) as never,
+      alteracoes: (body.alteracoes ?? []) as never,
+      remocoes: (body.remocoes ?? []) as never,
+      simular: body.simular === true,
+    })));
+  }));
+
   router.post('/:id/execute', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
     if (typeof session.execute !== 'function') {

@@ -642,6 +642,18 @@ export function App() {
                   abas={ws.tabs.filter((t) => t.grupo === g)}
                   ativaId={ws.store.ativaDoGrupo(g)}
                   onExportar={ws.abrirSemTitulo}
+                  onConfirmarEscrita={(mensagem, titulo) =>
+                    dialogs.confirmar({
+                      titulo,
+                      mensagem,
+                      rotuloConfirmar: 'Gravar',
+                      destrutivo: true,
+                    })
+                  }
+                  conexaoSomenteLeitura={(t) =>
+                    conexoes.acharConexao((t.meta as { connectionId?: string }).connectionId)
+                      ?.readOnly === true
+                  }
                   focado={ws.grupoFocado === g}
                   dividido={ws.grupos.length > 1}
                   fontSize={prefs.prefs['editor.fontSize']}

@@ -5,7 +5,7 @@
 // chega ao DOM como marcação. As cargas de ataque em si são testadas sem
 // navegador, em `shared/__tests__/markdown.test.ts`; aqui se prova o caminho.
 import { expect, test, type Page } from '@playwright/test';
-import { editor, esperarEditorPronto, entradaRapida, menu } from './fixtures';
+import { editor, esperarEditorPronto, entradaRapida, menu, textoDoEditor } from './fixtures';
 
 const preview = (page: Page) => page.locator('[data-markdown-preview]');
 // `exact`: o botão de fechar aba passou a se chamar "Fechar <arquivo>", e num
@@ -75,6 +75,11 @@ test('o preview mostra o que está NA TELA, inclusive o não salvo', async ({ pa
   await editor(page).click();
   await page.keyboard.press('Control+End');
   await page.keyboard.insertText('\n\n## acrescentado sem salvar');
+  // O Monaco aplica a inserção fora de turno: sem esperar o texto CHEGAR ao
+  // editor, o clique no Preview pode acontecer antes, e o renderizado sai sem o
+  // que acabou de ser digitado. Foi assim que este teste ficou instável — passa
+  // sozinho e falha na suíte inteira, que é o pior jeito de falhar.
+  await expect.poll(() => textoDoEditor(page)).toContain('acrescentado sem salvar');
 
   await botao(page).click();
   // Ler do disco mostraria a versão de antes da última tecla.

@@ -28,10 +28,18 @@ import type {
   QueryResult,
   TablePage,
   TableRequest,
+  TableWriteRequest,
+  TableWriteResult,
   TreeNode,
   VaultState,
 } from '../../shared/contracts';
-export type { TableColumn, TablePage, TableRequest } from '../../shared/contracts';
+export type {
+  TableColumn,
+  TablePage,
+  TableRequest,
+  TableWriteRequest,
+  TableWriteResult,
+} from '../../shared/contracts';
 import type { NodeIcon } from '../../shared/icons';
 import type { ClienteDeLinhaDeComando } from '../../shared/terminal/comando';
 
@@ -188,6 +196,14 @@ export interface Session {
    * errado — e em silêncio — quando ele tivesse `GROUP BY` ou `LIMIT` próprio.
    */
   readonly readTable?: (request: TableRequest) => Promise<TablePage>;
+  /**
+   * Escreve o rascunho da grade, em UMA transação (spec 044).
+   *
+   * Com `simular`, monta o SQL e não executa — é o que a confirmação mostra.
+   * Um `UPDATE` ou `DELETE` que afete zero linhas desfaz tudo: significa que a
+   * linha mudou por baixo entre a leitura e a gravação.
+   */
+  readonly writeTable?: (request: TableWriteRequest) => Promise<TableWriteResult>;
   readonly files?: RemoteFiles;
   readonly shell?: RemoteShell;
   readonly monitor?: HostMonitor;
