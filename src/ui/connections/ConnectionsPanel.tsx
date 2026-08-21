@@ -39,7 +39,10 @@ export interface ConnectionsPanelProps {
   // ---- Arquivos de query (spec 038) ----
   readonly onAbrirQueryDoDatabase: (connectionId: string, no: TreeNode) => Promise<void>;
   readonly onAbrirTabela: (
-    connectionId: string, nodePath: readonly string[], titulo: string
+    connectionId: string,
+    nodePath: readonly string[],
+    titulo: string,
+    database: string | null
   ) => Promise<void>;
   readonly onAbrirArquivoDeQuery: (no: TreeNode) => Promise<void>;
   readonly onNovaQuery: (vinculo: Vinculo | null) => Promise<void>;
@@ -271,7 +274,7 @@ export function ConnectionsPanel({
                 <AcaoDaLinha
                   icone="lucide:table-2"
                   rotulo={`Abrir tabela ${no.label}`}
-                  onClick={comErro(() => onAbrirTabela(id, filho, no.label))}
+                  onClick={comErro(() => onAbrirTabela(id, filho, no.label, bancoAqui))}
                 />
               ) : typeof no.meta?.database === 'string' ? (
                 // `Abrir Query` no database — o botão que o usuário anotou da

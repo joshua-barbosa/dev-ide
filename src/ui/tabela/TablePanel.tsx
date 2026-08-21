@@ -20,6 +20,58 @@ import type { CellValue, TableColumn } from '../../shared/contracts';
 /** Largura máxima de coluna, para um BLOB não empurrar a tabela inteira. */
 const LARGURA_MAX = 420;
 
+/**
+ * O SQL do topo, editável (spec 043).
+ *
+ * É uma `textarea`, e não um Monaco. São três linhas: uma instância de editor
+ * por aba de tabela custaria memória e um ciclo de montagem, e traria minimapa,
+ * dobradura e lente de código para dentro de uma caixa de três linhas. Quem quer
+ * editor completo abre uma query — que é um clique.
+ */
+function CampoDeSql({ estado }: { readonly estado: EstadoDaTabela }) {
+  return (
+    <Box
+      sx={{
+        display: 'flex', alignItems: 'flex-start', gap: 0.5, px: 1, py: 0.5,
+        borderBottom: 1, borderColor: 'divider',
+      }}
+    >
+      <Box
+        component="textarea"
+        data-sql-da-tabela
+        aria-label="SQL desta aba"
+        spellCheck={false}
+        value={estado.sql}
+        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => estado.definirSql(e.target.value)}
+        onKeyDown={(e: React.KeyboardEvent) => {
+          // `Ctrl+Enter` é o mesmo gesto do editor de query. Um `Enter` sozinho
+          // precisa continuar quebrando linha: o SQL tem mais de uma.
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            estado.executarSql();
+          }
+        }}
+        rows={3}
+        sx={{
+          flex: 1, resize: 'vertical', border: 0, outline: 'none',
+          bgcolor: 'transparent', color: 'text.secondary',
+          fontFamily: tokens.fontMono, fontSize: 11, lineHeight: 1.5,
+        }}
+      />
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+        <Acao icone="lucide:play" rotulo="Executar este SQL" onClick={estado.executarSql} />
+        {estado.modoLivre && (
+          <Acao
+            icone="lucide:corner-left-up"
+            rotulo="Voltar ao SQL da tabela"
+            onClick={estado.voltarParaTabela}
+          />
+        )}
+      </Box>
+    </Box>
+  );
+}
+
 export interface TablePanelProps {
   readonly estado: EstadoDaTabela;
   readonly titulo: string;
@@ -51,16 +103,7 @@ export function TablePanel({ estado, titulo, onExportar }: TablePanelProps) {
 
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, bgcolor: tokens.bgEditor }}>
-      <Box
-        data-sql-da-tabela
-        sx={{
-          px: 1.25, py: 0.6, borderBottom: 1, borderColor: 'divider',
-          fontFamily: tokens.fontMono, fontSize: 11, color: 'text.secondary',
-          whiteSpace: 'pre-wrap', maxHeight: 84, overflow: 'auto',
-        }}
-      >
-        {pagina?.sql ?? 'carregando…'}
-      </Box>
+      <CampoDeSql estado={estado} />
 
       <BarraDeComando
         estado={estado}
@@ -120,6 +163,7 @@ function BarraDeComando({
 
       <Box sx={{ flex: 1 }} />
 
+      {!estado.modoLivre && (
       <Select
         value={estado.porPagina}
         onChange={(e) => estado.definirPorPagina(Number(e.target.value))}
@@ -134,7 +178,14 @@ function BarraDeComando({
           </MenuItem>
         ))}
       </Select>
+      )}
 
+      {estado.modoLivre ? (
+        <Box data-modo-livre component="span" sx={{ color: 'warning.main' }}>
+          SQL livre — sem paginação, ordenação nem filtro por coluna
+        </Box>
+      ) : (
+        <>
       <Acao
         icone="lucide:chevron-left"
         rotulo="Página anterior"
@@ -151,6 +202,8 @@ function BarraDeComando({
         desabilitada={ultima || carregando}
         onClick={() => estado.irPara(numero + 1)}
       />
+        </>
+      )}
 
       <Box component="span" data-total-da-tabela sx={{ ml: 1 }}>
         <Total pagina={pagina} mostrando={mostrando} />
@@ -281,17 +334,22 @@ function Cabecalho({
 }) {
   const ordem = estado.ordenar?.coluna === coluna.name ? estado.ordenar : null;
   const seta = ordem === null ? '' : ordem.desc ? ' ▼' : ' ▲';
+  // No modo livre não há o que ordenar nem filtrar: a IDE não montou este SQL e
+  // não vai reescrevê-lo. Botão que não faz nada é pior que botão ausente.
+  const estruturado = !estado.modoLivre;
 
   return (
     <Box component="th" data-coluna={coluna.name} sx={{ verticalAlign: 'top' }}>
       <Box
         component="button"
         type="button"
+        disabled={!estruturado}
         aria-label={`Ordenar por ${coluna.name}`}
         onClick={() => estado.alternarOrdem(coluna.name)}
         sx={{
           border: 0, bgcolor: 'transparent', color: 'inherit', font: 'inherit',
-          p: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 0.4,
+          p: 0, cursor: estruturado ? 'pointer' : 'default',
+          display: 'flex', alignItems: 'center', gap: 0.4,
         }}
       >
         {coluna.chave && (
@@ -312,6 +370,7 @@ function Cabecalho({
 
       <Box sx={{ color: 'text.secondary', fontSize: 10, fontWeight: 400 }}>{coluna.type}</Box>
 
+      {estruturado && (
       <InputBase
         value={estado.filtros[coluna.name] ?? ''}
         placeholder="contém…"
@@ -322,6 +381,7 @@ function Cabecalho({
           borderRadius: 0.5, px: 0.5, py: 0, width: '100%', mt: 0.25, bgcolor: tokens.bgEditor,
         }}
       />
+      )}
     </Box>
   );
 }

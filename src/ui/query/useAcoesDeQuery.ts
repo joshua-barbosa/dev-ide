@@ -18,7 +18,12 @@ import type { ConexoesAcoes } from '../acoes/useConexoesAcoes';
 /** O que o `ConnectionsPanel` espera receber para os arquivos de query. */
 export interface AcoesDeQuery {
   onAbrirQueryDoDatabase(connectionId: string, no: TreeNode): Promise<void>;
-  onAbrirTabela(connectionId: string, nodePath: readonly string[], titulo: string): Promise<void>;
+  onAbrirTabela(
+    connectionId: string,
+    nodePath: readonly string[],
+    titulo: string,
+    database: string | null
+  ): Promise<void>;
   onAbrirArquivoDeQuery(no: TreeNode): Promise<void>;
   onNovaQuery(vinculo: Vinculo | null): Promise<void>;
   onRenomearQuery(vinculo: Vinculo | null, no: TreeNode): Promise<void>;
@@ -35,8 +40,8 @@ export function useAcoesDeQuery(ws: Workspace, acoes: ConexoesAcoes): AcoesDeQue
   return {
     onAbrirQueryDoDatabase: acoes.abrirQueryDoDatabase,
 
-    onAbrirTabela: async (connectionId, nodePath, titulo) => {
-      ws.abrirTabela(connectionId, nodePath, titulo);
+    onAbrirTabela: async (connectionId, nodePath, titulo, database) => {
+      ws.abrirTabela(connectionId, nodePath, titulo, database);
     },
 
     onAbrirArquivoDeQuery: async (no) => {

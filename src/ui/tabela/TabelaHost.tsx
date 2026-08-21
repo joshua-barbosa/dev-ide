@@ -14,10 +14,15 @@ export interface TabelaHostProps {
 }
 
 export function TabelaHost({ aba, onExportar }: TabelaHostProps) {
-  const meta = aba.meta as { connectionId?: string; nodePath?: readonly string[] };
+  const meta = aba.meta as {
+    connectionId?: string;
+    nodePath?: readonly string[];
+    database?: string | null;
+  };
   const estado = useTabela({
     connectionId: meta.connectionId ?? '',
     nodePath: meta.nodePath ?? [],
+    database: meta.database ?? null,
   });
   return <TablePanel estado={estado} titulo={aba.title} onExportar={onExportar} />;
 }

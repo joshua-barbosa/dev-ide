@@ -104,3 +104,67 @@ test('trocar de aba e voltar NÃO perde o filtro', async ({ page }) => {
   await expect(page.getByLabel('Filtrar nome')).toHaveValue('josh');
   await expect(total(page)).toContainText('de 1');
 });
+
+// ---------------------------------------------------------------------------
+// O SQL editável (spec 043)
+// ---------------------------------------------------------------------------
+
+const campoSql = (page: Page) => page.getByLabel('SQL desta aba');
+
+test('o SQL do topo é editável e roda com o botão', async ({ page }) => {
+  await abrirTabela(page);
+  await campoSql(page).fill("SELECT 'so-uma' AS marca");
+  await page.getByRole('button', { name: 'Executar este SQL' }).click();
+
+  // Na CÉLULA, e não no campo: o texto aparece nos dois, e `getByText` casaria
+  // com o `textarea` também.
+  await expect(page.getByRole('cell', { name: 'so-uma' })).toBeVisible();
+  // Modo livre: a IDE não montou este SQL, e diz isso.
+  await expect(page.locator('[data-modo-livre]')).toBeVisible();
+});
+
+test('em modo livre a paginação e o filtro por coluna somem', async ({ page }) => {
+  // Botão que não faz nada é pior que botão ausente.
+  await abrirTabela(page);
+  await campoSql(page).fill('SELECT 1 AS um');
+  await page.keyboard.press('Control+Enter');
+
+  await expect(page.locator('[data-modo-livre]')).toBeVisible();
+  await expect(page.getByLabel('Próxima página')).toHaveCount(0);
+  await expect(page.getByLabel('Linhas por página')).toHaveCount(0);
+  await expect(page.getByLabel('Filtrar um')).toHaveCount(0);
+});
+
+test('voltar ao SQL da tabela devolve os controles', async ({ page }) => {
+  await abrirTabela(page);
+  await campoSql(page).fill('SELECT 1 AS um');
+  await page.keyboard.press('Control+Enter');
+  await expect(page.locator('[data-modo-livre]')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Voltar ao SQL da tabela' }).click();
+  await expect(page.locator('[data-modo-livre]')).toHaveCount(0);
+  await expect(total(page)).toContainText('de 2');
+  await expect(campoSql(page)).toHaveValue(/SELECT/);
+});
+
+test('SQL errado mostra o erro SEM perder o que foi digitado', async ({ page }) => {
+  await abrirTabela(page);
+  await campoSql(page).fill('SELECT * FROM nao_existe_mesmo');
+  await page.keyboard.press('Control+Enter');
+
+  await expect(page.getByText(/no such table|nao_existe_mesmo/i)).toBeVisible();
+  await expect(campoSql(page)).toHaveValue('SELECT * FROM nao_existe_mesmo');
+});
+
+test('ordenar reescreve o SQL do topo — ele é espelho', async ({ page }) => {
+  await abrirTabela(page);
+  await page.getByLabel('Ordenar por nome').click();
+  await expect(campoSql(page)).toHaveValue(/ORDER BY "nome" ASC/);
+});
+
+test('a aba de tabela NÃO mostra o ▷ da barra de abas', async ({ page }) => {
+  // Ele executava o editor do grupo, que ainda guardava outro arquivo.
+  await abrirTabela(page);
+  await expect(page.getByRole('button', { name: 'Executar consulta' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Executar este SQL' })).toBeVisible();
+});

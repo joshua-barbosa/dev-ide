@@ -17,6 +17,15 @@ export const PADRAO_POR_PAGINA = 100;
 
 export interface EstadoDaTabela {
   readonly pagina: TablePage | null;
+  /**
+   * O SQL no topo da aba, editável (spec 043).
+   *
+   * No modo tabela ele é ESPELHO do que a IDE montou, e se reescreve a cada
+   * ordenação, filtro ou página. No modo livre é o que o usuário digitou.
+   */
+  readonly sql: string;
+  /** O usuário mexeu no SQL: paginação, ordem e filtro saem de cena. */
+  readonly modoLivre: boolean;
   readonly carregando: boolean;
   readonly erro: string | null;
   readonly numero: number;
@@ -31,14 +40,21 @@ export interface EstadoDaTabela {
   alternarOrdem(coluna: string): void;
   definirFiltro(coluna: string, valor: string): void;
   recarregar(): void;
+  definirSql(texto: string): void;
+  /** Roda o SQL do topo. Entra em modo livre se ele foi editado. */
+  executarSql(): void;
+  /** Volta ao SQL montado, e com ele aos controles. */
+  voltarParaTabela(): void;
 }
 
 export interface DepsDaTabela {
   readonly connectionId: string;
   readonly nodePath: readonly string[];
+  /** Contra qual database rodar o SQL livre (spec 038). */
+  readonly database: string | null;
 }
 
-export function useTabela({ connectionId, nodePath }: DepsDaTabela): EstadoDaTabela {
+export function useTabela({ connectionId, nodePath, database }: DepsDaTabela): EstadoDaTabela {
   const [pagina, setPagina] = useState<TablePage | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -48,6 +64,11 @@ export function useTabela({ connectionId, nodePath }: DepsDaTabela): EstadoDaTab
   const [ordenar, setOrdenar] = useState<OrdenacaoDeTabela | null>(null);
   const [filtros, setFiltros] = useState<Readonly<Record<string, string>>>({});
   const [versao, setVersao] = useState(0);
+
+  // O SQL do topo. `null` = ainda não foi tocado, e o espelho manda.
+  const [sqlEditado, setSqlEditado] = useState<string | null>(null);
+  const [livre, setLivre] = useState<{ readonly sql: string } | null>(null);
+  const [resultadoLivre, setResultadoLivre] = useState<TablePage | null>(null);
 
   const geracao = useRef(0);
   // O caminho vira texto para poder entrar na lista de dependências: um vetor
@@ -60,7 +81,39 @@ export function useTabela({ connectionId, nodePath }: DepsDaTabela): EstadoDaTab
   const SEPARADOR = '\u0000';
   const caminho = nodePath.join(SEPARADOR);
 
+  // ---- Modo LIVRE: o SQL que o usuário escreveu ----
   useEffect(() => {
+    if (livre === null) return;
+    const minha = (geracao.current += 1);
+    setCarregando(true);
+    Api.execute(connectionId, { statement: livre.sql, database: database ?? undefined })
+      .then((resultado) => {
+        if (geracao.current !== minha) return;
+        // Sem colunas com chave: quem não sabe a tabela não sabe a chave.
+        setResultadoLivre({
+          resultado,
+          columns: resultado.columns.map((c) => ({
+            name: c.name, type: c.type, chave: false, obrigatoria: false,
+          })),
+          total: null,
+          totalEstimado: null,
+          sql: livre.sql,
+        });
+        setErro(null);
+      })
+      .catch((e: Error) => {
+        if (geracao.current !== minha) return;
+        // O texto digitado NÃO se perde: só o resultado (AC-6).
+        setErro(e.message);
+      })
+      .finally(() => {
+        if (geracao.current === minha) setCarregando(false);
+      });
+  }, [connectionId, database, livre]);
+
+  // ---- Modo TABELA: a IDE monta a consulta ----
+  useEffect(() => {
+    if (livre !== null) return;
     const minha = (geracao.current += 1);
     setCarregando(true);
     const lista: FiltroDeTabela[] = Object.entries(filtros)
@@ -87,7 +140,7 @@ export function useTabela({ connectionId, nodePath }: DepsDaTabela): EstadoDaTab
       .finally(() => {
         if (geracao.current === minha) setCarregando(false);
       });
-  }, [connectionId, caminho, numero, porPagina, ordenar, filtros, versao]);
+  }, [connectionId, caminho, numero, porPagina, ordenar, filtros, versao, livre]);
 
   /** Mudar o conjunto volta para a primeira página: a 40 pode não existir mais. */
   const doInicio = useCallback((fn: () => void) => {
@@ -95,11 +148,18 @@ export function useTabela({ connectionId, nodePath }: DepsDaTabela): EstadoDaTab
     setNumero(1);
   }, []);
 
-  const total = pagina?.total ?? null;
+  // No modo tabela o SQL do topo é ESPELHO: reescrevê-lo a cada mudança é o que
+  // impede o campo de mentir sobre o que rodou.
+  const emUso = livre === null ? pagina : resultadoLivre;
+  const sql = sqlEditado ?? emUso?.sql ?? '';
+
+  const total = emUso?.total ?? null;
   const totalDePaginas = total === null ? null : Math.max(1, Math.ceil(total / porPagina));
 
   return {
-    pagina,
+    pagina: emUso,
+    sql,
+    modoLivre: livre !== null,
     carregando,
     erro,
     numero,
@@ -121,5 +181,27 @@ export function useTabela({ connectionId, nodePath }: DepsDaTabela): EstadoDaTab
     definirFiltro: (coluna, valor) =>
       doInicio(() => setFiltros((atual) => ({ ...atual, [coluna]: valor }))),
     recarregar: () => setVersao((v) => v + 1),
+
+    definirSql: (texto: string) => setSqlEditado(texto),
+
+    executarSql: () => {
+      const texto = (sqlEditado ?? sql).trim();
+      if (texto === '') return;
+      // Igual ao que a IDE montou? Então não é edição — é o mesmo SQL, e os
+      // controles continuam valendo. Evita cair no modo livre por um clique.
+      if (livre === null && pagina !== null && texto === pagina.sql.trim()) {
+        setSqlEditado(null);
+        setVersao((v) => v + 1);
+        return;
+      }
+      setLivre({ sql: texto });
+    },
+
+    voltarParaTabela: () => {
+      setLivre(null);
+      setResultadoLivre(null);
+      setSqlEditado(null);
+      setErro(null);
+    },
   };
 }

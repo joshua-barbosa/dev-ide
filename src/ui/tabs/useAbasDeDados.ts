@@ -23,7 +23,12 @@ export interface AbasDeDados {
     database: string | null
   ): void;
   abrirTexto(id: string, titulo: string, conteudo: string, linguagem: string): void;
-  abrirTabela(connectionId: string, nodePath: readonly string[], titulo: string): void;
+  abrirTabela(
+    connectionId: string,
+    nodePath: readonly string[],
+    titulo: string,
+    database: string | null
+  ): void;
   abrirFormulario(connectionId: string | null, titulo: string, grupoInicial?: string): void;
   abrirTerminal(connectionId: string | null, titulo: string): void;
 }
@@ -80,7 +85,12 @@ export function useAbasDeDados(store: TabStore, salvarGrupoFocado: () => void): 
    * em vez de duplicar — regra que o store já tem e que já tem teste.
    */
   const abrirTabela = useCallback(
-    (connectionId: string, nodePath: readonly string[], titulo: string) => {
+    (
+      connectionId: string,
+      nodePath: readonly string[],
+      titulo: string,
+      database: string | null
+    ) => {
       salvarGrupoFocado();
       store.open({
         // O caminho entra no id: a mesma tabela de dois bancos são duas abas.
@@ -88,7 +98,10 @@ export function useAbasDeDados(store: TabStore, salvarGrupoFocado: () => void): 
         type: 'tabela',
         title: titulo,
         icon: 'table',
-        meta: { connectionId, nodePath },
+        // O `database` vem junto para o SQL LIVRE (spec 043) rodar no banco
+        // certo — o `nodePath` leva o driver até a tabela, mas um `SELECT`
+        // escrito à mão precisa do vínculo, como qualquer query.
+        meta: { connectionId, nodePath, database },
       });
     },
     [salvarGrupoFocado, store]

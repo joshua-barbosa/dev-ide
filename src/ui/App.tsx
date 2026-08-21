@@ -342,7 +342,13 @@ export function App() {
   const visiveisNoPainel = new Set(paneisVisiveis(terminais).map((t) => t.id));
 
   const contexto: ContextoDeComandos = {
-    temEditor: ws.active !== null && ws.active.type !== 'grid' && ws.active.type !== 'conexao',
+    // `tabela` entrou na lista quando a spec 043 encontrou o defeito: o ▷ da
+    // barra de abas aparecia numa aba de tabela e executava o EDITOR do grupo,
+    // que ainda guardava o último arquivo aberto ali. Quem executa numa aba de
+    // tabela é o botão da própria aba.
+    temEditor:
+      ws.active !== null &&
+      !['grid', 'conexao', 'tabela'].includes(ws.active.type),
     temProjeto: pasta.pasta !== '',
     abaSuja: ws.active?.dirty === true,
     temAba: ws.active !== null,

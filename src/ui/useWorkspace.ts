@@ -125,7 +125,12 @@ export interface Workspace {
    * não sabe de tabela nenhuma. Paginar e contar só são possíveis sabendo qual
    * tabela é.
    */
-  abrirTabela(connectionId: string, nodePath: readonly string[], titulo: string): void;
+  abrirTabela(
+    connectionId: string,
+    nodePath: readonly string[],
+    titulo: string,
+    database: string | null
+  ): void;
   /** Aba sem título; sem argumentos é o `New Text File` do menu. */
   abrirSemTitulo(conteudo?: string, linguagem?: string): void;
   /**
