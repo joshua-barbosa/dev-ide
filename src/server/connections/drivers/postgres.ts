@@ -13,6 +13,23 @@ import { Client, type ClientConfig, type FieldDef } from 'pg';
 import Cursor from 'pg-cursor';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import {
+  BANCOS_SQL,
+  COLUNAS_MODELO_SQL,
+  COLUNAS_SQL,
+  CONTAGENS_SQL,
+  DDL_COLUNAS_SQL,
+  DDL_PK_SQL,
+  ESTIMATIVA_SQL,
+  FUNCOES_SQL,
+  SCHEMAS_SQL,
+  TABELAS_SQL,
+} from './postgres-sql';
+import {
+  APELIDO_DA_CONTAGEM,
+  montarConsultaDeTabela,
+  normalizarPedidoDeTabela,
+} from './tabela';
+import {
   ACOES_DE_TABELA,
   ACOES_DE_VIEW,
   modeloSql,
@@ -29,6 +46,9 @@ import type {
   Driver,
   ExecuteRequest,
   QueryResult,
+  TableColumn,
+  TablePage,
+  TableRequest,
   ResolvedConfig,
   Session,
   TreeNode,
@@ -67,65 +87,11 @@ interface Exibicao {
   readonly rowLimit: number;
 }
 
-// Bancos template e sem conexão permitida nunca são navegáveis.
-const BANCOS_SQL = `
-  SELECT d.datname AS nome,
-         CASE WHEN has_database_privilege(d.datname, 'CONNECT')
-              THEN pg_size_pretty(pg_database_size(d.datname)) END AS tamanho
-    FROM pg_database d
-   WHERE NOT d.datistemplate AND d.datallowconn
-   ORDER BY d.datname
-`;
 
-const SCHEMAS_SQL = `
-  SELECT n.nspname AS schema,
-         pg_size_pretty(COALESCE(SUM(pg_total_relation_size(c.oid)), 0)) AS tamanho
-    FROM pg_namespace n
-    LEFT JOIN pg_class c ON c.relnamespace = n.oid AND c.relkind IN ('r', 'p', 'm')
-   WHERE n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp%'
-   GROUP BY n.nspname
-   ORDER BY n.nspname
-`;
 
-const CONTAGENS_SQL = `
-  SELECT
-    (SELECT COUNT(*) FROM information_schema.tables
-      WHERE table_schema = $1 AND table_type = 'BASE TABLE') AS tables,
-    (SELECT COUNT(*) FROM information_schema.views  WHERE table_schema = $1) AS views,
-    (SELECT COUNT(*) FROM information_schema.routines
-      WHERE routine_schema = $1 AND routine_type = 'FUNCTION') AS functions
-`;
 
-/** Estimativa de linhas do planner (reltuples): barata, ao contrário de count(*). */
-const TABELAS_SQL = `
-  SELECT c.relname AS nome,
-         CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END AS linhas
-    FROM pg_class c
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-   WHERE n.nspname = $1 AND c.relkind = ANY($2){FILTRO}
-   ORDER BY c.relname
-`;
 
-const COLUNAS_SQL = `
-  SELECT a.attname AS nome,
-         format_type(a.atttypid, a.atttypmod) AS tipo,
-         a.attnotnull AS obrigatorio,
-         COALESCE(i.indisprimary, false) AS pk
-    FROM pg_attribute a
-    JOIN pg_class c ON c.oid = a.attrelid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    LEFT JOIN pg_index i ON i.indrelid = c.oid AND a.attnum = ANY(i.indkey) AND i.indisprimary
-   WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped
-   ORDER BY a.attnum
-`;
 
-const FUNCOES_SQL = `
-  SELECT p.proname AS nome, pg_get_function_result(p.oid) AS retorno
-    FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname = $1 AND p.prokind = 'f'{FILTRO}
-   ORDER BY p.proname
-`;
 
 function contagem(valor: unknown): string | undefined {
   const n = Number(valor);
@@ -359,13 +325,22 @@ function colunasDe(fields: readonly FieldDef[] | undefined): ColumnInfo[] {
   return (fields ?? []).map((field) => ({ name: field.name }));
 }
 
-async function executar(client: Client, request: ExecuteRequest, limitePadrao: number): Promise<QueryResult> {
+async function executar(
+  client: Client,
+  request: ExecuteRequest,
+  limitePadrao: number,
+  params: readonly string[] = []
+): Promise<QueryResult> {
   const limite = resolveRowLimit(request.rowLimit ?? limitePadrao);
   const inicio = Date.now();
 
   // rowMode 'array' evita que colunas homônimas (SELECT a.id, b.id) se
   // sobrescrevam, o que aconteceria com linhas em objeto.
-  const cursor = client.query(new Cursor<unknown[]>(request.statement, undefined, { rowMode: 'array' }));
+  const cursor = client.query(
+    new Cursor<unknown[]>(request.statement, params.length === 0 ? undefined : [...params], {
+      rowMode: 'array',
+    })
+  );
 
   try {
     // Uma linha a mais que o limite: é ela que revela o truncamento.
@@ -413,47 +388,61 @@ async function executar(client: Client, request: ExecuteRequest, limitePadrao: n
 // Ações do menu de contexto
 // ---------------------------------------------------------------------------
 
-const DDL_COLUNAS_SQL = `
-  SELECT a.attname AS nome,
-         format_type(a.atttypid, a.atttypmod) AS tipo,
-         a.attnotnull AS obrigatorio,
-         pg_get_expr(d.adbin, d.adrelid) AS padrao
-    FROM pg_attribute a
-    JOIN pg_class c ON c.oid = a.attrelid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
-   WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped
-   ORDER BY a.attnum
-`;
 
-const DDL_PK_SQL = `
-  SELECT a.attname AS nome
-    FROM pg_index i
-    JOIN pg_class c ON c.oid = i.indrelid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
-   WHERE n.nspname = $1 AND c.relname = $2 AND i.indisprimary
-`;
+
 
 /**
- * As colunas no formato dos modelos de SQL (spec 040).
+ * O total, contado — ou estimado, quando contar custaria caro.
  *
- * `pg_get_serial_sequence` é o que revela um `serial`/`identity`: no PostgreSQL
- * o auto-incremento não é uma marca na coluna, é uma sequência ligada a ela.
+ * `COUNT(*)` no PostgreSQL varre a tabela. Acima do teto usa-se `reltuples` do
+ * catálogo, **dizendo que é estimativa**. Com filtro em vigor conta-se sempre:
+ * não há estimativa possível para um `WHERE`.
  */
-const COLUNAS_MODELO_SQL = `
-  SELECT a.attname AS nome,
-         format_type(a.atttypid, a.atttypmod) AS tipo,
-         COALESCE(i.indisprimary, false) AS pk,
-         (pg_get_serial_sequence(c.oid::regclass::text, a.attname) IS NOT NULL
-          OR a.attidentity <> '') AS auto
-    FROM pg_attribute a
-    JOIN pg_class c ON c.oid = a.attrelid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    LEFT JOIN pg_index i ON i.indrelid = c.oid AND a.attnum = ANY(i.indkey) AND i.indisprimary
-   WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped
-   ORDER BY a.attnum
-`;
+const MAX_LINHAS_PARA_CONTAR = 5_000_000;
+
+async function lerTabela(
+  client: Client,
+  request: TableRequest,
+  limitePadrao: number
+): Promise<TablePage> {
+  const [, , schema, , objeto] = request.nodePath;
+  if (schema === undefined || objeto === undefined) {
+    throw new Error('A aba de tabela exige um objeto selecionado.');
+  }
+
+  const { rows: cols } = await client.query<{
+    nome: string; tipo: string; obrigatorio: boolean; pk: boolean;
+  }>(COLUNAS_SQL, [schema, objeto]);
+  if (cols.length === 0) throw new Error(`Tabela não encontrada: ${schema}.${objeto}`);
+  const colunas: TableColumn[] = cols.map((c) => ({
+    name: c.nome, type: c.tipo, chave: c.pk, obrigatoria: c.obrigatorio,
+  }));
+
+  const pedido = normalizarPedidoDeTabela(
+    { ...request, porPagina: request.porPagina || limitePadrao },
+    colunas.map((c) => c.name)
+  );
+  const alvo = `${quoteIdentifier(schema, 'double')}.${quoteIdentifier(objeto, 'double')}`;
+  const { sql, contagem, params } = montarConsultaDeTabela(
+    { alvo, colunas: colunas.map((c) => c.name), estilo: 'double', marcador: 'numerado' },
+    pedido
+  );
+
+  const { rows: est } = await client.query<{ n: string | null }>(ESTIMATIVA_SQL, [schema, objeto]);
+  const bruto = est[0]?.n;
+  const aproximado = bruto === null || bruto === undefined ? null : Number(bruto);
+
+  let total: number | null = null;
+  if (params.length > 0 || aproximado === null || aproximado <= MAX_LINHAS_PARA_CONTAR) {
+    const { rows } = await client.query<Record<string, unknown>>(contagem, [...params]);
+    total = Number(rows[0]?.[APELIDO_DA_CONTAGEM] ?? 0);
+  }
+
+  const resultado = await executar(
+    client, { statement: sql, rowLimit: pedido.porPagina }, pedido.porPagina, params
+  );
+  return { resultado, columns: colunas, sql, total, totalEstimado: aproximado };
+}
 
 /** nodePath de um objeto é [server, banco, schema, categoria, objeto]. */
 async function acao(clienteDe: ClienteDe, principal: string, request: ActionRequest): Promise<ActionResult> {
@@ -617,6 +606,8 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     kind: 'sql',
     onClosed: aoMorrer,
     children: (nodePath, opcoes) => navegar(clienteDe, rotulo, versao, exibicao, nodePath, opcoes),
+    readTable: async (request) =>
+      lerTabela(await clienteDe(request.nodePath[1] ?? principal), request, exibicao.rowLimit),
     execute: async (request) => {
       // O vínculo do arquivo manda (spec 038); depois o nó ativo; depois o
       // principal. A ordem importa: uma query amarrada a `nuntius` não pode

@@ -193,6 +193,30 @@ export function createConnectionsRouter(
     res.json(ok(resultado));
   }));
 
+  /**
+   * Uma página de uma TABELA (spec 041).
+   *
+   * Rota própria, e não `execute` com SQL montado no cliente: quem monta
+   * `ORDER BY` e `WHERE` é o driver, porque nome de coluna não se parametriza e
+   * a citação é dialeto. O cliente manda a INTENÇÃO — coluna, sentido, valor.
+   */
+  router.post('/:id/table', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (typeof session.readTable !== 'function') {
+      throw new Error(`A conexão "${req.params.id}" não tem tabelas navegáveis.`);
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    res.json(ok(await session.readTable({
+      nodePath: Array.isArray(body.nodePath) ? body.nodePath.map(String) : [],
+      pagina: typeof body.pagina === 'number' ? body.pagina : 1,
+      porPagina: typeof body.porPagina === 'number' ? body.porPagina : 0,
+      // `ordenar` e `filtros` são conferidos contra as colunas REAIS dentro do
+      // driver — aqui só se repassa a forma.
+      ordenar: (body.ordenar ?? null) as never,
+      filtros: (Array.isArray(body.filtros) ? body.filtros : []) as never,
+    })));
+  }));
+
   router.post('/:id/execute', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
     if (typeof session.execute !== 'function') {

@@ -635,6 +635,7 @@ export function App() {
                   grupo={g}
                   abas={ws.tabs.filter((t) => t.grupo === g)}
                   ativaId={ws.store.ativaDoGrupo(g)}
+                  onExportar={ws.abrirSemTitulo}
                   focado={ws.grupoFocado === g}
                   dividido={ws.grupos.length > 1}
                   fontSize={prefs.prefs['editor.fontSize']}

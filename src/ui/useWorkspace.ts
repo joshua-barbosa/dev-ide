@@ -10,7 +10,7 @@
 // 2. `null` significa "nenhuma aba". Usá-lo também para "aba fechada" faz a
 //    guarda engolir o evento de fechar a última, e a barra de status fica presa
 //    no arquivo anterior.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { GRUPO_PADRAO, type Tab, type TabStore } from '../shared/tabs';
 import {
   dividir as dividirLayout, LAYOUT_INICIAL, normalizarLayout, podeDividir,
@@ -23,6 +23,7 @@ import type { EditorHandle, ViewState } from './editor/EditorHost';
 import { EXT_TO_LANG, NOME_TO_LANG } from '../shared/editor/languages';
 import { Api } from './api';
 import { useTabs } from './tabs/useTabs';
+import { useAbasDeDados } from './tabs/useAbasDeDados';
 import { useGruposDeEditor } from './editor/useGruposDeEditor';
 import { conciliar, type SessaoDeAbas } from '../shared/sessao-abas';
 
@@ -117,6 +118,14 @@ export interface Workspace {
   abrirTexto(id: string, titulo: string, conteudo: string, linguagem: string): void;
   abrirFormulario(connectionId: string | null, titulo: string, grupoInicial?: string): void;
   abrirTerminal(connectionId: string | null, titulo: string): void;
+  /**
+   * A aba de uma TABELA (spec 041), com página, ordenação e filtros próprios.
+   *
+   * Distinta da aba de resultado: aquela mostra o que uma CONSULTA devolveu e
+   * não sabe de tabela nenhuma. Paginar e contar só são possíveis sabendo qual
+   * tabela é.
+   */
+  abrirTabela(connectionId: string, nodePath: readonly string[], titulo: string): void;
   /** Aba sem título; sem argumentos é o `New Text File` do menu. */
   abrirSemTitulo(conteudo?: string, linguagem?: string): void;
   /**
@@ -277,91 +286,11 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     [abrirArquivo, ed, store]
   );
 
-  const abrirQuery = useCallback(
-    (
-      id: string,
-      titulo: string,
-      conteudo: string,
-      connectionId: string,
-      database: string | null
-    ) => {
-      salvarGrupoFocado();
-      store.open({
-        id,
-        type: 'sql',
-        title: titulo,
-        // O `database` viaja no `meta` porque esta aba NÃO é um arquivo: não
-        // tem caminho, e o vínculo por caminho (spec 038) não a alcança. Ela já
-        // nasce sabendo — veio de um nó da árvore.
-        meta: {
-          path: null, content: conteudo, language: 'sql', view: null, connectionId, database,
-        },
-      });
-    },
-    [salvarGrupoFocado, store]
-  );
-
-  /**
-   * Abre texto que não veio de arquivo — hoje, a saída da execução.
-   *
-   * Separado de `abrirQuery` porque aquele marca a aba como `sql`, e a saída de
-   * um programa não é SQL. Reaproveitar por preguiça daria realce errado e um
-   * botão "executar consulta" onde não há consulta.
-   */
-  const abrirTexto = useCallback(
-    (id: string, titulo: string, conteudo: string, linguagem: string) => {
-      salvarGrupoFocado();
-      store.open({
-        id,
-        type: 'file',
-        title: titulo,
-        meta: { path: null, content: conteudo, language: linguagem, view: null },
-      });
-    },
-    [salvarGrupoFocado, store]
-  );
-
-  /**
-   * Abre a aba do formulário de conexão.
-   *
-   * O `id` inclui a conexão, então reabrir a mesma edição foca a aba existente
-   * em vez de duplicar — regra que o store já tem e que já tem teste.
-   */
-  const abrirFormulario = useCallback(
-    (connectionId: string | null, titulo: string, grupoInicial?: string) => {
-      salvarGrupoFocado();
-      store.open({
-        id: connectionId === null ? 'conexao:nova' : `conexao:${connectionId}`,
-        type: 'conexao',
-        title: titulo,
-        icon: 'lucide:plug',
-        meta: { connectionId, grupoInicial: grupoInicial ?? null },
-      });
-    },
-    [salvarGrupoFocado, store]
-  );
-
-  /**
-   * Abre uma aba de terminal.
-   *
-   * O id inclui um contador porque dois terminais da mesma conexão são
-   * legítimos — ao contrário do formulário, onde reabrir deve focar o existente.
-   */
-  const proximoTerminal = useRef(0);
-  const abrirTerminal = useCallback(
-    (connectionId: string | null, titulo: string) => {
-      salvarGrupoFocado();
-      proximoTerminal.current += 1;
-      store.open({
-        id: `terminal:${proximoTerminal.current}`,
-        type: 'terminal',
-        title: titulo,
-        icon: 'terminal',
-        meta: { connectionId },
-      });
-    },
-    [salvarGrupoFocado, store]
-  );
+  // As abas que NÃO são arquivo — query, texto, tabela, formulário, terminal.
+  // Saíram daqui quando o portão do Artigo IV pegou este arquivo em 824 linhas,
+  // e o corte é o que o backlog já apontava: elas não têm caminho, não são
+  // salvas com Ctrl+S e não interessam ao vigia de disco. Ver `useAbasDeDados`.
+  const dados = useAbasDeDados(store, salvarGrupoFocado);
 
   const marcarAbaSuja = useCallback(
     (id: string, sujo: boolean) => {
@@ -756,10 +685,11 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     edicoes,
     abrirArquivo,
     abrirArquivoEm,
-    abrirQuery,
-    abrirTexto,
-    abrirFormulario,
-    abrirTerminal,
+    abrirQuery: dados.abrirQuery,
+    abrirTexto: dados.abrirTexto,
+    abrirFormulario: dados.abrirFormulario,
+    abrirTerminal: dados.abrirTerminal,
+    abrirTabela: dados.abrirTabela,
     abrirSemTitulo,
     fecharPorCaminho: (caminho: string) => {
       for (const aba of store.list()) {

@@ -18,6 +18,7 @@ import type { ConexoesAcoes } from '../acoes/useConexoesAcoes';
 /** O que o `ConnectionsPanel` espera receber para os arquivos de query. */
 export interface AcoesDeQuery {
   onAbrirQueryDoDatabase(connectionId: string, no: TreeNode): Promise<void>;
+  onAbrirTabela(connectionId: string, nodePath: readonly string[], titulo: string): Promise<void>;
   onAbrirArquivoDeQuery(no: TreeNode): Promise<void>;
   onNovaQuery(vinculo: Vinculo | null): Promise<void>;
   onRenomearQuery(vinculo: Vinculo | null, no: TreeNode): Promise<void>;
@@ -33,6 +34,10 @@ function texto(no: TreeNode, campo: string): string | null {
 export function useAcoesDeQuery(ws: Workspace, acoes: ConexoesAcoes): AcoesDeQuery {
   return {
     onAbrirQueryDoDatabase: acoes.abrirQueryDoDatabase,
+
+    onAbrirTabela: async (connectionId, nodePath, titulo) => {
+      ws.abrirTabela(connectionId, nodePath, titulo);
+    },
 
     onAbrirArquivoDeQuery: async (no) => {
       const caminho = texto(no, 'caminho');

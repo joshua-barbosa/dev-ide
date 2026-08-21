@@ -12,6 +12,8 @@ import type {
   PublicConnection,
   QueryResult,
   SessionCapabilities,
+  TablePage,
+  TableRequest,
   TreeNode,
 } from '../shared/contracts';
 import type { DriverPanel, ConnectionKind, FieldSpec } from '../shared/contracts';
@@ -270,6 +272,8 @@ export const Api = {
   },
   execute: (id: string, payload: ExecuteRequest) =>
     request<QueryResult>('POST', `${conexoes}/${id}/execute`, payload),
+  readTable: (id: string, payload: TableRequest) =>
+    request<TablePage>('POST', `${conexoes}/${id}/table`, payload),
   runAction: (id: string, payload: ActionRequest) =>
     request<ActionResult>('POST', `${conexoes}/${id}/action`, payload),
 

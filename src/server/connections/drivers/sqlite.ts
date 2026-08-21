@@ -8,6 +8,12 @@ import * as path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import {
+  APELIDO_DA_CONTAGEM,
+  montarConsultaDeTabela,
+  normalizarPedidoDeTabela,
+} from './tabela';
+import { DEFAULT_ROW_LIMIT } from './sql-base';
+import {
   ACOES_DE_TABELA_SQLITE,
   ACOES_DE_VIEW,
   modeloSql,
@@ -23,6 +29,9 @@ import type {
   Driver,
   ExecuteRequest,
   QueryResult,
+  TableColumn,
+  TablePage,
+  TableRequest,
   ResolvedConfig,
   Session,
   TreeNode,
@@ -191,7 +200,11 @@ function tamanhoLegivel(file: string): string | undefined {
   }
 }
 
-function executar(db: DatabaseSync, request: ExecuteRequest): QueryResult {
+function executar(
+  db: DatabaseSync,
+  request: ExecuteRequest,
+  params: readonly string[] = []
+): QueryResult {
   const limite = resolveRowLimit(request.rowLimit);
   const inicio = Date.now();
   const stmt = db.prepare(request.statement);
@@ -223,7 +236,7 @@ function executar(db: DatabaseSync, request: ExecuteRequest): QueryResult {
   // Puxa uma linha a mais que o limite: é ela que revela o truncamento.
   const rows: CellValue[][] = [];
   let truncated = false;
-  for (const linha of stmt.iterate()) {
+  for (const linha of stmt.iterate(...params)) {
     if (rows.length === limite) {
       truncated = true;
       break;
@@ -238,6 +251,50 @@ function executar(db: DatabaseSync, request: ExecuteRequest): QueryResult {
     rowCount: rows.length,
     durationMs: Date.now() - inicio,
     truncated,
+  };
+}
+
+/**
+ * Uma página da tabela (spec 041).
+ *
+ * O SQLite conta rápido — `COUNT(*)` usa o índice do `rowid` — então aqui não
+ * há estimativa: sempre o total de verdade.
+ */
+function lerTabela(db: DatabaseSync, request: TableRequest, limitePadrao: number): TablePage {
+  const objeto = request.nodePath[2];
+  if (objeto === undefined) throw new Error('A aba de tabela exige um objeto selecionado.');
+
+  const info = db.prepare(`PRAGMA table_info(${quote(objeto)})`).all() as Array<{
+    name: string; type: string; notnull: number; pk: number;
+  }>;
+  if (info.length === 0) throw new Error(`Tabela não encontrada: ${objeto}`);
+  const colunas: TableColumn[] = info.map((c) => ({
+    name: c.name,
+    type: c.type || 'ANY',
+    chave: c.pk > 0,
+    obrigatoria: c.notnull > 0,
+  }));
+
+  const pedido = normalizarPedidoDeTabela(
+    { ...request, porPagina: request.porPagina || limitePadrao },
+    colunas.map((c) => c.name)
+  );
+  const { sql, contagem, params } = montarConsultaDeTabela(
+    { alvo: quote(objeto), colunas: colunas.map((c) => c.name), estilo: 'double' },
+    pedido
+  );
+
+  const linha = db.prepare(contagem).get(...params) as Record<string, unknown> | undefined;
+  // Pelo APELIDO, e não por posição: ler por posição foi o que fez o SQLite
+  // disfarçar o defeito do MySQL, em que a contagem vinha sem nome nenhum.
+  const total = Number(linha?.[APELIDO_DA_CONTAGEM] ?? 0);
+
+  return {
+    resultado: executar(db, { statement: sql, rowLimit: pedido.porPagina }, params),
+    columns: colunas,
+    sql,
+    total,
+    totalEstimado: null,
   };
 }
 
@@ -315,6 +372,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
   return {
     kind: 'sql',
     children: async (nodePath, opcoes) => navegar(db, file, nodePath, opcoes),
+    readTable: async (request) => lerTabela(db, request, DEFAULT_ROW_LIMIT),
     execute: async (request) => executar(db, request),
     runAction: async (request) => acao(db, request),
     close: async () => {

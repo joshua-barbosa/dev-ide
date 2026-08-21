@@ -143,6 +143,52 @@ export interface QueryResult {
 }
 
 // ---------------------------------------------------------------------------
+// A aba de tabela (spec 041)
+// ---------------------------------------------------------------------------
+
+export interface OrdenacaoDeTabela {
+  readonly coluna: string;
+  readonly desc: boolean;
+}
+
+/** Semântica de "contém". Valor vazio é ignorado. */
+export interface FiltroDeTabela {
+  readonly coluna: string;
+  readonly valor: string;
+}
+
+export interface TableRequest {
+  readonly nodePath: readonly string[];
+  readonly pagina: number;
+  readonly porPagina: number;
+  readonly ordenar?: OrdenacaoDeTabela | null;
+  readonly filtros?: readonly FiltroDeTabela[];
+}
+
+/** Uma coluna como a aba de tabela precisa vê-la: com chave e obrigatoriedade. */
+export interface TableColumn {
+  readonly name: string;
+  readonly type?: string;
+  readonly chave: boolean;
+  readonly obrigatoria: boolean;
+}
+
+export interface TablePage {
+  readonly resultado: QueryResult;
+  readonly columns: readonly TableColumn[];
+  /**
+   * Total de linhas que casam com o filtro.
+   *
+   * `null` quando contar seria caro demais — e aí `totalEstimado` diz o que se
+   * sabe. Mostrar um número exato que não é seria pior que não mostrar.
+   */
+  readonly total: number | null;
+  readonly totalEstimado: number | null;
+  /** O SQL que rodou, para a aba mostrar no topo. */
+  readonly sql: string;
+}
+
+// ---------------------------------------------------------------------------
 // Ações de menu
 // ---------------------------------------------------------------------------
 

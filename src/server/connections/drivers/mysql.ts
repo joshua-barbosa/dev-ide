@@ -10,6 +10,11 @@
 import * as fs from 'fs';
 import mysql, { Connection, FieldPacket, Types } from 'mysql2';
 import {
+  APELIDO_DA_CONTAGEM,
+  montarConsultaDeTabela,
+  normalizarPedidoDeTabela,
+} from './tabela';
+import {
   ACOES_DE_TABELA,
   ACOES_DE_VIEW,
   modeloSql,
@@ -27,6 +32,9 @@ import type {
   Driver,
   ExecuteRequest,
   QueryResult,
+  TableColumn,
+  TablePage,
+  TableRequest,
   ResolvedConfig,
   Session,
   TreeNode,
@@ -310,12 +318,18 @@ async function usar(conn: Connection, database: string | undefined): Promise<voi
   await query(conn, `USE ${quoteIdentifier(database, 'backtick')}`);
 }
 
-function executar(conn: Connection, request: ExecuteRequest): Promise<QueryResult> {
+function executar(
+  conn: Connection,
+  request: ExecuteRequest,
+  params: readonly string[] = []
+): Promise<QueryResult> {
   const limite = resolveRowLimit(request.rowLimit);
   const inicio = Date.now();
 
   return new Promise((resolve, reject) => {
-    const q = conn.query(request.statement);
+    const q = params.length === 0
+      ? conn.query(request.statement)
+      : conn.query(request.statement, [...params]);
     let colunas: ColumnInfo[] = [];
     // 'fields' só dispara em result set; a ausência dele identifica DML/DDL.
     q.on('fields', (fields: FieldPacket[]) => {
@@ -354,6 +368,98 @@ function executar(conn: Connection, request: ExecuteRequest): Promise<QueryResul
     stream.on('end', finalizar);
     stream.on('close', finalizar); // destroy() encerra por aqui
   });
+}
+
+// ---------------------------------------------------------------------------
+// A aba de tabela (spec 041)
+// ---------------------------------------------------------------------------
+
+/**
+ * O total de linhas, contado de verdade — ou estimado, quando contar custaria caro.
+ *
+ * `COUNT(*)` no InnoDB varre o índice: numa tabela de 169 milhões de linhas
+ * (a `alternativas` do usuário) isso é dezenas de segundos, e a aba ficaria
+ * pendurada. Acima do teto, devolve-se a estimativa do catálogo **dizendo que é
+ * estimativa** — mostrar um número exato que não é seria pior que não mostrar.
+ *
+ * Com filtro em vigor não há estimativa possível: aí conta-se, porque o filtro
+ * costuma reduzir muito, e um total errado faria a paginação mentir.
+ */
+const MAX_LINHAS_PARA_CONTAR = 5_000_000;
+
+async function totalDaTabela(
+  conn: Connection,
+  schema: string,
+  objeto: string,
+  contagemSql: string,
+  params: readonly string[]
+): Promise<{ total: number | null; totalEstimado: number | null }> {
+  const [estimativa] = await query<{ n: number | null }>(
+    conn,
+    'SELECT TABLE_ROWS AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
+    [schema, objeto]
+  );
+  const aproximado = estimativa?.n === null || estimativa?.n === undefined
+    ? null
+    : Number(estimativa.n);
+
+  if (params.length === 0 && aproximado !== null && aproximado > MAX_LINHAS_PARA_CONTAR) {
+    return { total: null, totalEstimado: aproximado };
+  }
+  const [linha] = await query<Record<string, unknown>>(conn, contagemSql, [...params]);
+  return { total: Number(linha?.[APELIDO_DA_CONTAGEM] ?? 0), totalEstimado: aproximado };
+}
+
+async function lerTabela(
+  conn: Connection,
+  request: TableRequest,
+  limitePadrao: number
+): Promise<TablePage> {
+  const [, schema, , objeto] = request.nodePath;
+  if (schema === undefined || objeto === undefined) {
+    throw new Error('A aba de tabela exige um objeto selecionado.');
+  }
+  const colunas = await colunasDaTabela(conn, schema, objeto);
+  const pedido = normalizarPedidoDeTabela(
+    { ...request, porPagina: request.porPagina || limitePadrao },
+    colunas.map((c) => c.name)
+  );
+  const alvo = qualificar(schema, objeto);
+  const { sql, contagem, params } = montarConsultaDeTabela(
+    { alvo, colunas: colunas.map((c) => c.name), estilo: 'backtick' },
+    pedido
+  );
+
+  const [resultado, totais] = await Promise.all([
+    executar(conn, { statement: sql, rowLimit: pedido.porPagina }, params),
+    totalDaTabela(conn, schema, objeto, contagem, params),
+  ]);
+  return { resultado, columns: colunas, sql, ...totais };
+}
+
+/** As colunas da tabela, com chave e obrigatoriedade — o cabeçalho da aba. */
+async function colunasDaTabela(
+  conn: Connection,
+  schema: string,
+  objeto: string
+): Promise<TableColumn[]> {
+  const linhas = await query<{
+    COLUMN_NAME: string; COLUMN_TYPE: string; COLUMN_KEY: string; IS_NULLABLE: string;
+  }>(
+    conn,
+    `SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_KEY, IS_NULLABLE
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+      ORDER BY ORDINAL_POSITION`,
+    [schema, objeto]
+  );
+  if (linhas.length === 0) throw new Error(`Tabela não encontrada: ${schema}.${objeto}`);
+  return linhas.map((l) => ({
+    name: l.COLUMN_NAME,
+    type: l.COLUMN_TYPE,
+    chave: l.COLUMN_KEY === 'PRI',
+    obrigatoria: l.IS_NULLABLE === 'NO',
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -549,6 +655,11 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     children: (nodePath, opcoes) => {
       exigirViva();
       return navegar(conn, rotulo, versao, exibicao, nodePath, opcoes);
+    },
+    readTable: async (request) => {
+      exigirViva();
+      await usar(conn, request.nodePath[1]);
+      return lerTabela(conn, request, exibicao.rowLimit);
     },
     execute: async (request) => {
       exigirViva();

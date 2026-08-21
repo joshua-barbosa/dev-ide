@@ -26,9 +26,12 @@ import type {
   NodeAction,
   PublicConnection,
   QueryResult,
+  TablePage,
+  TableRequest,
   TreeNode,
   VaultState,
 } from '../../shared/contracts';
+export type { TableColumn, TablePage, TableRequest } from '../../shared/contracts';
 import type { NodeIcon } from '../../shared/icons';
 import type { ClienteDeLinhaDeComando } from '../../shared/terminal/comando';
 
@@ -177,6 +180,14 @@ export interface Session {
   readonly execute?: (request: ExecuteRequest) => Promise<QueryResult>;
   /** Executa uma das `actions` que o nó declarou (menu do botão direito). */
   readonly runAction?: (request: ActionRequest) => Promise<ActionResult>;
+  /**
+   * Uma página de uma TABELA, com total real, ordenação e filtros (spec 041).
+   *
+   * Separado do `execute` de propósito: paginar e contar só são possíveis
+   * sabendo a tabela. Envolver um `SELECT` qualquer num `COUNT(*)` daria número
+   * errado — e em silêncio — quando ele tivesse `GROUP BY` ou `LIMIT` próprio.
+   */
+  readonly readTable?: (request: TableRequest) => Promise<TablePage>;
   readonly files?: RemoteFiles;
   readonly shell?: RemoteShell;
   readonly monitor?: HostMonitor;

@@ -433,3 +433,106 @@ test('copiar tabela gera criação e carga que RODAM', async () => {
     await session.close();
   }
 });
+
+// ---------------------------------------------------------------------------
+// A aba de tabela (spec 041)
+// ---------------------------------------------------------------------------
+//
+// A montagem do SQL é testada sem banco em `tabela.test.ts`. Aqui se prova o
+// que só um motor responde: que a página, o total e a ordenação batem com os
+// dados de verdade.
+
+async function pagina(session: Session, extra: Record<string, unknown> = {}) {
+  return session.readTable!({
+    nodePath: ['main', 'tables', 'alunos'],
+    pagina: 1,
+    porPagina: 1,
+    ...extra,
+  });
+}
+
+test('a página traz o tamanho pedido, e o total é o da TABELA', async () => {
+  const { session } = await abrir();
+  try {
+    const p = await pagina(session);
+    assert.equal(p.resultado.rows.length, 1, 'trouxe uma linha');
+    assert.equal(p.total, 2, 'e diz que existem duas');
+    assert.match(p.sql, /LIMIT 1/);
+  } finally {
+    await session.close();
+  }
+});
+
+test('a segunda página traz a OUTRA linha', async () => {
+  const { session } = await abrir();
+  try {
+    const primeira = await pagina(session, { ordenar: { coluna: 'nome', desc: false } });
+    const segunda = await pagina(session, {
+      pagina: 2,
+      ordenar: { coluna: 'nome', desc: false },
+    });
+    assert.notDeepEqual(primeira.resultado.rows[0], segunda.resultado.rows[0]);
+    assert.match(segunda.sql, /OFFSET 1/);
+  } finally {
+    await session.close();
+  }
+});
+
+test('ordenar decrescente inverte de verdade', async () => {
+  const { session } = await abrir();
+  try {
+    const asc = await pagina(session, { porPagina: 10, ordenar: { coluna: 'nome', desc: false } });
+    const desc = await pagina(session, { porPagina: 10, ordenar: { coluna: 'nome', desc: true } });
+    assert.deepEqual(asc.resultado.rows.map((l) => l[1]).reverse(), desc.resultado.rows.map((l) => l[1]));
+  } finally {
+    await session.close();
+  }
+});
+
+test('o filtro reduz as linhas E o total, juntos', async () => {
+  // É o par que faz a paginação não mentir: filtrar e continuar dizendo "2"
+  // mandaria o usuário para uma página que não existe.
+  const { session } = await abrir();
+  try {
+    const p = await pagina(session, { porPagina: 10, filtros: [{ coluna: 'nome', valor: 'josh' }] });
+    assert.equal(p.resultado.rows.length, 1);
+    assert.equal(p.total, 1);
+  } finally {
+    await session.close();
+  }
+});
+
+test('o cabeçalho diz qual coluna é chave e qual é obrigatória', async () => {
+  const { session } = await abrir();
+  try {
+    const p = await pagina(session);
+    const porNome = new Map(p.columns.map((c) => [c.name, c]));
+    assert.equal(porNome.get('id')?.chave, true);
+    assert.equal(porNome.get('nome')?.obrigatoria, true);
+    assert.equal(porNome.get('foto')?.obrigatoria, false);
+  } finally {
+    await session.close();
+  }
+});
+
+test('coluna inventada na ordenação é recusada, e nada roda', async () => {
+  const { session } = await abrir();
+  try {
+    await assert.rejects(
+      () => pagina(session, { ordenar: { coluna: 'nao_existe', desc: false } }),
+      /coluna desconhecida/i
+    );
+  } finally {
+    await session.close();
+  }
+});
+
+test('valor de filtro com aspa não quebra a consulta', async () => {
+  const { session } = await abrir();
+  try {
+    const p = await pagina(session, { porPagina: 10, filtros: [{ coluna: 'nome', valor: "'; --" }] });
+    assert.equal(p.resultado.rows.length, 0, 'não casa com ninguém, e não é erro');
+  } finally {
+    await session.close();
+  }
+});

@@ -38,6 +38,9 @@ export interface ConnectionsPanelProps {
   ) => void;
   // ---- Arquivos de query (spec 038) ----
   readonly onAbrirQueryDoDatabase: (connectionId: string, no: TreeNode) => Promise<void>;
+  readonly onAbrirTabela: (
+    connectionId: string, nodePath: readonly string[], titulo: string
+  ) => Promise<void>;
   readonly onAbrirArquivoDeQuery: (no: TreeNode) => Promise<void>;
   readonly onNovaQuery: (vinculo: Vinculo | null) => Promise<void>;
   readonly onRenomearQuery: (vinculo: Vinculo | null, no: TreeNode) => Promise<void>;
@@ -140,6 +143,7 @@ export function ConnectionsPanel({
   onFiltrar,
   onNovoObjeto,
   onAbrirQueryDoDatabase,
+  onAbrirTabela,
   onAbrirArquivoDeQuery,
   onNovaQuery,
   onRenomearQuery,
@@ -215,6 +219,11 @@ export function ConnectionsPanel({
                   ? comErro(() => ctrl.alternarNo(id, filho, no))
                   : () => onAbrirQuery(id, no, bancoAqui)
             }
+            // O duplo clique continua abrindo a QUERY, como desde a spec 009.
+            // Chegou a abrir a aba de tabela durante a spec 041, e foi um passo
+            // além do que o usuário pediu: as anotações dele descrevem o ÍCONE
+            // da linha, não o duplo clique. Trocar um gesto que ele já tem na
+            // mão precisa ser decisão dele, não efeito colateral.
             onDoubleClick={
               no.meta?.arquivoDeQuery === true ? undefined : () => onAbrirQuery(id, no, bancoAqui)
             }
@@ -256,6 +265,14 @@ export function ConnectionsPanel({
                     })}
                   />
                 </>
+              ) : no.meta?.category === 'tables' || no.meta?.category === 'views' ? (
+                // Spec 041: o terceiro ícone das anotações do usuário — abre a
+                // tabela numa aba própria, com paginação e total de verdade.
+                <AcaoDaLinha
+                  icone="lucide:table-2"
+                  rotulo={`Abrir tabela ${no.label}`}
+                  onClick={comErro(() => onAbrirTabela(id, filho, no.label))}
+                />
               ) : typeof no.meta?.database === 'string' ? (
                 // `Abrir Query` no database — o botão que o usuário anotou da
                 // ferramenta de referência. Aparece porque o DRIVER declarou que

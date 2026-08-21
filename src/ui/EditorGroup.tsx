@@ -15,6 +15,7 @@ import { ZonaDeSoltura } from './ZonaDeSoltura';
 import { EditorHost, type EditorHandle } from './editor/EditorHost';
 import { TerminalHost } from './terminal/TerminalHost';
 import { ResultGrid } from './grid/ResultGrid';
+import { TabelaHost } from './tabela/TabelaHost';
 import { MarkdownPreview } from './editor/MarkdownPreview';
 import { tokens } from './theme';
 import type { Tab } from '../shared/tabs';
@@ -29,6 +30,8 @@ export interface EditorGroupProps {
   readonly grupo: number;
   readonly abas: readonly Tab[];
   readonly ativaId: string | null;
+  /** Abre um texto exportado numa aba sem título (spec 041). */
+  readonly onExportar: (conteudo: string, linguagem: string) => void;
   /** Verdadeiro no grupo que recebe os comandos e dita a barra de status. */
   readonly focado: boolean;
   /** Verdadeiro quando há mais de um grupo — muda o que a tela vazia diz. */
@@ -69,7 +72,7 @@ export function EditorGroup({
   fontSize, tabSize, wordWrap, terminalFontSize, tema, snippets,
   grades, formulario, emPreview, conteudoDaAba, onPreview,
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
-  onComando,
+  onComando, onExportar,
 }: EditorGroupProps) {
   const caixa = useRef<HTMLDivElement>(null);
   // A zona vive num `ref` E num estado: o `ref` é a verdade que a soltura lê, o
@@ -128,7 +131,7 @@ export function EditorGroup({
     !semAbas &&
     ativa !== null &&
     !mostrandoPreview &&
-    !['grid', 'conexao', 'terminal'].includes(ativa.type);
+    !['grid', 'conexao', 'terminal', 'tabela'].includes(ativa.type);
 
   return (
     <Box
@@ -194,6 +197,20 @@ export function EditorGroup({
       {ativa?.type === 'grid' && (
         <ResultGrid {...(grades.get(ativa.id) ?? { resultado: null })} />
       )}
+
+      {/* A aba de tabela (spec 041). Cada uma fica MONTADA e apenas some de
+          vista: remontar perderia a página, a ordenação e os filtros, e
+          custaria outra ida ao banco a cada troca de aba. */}
+      {abas
+        .filter((t) => t.type === 'tabela')
+        .map((t) => (
+          <Box
+            key={t.id}
+            sx={{ flex: 1, minHeight: 0, display: ativaId === t.id ? 'flex' : 'none' }}
+          >
+            <TabelaHost aba={t} onExportar={onExportar} />
+          </Box>
+        ))}
 
       {/* Mesma regra do editor: cada terminal fica montado e apenas some de
           vista. Renderizar só o ativo mataria o processo ao trocar de aba. */}
