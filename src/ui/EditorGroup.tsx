@@ -17,6 +17,7 @@ import { TerminalHost } from './terminal/TerminalHost';
 import { ResultGrid } from './grid/ResultGrid';
 import { TabelaHost } from './tabela/TabelaHost';
 import { ProcessosHost } from './processos/ProcessosHost';
+import { CadernoHost } from './caderno/CadernoHost';
 import type { QuickInputController } from './useQuickInput';
 import { MarkdownPreview } from './editor/MarkdownPreview';
 import { tokens } from './theme';
@@ -42,6 +43,14 @@ export interface EditorGroupProps {
   readonly qi: QuickInputController;
   readonly abrirComando: (id: string, titulo: string, sql: string) => void;
   readonly onErroDaTabela: (erro: unknown) => void;
+  /** O Query Book (spec 048): mudar o conteúdo e rodar um bloco. */
+  readonly onMudarCaderno: (id: string, conteudo: string) => void;
+  readonly onRodarBloco: (
+    modo: 'run' | 'tab' | 'json',
+    sql: string,
+    caminho: string | null,
+    titulo: string
+  ) => Promise<boolean>;
   /** Verdadeiro no grupo que recebe os comandos e dita a barra de status. */
   readonly focado: boolean;
   /** Verdadeiro quando há mais de um grupo — muda o que a tela vazia diz. */
@@ -83,7 +92,7 @@ export function EditorGroup({
   grades, formulario, emPreview, conteudoDaAba, onPreview,
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
   onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
-  qi, abrirComando, onErroDaTabela,
+  qi, abrirComando, onErroDaTabela, onMudarCaderno, onRodarBloco,
 }: EditorGroupProps) {
   const caixa = useRef<HTMLDivElement>(null);
   // A zona vive num `ref` E num estado: o `ref` é a verdade que a soltura lê, o
@@ -142,7 +151,7 @@ export function EditorGroup({
     !semAbas &&
     ativa !== null &&
     !mostrandoPreview &&
-    !['grid', 'conexao', 'terminal', 'tabela', 'processos'].includes(ativa.type);
+    !['grid', 'conexao', 'terminal', 'tabela', 'processos', 'caderno'].includes(ativa.type);
 
   return (
     <Box
@@ -208,6 +217,19 @@ export function EditorGroup({
       {ativa?.type === 'grid' && (
         <ResultGrid {...(grades.get(ativa.id) ?? { resultado: null })} />
       )}
+
+      {/* O Query Book (spec 048). Montado e escondido como as outras abas:
+          remontar perderia o bloco em foco e a rolagem. */}
+      {abas
+        .filter((t) => t.type === 'caderno')
+        .map((t) => (
+          <Box
+            key={t.id}
+            sx={{ flex: 1, minHeight: 0, display: ativaId === t.id ? 'flex' : 'none' }}
+          >
+            <CadernoHost aba={t} onMudar={onMudarCaderno} onRodar={onRodarBloco} />
+          </Box>
+        ))}
 
       {/* A aba de processos (spec 047). Montada e escondida como as outras:
           voltar a ela não pode custar outra consulta ao servidor. */}

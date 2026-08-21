@@ -25,8 +25,14 @@ import {
 export type { ArquivoDeQuery };
 import { homeDeDados } from './paths';
 
-/** Extensões que a pasta de query aceita. `.sqlbook` fica para a spec da F8. */
-const EXTENSAO = '.sql';
+/**
+ * Extensões que a pasta de query aceita.
+ *
+ * `.sqlbook` entrou na spec 048. A primeira da lista é a que um nome sem
+ * extensão ganha.
+ */
+const EXTENSOES = ['.sql', '.sqlbook'] as const;
+const EXTENSAO = EXTENSOES[0];
 
 /** Teto de arquivos por conexão+database. Rede de proteção, não limite de uso. */
 export const MAX_ARQUIVOS = 500;
@@ -82,11 +88,8 @@ export function validarNome(bruto: unknown): string {
   if (nome === '.' || nome === '..' || nome.startsWith('.')) {
     throw new Error('O nome não pode começar com ponto.');
   }
-  const comExtensao = nome.toLowerCase().endsWith(EXTENSAO) ? nome : `${nome}${EXTENSAO}`;
-  if (!comExtensao.toLowerCase().endsWith(EXTENSAO)) {
-    throw new Error(`O arquivo precisa terminar em ${EXTENSAO}.`);
-  }
-  return comExtensao;
+  const baixo = nome.toLowerCase();
+  return EXTENSOES.some((e) => baixo.endsWith(e)) ? nome : `${nome}${EXTENSAO}`;
 }
 
 /**
@@ -119,7 +122,8 @@ export function listar(vinculo: Vinculo): readonly ArquivoDeQuery[] {
   for (const entrada of entradas) {
     if (arquivos.length >= MAX_ARQUIVOS) break;
     if (!entrada.isFile()) continue;
-    if (!entrada.name.toLowerCase().endsWith(EXTENSAO)) continue;
+    const baixo = entrada.name.toLowerCase();
+    if (!EXTENSOES.some((e) => baixo.endsWith(e))) continue;
     const caminho = path.join(pasta, entrada.name);
     try {
       const info = fs.statSync(caminho);

@@ -48,7 +48,7 @@ import {
   normalizarTerminais, paneisVisiveis, SEM_TERMINAIS,
 } from '../shared/terminais';
 import { useExecution } from './useExecution';
-import type { Tab } from '../shared/tabs';
+import { propsDaAbaDeTabela } from './tabela/propsDaAbaDeTabela';
 import { useMenusDeConexao } from './acoes/useMenusDeConexao';
 import { useVinculo } from './query/useVinculo';
 import { ligarCodeLensDeSql, propsDeVinculo, useAcoesDeQuery } from './query/useAcoesDeQuery';
@@ -227,19 +227,9 @@ export function App() {
    * são sete props que só a aba de tabela usa, e passá-las inline fazia o
    * `EditorGroup` parecer ter dezenove responsabilidades em vez de duas.
    */
-  const propsDeTabela = {
-    onExportar: ws.abrirSemTitulo,
-    onConfirmarEscrita: (mensagem: string, titulo: string) =>
-      dialogs.confirmar({ titulo, mensagem, rotuloConfirmar: 'Gravar', destrutivo: true }),
-    qi,
-    abrirComando: (id: string, titulo: string, sql: string) => {
-      const meta = (ws.active?.meta ?? {}) as { connectionId?: string; database?: string | null };
-      ws.abrirQuery(id, titulo, sql, meta.connectionId ?? '', meta.database ?? null);
-    },
-    onErroDaTabela: falhaDeConexao,
-    conexaoSomenteLeitura: (t: Tab) =>
-      conexoes.acharConexao((t.meta as { connectionId?: string }).connectionId)?.readOnly === true,
-  };
+  const propsDeTabela = propsDaAbaDeTabela({
+    ws, dialogs, qi, conexoes, exec, onErro: falhaDeConexao,
+  });
 
 
   /**
@@ -387,7 +377,10 @@ export function App() {
     // tabela é o botão da própria aba.
     temEditor:
       ws.active !== null &&
-      !['grid', 'conexao', 'tabela', 'processos'].includes(ws.active.type),
+      !['grid', 'conexao', 'tabela', 'processos', 'caderno'].includes(ws.active.type),
+    podeSalvar:
+      ws.active !== null &&
+      !['grid', 'conexao', 'terminal', 'tabela', 'processos'].includes(ws.active.type),
     temProjeto: pasta.pasta !== '',
     abaSuja: ws.active?.dirty === true,
     temAba: ws.active !== null,

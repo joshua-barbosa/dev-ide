@@ -258,3 +258,23 @@ test('o vínculo NÃO é gravado dentro do arquivo', async () => {
     assert.equal(fs.readFileSync(caminho, 'utf8'), 'SELECT 1;\n');
   });
 });
+
+test('a pasta Query aceita .sqlbook, e ele aparece na listagem', async () => {
+  // Spec 048: o caderno mora ao lado dos `.sql`, na mesma pasta da conexão.
+  await comServidor(async (call) => {
+    await call('POST', '/', { ...VINCULO, nome: 'investigacao.sqlbook' });
+    await call('POST', '/', { ...VINCULO, nome: 'simples' });
+
+    const nomes = ((await call('GET', `/${qs()}`)).data as { nome: string }[]).map((a) => a.nome);
+    assert.deepEqual(nomes, ['investigacao.sqlbook', 'simples.sql']);
+  });
+});
+
+test('nome sem extensão continua virando .sql, e não .sqlbook', async () => {
+  // A primeira da lista é a que um nome sem extensão ganha: o caso comum é a
+  // query solta, e o caderno se pede pelo nome inteiro.
+  await comServidor(async (call) => {
+    const r = await call('POST', '/', { ...VINCULO, nome: 'sem_extensao' });
+    assert.match((r.data as { caminho: string }).caminho, /sem_extensao\.sql$/);
+  });
+});

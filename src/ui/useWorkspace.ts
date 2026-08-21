@@ -142,6 +142,8 @@ export interface Workspace {
    * que distingue "o Run da esquerda" do "Run da direita".
    */
   abaDaUri(uri: string): Tab | null;
+  /** O caderno mudou: grava no `meta` e marca a aba (spec 048). */
+  mudarCaderno(id: string, conteudo: string): void;
   /**
    * Fecha a aba de um arquivo pelo CAMINHO, sem perguntar nada.
    *
@@ -259,11 +261,17 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
       // Salva a aba corrente antes de abrir a nova, senão o conteúdo se perde.
       salvarGrupoFocado();
 
+      // `.sqlbook` é um CADERNO (spec 048), e não texto para o Monaco: a
+      // aba é de outro tipo, o conteúdo é JSON, e quem o edita são os blocos.
+      // O `meta.content` continua sendo a verdade — é o que faz `Ctrl+S`
+      // gravar sem caminho especial.
+      const ehCaderno = dados.path.toLowerCase().endsWith('.sqlbook');
+
       store.open({
         id: `file:${dados.path}`,
-        type: language === 'sql' ? 'sql' : 'editor',
+        type: ehCaderno ? 'caderno' : language === 'sql' ? 'sql' : 'editor',
         title: dados.path.split('/').pop() ?? dados.path,
-        icon: iconeDeArquivo(dados.path, language),
+        icon: ehCaderno ? 'lucide:notebook-pen' : iconeDeArquivo(dados.path, language),
         meta: { path: dados.path, content: dados.content, language, view: null },
       });
     },
@@ -325,6 +333,21 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
    * resultado como texto é algo para LER e copiar, não uma grade, e uma aba sem
    * título é o lugar do que ainda não decidiu se vira arquivo.
    */
+  /**
+   * Grava o conteúdo do caderno no `meta` e marca a aba como não salva.
+   *
+   * Ao contrário do editor, o caderno atualiza o `meta` a CADA tecla: ele não
+   * tem uma instância imperativa de onde ler na hora de salvar.
+   */
+  const mudarCaderno = useCallback(
+    (id: string, conteudo: string) => {
+      const aba = store.get(id);
+      if (aba === null) return;
+      store.update(id, { meta: { ...aba.meta, content: conteudo }, dirty: true });
+    },
+    [store]
+  );
+
   const abrirSemTitulo = useCallback(
     (conteudo = '', linguagem = 'plain') => {
       salvarGrupoFocado();
@@ -377,12 +400,22 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
    */
   const salvar = useCallback(async (): Promise<string | null> => {
     const aba = active;
-    const editor = editorRef.current;
-    if (aba === null || editor === null || !ehEditavel(aba)) return null;
-
+    if (aba === null) return null;
     const meta = metaDe(aba);
     if (meta.path === null) return null;
 
+    // O caderno (spec 048) não tem editor do Monaco: o conteúdo dele já mora no
+    // `meta`, atualizado a cada tecla pelos blocos. Os demais leem do editor,
+    // porque o `meta` só é atualizado ao trocar de aba — salvar dali gravaria a
+    // versão de antes da última tecla.
+    if (aba.type === 'caderno') {
+      await Api.saveFile(meta.path, meta.content);
+      store.update(aba.id, { dirty: false });
+      return meta.path;
+    }
+
+    const editor = editorRef.current;
+    if (editor === null || !ehEditavel(aba)) return null;
     await Api.saveFile(meta.path, editor.getValue());
     store.update(aba.id, { dirty: false });
     return meta.path;
@@ -699,6 +732,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     abrirProcessos: dados.abrirProcessos,
     abrirTabela: dados.abrirTabela,
     abrirSemTitulo,
+    mudarCaderno,
     fecharPorCaminho: (caminho: string) => {
       for (const aba of store.list()) {
         const meta = aba.meta as { path?: string | null };

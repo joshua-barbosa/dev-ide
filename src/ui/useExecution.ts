@@ -56,7 +56,15 @@ export interface Execution {
      * já sabia; foi assim que a spec 038 quebrou um teste da spec 009.
      */
     daAba?: Vinculo | null
-  ): Promise<void>;
+    /**
+     * Devolve se deu certo.
+     *
+     * O erro continua sendo tratado aqui — vira aba de resultado e entra na aba
+     * `Problems` —, mas quem chama precisa PODER saber. O `Run All` do caderno
+     * (spec 048) para no primeiro erro, e sem este retorno ele seguia em frente
+     * produzindo resultados que não queriam dizer nada.
+     */
+  ): Promise<boolean>;
   /** Encerra a execução em andamento, se houver. */
   parar(): Promise<void>;
   limparSaida(): void;
@@ -141,9 +149,9 @@ export function useExecution(
       caminho: string | null,
       titulo: string,
       daAba: Vinculo | null = null
-    ): Promise<void> => {
+    ): Promise<boolean> => {
       const texto = statement.trim();
-      if (texto === '') return;
+      if (texto === '') return true;
 
       // Perguntar ANTES de abrir a aba: desistir da escolha não pode deixar uma
       // aba de resultado vazia para trás (AC-18).
@@ -156,9 +164,9 @@ export function useExecution(
         const msg = (e as Error).message;
         setStatus({ texto: 'erro', erro: true });
         aoFalhar(msg);
-        return;
+        return false;
       }
-      if (vinculo === null) return;
+      if (vinculo === null) return false;
 
       const base = `grid:${caminho ?? titulo}`;
       const gridId = modo === 'tab' ? `${base}#${(proximaAba.current += 1)}` : base;
@@ -184,6 +192,7 @@ export function useExecution(
           texto: `${resultado.rowCount} linha(s) · ${resultado.durationMs}ms`,
           erro: false,
         });
+        return true;
       } catch (e) {
         const msg = (e as Error).message;
         if (modo !== 'json') {
@@ -191,6 +200,7 @@ export function useExecution(
         }
         setStatus({ texto: 'erro', erro: true });
         aoFalhar(msg);
+        return false;
       }
     },
     [aoFalhar, atualizarGrade, vinculos, ws]

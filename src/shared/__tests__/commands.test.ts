@@ -22,6 +22,7 @@ import { ICONES_DE_SERVICO, resolverIcone } from '../icons';
 
 const NADA: ContextoDeComandos = {
   temEditor: false,
+  podeSalvar: false,
   temProjeto: false,
   abaSuja: false,
   temAba: false,
@@ -36,6 +37,7 @@ const NADA: ContextoDeComandos = {
 
 const TUDO: ContextoDeComandos = {
   temEditor: true,
+  podeSalvar: true,
   temProjeto: true,
   abaSuja: true,
   temAba: true,

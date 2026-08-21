@@ -34,6 +34,13 @@ export const MENUS: ReadonlyArray<readonly [MenuId, string]> = [
  */
 export interface ContextoDeComandos {
   readonly temEditor: boolean;
+  /**
+   * Há algo que dê para salvar em disco.
+   *
+   * Mais amplo que `temEditor`: o Query Book (spec 048) não é editor do Monaco
+   * e mesmo assim se salva. Separar os dois foi o que devolveu o `Ctrl+S` a ele.
+   */
+  readonly podeSalvar: boolean;
   readonly temProjeto: boolean;
   readonly abaSuja: boolean;
   readonly temAba: boolean;
@@ -78,8 +85,11 @@ const DECLARADOS = [
   { id: 'file.openFolder', label: 'Open Folder…', menu: 'file', group: 2, keybinding: 'Ctrl+K' },
   { id: 'file.openWorkspace', label: 'Open Workspace…', menu: 'file', group: 2 },
   { id: 'file.openRecent', label: 'Open Recent', menu: 'file', group: 2 },
-  { id: 'file.save', label: 'Save', menu: 'file', group: 3, keybinding: 'Ctrl+S', when: 'temEditor' },
-  { id: 'file.saveAs', label: 'Save As…', menu: 'file', group: 3, keybinding: 'Ctrl+Shift+S', when: 'temEditor' },
+  // `podeSalvar`, e não `temEditor`: o Query Book (spec 048) não é editor do
+  // Monaco e mesmo assim se salva. Foi assim que `Ctrl+S` deixou de alcançá-lo
+  // quando o tipo `caderno` nasceu — o teste pegou.
+  { id: 'file.save', label: 'Save', menu: 'file', group: 3, keybinding: 'Ctrl+S', when: 'podeSalvar' },
+  { id: 'file.saveAs', label: 'Save As…', menu: 'file', group: 3, keybinding: 'Ctrl+Shift+S', when: 'podeSalvar' },
   { id: 'file.saveAll', label: 'Save All', menu: 'file', group: 3, when: 'abaSuja' },
   { id: 'file.autoSave', label: 'Auto Save', menu: 'file', group: 4 },
   { id: 'file.preferences', label: 'Preferences', menu: 'file', group: 4 },
