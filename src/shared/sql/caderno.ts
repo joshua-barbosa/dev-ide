@@ -11,15 +11,45 @@
 // caderno com um erro por nenhum caderno.
 
 /** A versão do formato. Sobe quando a forma mudar de um jeito incompatível. */
-export const VERSAO_DO_CADERNO = 1;
+export const VERSAO_DO_CADERNO = 2;
 
-export type TipoDeCelula = 'sql' | 'markdown';
+/** O que uma linguagem de bloco pode ser. NÃO é lista fechada — ver `lerCaderno`. */
+export type TipoDeCelula = string;
+
+/** As duas únicas que a versão 1 do formato sabia escrever. */
+const TIPOS_DA_VERSAO_1 = ['sql', 'markdown'];
 
 export interface Celula {
   /** Estável por bloco: é o que o React usa como chave, e o que o foco segue. */
   readonly id: string;
-  readonly tipo: TipoDeCelula;
+  /**
+   * O id da linguagem, no vocabulário da IDE (`sql`, `markdown`, `php`, …).
+   *
+   * Aberta de propósito (spec 051): uma linguagem que esta versão da IDE não
+   * conhece vira um bloco sem realce, e não um bloco perdido. Fechar a lista
+   * aqui faria um caderno gravado por uma versão mais nova perder blocos ao
+   * abrir numa mais velha — que é a pior coisa que um formato pode fazer.
+   */
+  readonly linguagem: TipoDeCelula;
   readonly conteudo: string;
+}
+
+/**
+ * Para onde vai o `▷ Run` de um bloco (spec 051, D17).
+ *
+ * `nada` é uma resposta legítima e comum: o seletor oferece todas as linguagens
+ * do editor, e a IDE roda cinco. Um `▷ Run` que não faz nada é uma promessa
+ * quebrada — então onde não há destino, o botão não existe.
+ */
+export type Destino = 'sql' | 'runner' | 'markdown' | 'nada';
+
+/** As que o runner da spec 006 executa. Python não está: o runner é Node. */
+const DO_RUNNER = ['javascript', 'typescript', 'php', 'c', 'csharp'];
+
+export function comoRoda(linguagem: string): Destino {
+  if (linguagem === 'sql') return 'sql';
+  if (linguagem === 'markdown') return 'markdown';
+  return DO_RUNNER.includes(linguagem) ? 'runner' : 'nada';
 }
 
 export interface Caderno {
@@ -29,12 +59,22 @@ export interface Caderno {
 export const CADERNO_VAZIO: Caderno = { celulas: [] };
 
 /** Um bloco novo, vazio. O id não precisa ser único no mundo — só no caderno. */
-export function novaCelula(tipo: TipoDeCelula, sufixo: number): Celula {
-  return { id: `c${sufixo}`, tipo, conteudo: '' };
+export function novaCelula(linguagem: TipoDeCelula, sufixo: number): Celula {
+  return { id: `c${sufixo}`, linguagem, conteudo: '' };
 }
 
-function ehTipo(bruto: unknown): bruto is TipoDeCelula {
-  return bruto === 'sql' || bruto === 'markdown';
+/**
+ * A linguagem de um bloco do arquivo, ou `null` se ele não disser nenhuma.
+ *
+ * Aceita as duas formas: `linguagem` (versão 2) e `tipo` (versão 1). A versão 1
+ * é lida de forma CONSERVADORA — só os dois valores que ela sabia escrever —,
+ * porque ali `tipo` era conjunto fechado e qualquer outra coisa é arquivo
+ * estragado, não linguagem exótica.
+ */
+function linguagemDe(c: Record<string, unknown>): string | null {
+  if (typeof c.linguagem === 'string' && c.linguagem !== '') return c.linguagem;
+  if (typeof c.tipo === 'string' && TIPOS_DA_VERSAO_1.includes(c.tipo)) return c.tipo;
+  return null;
 }
 
 /**
@@ -59,11 +99,12 @@ export function lerCaderno(texto: string): Caderno {
   const celulas: Celula[] = [];
   lista.forEach((item, i) => {
     const c = (item ?? {}) as Record<string, unknown>;
-    if (!ehTipo(c.tipo) || typeof c.conteudo !== 'string') return;
+    const linguagem = linguagemDe(c);
+    if (linguagem === null || typeof c.conteudo !== 'string') return;
     // O id do arquivo é ignorado de propósito: dois blocos com o mesmo id
     // fariam o React confundir um com o outro, e nada garante que o arquivo
     // que veio de fora respeite isso.
-    celulas.push({ id: `c${i}`, tipo: c.tipo, conteudo: c.conteudo });
+    celulas.push({ id: `c${i}`, linguagem, conteudo: c.conteudo });
   });
   return { celulas };
 }
@@ -72,7 +113,7 @@ export function lerCaderno(texto: string): Caderno {
 export function escreverCaderno(caderno: Caderno): string {
   const dados = {
     versao: VERSAO_DO_CADERNO,
-    celulas: caderno.celulas.map((c) => ({ tipo: c.tipo, conteudo: c.conteudo })),
+    celulas: caderno.celulas.map((c) => ({ linguagem: c.linguagem, conteudo: c.conteudo })),
   };
   return `${JSON.stringify(dados, null, 2)}\n`;
 }
@@ -88,11 +129,11 @@ export function escreverCaderno(caderno: Caderno): string {
  */
 export function inserir(
   caderno: Caderno,
-  tipo: TipoDeCelula,
+  linguagem: TipoDeCelula,
   fresta: number,
   sufixo: number
 ): Caderno {
-  const nova = novaCelula(tipo, sufixo);
+  const nova = novaCelula(linguagem, sufixo);
   const onde = Math.max(0, Math.min(fresta, caderno.celulas.length));
   return {
     celulas: [...caderno.celulas.slice(0, onde), nova, ...caderno.celulas.slice(onde)],
@@ -158,7 +199,15 @@ export function reordenar(caderno: Caderno, id: string, destino: number): Cadern
   return { celulas: [...restantes.slice(0, onde), celula, ...restantes.slice(onde)] };
 }
 
-/** Os blocos que o `Run All` roda, na ordem — markdown fica de fora. */
+/**
+ * Os blocos que o `Run All` roda, na ordem.
+ *
+ * Só os de SQL. Um caderno pertence a uma conexão, e `Run All` é a sequência de
+ * consultas que reconstitui um problema; misturar a execução de um bloco de PHP
+ * no meio dela daria um "rodou tudo" que não quer dizer nada.
+ */
 export function blocosExecutaveis(caderno: Caderno): readonly Celula[] {
-  return caderno.celulas.filter((c) => c.tipo === 'sql' && c.conteudo.trim() !== '');
+  return caderno.celulas.filter(
+    (c) => comoRoda(c.linguagem) === 'sql' && c.conteudo.trim() !== ''
+  );
 }

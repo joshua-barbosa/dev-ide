@@ -7,6 +7,7 @@ import { useCallback, useState } from 'react';
 import { CadernoPanel } from './CadernoPanel';
 import {
   alterar,
+  comoRoda,
   blocosExecutaveis,
   escreverCaderno,
   inserir,
@@ -19,6 +20,7 @@ import {
   type TipoDeCelula,
 } from '../../shared/sql/caderno';
 import type { NomeDoTema } from '../../shared/temas';
+import type { Vinculo } from '../../shared/sql/vinculo';
 import type { Tab } from '../../shared/tabs';
 
 export interface CadernoHostProps {
@@ -31,17 +33,24 @@ export interface CadernoHostProps {
   readonly tema: NomeDoTema;
   /** Grava o conteúdo novo no `meta` da aba e a marca como não salva. */
   onMudar(id: string, conteudo: string): void;
-  /** Roda um bloco. Mesmo caminho do `Run` do editor (spec 038). */
+  /** Roda um bloco de SQL. Mesmo caminho do `Run` do editor (spec 038). */
   onRodar(
     modo: 'run' | 'tab' | 'json',
     sql: string,
     caminho: string | null,
     titulo: string
   ): Promise<boolean>;
+  /** Roda um bloco no runner (spec 051). A saída cai no painel `Output`. */
+  onRodarCodigo(linguagem: string, codigo: string): Promise<void>;
+  /** Pergunta uma linguagem; `null` se o usuário desistir. */
+  onPedirLinguagem(atual: string): Promise<string | null>;
+  readonly vinculo: Vinculo | null;
+  onTrocarVinculo(): void;
 }
 
 export function CadernoHost({
-  aba, fontSize, tabSize, tema, onMudar, onRodar,
+  aba, fontSize, tabSize, tema, vinculo,
+  onMudar, onRodar, onRodarCodigo, onPedirLinguagem, onTrocarVinculo,
 }: CadernoHostProps) {
   const meta = aba.meta as { content?: string; path?: string | null };
   const caderno = lerCaderno(meta.content ?? '');
@@ -57,10 +66,23 @@ export function CadernoHost({
     [aba.id, onMudar]
   );
 
+  /**
+   * Roda um bloco, pelo caminho que a LINGUAGEM dele pede (spec 051, D17).
+   *
+   * SQL vai para a conexão do vínculo; as linguagens do runner vão para o
+   * runner, e a saída cai no painel `Output` como a de rodar um arquivo.
+   */
   const rodarUm = async (celula: Celula, modo: 'run' | 'tab' | 'json'): Promise<void> => {
+    const destino = comoRoda(celula.linguagem);
+    if (destino === 'nada' || destino === 'markdown') return;
+
     setRodando(celula.id);
     setErro(null);
     try {
+      if (destino === 'runner') {
+        await onRodarCodigo(celula.linguagem, celula.conteudo);
+        return;
+      }
       // O erro já vira aba de resultado e entra em `Problems`; aqui só se marca
       // que este bloco não passou.
       if (!(await onRodar(modo, celula.conteudo, meta.path ?? null, aba.title))) {
@@ -117,6 +139,21 @@ export function CadernoHost({
       }}
       onRodar={(celula, modo) => void rodarUm(celula, modo)}
       onRodarTudo={() => void rodarTudo()}
+      vinculo={vinculo}
+      onTrocarVinculo={onTrocarVinculo}
+      onEscolherLinguagem={(id) => {
+        const celula = caderno.celulas.find((c) => c.id === id);
+        if (celula === undefined) return;
+        void onPedirLinguagem(celula.linguagem).then((nova) => {
+          if (nova !== null && nova !== celula.linguagem) {
+            aplicar({
+              celulas: caderno.celulas.map((c) =>
+                c.id === id ? { ...c, linguagem: nova } : c
+              ),
+            });
+          }
+        });
+      }}
     />
   );
 }

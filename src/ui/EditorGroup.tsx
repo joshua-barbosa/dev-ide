@@ -23,6 +23,7 @@ import { MarkdownPreview } from './editor/MarkdownPreview';
 import { tokens } from './theme';
 import type { Tab } from '../shared/tabs';
 import type { NomeDoTema } from '../shared/temas';
+import type { Vinculo } from '../shared/sql/vinculo';
 import type { Snippet } from '../shared/snippets';
 import type { EstadoGrade } from './useExecution';
 import {
@@ -45,6 +46,13 @@ export interface EditorGroupProps {
   readonly onErroDaTabela: (erro: unknown) => void;
   /** O Query Book (spec 048): mudar o conteúdo e rodar um bloco. */
   readonly onMudarCaderno: (id: string, conteudo: string) => void;
+  /** Roda um bloco de caderno no runner (spec 051). */
+  readonly onRodarCodigoDoBloco: (linguagem: string, codigo: string) => Promise<void>;
+  /** Pergunta a linguagem de um bloco (spec 051). */
+  readonly onPedirLinguagem: (atual: string) => Promise<string | null>;
+  /** Contra quem um caderno roda, e como trocar (spec 051). */
+  readonly vinculoDoCaderno: (aba: Tab) => Vinculo | null;
+  readonly onTrocarVinculoDoCaderno: (aba: Tab) => void;
   readonly onRodarBloco: (
     modo: 'run' | 'tab' | 'json',
     sql: string,
@@ -93,6 +101,7 @@ export function EditorGroup({
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
   onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
   qi, abrirComando, onErroDaTabela, onMudarCaderno, onRodarBloco,
+  onRodarCodigoDoBloco, onPedirLinguagem, vinculoDoCaderno, onTrocarVinculoDoCaderno,
 }: EditorGroupProps) {
   const caixa = useRef<HTMLDivElement>(null);
   // A zona vive num `ref` E num estado: o `ref` é a verdade que a soltura lê, o
@@ -234,6 +243,10 @@ export function EditorGroup({
               tema={tema}
               onMudar={onMudarCaderno}
               onRodar={onRodarBloco}
+              onRodarCodigo={onRodarCodigoDoBloco}
+              onPedirLinguagem={onPedirLinguagem}
+              vinculo={vinculoDoCaderno(t)}
+              onTrocarVinculo={() => onTrocarVinculoDoCaderno(t)}
             />
           </Box>
         ))}

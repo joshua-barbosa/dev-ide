@@ -228,7 +228,8 @@ export function App() {
    * `EditorGroup` parecer ter dezenove responsabilidades em vez de duas.
    */
   const propsDeTabela = propsDaAbaDeTabela({
-    ws, dialogs, qi, conexoes, exec, onErro: falhaDeConexao,
+    ws, dialogs, qi, conexoes, exec, vinculos, onErro: falhaDeConexao,
+    mostrarSaida: () => layout.mostrarPainel('output'),
   });
 
 

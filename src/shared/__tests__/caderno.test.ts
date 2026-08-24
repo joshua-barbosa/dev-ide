@@ -4,6 +4,7 @@ import {
   inserir,
   alterar,
   blocosExecutaveis,
+  comoRoda,
   escreverCaderno,
   lerCaderno,
   mover,
@@ -21,13 +22,13 @@ const doJson = (obj: unknown): string => JSON.stringify(obj);
 test('grava e lê de volta, preservando ordem e tipo', () => {
   const caderno = {
     celulas: [
-      { id: 'c0', tipo: 'markdown' as const, conteudo: '# Chamado 64158' },
-      { id: 'c1', tipo: 'sql' as const, conteudo: 'SELECT 1' },
+      { id: 'c0', linguagem: 'markdown' as const, conteudo: '# Chamado 64158' },
+      { id: 'c1', linguagem: 'sql' as const, conteudo: 'SELECT 1' },
     ],
   };
   const lido = lerCaderno(escreverCaderno(caderno));
   assert.deepEqual(
-    lido.celulas.map((c) => [c.tipo, c.conteudo]),
+    lido.celulas.map((c) => [c.linguagem, c.conteudo]),
     [['markdown', '# Chamado 64158'], ['sql', 'SELECT 1']]
   );
 });
@@ -38,7 +39,7 @@ test('o arquivo gravado declara a versão do formato', () => {
 });
 
 test('o id NÃO vai para o arquivo — ele é de tela, não de dado', () => {
-  const texto = escreverCaderno({ celulas: [{ id: 'c0', tipo: 'sql', conteudo: 'x' }] });
+  const texto = escreverCaderno({ celulas: [{ id: 'c0', linguagem: 'sql', conteudo: 'x' }] });
   assert.equal(texto.includes('"id"'), false);
 });
 
@@ -46,7 +47,7 @@ test('SQL com qualquer coisa dentro sobrevive à ida e à volta', () => {
   // É a razão de o formato ser JSON: um caderno de SQL contém SQL arbitrário,
   // e qualquer separador escolhido poderia aparecer dentro de um bloco.
   const hostil = "SELECT '---', '```', '\\n-- celula', \"}\";";
-  const lido = lerCaderno(escreverCaderno({ celulas: [{ id: 'c0', tipo: 'sql', conteudo: hostil }] }));
+  const lido = lerCaderno(escreverCaderno({ celulas: [{ id: 'c0', linguagem: 'sql', conteudo: hostil }] }));
   assert.equal(lido.celulas[0]?.conteudo, hostil);
 });
 
@@ -100,9 +101,9 @@ test('bloco vazio é preservado — vazio não é estragado', () => {
 
 const tres = {
   celulas: [
-    { id: 'a', tipo: 'sql' as const, conteudo: '1' },
-    { id: 'b', tipo: 'sql' as const, conteudo: '2' },
-    { id: 'c', tipo: 'sql' as const, conteudo: '3' },
+    { id: 'a', linguagem: 'sql' as const, conteudo: '1' },
+    { id: 'b', linguagem: 'sql' as const, conteudo: '2' },
+    { id: 'c', linguagem: 'sql' as const, conteudo: '3' },
   ],
 };
 
@@ -154,10 +155,10 @@ test('mexer num id que não existe devolve o caderno como estava', () => {
 test('o Run All pula markdown e blocos vazios', () => {
   const misto = {
     celulas: [
-      { id: 'a', tipo: 'markdown' as const, conteudo: '# título' },
-      { id: 'b', tipo: 'sql' as const, conteudo: 'SELECT 1' },
-      { id: 'c', tipo: 'sql' as const, conteudo: '   ' },
-      { id: 'd', tipo: 'sql' as const, conteudo: 'SELECT 2' },
+      { id: 'a', linguagem: 'markdown' as const, conteudo: '# título' },
+      { id: 'b', linguagem: 'sql' as const, conteudo: 'SELECT 1' },
+      { id: 'c', linguagem: 'sql' as const, conteudo: '   ' },
+      { id: 'd', linguagem: 'sql' as const, conteudo: 'SELECT 2' },
     ],
   };
   assert.deepEqual(blocosExecutaveis(misto).map((c) => c.id), ['b', 'd']);
@@ -200,4 +201,76 @@ test('reordenar com id inexistente ou fresta fora da faixa não estraga nada', (
   assert.equal(reordenar(tres, 'zzz', 1), tres);
   assert.deepEqual(ids(reordenar(tres, 'a', 99)), ['b', 'c', 'a']);
   assert.deepEqual(ids(reordenar(tres, 'c', -5)), ['c', 'a', 'b']);
+});
+
+// ---------------------------------------------------------------------------
+// Linguagem por bloco (spec 051)
+// ---------------------------------------------------------------------------
+
+test('o arquivo gravado é versão 2 e traz `linguagem`, não `tipo`', () => {
+  const texto = escreverCaderno({ celulas: [{ id: 'c0', linguagem: 'php', conteudo: 'x' }] });
+  const dados = JSON.parse(texto) as { versao: number; celulas: { linguagem: string }[] };
+  assert.equal(dados.versao, 2);
+  assert.equal(dados.celulas[0]?.linguagem, 'php');
+  assert.equal(texto.includes('"tipo"'), false);
+});
+
+test('caderno da VERSÃO 1 continua abrindo: `tipo` vira `linguagem`', () => {
+  // Não é gentileza: os cadernos criados nos últimos dias estão em disco assim.
+  const v1 = doJson({
+    versao: 1,
+    celulas: [
+      { tipo: 'markdown', conteudo: '# título' },
+      { tipo: 'sql', conteudo: 'SELECT 1' },
+    ],
+  });
+  assert.deepEqual(
+    lerCaderno(v1).celulas.map((c) => [c.linguagem, c.conteudo]),
+    [['markdown', '# título'], ['sql', 'SELECT 1']]
+  );
+});
+
+test('bloco sem `linguagem` NEM `tipo` é descartado, e os vizinhos ficam', () => {
+  const texto = doJson({
+    versao: 2,
+    celulas: [
+      { linguagem: 'sql', conteudo: 'bom' },
+      { conteudo: 'órfão' },
+      { linguagem: 'javascript', conteudo: 'também bom' },
+    ],
+  });
+  assert.deepEqual(lerCaderno(texto).celulas.map((c) => c.conteudo), ['bom', 'também bom']);
+});
+
+test('qualquer linguagem é aceita no arquivo — quem julga é a tela', () => {
+  // O formato não tem lista fechada: uma linguagem que a IDE não conhece vira
+  // um bloco sem realce, e não um bloco perdido.
+  const texto = doJson({ versao: 2, celulas: [{ linguagem: 'rust', conteudo: 'fn main() {}' }] });
+  assert.equal(lerCaderno(texto).celulas[0]?.linguagem, 'rust');
+});
+
+test('comoRoda: cada linguagem tem UM destino', () => {
+  assert.equal(comoRoda('sql'), 'sql');
+  assert.equal(comoRoda('markdown'), 'markdown');
+  for (const l of ['javascript', 'typescript', 'php', 'c', 'csharp']) {
+    assert.equal(comoRoda(l), 'runner', l);
+  }
+  // Python está de fora de propósito: o runner é Node. Prometer e não cumprir é
+  // pior que não oferecer.
+  for (const l of ['python', 'json', 'yaml', 'html', 'rust', '']) {
+    assert.equal(comoRoda(l), 'nada', l);
+  }
+});
+
+test('o Run All roda só os blocos de SQL, e na ordem', () => {
+  const misto = {
+    celulas: [
+      { id: 'a', linguagem: 'markdown', conteudo: '# título' },
+      { id: 'b', linguagem: 'sql', conteudo: 'SELECT 1' },
+      { id: 'c', linguagem: 'javascript', conteudo: 'console.log(1)' },
+      { id: 'd', linguagem: 'sql', conteudo: '   ' },
+      { id: 'e', linguagem: 'sql', conteudo: 'SELECT 2' },
+    ],
+  };
+  assert.deepEqual(blocosExecutaveis(misto).map((c) => c.id), ['b', 'e']);
 });

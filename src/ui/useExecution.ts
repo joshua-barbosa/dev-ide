@@ -37,6 +37,13 @@ export interface Execution {
   definirConexaoAtiva(id: string | null): void;
   executar(modo: ModoExecucao, linguagem: string): Promise<void>;
   /**
+   * Roda um texto avulso no runner, sem arquivo e sem editor (spec 051).
+   *
+   * É como o bloco de um caderno chega ao runner: ele tem código, mas não tem
+   * Monaco — e `executar` começa lendo `ws.editorRef`.
+   */
+  executarTexto(linguagem: string, codigo: string): Promise<void>;
+  /**
    * Executa UM statement, vindo do `Run | +Tab | JSON` do editor (spec 038).
    *
    * `modo` decide onde o resultado cai: `run` repinta a aba daquele arquivo,
@@ -231,41 +238,16 @@ export function useExecution(
     await executarStatement('run', statement, meta.path ?? null, aba.title, daAba);
   }, [executarStatement, ws]);
 
-  const executarCodigo = useCallback(
-    async (modo: ModoExecucao, linguagem: string, funcao?: string, args?: unknown[]) => {
-      const aba = ws.active;
-      const editor = ws.editorRef.current;
-      if (editor === null) return;
-
-      const meta = (aba?.meta ?? {}) as { path?: string | null };
-      const caminho = meta.path ?? null;
-      const sujo = aba?.dirty === true;
-
-      const payload: Record<string, unknown> = {
-        mode: modo,
-        language: linguagem,
-        filePath: caminho ?? undefined,
-      };
-
-      if (modo === 'file' && (sujo || caminho === null)) {
-        // Sem salvar, executa o conteúdo do editor em vez do arquivo em disco.
-        payload.mode = 'block';
-        payload.code = editor.getValue();
-      } else if (modo === 'block') {
-        payload.code = editor.getSelection() || editor.getValue();
-      } else if (modo === 'function') {
-        if (funcao === undefined || funcao === '') {
-          escrever('Nenhuma função detectada no arquivo atual.\n', true);
-          return;
-        }
-        if (caminho === null || sujo) {
-          escrever('Salve o arquivo antes de executar uma função (Ctrl+S).\n', true);
-          return;
-        }
-        payload.functionName = funcao;
-        if (args !== undefined) payload.args = args;
-      }
-
+  /**
+   * Manda um pedido ao runner e derrama o resultado no painel.
+   *
+   * Separado de `executarCodigo` na spec 051: o bloco de um caderno tem código,
+   * mas NÃO tem editor Monaco — e `executarCodigo` começa por `ws.editorRef`.
+   * Sem este corte, rodar um bloco exigiria um editor invisível só para ter de
+   * onde ler o texto.
+   */
+  const despachar = useCallback(
+    async (payload: Record<string, unknown>) => {
       // O id é gerado AQUI, e não no servidor: a resposta de `/api/run` só chega
       // no fim, e um id vindo dela não daria como parar antes disso.
       const runId = crypto.randomUUID();
@@ -305,7 +287,65 @@ export function useExecution(
         setExecutando(false);
       }
     },
-    [aoFalhar, escrever, ws]
+    [aoFalhar, escrever]
+  );
+
+  const executarCodigo = useCallback(
+    async (modo: ModoExecucao, linguagem: string, funcao?: string, args?: unknown[]) => {
+      const aba = ws.active;
+      const editor = ws.editorRef.current;
+      if (editor === null) return;
+
+      const meta = (aba?.meta ?? {}) as { path?: string | null };
+      const caminho = meta.path ?? null;
+      const sujo = aba?.dirty === true;
+
+      const payload: Record<string, unknown> = {
+        mode: modo,
+        language: linguagem,
+        filePath: caminho ?? undefined,
+      };
+
+      if (modo === 'file' && (sujo || caminho === null)) {
+        // Sem salvar, executa o conteúdo do editor em vez do arquivo em disco.
+        payload.mode = 'block';
+        payload.code = editor.getValue();
+      } else if (modo === 'block') {
+        payload.code = editor.getSelection() || editor.getValue();
+      } else if (modo === 'function') {
+        if (funcao === undefined || funcao === '') {
+          escrever('Nenhuma função detectada no arquivo atual.\n', true);
+          return;
+        }
+        if (caminho === null || sujo) {
+          escrever('Salve o arquivo antes de executar uma função (Ctrl+S).\n', true);
+          return;
+        }
+        payload.functionName = funcao;
+        if (args !== undefined) payload.args = args;
+      }
+
+      await despachar(payload);
+    },
+    [despachar, ws]
+  );
+
+  /**
+   * Roda um texto avulso, sem arquivo e sem editor (spec 051, AC-7).
+   *
+   * É como o bloco de um caderno chega ao runner. `mode: 'block'` porque é
+   * exatamente isso: um pedaço de código solto, não um arquivo em disco.
+   */
+  const executarTexto = useCallback(
+    async (linguagem: string, codigo: string) => {
+      if (codigo.trim() === '') return;
+      if (linguagem === 'python') {
+        escrever('Execução de Python ainda não é suportada — o runner usa Node.js.\n', true);
+        return;
+      }
+      await despachar({ mode: 'block', language: linguagem, code: codigo });
+    },
+    [despachar, escrever]
   );
 
   const executar = useCallback(
@@ -330,6 +370,7 @@ export function useExecution(
     status,
     conexaoAtiva: conexaoVisivel,
     executando,
+    executarTexto,
     definirConexaoAtiva: (id: string | null) => {
       conexaoAtiva.current = id;
       setConexaoVisivel(id);

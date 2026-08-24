@@ -20,7 +20,9 @@ import { Fresta } from './Fresta';
 import { BlocoDeCodigo } from './BlocoDeCodigo';
 import { MarkdownPreview } from '../editor/MarkdownPreview';
 import type { NomeDoTema } from '../../shared/temas';
-import type { Caderno, Celula, TipoDeCelula } from '../../shared/sql/caderno';
+import { comoRoda, type Caderno, type Celula, type TipoDeCelula } from '../../shared/sql/caderno';
+import { rotuloDaLinguagem } from '../../shared/editor/idiomas';
+import type { Vinculo } from '../../shared/sql/vinculo';
 
 /**
  * Tipo MIME só do bloco (spec 050, D16).
@@ -47,11 +49,17 @@ export interface CadernoPanelProps {
   onReordenar(id: string, fresta: number): void;
   onRodar(celula: Celula, modo: 'run' | 'tab' | 'json'): void;
   onRodarTudo(): void;
+  /** Pergunta a linguagem nova do bloco; `null` se o usuário desistir. */
+  onEscolherLinguagem(id: string): void;
+  /** Contra quem o caderno inteiro roda, ou `null` se ainda não se sabe. */
+  readonly vinculo: Vinculo | null;
+  onTrocarVinculo(): void;
 }
 
 export function CadernoPanel({
-  caderno, rodando, erro, fontSize, tabSize, tema,
+  caderno, rodando, erro, fontSize, tabSize, tema, vinculo,
   onAlterar, onAcrescentar, onRemover, onMover, onReordenar, onRodar, onRodarTudo,
+  onEscolherLinguagem, onTrocarVinculo,
 }: CadernoPanelProps) {
   const [atual, setAtual] = useState(0);
   // Quem está sendo arrastado e onde cairia. Os dois juntos porque é o par que
@@ -109,10 +117,37 @@ export function CadernoPanel({
           desabilitada={rodando !== null}
         />
         <Box sx={{ flex: 1 }} />
-        <Box component="span" data-contagem-de-celulas>
+        <Box component="span" data-contagem-de-celulas sx={{ mr: 1 }}>
           {caderno.celulas.length === 0
             ? 'caderno vazio'
             : `Bloco ${Math.min(atual + 1, caderno.celulas.length)} de ${caderno.celulas.length}`}
+        </Box>
+        {/*
+          Contra quem este caderno roda (spec 051, AC-10).
+
+          O vínculo já existia e já aparecia no RODAPÉ — mas só com editor Monaco
+          em foco e linguagem `sql`. O caderno não é Monaco, então o único
+          arquivo desta IDE que pertence a uma conexão por definição era
+          justamente o que não dizia a qual.
+        */}
+        <Box
+          component="button"
+          type="button"
+          onClick={onTrocarVinculo}
+          aria-label="Trocar a conexão deste caderno"
+          title={
+            vinculo === null
+              ? 'Este caderno ainda não tem conexão. Clique para escolher.'
+              : `Roda em ${vinculo.database}. Clique para trocar.`
+          }
+          data-vinculo-do-caderno={vinculo === null ? '' : vinculo.database}
+          sx={{
+            border: 0, bgcolor: 'transparent', font: 'inherit', fontSize: 11,
+            color: vinculo === null ? 'warning.main' : 'primary.main',
+            cursor: 'pointer', px: 0.5,
+          }}
+        >
+          {vinculo === null ? '⚠ sem conexão' : `⛁ ${vinculo.database}`}
         </Box>
       </Box>
 
@@ -153,6 +188,7 @@ export function CadernoPanel({
                 tabSize={tabSize}
                 tema={tema}
                 onFocar={() => setAtual(i)}
+                onEscolherLinguagem={() => onEscolherLinguagem(celula.id)}
                 onComecarArraste={() => setArrastando(celula.id)}
                 onTerminarArraste={largar}
                 onAlterar={onAlterar}
@@ -171,7 +207,8 @@ export function CadernoPanel({
 
 function Bloco({
   celula, indice, total, rodando, arrastado, fontSize, tabSize, tema,
-  onFocar, onComecarArraste, onTerminarArraste, onAlterar, onRemover, onMover, onRodar,
+  onFocar, onEscolherLinguagem, onComecarArraste, onTerminarArraste,
+  onAlterar, onRemover, onMover, onRodar,
 }: {
   readonly celula: Celula;
   readonly indice: number;
@@ -182,6 +219,7 @@ function Bloco({
   readonly tabSize: number;
   readonly tema: NomeDoTema;
   onFocar(): void;
+  onEscolherLinguagem(): void;
   onComecarArraste(): void;
   onTerminarArraste(): void;
   onAlterar(id: string, conteudo: string): void;
@@ -193,14 +231,14 @@ function Bloco({
   // tem conteúdo: um bloco novo é para escrever, um antigo é para ler.
   const [editando, setEditando] = useState(celula.conteudo.trim() === '');
   const caixa = useRef<HTMLDivElement>(null);
-  const ehSql = celula.tipo === 'sql';
-  const rotulo = `Bloco ${indice + 1} (${celula.tipo})`;
+  const destino = comoRoda(celula.linguagem);
+  const rotulo = `Bloco ${indice + 1} (${celula.linguagem})`;
 
   return (
     <Box
       ref={caixa}
       data-bloco={celula.id}
-      data-tipo={celula.tipo}
+      data-tipo={celula.linguagem}
       onFocus={onFocar}
       sx={{
         mb: 0, border: 1, borderColor: rodando ? 'primary.main' : 'divider', borderRadius: 0.5,
@@ -220,13 +258,21 @@ function Bloco({
           borderBottom: 1, borderColor: 'divider', fontSize: 10, color: 'text.secondary',
         }}
       >
-        {ehSql ? (
+        {/*
+          O que o bloco oferece depende da linguagem (spec 051, D17). `nada` é
+          resposta comum e legítima: o seletor oferece todas as linguagens do
+          editor, e a IDE roda cinco — um `▷ Run` que não faz nada seria uma
+          promessa quebrada.
+        */}
+        {destino === 'sql' && (
           <>
             <Acao rotulo="▷ Run" onClick={() => onRodar(celula, 'run')} />
             <Acao rotulo="＋Tab" onClick={() => onRodar(celula, 'tab')} />
             <Acao rotulo="JSON" onClick={() => onRodar(celula, 'json')} />
           </>
-        ) : (
+        )}
+        {destino === 'runner' && <Acao rotulo="▷ Run" onClick={() => onRodar(celula, 'run')} />}
+        {destino === 'markdown' && (
           <Acao
             rotulo={editando ? 'Ver renderizado' : 'Editar'}
             onClick={() => setEditando((v) => !v)}
@@ -234,9 +280,6 @@ function Bloco({
         )}
 
         <Box sx={{ flex: 1 }} />
-        <Box component="span" sx={{ opacity: 0.6 }}>
-          {celula.tipo}
-        </Box>
         <Box className="administrar" sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
           <Box
             component="span"
@@ -280,17 +323,17 @@ function Bloco({
         </Box>
       </Box>
 
-      {!ehSql && !editando ? (
+      {destino === 'markdown' && !editando ? (
         // Clicar no renderizado volta a editar: é o gesto que se espera de um
         // caderno, e evita ter que mirar no botão.
         <Box onClick={() => setEditando(true)} sx={{ cursor: 'text' }}>
           <MarkdownPreview fonte={celula.conteudo} />
         </Box>
-      ) : ehSql ? (
+      ) : destino !== 'markdown' ? (
         <BlocoDeCodigo
           id={celula.id}
           conteudo={celula.conteudo}
-          linguagem="sql"
+          linguagem={celula.linguagem}
           rotulo={rotulo}
           fontSize={fontSize}
           tabSize={tabSize}
@@ -321,6 +364,26 @@ function Bloco({
           }}
         />
       )}
+
+      {/* No canto de baixo à direita, como no `MySQL ⌄` da ferramenta dele. */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 0.75, pb: 0.25 }}>
+        <Box
+          component="button"
+          type="button"
+          onClick={onEscolherLinguagem}
+          aria-label={`Linguagem do bloco ${indice + 1}`}
+          title="Trocar a linguagem deste bloco"
+          data-linguagem={celula.linguagem}
+          sx={{
+            border: 0, bgcolor: 'transparent', color: 'text.secondary', font: 'inherit',
+            fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 0.25,
+            '&:hover': { color: 'text.primary' },
+          }}
+        >
+          {rotuloDaLinguagem(celula.linguagem)}
+          <Icon name="lucide:chevron-down" size={10} />
+        </Box>
+      </Box>
     </Box>
   );
 }

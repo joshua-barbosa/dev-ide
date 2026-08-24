@@ -282,3 +282,128 @@ test('arrastar e soltar na PRÓPRIA posição não suja o arquivo', async ({ pag
 
   await expect(aba(page, 'inocuo.sqlbook')).not.toContainText('●');
 });
+
+
+// ---------------------------------------------------------------------------
+// Linguagem por bloco, e contra quem o caderno roda (spec 051)
+// ---------------------------------------------------------------------------
+
+test('o bloco tem seletor de LINGUAGEM, com todas as do editor', async ({ page }) => {
+  await novoCaderno(page, 'linguagem');
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+
+  const seletor = bloco(page, 0).getByRole('button', { name: /Linguagem do bloco/ });
+  await expect(seletor).toHaveText(/SQL/);
+  await seletor.click();
+
+  // A MESMA lista do seletor do rodapé — é o "Select Language Mode" dele.
+  await expect(page.getByRole('option', { name: 'JavaScript' })).toBeVisible();
+  await expect(page.getByRole('option', { name: 'Markdown' })).toBeVisible();
+  await expect(page.getByRole('option', { name: 'PHP' })).toBeVisible();
+});
+
+test('trocar a linguagem troca o que o bloco OFERECE', async ({ page }) => {
+  await novoCaderno(page, 'oferece');
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  // SQL: os três.
+  await expect(bloco(page, 0).getByRole('button', { name: '＋Tab' })).toBeVisible();
+
+  await bloco(page, 0).getByRole('button', { name: /Linguagem do bloco/ }).click();
+  await page.getByRole('option', { name: 'JavaScript' }).click();
+
+  // Runner: só `Run` — `＋Tab` e `JSON` são do banco, não fazem sentido aqui.
+  await expect(bloco(page, 0)).toHaveAttribute('data-tipo', 'javascript');
+  await expect(bloco(page, 0).getByRole('button', { name: '▷ Run' })).toBeVisible();
+  await expect(bloco(page, 0).getByRole('button', { name: '＋Tab' })).toHaveCount(0);
+
+  await bloco(page, 0).getByRole('button', { name: /Linguagem do bloco/ }).click();
+  await page.getByRole('option', { name: 'YAML' }).click();
+
+  // Sem destino: nenhum `Run`. Um botão que não faz nada é promessa quebrada.
+  await expect(bloco(page, 0).getByRole('button', { name: '▷ Run' })).toHaveCount(0);
+});
+
+test('bloco de JavaScript roda no runner, e a saída cai no Output', async ({ page }) => {
+  await novoCaderno(page, 'runner');
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await bloco(page, 0).getByRole('button', { name: /Linguagem do bloco/ }).click();
+  await page.getByRole('option', { name: 'JavaScript' }).click();
+  await page
+    .getByRole('textbox', { name: /Bloco 1/ })
+    .fill("console.log('veio-do-bloco')");
+
+  await bloco(page, 0).getByRole('button', { name: '▷ Run' }).click();
+  // O painel vem À FRENTE. Sem isto o bloco rodava, a saída era escrita e a
+  // tela não mudava nada — que é como isto apareceu, no navegador.
+  await expect(page.locator('[data-output]')).toBeVisible();
+  // E no `Output`, não em qualquer lugar da página: o próprio bloco mostra esse
+  // texto — é o código que o usuário escreveu.
+  await expect(page.locator('[data-output]')).toContainText('veio-do-bloco', {
+    timeout: 30_000,
+  });
+});
+
+test('a barra do caderno diz contra quem ele roda', async ({ page }) => {
+  await novoCaderno(page, 'kernel');
+  // O caderno nasceu na pasta `Query` de um database, então o CAMINHO já
+  // amarra: ele não precisa perguntar nada (spec 038).
+  // `main` e não `escola.db`: o nó da árvore mostra o ARQUIVO, e o database de
+  // um SQLite se chama `main`. É o mesmo nome que o rodapé mostra para um `.sql`
+  // daquela pasta.
+  await expect(barra(page).locator('[data-vinculo-do-caderno]')).toHaveAttribute(
+    'data-vinculo-do-caderno',
+    'main'
+  );
+});
+
+test('um .sqlbook da VERSÃO 1 abre, e é gravado de volta na 2', async ({ page }) => {
+  // Não é hipótese: os cadernos que ele criou nos últimos dias estão em disco
+  // com `tipo`, e não `linguagem`.
+  const raiz = await page.evaluate(async () => {
+    const r = await fetch('/api/projects').then((x) => x.json());
+    return (r.data as { dir: string }[])[0]?.dir ?? '';
+  });
+  const caminho = `${raiz}/v1.sqlbook`;
+  await page.evaluate(
+    async ([caminho, conteudo]) => {
+      await fetch('/api/file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: caminho, content: conteudo }),
+      });
+    },
+    [
+      caminho,
+      JSON.stringify({
+        versao: 1,
+        celulas: [
+          { tipo: 'markdown', conteudo: '# vindo da versao 1' },
+          { tipo: 'sql', conteudo: 'SELECT 1' },
+        ],
+      }),
+    ]
+  );
+
+  await page.reload();
+  await esperarIdePronta(page);
+  await linhaArvore(page, 'v1.sqlbook').click();
+  await expect(aba(page, 'v1.sqlbook')).toBeVisible();
+
+  // Os dois blocos vieram, com o tipo certo.
+  await expect(page.locator('[data-bloco]')).toHaveCount(2);
+  await expect(bloco(page, 0)).toHaveAttribute('data-tipo', 'markdown');
+  await expect(bloco(page, 1)).toHaveAttribute('data-tipo', 'sql');
+
+  // E ao salvar, o arquivo passa a ser versão 2.
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await page.keyboard.press('Control+s');
+  await expect(aba(page, 'v1.sqlbook')).not.toContainText('\u25cf');
+
+  const gravado = await page.evaluate(async (caminho) => {
+    const r = await fetch(`/api/file?path=${encodeURIComponent(caminho)}`).then((x) => x.json());
+    return (r.data as { content: string }).content;
+  }, caminho);
+  const dados = JSON.parse(gravado) as { versao: number; celulas: { linguagem: string }[] };
+  expect(dados.versao).toBe(2);
+  expect(dados.celulas.map((c) => c.linguagem)).toEqual(['markdown', 'sql', 'sql']);
+});
