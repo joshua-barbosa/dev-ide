@@ -35,7 +35,7 @@ export interface Celula {
 }
 
 /**
- * Para onde vai o `▷ Run` de um bloco (spec 051, D17).
+ * Para onde vai o `▷ Run` de um bloco (spec 051, D19).
  *
  * `nada` é uma resposta legítima e comum: o seletor oferece todas as linguagens
  * do editor, e a IDE roda cinco. Um `▷ Run` que não faz nada é uma promessa

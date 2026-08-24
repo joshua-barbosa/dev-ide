@@ -1,8 +1,8 @@
-// Cor no bloco do caderno, sem instanciar editor (spec 050, D15).
+// Cor no bloco do caderno, sem instanciar editor (spec 050, D17).
 //
 // `monaco.editor.colorize()` roda o MESMO tokenizador do editor grande e devolve
 // HTML pintado com o tema corrente — sem `create`, sem modelo, sem view. É o que
-// torna a decisão D15 possível: a cor não precisa de editor, só o multi-cursor
+// torna a decisão D17 possível: a cor não precisa de editor, só o multi-cursor
 // precisava.
 //
 // **O HTML é seguro por construção.** O texto do usuário entra escapado pelo

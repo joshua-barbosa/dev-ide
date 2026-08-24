@@ -25,7 +25,7 @@ import { rotuloDaLinguagem } from '../../shared/editor/idiomas';
 import type { Vinculo } from '../../shared/sql/vinculo';
 
 /**
- * Tipo MIME só do bloco (spec 050, D16).
+ * Tipo MIME só do bloco (spec 050, D18).
  *
  * NÃO é o `MIME_DE_ARRASTE` das abas e dos arquivos: com o mesmo tipo, arrastar
  * um bloco por cima da barra de abas ofereceria soltar lá. Um tipo próprio torna
@@ -259,7 +259,7 @@ function Bloco({
         }}
       >
         {/*
-          O que o bloco oferece depende da linguagem (spec 051, D17). `nada` é
+          O que o bloco oferece depende da linguagem (spec 051, D19). `nada` é
           resposta comum e legítima: o seletor oferece todas as linguagens do
           editor, e a IDE roda cinco — um `▷ Run` que não faz nada seria uma
           promessa quebrada.

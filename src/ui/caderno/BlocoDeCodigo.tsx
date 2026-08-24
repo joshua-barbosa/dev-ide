@@ -1,6 +1,6 @@
 // O bloco de código do caderno: colorido, e ainda assim uma `textarea`.
 //
-// São duas camadas ocupando o MESMO espaço (spec 050, D15):
+// São duas camadas ocupando o MESMO espaço (spec 050, D17):
 //
 //   - embaixo, um `<pre>` com o HTML que o Monaco colore — só para ver;
 //   - em cima, a `textarea` de sempre, com o texto **transparente** — só para

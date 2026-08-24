@@ -200,7 +200,7 @@ test('o bloco de SQL aparece COLORIDO, com as cores do editor', async ({ page })
 });
 
 test('as duas camadas do bloco ocupam EXATAMENTE o mesmo espaço', async ({ page }) => {
-  // O risco da técnica da spec 050 (D15) é um só: se a camada colorida e a de
+  // O risco da técnica da spec 050 (D17) é um só: se a camada colorida e a de
   // edição divergirem, o cursor passa a cair num lugar e a letra a aparecer em
   // outro. É invisível numa tela e catastrófico no uso — então a igualdade
   // vira medida, e não impressão.

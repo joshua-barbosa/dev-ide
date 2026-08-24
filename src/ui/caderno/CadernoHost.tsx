@@ -67,7 +67,7 @@ export function CadernoHost({
   );
 
   /**
-   * Roda um bloco, pelo caminho que a LINGUAGEM dele pede (spec 051, D17).
+   * Roda um bloco, pelo caminho que a LINGUAGEM dele pede (spec 051, D19).
    *
    * SQL vai para a conexão do vínculo; as linguagens do runner vão para o
    * runner, e a saída cai no painel `Output` como a de rodar um arquivo.
