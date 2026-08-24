@@ -227,7 +227,14 @@ export function EditorGroup({
             key={t.id}
             sx={{ flex: 1, minHeight: 0, display: ativaId === t.id ? 'flex' : 'none' }}
           >
-            <CadernoHost aba={t} onMudar={onMudarCaderno} onRodar={onRodarBloco} />
+            <CadernoHost
+              aba={t}
+              fontSize={fontSize}
+              tabSize={tabSize}
+              tema={tema}
+              onMudar={onMudarCaderno}
+              onRodar={onRodarBloco}
+            />
           </Box>
         ))}
 

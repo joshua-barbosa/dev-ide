@@ -104,6 +104,9 @@ const ICONES_DA_INTERFACE = [
   // O Query Book (spec 048): o caderno, e a seta de mover bloco para cima.
   'lucide:notebook-pen',
   'lucide:chevron-up',
+  // A alça de arrastar o bloco (spec 050). O arraste sai dela, e não do bloco
+  // inteiro — senão selecionar texto com o mouse viraria um arraste.
+  'lucide:grip-vertical',
   // A aba de tabela (spec 041): abrir a tabela, e exportar a página em dois
   // formatos. `braces` são as chaves do JSON; `file-down` é a seta de baixar.
   'lucide:table-2',

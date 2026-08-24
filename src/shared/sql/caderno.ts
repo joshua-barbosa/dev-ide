@@ -77,23 +77,25 @@ export function escreverCaderno(caderno: Caderno): string {
   return `${JSON.stringify(dados, null, 2)}\n`;
 }
 
-/** Acrescenta um bloco depois do índice dado; `-1` põe no fim. */
-export function acrescentar(
+/**
+ * Insere um bloco numa **fresta** — a posição ENTRE dois blocos.
+ *
+ * Conta frestas, e não blocos: `0` é antes do primeiro, `n` é depois do último.
+ * Até a spec 050 esta função contava "depois de qual bloco", e `-1` queria dizer
+ * "no fim". As duas coordenadas conviveram mal por exatamente um teste: a fresta
+ * 0 vira `depoisDe = -1`, que é o começo na conta das frestas e o FIM na outra.
+ * Um sistema de coordenadas só, igual ao de `reordenar`, fecha essa porta.
+ */
+export function inserir(
   caderno: Caderno,
   tipo: TipoDeCelula,
-  depoisDe: number,
+  fresta: number,
   sufixo: number
 ): Caderno {
   const nova = novaCelula(tipo, sufixo);
-  if (depoisDe < 0 || depoisDe >= caderno.celulas.length) {
-    return { celulas: [...caderno.celulas, nova] };
-  }
+  const onde = Math.max(0, Math.min(fresta, caderno.celulas.length));
   return {
-    celulas: [
-      ...caderno.celulas.slice(0, depoisDe + 1),
-      nova,
-      ...caderno.celulas.slice(depoisDe + 1),
-    ],
+    celulas: [...caderno.celulas.slice(0, onde), nova, ...caderno.celulas.slice(onde)],
   };
 }
 
@@ -125,6 +127,35 @@ export function mover(caderno: Caderno, id: string, direcao: -1 | 1): Caderno {
   celulas[i] = b;
   celulas[j] = a;
   return { celulas };
+}
+
+/**
+ * Move um bloco para uma **fresta** — a posição ENTRE dois blocos (spec 050).
+ *
+ * `destino` conta frestas, não blocos: `0` é antes do primeiro, `n` é depois do
+ * último. É assim porque é o que o arraste sabe dizer — o mouse cai entre duas
+ * coisas, não sobre uma.
+ *
+ * A armadilha está no desconto: tirar o bloco da posição `i` faz tudo que vinha
+ * depois descer uma casa, então uma fresta ADIANTE de `i` vale um a menos. Sem
+ * isso, arrastar para a frente sempre erra por um.
+ *
+ * Soltar numa das duas frestas que encostam no próprio bloco devolve o caderno
+ * IDÊNTICO — não só igual: é o que impede um arraste que não mudou nada de
+ * marcar o arquivo como alterado.
+ */
+export function reordenar(caderno: Caderno, id: string, destino: number): Caderno {
+  const i = caderno.celulas.findIndex((c) => c.id === id);
+  if (i === -1) return caderno;
+
+  const fresta = Math.max(0, Math.min(destino, caderno.celulas.length));
+  if (fresta === i || fresta === i + 1) return caderno;
+
+  const restantes = caderno.celulas.filter((_, k) => k !== i);
+  const onde = fresta > i ? fresta - 1 : fresta;
+  const celula = caderno.celulas[i];
+  if (celula === undefined) return caderno;
+  return { celulas: [...restantes.slice(0, onde), celula, ...restantes.slice(onde)] };
 }
 
 /** Os blocos que o `Run All` roda, na ordem — markdown fica de fora. */

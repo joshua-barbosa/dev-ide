@@ -11,6 +11,15 @@ import {
 
 const bloco = (page: Page, i: number) => page.locator('[data-bloco]').nth(i);
 
+/**
+ * A barra do topo do caderno.
+ *
+ * Desde a spec 050 `Add Code` e `Add Markdown` existem também em cada FRESTA
+ * entre blocos, então dizer só o nome do botão virou ambíguo — e é ambiguidade
+ * de verdade, não do teste: a tela tem mesmo vários. Quem quer o do topo diz.
+ */
+const barra = (page: Page) => page.locator('[data-barra-do-caderno]');
+
 async function novoCaderno(page: Page, nome: string): Promise<void> {
   await painelLateral(page, 'Database').click();
   await expandir(page, 'ACME', 'Bancos');
@@ -36,13 +45,13 @@ test.beforeEach(async ({ page }) => {
 test('um .sqlbook abre como CADERNO, e não como texto', async ({ page }) => {
   await novoCaderno(page, 'novo');
   await expect(page.getByText('Caderno vazio.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Add Code' })).toBeVisible();
+  await expect(barra(page).getByRole('button', { name: 'Add Code' })).toBeVisible();
 });
 
 test('acrescentar blocos e contar', async ({ page }) => {
   await novoCaderno(page, 'contagem');
-  await page.getByRole('button', { name: 'Add Code' }).click();
-  await page.getByRole('button', { name: 'Add Markdown' }).click();
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await barra(page).getByRole('button', { name: 'Add Markdown' }).click();
 
   await expect(page.locator('[data-bloco]')).toHaveCount(2);
   await expect(bloco(page, 0)).toHaveAttribute('data-tipo', 'sql');
@@ -51,7 +60,7 @@ test('acrescentar blocos e contar', async ({ page }) => {
 
 test('o bloco de markdown alterna entre editar e renderizado', async ({ page }) => {
   await novoCaderno(page, 'texto');
-  await page.getByRole('button', { name: 'Add Markdown' }).click();
+  await barra(page).getByRole('button', { name: 'Add Markdown' }).click();
   await page.getByRole('textbox', { name: /Bloco 1/ }).fill('# Chamado 64158');
 
   await page.getByRole('button', { name: 'Ver renderizado' }).click();
@@ -60,7 +69,7 @@ test('o bloco de markdown alterna entre editar e renderizado', async ({ page }) 
 
 test('rodar um bloco de SQL abre o resultado', async ({ page }) => {
   await novoCaderno(page, 'rodar');
-  await page.getByRole('button', { name: 'Add Code' }).click();
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
   await page.getByRole('textbox', { name: /Bloco 1/ }).fill("SELECT 'do-caderno' AS marca");
   await page.getByRole('button', { name: '▷ Run' }).click();
 
@@ -69,11 +78,11 @@ test('rodar um bloco de SQL abre o resultado', async ({ page }) => {
 
 test('Run All roda os blocos de SQL e PULA o markdown', async ({ page }) => {
   await novoCaderno(page, 'tudo');
-  await page.getByRole('button', { name: 'Add Markdown' }).click();
+  await barra(page).getByRole('button', { name: 'Add Markdown' }).click();
   await page.getByRole('textbox', { name: /Bloco 1/ }).fill('## explicação');
-  await page.getByRole('button', { name: 'Add Code' }).click();
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
   await page.getByRole('textbox', { name: /Bloco 2/ }).fill("SELECT 'um' AS q");
-  await page.getByRole('button', { name: 'Add Code' }).click();
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
   await page.getByRole('textbox', { name: /Bloco 3/ }).fill("SELECT 'dois' AS q");
 
   await page.getByRole('button', { name: 'Run All' }).click();
@@ -85,9 +94,9 @@ test('Run All PARA no primeiro erro', async ({ page }) => {
   // Um caderno é uma sequência: seguir depois de falhar daria resultados que
   // não querem dizer nada.
   await novoCaderno(page, 'erro');
-  await page.getByRole('button', { name: 'Add Code' }).click();
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
   await page.getByRole('textbox', { name: /Bloco 1/ }).fill('SELECT * FROM nao_existe_mesmo');
-  await page.getByRole('button', { name: 'Add Code' }).click();
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
   await page.getByRole('textbox', { name: /Bloco 2/ }).fill("SELECT 'nao-devia-rodar' AS q");
 
   await page.getByRole('button', { name: 'Run All' }).click();
@@ -97,7 +106,7 @@ test('Run All PARA no primeiro erro', async ({ page }) => {
 
 test('Ctrl+S grava o caderno, e ele volta igual depois do F5', async ({ page }) => {
   await novoCaderno(page, 'salvo');
-  await page.getByRole('button', { name: 'Add Code' }).click();
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
   await page.getByRole('textbox', { name: /Bloco 1/ }).fill('SELECT 42');
   await expect(aba(page, 'salvo.sqlbook')).toContainText('●');
 
@@ -152,5 +161,124 @@ test('escolher Query SQL cria .sql; escolher Query Book cria .sqlbook', async ({
   await page.keyboard.press('Enter');
   await expect(aba(page, 'so-caderno.sqlbook')).toBeVisible();
   // E abriu como CADERNO, não como texto.
-  await expect(page.getByRole('button', { name: 'Add Code' })).toBeVisible();
+  await expect(barra(page).getByRole('button', { name: 'Add Code' })).toBeVisible();
+});
+
+
+// ---------------------------------------------------------------------------
+// A superfície revista (spec 050)
+// ---------------------------------------------------------------------------
+
+/** Prepara um caderno com dois blocos de SQL, para os testes de ordem. */
+async function doisBlocos(page: Page, nome: string): Promise<void> {
+  await novoCaderno(page, nome);
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await page.getByRole('textbox', { name: /Bloco 1/ }).fill('SELECT 1 AS primeiro');
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await page.getByRole('textbox', { name: /Bloco 2/ }).fill('SELECT 2 AS segundo');
+}
+
+test('o bloco de SQL aparece COLORIDO, com as cores do editor', async ({ page }) => {
+  await novoCaderno(page, 'cor');
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await page.getByRole('textbox', { name: /Bloco 1/ }).fill("SELECT 'x' FROM alunos");
+
+  const camada = page.locator('[data-colorido]').first();
+  // O texto da camada de baixo é o mesmo da de cima — é o que garante que o
+  // cursor não vai mentir (AC-4). `toHaveText` normaliza o espaço, e o Monaco
+  // escreve espaço não separável: é a mesma ressalva de `fixtures.ts`.
+  await expect(camada).toHaveText("SELECT 'x' FROM alunos");
+
+  // E ele foi TOKENIZADO. A cor NÃO está no `style` do elemento: o colorizador
+  // emite classes (`mtk7`, `mtk20`) e o tema injeta as regras na página, então
+  // quem sabe a cor é o estilo COMPUTADO. Verificar `style.color` daria uma
+  // lista vazia e um teste que passa sem provar nada.
+  const cores = await camada.locator('span[class^="mtk"]').evaluateAll((ns) =>
+    [...new Set(ns.map((n) => getComputedStyle(n).color))]
+  );
+  expect(cores.length).toBeGreaterThan(1);
+});
+
+test('as duas camadas do bloco ocupam EXATAMENTE o mesmo espaço', async ({ page }) => {
+  // O risco da técnica da spec 050 (D15) é um só: se a camada colorida e a de
+  // edição divergirem, o cursor passa a cair num lugar e a letra a aparecer em
+  // outro. É invisível numa tela e catastrófico no uso — então a igualdade
+  // vira medida, e não impressão.
+  await novoCaderno(page, 'alinhado');
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await page
+    .getByRole('textbox', { name: /Bloco 1/ })
+    .fill("SELECT nome, 'x' AS marca\n  FROM alunos\n WHERE id > 10;");
+
+  const medida = await page.locator('[data-bloco]').first().evaluate((no) => {
+    const ta = no.querySelector('textarea') as HTMLTextAreaElement;
+    const pre = no.querySelector('pre') as HTMLPreElement;
+    const a = ta.getBoundingClientRect();
+    const b = pre.getBoundingClientRect();
+    const ca = getComputedStyle(ta);
+    const cb = getComputedStyle(pre);
+    return {
+      fonte: [ca.font, ca.lineHeight, ca.letterSpacing, ca.padding, ca.whiteSpace, ca.overflowWrap, ca.tabSize].join('|'),
+      fontePre: [cb.font, cb.lineHeight, cb.letterSpacing, cb.padding, cb.whiteSpace, cb.overflowWrap, cb.tabSize].join('|'),
+      desvio: [a.left - b.left, a.top - b.top, a.width - b.width, a.height - b.height],
+    };
+  });
+
+  expect(medida.fontePre).toBe(medida.fonte);
+  for (const d of medida.desvio) expect(Math.abs(d)).toBeLessThan(0.5);
+});
+
+test('a fresta acrescenta bloco NAQUELA posição, e não no fim', async ({ page }) => {
+  await doisBlocos(page, 'fresta');
+
+  // A fresta 0 é a de antes do primeiro bloco.
+  const fresta = page.locator('[data-fresta="0"]');
+  await fresta.hover();
+  await fresta.getByRole('button', { name: 'Add Markdown' }).click();
+
+  await expect(page.locator('[data-bloco]')).toHaveCount(3);
+  await expect(bloco(page, 0)).toHaveAttribute('data-tipo', 'markdown');
+  await expect(bloco(page, 1)).toHaveAttribute('data-tipo', 'sql');
+});
+
+test('arrastar o bloco pela alça troca a ordem', async ({ page }) => {
+  await doisBlocos(page, 'arrastar');
+  await expect(page.getByRole('textbox', { name: /Bloco 1/ })).toHaveValue('SELECT 1 AS primeiro');
+
+  // A alça só existe sob o mouse: é o próprio hover que a revela.
+  await bloco(page, 0).hover();
+  await bloco(page, 0).locator('[data-pegar]').dragTo(page.locator('[data-fresta="2"]'));
+
+  // O primeiro virou o segundo — e o conteúdo foi junto.
+  await expect(page.getByRole('textbox', { name: /Bloco 1/ })).toHaveValue('SELECT 2 AS segundo');
+  await expect(page.getByRole('textbox', { name: /Bloco 2/ })).toHaveValue('SELECT 1 AS primeiro');
+});
+
+test('as ações do bloco só aparecem sob o mouse — mas as de RODAR ficam', async ({ page }) => {
+  await doisBlocos(page, 'hover');
+
+  // O bloco 2 acabou de receber texto e está COM O FOCO — e foco dentro do
+  // bloco também revela a barra, de propósito (AC-14). Quem prova o esconder é
+  // o bloco 1: sem foco, e com o mouse longe.
+  const admin = bloco(page, 0).locator('.administrar');
+  await barra(page).hover();
+  await expect(admin).toHaveCSS('opacity', '0');
+  // O que se USA não se esconde (AC-15).
+  await expect(bloco(page, 0).getByRole('button', { name: '▷ Run' })).toBeVisible();
+
+  await bloco(page, 0).hover();
+  await expect(admin).toHaveCSS('opacity', '1');
+});
+
+test('arrastar e soltar na PRÓPRIA posição não suja o arquivo', async ({ page }) => {
+  await doisBlocos(page, 'inocuo');
+  await page.keyboard.press('Control+s');
+  await expect(aba(page, 'inocuo.sqlbook')).not.toContainText('●');
+
+  await bloco(page, 0).hover();
+  // A fresta 1 é a que fica logo depois do bloco 0: soltar ali é não sair do
+  // lugar.
+  await bloco(page, 0).locator('[data-pegar]').dragTo(page.locator('[data-fresta="1"]'));
+
+  await expect(aba(page, 'inocuo.sqlbook')).not.toContainText('●');
 });

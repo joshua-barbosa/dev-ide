@@ -6,21 +6,29 @@
 import { useCallback, useState } from 'react';
 import { CadernoPanel } from './CadernoPanel';
 import {
-  acrescentar,
   alterar,
   blocosExecutaveis,
   escreverCaderno,
+  inserir,
   lerCaderno,
   mover,
   remover,
+  reordenar,
   type Caderno,
   type Celula,
   type TipoDeCelula,
 } from '../../shared/sql/caderno';
+import type { NomeDoTema } from '../../shared/temas';
 import type { Tab } from '../../shared/tabs';
 
 export interface CadernoHostProps {
   readonly aba: Tab;
+  // A aparência do bloco acompanha a do editor: o bloco é colorido pelo mesmo
+  // tokenizador e com o mesmo tema (spec 050), e dois tamanhos de fonte na
+  // mesma tela seria a IDE discordando de si mesma.
+  readonly fontSize: number;
+  readonly tabSize: number;
+  readonly tema: NomeDoTema;
   /** Grava o conteúdo novo no `meta` da aba e a marca como não salva. */
   onMudar(id: string, conteudo: string): void;
   /** Roda um bloco. Mesmo caminho do `Run` do editor (spec 038). */
@@ -32,7 +40,9 @@ export interface CadernoHostProps {
   ): Promise<boolean>;
 }
 
-export function CadernoHost({ aba, onMudar, onRodar }: CadernoHostProps) {
+export function CadernoHost({
+  aba, fontSize, tabSize, tema, onMudar, onRodar,
+}: CadernoHostProps) {
   const meta = aba.meta as { content?: string; path?: string | null };
   const caderno = lerCaderno(meta.content ?? '');
 
@@ -89,13 +99,22 @@ export function CadernoHost({ aba, onMudar, onRodar }: CadernoHostProps) {
       caderno={caderno}
       rodando={rodando}
       erro={erro}
+      fontSize={fontSize}
+      tabSize={tabSize}
+      tema={tema}
       onAlterar={(id, conteudo) => aplicar(alterar(caderno, id, conteudo))}
-      onAcrescentar={(tipo: TipoDeCelula, depoisDe) => {
-        aplicar(acrescentar(caderno, tipo, depoisDe, proximo));
+      onAcrescentar={(tipo: TipoDeCelula, fresta) => {
+        aplicar(inserir(caderno, tipo, fresta, proximo));
         setProximo((n) => n + 1);
       }}
       onRemover={(id) => aplicar(remover(caderno, id))}
       onMover={(id, direcao) => aplicar(mover(caderno, id, direcao))}
+      onReordenar={(id, fresta) => {
+        const novo = reordenar(caderno, id, fresta);
+        // `reordenar` devolve o MESMO objeto quando nada muda; comparar por
+        // identidade é o que impede um arraste inócuo de sujar o arquivo.
+        if (novo !== caderno) aplicar(novo);
+      }}
       onRodar={(celula, modo) => void rodarUm(celula, modo)}
       onRodarTudo={() => void rodarTudo()}
     />

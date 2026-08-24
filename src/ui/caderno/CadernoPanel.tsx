@@ -1,4 +1,4 @@
-// O Query Book (spec 048).
+// O Query Book (spec 048; superfície revista na spec 050).
 //
 // Uma segunda superfície de editor: blocos de SQL e de markdown, cada um com o
 // seu `Run`. O que isso resolve e um `.sql` não é **investigação com
@@ -6,34 +6,78 @@
 // cada arquivo é a reconstituição de um problema, e o que explica cada consulta
 // merece ser texto que se lê, não comentário.
 //
-// Os blocos são `textarea`, e não Monaco, pela mesma razão da spec 043 — e aqui
-// pesa mais: um caderno tem dezenas de blocos, e dezenas de instâncias de editor
-// não se justificam.
-import { useState } from 'react';
+// A spec 050 aproximou a superfície da ferramenta de referência em quatro
+// pontos: cor no bloco (`BlocoDeCodigo`), acrescentar **entre** blocos
+// (`Fresta`), arrastar para reordenar, e a barra de administração do bloco só
+// aparecendo sob o mouse. O que se USA (`Run`, `＋Tab`, `JSON`) fica sempre à
+// vista; o que se ADMINISTRA (mover, apagar) se esconde.
+import { useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Tooltip from '@mui/material/Tooltip';
 import { Icon } from '../Icon';
 import { tokens } from '../theme';
+import { Fresta } from './Fresta';
+import { BlocoDeCodigo } from './BlocoDeCodigo';
 import { MarkdownPreview } from '../editor/MarkdownPreview';
+import type { NomeDoTema } from '../../shared/temas';
 import type { Caderno, Celula, TipoDeCelula } from '../../shared/sql/caderno';
+
+/**
+ * Tipo MIME só do bloco (spec 050, D16).
+ *
+ * NÃO é o `MIME_DE_ARRASTE` das abas e dos arquivos: com o mesmo tipo, arrastar
+ * um bloco por cima da barra de abas ofereceria soltar lá. Um tipo próprio torna
+ * a confusão impossível por construção, em vez de por checagem.
+ */
+const MIME_DO_BLOCO = 'application/x-dev-ide-bloco';
 
 export interface CadernoPanelProps {
   readonly caderno: Caderno;
   /** O que o `Run All` está fazendo agora, ou `null`. */
   readonly rodando: string | null;
   readonly erro: string | null;
+  readonly fontSize: number;
+  readonly tabSize: number;
+  readonly tema: NomeDoTema;
   onAlterar(id: string, conteudo: string): void;
-  onAcrescentar(tipo: TipoDeCelula, depoisDe: number): void;
+  /** `fresta` conta as posições ENTRE blocos: `0` antes do primeiro. */
+  onAcrescentar(tipo: TipoDeCelula, fresta: number): void;
   onRemover(id: string): void;
   onMover(id: string, direcao: -1 | 1): void;
+  onReordenar(id: string, fresta: number): void;
   onRodar(celula: Celula, modo: 'run' | 'tab' | 'json'): void;
   onRodarTudo(): void;
 }
 
 export function CadernoPanel({
-  caderno, rodando, erro, onAlterar, onAcrescentar, onRemover, onMover, onRodar, onRodarTudo,
+  caderno, rodando, erro, fontSize, tabSize, tema,
+  onAlterar, onAcrescentar, onRemover, onMover, onReordenar, onRodar, onRodarTudo,
 }: CadernoPanelProps) {
   const [atual, setAtual] = useState(0);
+  // Quem está sendo arrastado e onde cairia. Os dois juntos porque é o par que
+  // decide o que cada fresta mostra.
+  const [arrastando, setArrastando] = useState<string | null>(null);
+  const [alvo, setAlvo] = useState<number | null>(null);
+
+  const largar = (): void => {
+    setArrastando(null);
+    setAlvo(null);
+  };
+
+  const frestaEm = (indice: number) => (
+    <Fresta
+      key={`fresta-${indice}`}
+      indice={indice}
+      arrastando={arrastando !== null}
+      alvo={alvo === indice}
+      onAcrescentar={onAcrescentar}
+      onEntrarComArraste={setAlvo}
+      onSoltar={(i) => {
+        if (arrastando !== null) onReordenar(arrastando, i);
+        largar();
+      }}
+    />
+  );
 
   return (
     <Box
@@ -43,14 +87,21 @@ export function CadernoPanel({
       }}
     >
       <Box
+        data-barra-do-caderno
         sx={{
           display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5,
           borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper',
           fontSize: 11, color: 'text.secondary', flexShrink: 0,
         }}
       >
-        <Acao rotulo="Add Code" onClick={() => onAcrescentar('sql', -1)} />
-        <Acao rotulo="Add Markdown" onClick={() => onAcrescentar('markdown', -1)} />
+        <Acao
+          rotulo="Add Code"
+          onClick={() => onAcrescentar('sql', caderno.celulas.length)}
+        />
+        <Acao
+          rotulo="Add Markdown"
+          onClick={() => onAcrescentar('markdown', caderno.celulas.length)}
+        />
         <Box component="span" sx={{ opacity: 0.4 }}>|</Box>
         <Acao
           rotulo={rodando === null ? 'Run All' : 'rodando…'}
@@ -77,7 +128,12 @@ export function CadernoPanel({
         </Box>
       )}
 
-      <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0, p: 1 }}>
+      <Box
+        sx={{ flex: 1, overflow: 'auto', minHeight: 0, p: 1 }}
+        // Soltar fora de qualquer fresta cancela — sem isto o arraste ficaria
+        // pendurado e as frestas acesas para sempre.
+        onDragEnd={largar}
+      >
         {caderno.celulas.length === 0 ? (
           <Box sx={{ p: 1.75, color: 'text.secondary', fontSize: 12 }}>
             Caderno vazio. Comece com <strong>Add Code</strong> ou{' '}
@@ -85,36 +141,50 @@ export function CadernoPanel({
           </Box>
         ) : (
           caderno.celulas.map((celula, i) => (
-            <Bloco
-              key={celula.id}
-              celula={celula}
-              indice={i}
-              total={caderno.celulas.length}
-              rodando={rodando === celula.id}
-              onFocar={() => setAtual(i)}
-              onAlterar={onAlterar}
-              onAcrescentar={onAcrescentar}
-              onRemover={onRemover}
-              onMover={onMover}
-              onRodar={onRodar}
-            />
+            <Box key={celula.id} sx={{ display: 'contents' }}>
+              {frestaEm(i)}
+              <Bloco
+                celula={celula}
+                indice={i}
+                total={caderno.celulas.length}
+                rodando={rodando === celula.id}
+                arrastado={arrastando === celula.id}
+                fontSize={fontSize}
+                tabSize={tabSize}
+                tema={tema}
+                onFocar={() => setAtual(i)}
+                onComecarArraste={() => setArrastando(celula.id)}
+                onTerminarArraste={largar}
+                onAlterar={onAlterar}
+                onRemover={onRemover}
+                onMover={onMover}
+                onRodar={onRodar}
+              />
+            </Box>
           ))
         )}
+        {caderno.celulas.length > 0 && frestaEm(caderno.celulas.length)}
       </Box>
     </Box>
   );
 }
 
 function Bloco({
-  celula, indice, total, rodando, onFocar, onAlterar, onAcrescentar, onRemover, onMover, onRodar,
+  celula, indice, total, rodando, arrastado, fontSize, tabSize, tema,
+  onFocar, onComecarArraste, onTerminarArraste, onAlterar, onRemover, onMover, onRodar,
 }: {
   readonly celula: Celula;
   readonly indice: number;
   readonly total: number;
   readonly rodando: boolean;
+  readonly arrastado: boolean;
+  readonly fontSize: number;
+  readonly tabSize: number;
+  readonly tema: NomeDoTema;
   onFocar(): void;
+  onComecarArraste(): void;
+  onTerminarArraste(): void;
   onAlterar(id: string, conteudo: string): void;
-  onAcrescentar(tipo: TipoDeCelula, depoisDe: number): void;
   onRemover(id: string): void;
   onMover(id: string, direcao: -1 | 1): void;
   onRodar(celula: Celula, modo: 'run' | 'tab' | 'json'): void;
@@ -122,16 +192,26 @@ function Bloco({
   // Markdown nasce mostrando o texto quando está vazio, e renderizado quando
   // tem conteúdo: um bloco novo é para escrever, um antigo é para ler.
   const [editando, setEditando] = useState(celula.conteudo.trim() === '');
+  const caixa = useRef<HTMLDivElement>(null);
   const ehSql = celula.tipo === 'sql';
+  const rotulo = `Bloco ${indice + 1} (${celula.tipo})`;
 
   return (
     <Box
+      ref={caixa}
       data-bloco={celula.id}
       data-tipo={celula.tipo}
       onFocus={onFocar}
       sx={{
-        mb: 1, border: 1, borderColor: rodando ? 'primary.main' : 'divider', borderRadius: 0.5,
+        mb: 0, border: 1, borderColor: rodando ? 'primary.main' : 'divider', borderRadius: 0.5,
         bgcolor: 'background.paper',
+        // O bloco que está sendo arrastado desbota: é como se vê que ele saiu
+        // do lugar e ainda não chegou em outro.
+        opacity: arrastado ? 0.4 : 1,
+        // A barra de administração só sob o mouse OU com o foco dentro — a
+        // segunda metade é o que a mantém alcançável pelo teclado (AC-14).
+        '& .administrar': { opacity: 0, transition: 'opacity 90ms' },
+        '&:hover .administrar, &:focus-within .administrar': { opacity: 1 },
       }}
     >
       <Box
@@ -157,28 +237,47 @@ function Bloco({
         <Box component="span" sx={{ opacity: 0.6 }}>
           {celula.tipo}
         </Box>
-        <BotaoDeIcone
-          icone="lucide:chevron-up"
-          rotulo={`Mover o bloco ${indice + 1} para cima`}
-          desabilitada={indice === 0}
-          onClick={() => onMover(celula.id, -1)}
-        />
-        <BotaoDeIcone
-          icone="lucide:chevron-down"
-          rotulo={`Mover o bloco ${indice + 1} para baixo`}
-          desabilitada={indice === total - 1}
-          onClick={() => onMover(celula.id, 1)}
-        />
-        <BotaoDeIcone
-          icone="lucide:plus"
-          rotulo={`Acrescentar bloco depois do ${indice + 1}`}
-          onClick={() => onAcrescentar(celula.tipo, indice)}
-        />
-        <BotaoDeIcone
-          icone="lucide:trash-2"
-          rotulo={`Apagar o bloco ${indice + 1}`}
-          onClick={() => onRemover(celula.id)}
-        />
+        <Box className="administrar" sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+          <Box
+            component="span"
+            // O arraste sai DAQUI, e não do bloco inteiro: com o bloco
+            // arrastável, selecionar texto com o mouse dentro dele viraria um
+            // arraste — a `textarea` perderia a função mais básica que tem.
+            draggable
+            data-pegar={celula.id}
+            aria-label={`Arrastar o bloco ${indice + 1}`}
+            title={`Arrastar o bloco ${indice + 1}`}
+            onDragStart={(e: React.DragEvent) => {
+              e.dataTransfer.setData(MIME_DO_BLOCO, celula.id);
+              e.dataTransfer.effectAllowed = 'move';
+              // Sem isto o que o mouse carrega é o ícone da alça, e não dá para
+              // ver o que está sendo movido.
+              if (caixa.current !== null) e.dataTransfer.setDragImage(caixa.current, 16, 16);
+              onComecarArraste();
+            }}
+            onDragEnd={onTerminarArraste}
+            sx={{ display: 'flex', cursor: 'grab', p: 0.25, '&:active': { cursor: 'grabbing' } }}
+          >
+            <Icon name="lucide:grip-vertical" size={12} />
+          </Box>
+          <BotaoDeIcone
+            icone="lucide:chevron-up"
+            rotulo={`Mover o bloco ${indice + 1} para cima`}
+            desabilitada={indice === 0}
+            onClick={() => onMover(celula.id, -1)}
+          />
+          <BotaoDeIcone
+            icone="lucide:chevron-down"
+            rotulo={`Mover o bloco ${indice + 1} para baixo`}
+            desabilitada={indice === total - 1}
+            onClick={() => onMover(celula.id, 1)}
+          />
+          <BotaoDeIcone
+            icone="lucide:trash-2"
+            rotulo={`Apagar o bloco ${indice + 1}`}
+            onClick={() => onRemover(celula.id)}
+          />
+        </Box>
       </Box>
 
       {!ehSql && !editando ? (
@@ -187,28 +286,38 @@ function Bloco({
         <Box onClick={() => setEditando(true)} sx={{ cursor: 'text' }}>
           <MarkdownPreview fonte={celula.conteudo} />
         </Box>
+      ) : ehSql ? (
+        <BlocoDeCodigo
+          id={celula.id}
+          conteudo={celula.conteudo}
+          linguagem="sql"
+          rotulo={rotulo}
+          fontSize={fontSize}
+          tabSize={tabSize}
+          tema={tema}
+          onAlterar={(texto) => onAlterar(celula.id, texto)}
+          onAtalhoDeRodar={() => onRodar(celula, 'run')}
+          onFocar={onFocar}
+        />
       ) : (
+        // Markdown em edição segue sem cor (AC-5): o que se lê dele é o modo
+        // renderizado, e colorir marcação enquanto se escreve atrapalha mais
+        // que ajuda.
         <Box
           component="textarea"
           data-conteudo={celula.id}
-          aria-label={`Bloco ${indice + 1} (${celula.tipo})`}
+          aria-label={rotulo}
           spellCheck={false}
           value={celula.conteudo}
+          onFocus={onFocar}
           onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
             onAlterar(celula.id, e.target.value)
           }
-          onKeyDown={(e: React.KeyboardEvent) => {
-            // `Ctrl+Enter` roda este bloco — o mesmo gesto do editor de query.
-            if (ehSql && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              onRodar(celula, 'run');
-            }
-          }}
           rows={Math.min(20, Math.max(3, celula.conteudo.split('\n').length + 1))}
           sx={{
             width: '100%', border: 0, outline: 'none', resize: 'vertical',
             bgcolor: 'transparent', color: 'text.primary', p: 1,
-            fontFamily: tokens.fontMono, fontSize: 12, lineHeight: 1.5,
+            fontFamily: tokens.fontMono, fontSize: `${fontSize}px`, lineHeight: 1.5,
           }}
         />
       )}

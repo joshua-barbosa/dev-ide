@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  acrescentar,
+  inserir,
   alterar,
   blocosExecutaveis,
   escreverCaderno,
   lerCaderno,
   mover,
   remover,
+  reordenar,
   VERSAO_DO_CADERNO,
 } from '../sql/caderno';
 
@@ -105,10 +106,20 @@ const tres = {
   ],
 };
 
-test('acrescentar no fim e no meio', () => {
-  assert.equal(acrescentar(tres, 'sql', -1, 9).celulas[3]?.id, 'c9');
-  const meio = acrescentar(tres, 'markdown', 0, 9);
-  assert.deepEqual(meio.celulas.map((c) => c.id), ['a', 'c9', 'b', 'c']);
+test('inserir conta FRESTAS: 0 é antes do primeiro, n é depois do último', () => {
+  // A conta antiga era "depois de qual bloco", e a fresta 0 virava `-1` — que
+  // ali queria dizer "no fim". Errava por um caderno inteiro (spec 050).
+  assert.deepEqual(inserir(tres, 'sql', 0, 9).celulas.map((c) => c.id), ['c9', 'a', 'b', 'c']);
+  assert.deepEqual(inserir(tres, 'sql', 3, 9).celulas.map((c) => c.id), ['a', 'b', 'c', 'c9']);
+  assert.deepEqual(
+    inserir(tres, 'markdown', 1, 9).celulas.map((c) => c.id),
+    ['a', 'c9', 'b', 'c']
+  );
+});
+
+test('inserir fora da faixa encosta na ponta mais próxima', () => {
+  assert.deepEqual(inserir(tres, 'sql', -3, 9).celulas[0]?.id, 'c9');
+  assert.deepEqual(inserir(tres, 'sql', 99, 9).celulas[3]?.id, 'c9');
 });
 
 test('alterar mexe só no bloco pedido', () => {
@@ -155,4 +166,38 @@ test('o Run All pula markdown e blocos vazios', () => {
 test('o Run All mantém a ORDEM dos blocos', () => {
   // Um caderno é uma sequência: o bloco 5 costuma depender do 4.
   assert.deepEqual(blocosExecutaveis(tres).map((c) => c.conteudo), ['1', '2', '3']);
+});
+
+// ---------------------------------------------------------------------------
+// Reordenar arrastando (spec 050)
+// ---------------------------------------------------------------------------
+
+const ids = (c: { celulas: readonly { id: string }[] }): string[] => c.celulas.map((x) => x.id);
+
+test('arrastar para uma fresta adiante desconta a própria saída', () => {
+  // A armadilha do arraste: ao tirar `a` da posição 0, tudo acima desce um.
+  // A fresta 2 (entre `b` e `c`) tem que continuar sendo entre `b` e `c`.
+  assert.deepEqual(ids(reordenar(tres, 'a', 2)), ['b', 'a', 'c']);
+});
+
+test('arrastar para o fim e para o começo', () => {
+  assert.deepEqual(ids(reordenar(tres, 'a', 3)), ['b', 'c', 'a']);
+  assert.deepEqual(ids(reordenar(tres, 'c', 0)), ['c', 'a', 'b']);
+});
+
+test('arrastar para uma fresta atrás NÃO desconta', () => {
+  assert.deepEqual(ids(reordenar(tres, 'c', 1)), ['a', 'c', 'b']);
+});
+
+test('soltar na própria posição devolve o MESMO caderno', () => {
+  // Idêntico, e não só igual: é o que impede o arquivo de ser marcado como
+  // alterado por um arraste que não mudou nada (AC-11).
+  assert.equal(reordenar(tres, 'b', 1), tres);
+  assert.equal(reordenar(tres, 'b', 2), tres);
+});
+
+test('reordenar com id inexistente ou fresta fora da faixa não estraga nada', () => {
+  assert.equal(reordenar(tres, 'zzz', 1), tres);
+  assert.deepEqual(ids(reordenar(tres, 'a', 99)), ['b', 'c', 'a']);
+  assert.deepEqual(ids(reordenar(tres, 'c', -5)), ['c', 'a', 'b']);
 });
