@@ -162,6 +162,29 @@ test('a conexão SSH oferece terminal, e ele roda NO SERVIDOR', async ({ page })
   await expect(terminal).toContainText('VEIO-DO-CANAL-SSH', { timeout: 30_000 });
 });
 
+test('o terminal abre NA RAIZ da conexão, e não no home', async ({ page }) => {
+  // Ele notou em 25/08: a árvore e a tabela já abriam na raiz, e o terminal
+  // caía no home. A conexão de teste tem raiz na pasta do `sshd` descartável.
+  await painelLateral(page, 'Service').click();
+  await expandir(page, 'ACME', 'Servidores');
+  const linha = linhaArvore(page, CONEXAO_SSH);
+  await linha.click();
+  const senha = page.getByLabel('Senha mestra');
+  if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
+  await expect(linhaArvore(page, 'aplicacao')).toBeVisible({ timeout: 30_000 });
+
+  await linha.hover();
+  await linha.getByRole('button', { name: /terminal/i }).click();
+  const terminal = page.locator('[data-terminal]').first();
+  await expect(terminal).toContainText(/\$|%|#/, { timeout: 30_000 });
+
+  await terminal.click();
+  await page.keyboard.type('pwd');
+  await page.keyboard.press('Enter');
+  // A raiz do `sshd` de teste termina em `/arvore`.
+  await expect(terminal).toContainText('/arvore', { timeout: 30_000 });
+});
+
 test('o terminal SSH não usa cliente de linha de comando — não há senha em argv', async ({ page }) => {
   // A conexão do teste autentica por CHAVE, mas o ponto vale para senha: o
   // canal sai da conexão que já está aberta, e nada vai para linha de comando.

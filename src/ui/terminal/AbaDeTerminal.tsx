@@ -12,6 +12,13 @@ import type { Tab } from '../../shared/tabs';
 
 export interface AbaDeTerminalProps {
   readonly aba: Tab;
+  /**
+   * O que digitar quando o prompt aparecer — vem da sessão (spec 061).
+   *
+   * `null` significa "ainda não sei": a capacidade vem do `connect`, e montar o
+   * emulador antes dela faria o terminal abrir no home e nunca mais corrigir.
+   */
+  readonly comandoDeAbertura: string | null;
   readonly ativo: boolean;
   readonly fontSize: number;
   readonly tema: NomeDoTema;
@@ -22,7 +29,7 @@ export interface AbaDeTerminalProps {
 }
 
 export function AbaDeTerminal({
-  aba, ativo, fontSize, tema, onDuplicar, pedir, confirmar, onErro,
+  aba, comandoDeAbertura, ativo, fontSize, tema, onDuplicar, pedir, confirmar, onErro,
 }: AbaDeTerminalProps) {
   const conexaoId = typeof aba.meta.connectionId === 'string' ? aba.meta.connectionId : null;
   const [comando, setComando] = useState<{ id: number; texto: string } | null>(null);
@@ -43,14 +50,19 @@ export function AbaDeTerminal({
         onErro={onErro}
       />
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        {comandoDeAbertura === null ? (
+          <Box sx={{ p: 1.5, fontSize: 12, color: 'text.secondary' }}>conectando…</Box>
+        ) : (
         <TerminalHost
           ativo={ativo}
           fontSize={fontSize}
           tema={tema}
           connectionId={conexaoId}
+          comandoInicial={comandoDeAbertura === '' ? null : comandoDeAbertura}
           comandoParaEnviar={comando}
           sessaoId={`${aba.id}#${sessao}`}
         />
+        )}
       </Box>
     </>
   );

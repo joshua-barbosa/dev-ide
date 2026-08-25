@@ -13,6 +13,7 @@ import {
   sistemaDe,
 } from '../connections/drivers/ssh-diagnostico';
 import { camposVisiveis } from '../../shared/connections/form';
+import { comandoDeAbertura } from '../connections/drivers/ssh-terminal';
 
 // ---------------------------------------------------------------------------
 // Os campos
@@ -156,4 +157,34 @@ test('o sistema sai do uname', () => {
   assert.equal(sistemaDe('Darwin'), 'macos');
   assert.equal(sistemaDe('MINGW64_NT-10.0'), 'windows');
   assert.equal(sistemaDe('SunOS'), 'desconhecido');
+});
+
+// ---------------------------------------------------------------------------
+// A raiz vale para o terminal também (spec 061)
+// ---------------------------------------------------------------------------
+
+test('com raiz configurada, o terminal entra nela', () => {
+  // Ele notou que a ferramenta de referência faz isso e a nossa não fazia: a
+  // árvore e a tabela já abriam na raiz, e o terminal caía no home.
+  assert.equal(comandoDeAbertura('/srv/app'), "cd '/srv/app'");
+});
+
+test('raiz `/` NÃO gera `cd` — entrar em `/` é surpresa, não conveniência', () => {
+  assert.equal(comandoDeAbertura('/'), '');
+  assert.equal(comandoDeAbertura(''), '');
+});
+
+test('a raiz vem antes do `Shell` do formulário', () => {
+  // A ordem importa: o comando dele costuma depender de onde está.
+  assert.equal(comandoDeAbertura('/srv/app', 'npm run dev'), "cd '/srv/app'\nnpm run dev");
+});
+
+test('sem raiz, só o `Shell` — e sem `Shell`, só a raiz', () => {
+  assert.equal(comandoDeAbertura('/', 'htop'), 'htop');
+  assert.equal(comandoDeAbertura('/opt', '   '), "cd '/opt'");
+});
+
+test('a raiz é CITADA — nome de pasta aceita espaço e cifrão', () => {
+  assert.equal(comandoDeAbertura('/srv/meu app'), "cd '/srv/meu app'");
+  assert.equal(comandoDeAbertura('/srv/$HOME'), "cd '/srv/$HOME'");
 });

@@ -14,6 +14,7 @@ import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { tokens } from '../theme';
+import { pareceProntoParaComando } from '../../shared/terminal/prompt';
 import { escapaDoTerminal, formatarAtalho } from '../../shared/commands';
 import { TEMAS, type NomeDoTema } from '../../shared/temas';
 
@@ -91,8 +92,19 @@ export function TerminalHost({
   ativoAgora.current = ativo;
   const temaAtual = useRef(tema);
   temaAtual.current = tema;
+  /**
+   * O comando de abertura, capturado UMA vez na montagem.
+   *
+   * Chegou a ser sincronizado a cada renderização, para o caso de a capacidade
+   * chegar depois — e isso o re-armava depois de enviado, num laço que encheu
+   * o terminal de prompts. A suíte pegou. Quem espera a capacidade agora é a
+   * aba, que só monta este componente quando ela existe.
+   */
   const comandoPendente = useRef(comandoInicial);
   const enviarRef = useRef<((msg: unknown) => void) | null>(null);
+  // O que já chegou, para a heurística do prompt olhar o FIM. Dois mil
+  // caracteres bastam: o prompt é a última coisa impressa.
+  const recebido = useRef('');
   const reconectado = useRef(false);
   const emUso = useRef<{
     term: Terminal;
@@ -201,11 +213,14 @@ export function TerminalHost({
       }
       if (msg.tipo === 'dados') {
         term.write(msg.dados ?? '');
-        // A primeira saída é o prompt: o shell carregou o perfil e está pronto
-        // para receber. Enviar antes disso faria a linha se perder no meio da
-        // inicialização. É heurística, e é a mesma que uma pessoa usa — ela
-        // também espera o `$` aparecer.
-        if (comandoPendente.current !== null) {
+        // Espera o PROMPT, e não a primeira saída (spec 061).
+        //
+        // "A primeira saída é o prompt" era verdade no shell local e falso no
+        // SSH, onde ela é o banner de login. O comando de abertura era enviado
+        // no meio dele, o TTY o ecoava, e ele não executava — visto no servidor
+        // real do usuário.
+        recebido.current = (recebido.current + (msg.dados ?? '')).slice(-2_000);
+        if (comandoPendente.current !== null && pareceProntoParaComando(recebido.current)) {
           const comando = comandoPendente.current;
           comandoPendente.current = null;
           enviar({ tipo: 'dados', dados: `${comando}\r` });

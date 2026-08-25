@@ -322,6 +322,13 @@ export function EditorGroup({
           >
             <AbaDeTerminal
               aba={t}
+              comandoDeAbertura={
+                // Terminal sem conexão (o do painel) não tem capacidade nenhuma
+                // para esperar: abre já, sem comando.
+                typeof t.meta.connectionId !== 'string'
+                  ? ''
+                  : (capacidadesDe(t.meta.connectionId)?.comandoDeTerminal ?? null)
+              }
               ativo={ativaId === t.id}
               fontSize={terminalFontSize}
               tema={tema}

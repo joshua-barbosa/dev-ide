@@ -178,6 +178,10 @@ test('rotas de conexão', async (t) => {
       // e ninguém olha — mas o campo existe para não haver dois formatos de
       // resposta.
       rootPath: '/',
+      // O que a tela digita quando o prompt aparecer (spec 061). Vazio para
+      // quem não tem terminal — e o campo existe para não haver dois formatos
+      // de resposta.
+      comandoDeTerminal: '',
     });
   });
 

@@ -457,6 +457,8 @@ export interface SessionCapabilities {
   readonly forwarding: boolean;
   /** Onde a navegação de arquivos começa. `/` quando a sessão não diz. */
   readonly rootPath: string;
+  /** O que digitar no terminal quando o prompt aparecer (spec 061). */
+  readonly comandoDeTerminal: string;
 }
 
 export interface ConnectionsState {

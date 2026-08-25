@@ -334,6 +334,14 @@ export interface Session {
    * outro lugar, e num com `Prender na raiz` seria recusado.
    */
   readonly rootPath?: string;
+  /**
+   * O que a TELA deve digitar assim que o prompt aparecer (spec 061).
+   *
+   * Declarado aqui, e digitado lá, porque só a tela sabe quando o shell começou
+   * a ler: escrever no canal no instante em que ele abre faz o TTY ecoar o
+   * comando sem que ele execute — visto no servidor do usuário.
+   */
+  readonly comandoDeTerminal?: string;
   readonly files?: RemoteFiles;
   readonly shell?: RemoteShell;
   readonly monitor?: HostMonitor;

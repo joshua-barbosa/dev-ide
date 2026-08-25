@@ -35,6 +35,8 @@ function capabilities(session: Session) {
     forwarding: session.forwarding !== undefined,
     // Onde a tabela SFTP abre (spec 055). `/` para quem não disser nada.
     rootPath: session.rootPath ?? '/',
+    // O que a tela digita quando o prompt aparecer (spec 061).
+    comandoDeTerminal: session.comandoDeTerminal ?? '',
   };
 }
 

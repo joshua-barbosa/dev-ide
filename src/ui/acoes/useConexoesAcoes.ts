@@ -70,6 +70,10 @@ export function useConexoesAcoes(deps: ConexoesAcoesDeps): ConexoesAcoes {
    */
   const abrirTerminalDaConexao = async (conexao: PublicConnection): Promise<void> => {
     if (!(await conexoes.garantirDestrancado())) return;
+    // Conecta antes quando ainda não há sessão: o comando de abertura do
+    // terminal (a raiz, spec 061) vem das CAPACIDADES, e sem conexão elas não
+    // existem — o terminal abriria no home.
+    if (conexoes.capacidadesDe(conexao.id) === null) await conexoes.abrirConexao(conexao);
     ws.abrirTerminal(conexao.id, conexao.label);
   };
 

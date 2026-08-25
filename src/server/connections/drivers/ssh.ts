@@ -16,7 +16,7 @@ import { listarChaves } from './ssh-chaves';
 import { lerDistribuicao, sistemaDe, type SistemaRemoto } from './ssh-diagnostico';
 import { lerPasswd, usuariosDe, type UsuarioRemoto } from './ssh-entradas';
 import { criarArquivosRemotos, listarEntradas, type ContextoDeArquivos } from './ssh-arquivos';
-import { criarShellRemoto } from './ssh-terminal';
+import { comandoDeAbertura, criarShellRemoto } from './ssh-terminal';
 import { criarMonitorRemoto } from './ssh-monitor';
 import { criarEncaminhamento, fecharTodos } from './ssh-portas';
 import {
@@ -124,7 +124,10 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     children: (nodePath) => navegar(ctx, retrato, favoritos, nodePath),
     files: criarArquivosRemotos(ctx),
     exec: (comando) => cliente.executar(comando),
-    shell: criarShellRemoto(cliente.bruto(), ssh.shell),
+    shell: criarShellRemoto(cliente.bruto()),
+    // A raiz vale para o terminal também (spec 061): quem configurou `Raiz`
+    // espera chegar lá, e não no home. Quem digita é a tela.
+    comandoDeTerminal: comandoDeAbertura(ssh.rootPath, ssh.shell),
     monitor: criarMonitorRemoto((comando) => cliente.executar(comando)),
     forwarding: encaminhamento,
     somenteLeitura: config.readOnly,
