@@ -52,6 +52,14 @@ export function CampoDinamico({
     erro ??
     (segredoGuardado ? 'Guardado no cofre. Deixe em branco para manter.' : campo.help);
 
+  // Sugestão, e não lista fechada: `options` num campo que não é `select` quer
+  // dizer "estes existem", não "só estes valem" (spec 052, D22). É o caso da
+  // chave SSH — oferecer o que está em `~/.ssh` sem proibir a que mora fora.
+  const sugestoes = campo.type !== 'select' && campo.options !== undefined
+    ? campo.options
+    : null;
+  const listaId = sugestoes === null ? undefined : `sugestoes-${campo.name}`;
+
   return (
     <TextField
       fullWidth
@@ -62,10 +70,25 @@ export function CampoDinamico({
       label={rotulo}
       value={typeof valor === 'boolean' ? '' : valor}
       error={erro !== undefined}
-      helperText={apoio}
       placeholder={segredoGuardado ? '••••••••' : campo.placeholder}
       onChange={(e) => onChange(e.target.value)}
-      slotProps={{ htmlInput: { 'aria-label': campo.label } }}
+      // O `datalist` fica ao lado do campo, e não dentro: o MUI já usa o filho
+      // do `TextField` para as opções do `select`.
+      helperText={
+        sugestoes === null ? (
+          apoio
+        ) : (
+          <>
+            {apoio}
+            <datalist id={listaId}>
+              {sugestoes.map((o) => (
+                <option key={o.value} value={o.value} label={o.label} />
+              ))}
+            </datalist>
+          </>
+        )
+      }
+      slotProps={{ htmlInput: { 'aria-label': campo.label, list: listaId } }}
       sx={{ '& .MuiFormHelperText-root': { fontSize: 11, ml: 0.5 } }}
     >
       {(campo.options ?? []).map((opcao) => (

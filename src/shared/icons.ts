@@ -78,6 +78,23 @@ export const ICONES_DE_SERVICO = {
   redis: 'devicon:redis',
 } as const;
 
+/** O ícone do driver SSH (spec 052). */
+export const ICONE_DE_SSH = 'lucide:server-cog';
+
+/**
+ * O ícone por sistema do servidor (spec 052, AC-11).
+ *
+ * A ferramenta de referência desenha o pinguim do Linux ao lado do nome, e é
+ * uma informação de verdade: dá para saber, de relance, que aquele servidor não
+ * vai aceitar os mesmos comandos dos outros.
+ */
+export const ICONES_DE_SISTEMA_REMOTO = {
+  linux: 'devicon:linux',
+  macos: 'devicon:apple',
+  windows: 'devicon:windows8',
+  desconhecido: 'lucide:server',
+} as const;
+
 const ICONES_DA_INTERFACE = [
   'lucide:circle-dot',
   'lucide:files',
@@ -107,6 +124,9 @@ const ICONES_DA_INTERFACE = [
   // A alça de arrastar o bloco (spec 050). O arraste sai dela, e não do bloco
   // inteiro — senão selecionar texto com o mouse viraria um arraste.
   'lucide:grip-vertical',
+  // A árvore remota (spec 053): baixar, e a estrela cheia/vazia do favorito.
+  'lucide:download',
+  'lucide:key-round',
   // A aba de tabela (spec 041): abrir a tabela, e exportar a página em dois
   // formatos. `braces` são as chaves do JSON; `file-down` é a seta de baixar.
   'lucide:table-2',
@@ -152,6 +172,8 @@ export const ICONES_USADOS: readonly string[] = [
     ...ICONES_DE_LINGUAGEM,
     ...ICONES_DE_ARQUIVO,
     ...Object.values(ICONES_DE_SERVICO),
+    ICONE_DE_SSH,
+    ...Object.values(ICONES_DE_SISTEMA_REMOTO),
     ICONE_GENERICO,
   ]),
 ];

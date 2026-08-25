@@ -57,6 +57,31 @@ export function valoresIniciais(
   return valores;
 }
 
+/**
+ * Os campos que a condição corrente deixa existir (spec 052, D20).
+ *
+ * "Existir", e não "mostrar": o campo escondido não é validado nem enviado.
+ * Fosse só questão de desenhar, um campo obrigatório invisível travaria o botão
+ * de salvar sem que a tela mostrasse onde está o problema — e trocar de senha
+ * para chave deixaria a senha antiga cifrada no cofre, guardando risco para um
+ * modo de autenticação que ninguém usa.
+ *
+ * Condição que aponta para campo que não existe esconde, em vez de lançar: a
+ * `FieldSpec` vem do driver, e um driver com erro de digitação não pode derrubar
+ * o formulário inteiro.
+ */
+export function camposVisiveis(
+  campos: readonly FieldSpec[],
+  valores: ValoresDoFormulario
+): readonly FieldSpec[] {
+  return campos.filter((campo) => {
+    if (campo.showIf === undefined) return true;
+    const atual = valores[campo.showIf.campo];
+    if (atual === undefined) return false;
+    return campo.showIf.valores.includes(String(atual));
+  });
+}
+
 /** Agrupa preservando a ordem de declaração; a principal sempre primeiro. */
 export function agruparPorSecao(campos: readonly FieldSpec[]): readonly Secao[] {
   const porTitulo = new Map<string, FieldSpec[]>([[SECAO_PRINCIPAL, []]]);
@@ -92,7 +117,7 @@ export function validar(
   valores: ValoresDoFormulario
 ): ErrosDoFormulario {
   const erros: Record<string, string> = {};
-  for (const campo of campos) {
+  for (const campo of camposVisiveis(campos, valores)) {
     const valor = valores[campo.name];
 
     if (campo.required === true && vazio(valor)) {
@@ -105,7 +130,14 @@ export function validar(
       erros[campo.name] = 'Precisa ser um número.';
       continue;
     }
-    if (campo.options !== undefined && !campo.options.some((o) => o.value === valor)) {
+    // Só `select` tem lista fechada. Em outro tipo, `options` são SUGESTÕES
+    // (spec 052, D22) — e recusar o que não está nelas proibiria justamente o
+    // caso que motivou o campo: a chave SSH que mora fora de `~/.ssh`.
+    if (
+      campo.type === 'select' &&
+      campo.options !== undefined &&
+      !campo.options.some((o) => o.value === valor)
+    ) {
       erros[campo.name] = 'Escolha uma das opções.';
     }
   }
@@ -129,7 +161,10 @@ export function camposParaEnviar(
   valores: ValoresDoFormulario
 ): Record<string, FieldValue> {
   const enviar: Record<string, FieldValue> = {};
-  for (const campo of campos) {
+  // Escondido não vai (spec 052, D20). Trocar de senha para chave tem que levar
+  // o segredo embora: uma senha cifrada guardada para um modo de autenticação
+  // que não se usa é risco sem utilidade.
+  for (const campo of camposVisiveis(campos, valores)) {
     const valor = valores[campo.name];
 
     if (typeof valor === 'boolean') {

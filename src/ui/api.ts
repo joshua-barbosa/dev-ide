@@ -270,6 +270,44 @@ export const Api = {
 
   connect: (id: string) => request<SessionCapabilities>('POST', `${conexoes}/${id}/connect`),
   disconnect: (id: string) => request('POST', `${conexoes}/${id}/disconnect`),
+  /** Uma linha sobre o servidor, para a árvore mostrar ao lado do nome. */
+  describe: (id: string) => request<string | null>('GET', `${conexoes}/${id}/describe`),
+
+  // ------------------------------------------------------------- arquivo remoto
+  // (spec 053). O caminho vai sempre na URL codificado: nome de arquivo aceita
+  // `?`, `&` e `#`, e qualquer um deles cortaria a consulta ao meio.
+  lerArquivoRemoto: (id: string, caminho: string) =>
+    request<{ path: string; content: string; bytes: number }>(
+      'GET',
+      `${conexoes}/${id}/files?path=${encodeURIComponent(caminho)}`
+    ),
+  gravarArquivoRemoto: (id: string, caminho: string, conteudo: string) =>
+    request<{ path: string; bytes: number }>('POST', `${conexoes}/${id}/files`, {
+      path: caminho,
+      content: conteudo,
+    }),
+  criarPastaRemota: (id: string, caminho: string) =>
+    request<{ path: string }>('POST', `${conexoes}/${id}/files/mkdir`, { path: caminho }),
+  renomearRemoto: (id: string, de: string, para: string) =>
+    request<{ from: string; to: string }>('POST', `${conexoes}/${id}/files/rename`, {
+      from: de,
+      to: para,
+    }),
+  apagarRemoto: (id: string, caminho: string) =>
+    request<{ path: string }>(
+      'DELETE',
+      `${conexoes}/${id}/files?path=${encodeURIComponent(caminho)}`
+    ),
+  favoritosRemotos: (id: string) =>
+    request<readonly string[]>('GET', `${conexoes}/${id}/files/favorites`),
+  alternarFavoritoRemoto: (id: string, caminho: string) =>
+    request<readonly string[]>('POST', `${conexoes}/${id}/files/favorites`, { path: caminho }),
+  executarScriptRemoto: (id: string, caminho: string) =>
+    request<{ stdout: string; stderr: string; code: number | null }>(
+      'POST',
+      `${conexoes}/${id}/files/execute`,
+      { path: caminho }
+    ),
   children: (id: string, nodePath: readonly string[], filtro?: string | null) => {
     const base = comCaminho(`${conexoes}/${id}/children`, nodePath);
     const url = filtro === null || filtro === undefined || filtro === ''

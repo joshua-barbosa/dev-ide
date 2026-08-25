@@ -7,12 +7,17 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { esperarSshd, sshdDisponivel, subirSshd, type SshdDeTeste } from './sshd-de-teste';
 
 export const SENHA_MESTRA = 'senha-de-teste';
 
 /** A pasta que a suíte deixa aberta. */
 export const PASTA_DEMO = (dados: string): string => path.join(dados, 'projects', 'demo');
 export const CONEXAO = 'escola';
+/** A conexão SSH da spec 052, contra o `sshd` descartável da suíte. */
+export const CONEXAO_SSH = 'playground-de-teste';
+/** Onde o setup deixa o que o teardown precisa para derrubar o `sshd`. */
+export const ARQUIVO_DO_SSHD = 'sshd-de-teste.json';
 export const TABELA = 'alunos';
 export const VIEW = 'alunos_view';
 /** Tabela de uso exclusivo dos testes que escrevem (spec 044). */
@@ -151,4 +156,33 @@ export default async function globalSetup(): Promise<void> {
     readOnly: false,
     fields: { file: banco },
   });
+
+  // A conexão SSH da spec 052. Só existe se houver `sshd` na máquina: a suíte
+  // não pode ficar vermelha num ambiente que não tem servidor SSH instalado —
+  // é a mesma regra dos drivers de banco que dependem de servidor.
+  if (sshdDisponivel()) {
+    const ssh = subirSshd();
+    // O teardown roda noutro módulo, então o que ele precisa vai para disco.
+    fs.writeFileSync(
+      path.join(dados, ARQUIVO_DO_SSHD),
+      JSON.stringify({ pid: ssh.pid, base: ssh.base })
+    );
+    if (await esperarSshd(ssh.porta)) {
+      await chamar(base, '/api/connections', {
+        type: 'ssh',
+        label: CONEXAO_SSH,
+        group: 'ACME/Servidores',
+        readOnly: false,
+        fields: {
+          host: '127.0.0.1',
+          port: ssh.porta,
+          username: ssh.usuario,
+          auth: 'key',
+          private_key_path: ssh.caminhoDaChave,
+          root_path: ssh.raiz,
+          show_hidden: true,
+        },
+      });
+    }
+  }
 }

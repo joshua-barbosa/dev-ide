@@ -6,8 +6,9 @@ import type { DriverRegistry } from '../registry';
 import { mysqlDriver } from './mysql';
 import { postgresDriver } from './postgres';
 import { sqliteDriver } from './sqlite';
+import { sshDriver } from './ssh';
 
-export const DRIVERS = [mysqlDriver, postgresDriver, sqliteDriver] as const;
+export const DRIVERS = [mysqlDriver, postgresDriver, sqliteDriver, sshDriver] as const;
 
 export function registerBuiltinDrivers(registry: DriverRegistry): DriverRegistry {
   for (const driver of DRIVERS) {

@@ -155,6 +155,13 @@ export interface ShellChannel {
   close(): void;
 }
 
+/** O que sobra de um comando que já terminou. */
+export interface ComandoRemoto {
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly code: number | null;
+}
+
 export interface RemoteShell {
   open(size: ShellSize): Promise<ShellChannel>;
 }
@@ -246,6 +253,38 @@ export interface Session {
   readonly processList?: () => Promise<readonly ProcessoDoBanco[] | null>;
   /** Mata um processo. Só existe onde `processList` existe. */
   readonly killProcess?: (id: string) => Promise<void>;
+  /**
+   * Uma linha sobre o que há do outro lado, para a árvore mostrar ao lado do
+   * nome da conexão (spec 052, AC-11).
+   *
+   * Nasceu do SSH — `Ubuntu 24.04.2 LTS`, `Debian GNU/Linux 13 (trixie)` —, mas
+   * o lugar é geral de propósito: é onde a versão do MySQL cabe no dia em que
+   * alguém quiser mostrá-la.
+   *
+   * `null` é resposta legítima: um servidor que recusa `exec` não tem como
+   * dizer qual é, e inventar "Linux" seria afirmar o que não se sabe.
+   */
+  readonly describe?: () => Promise<string | null>;
+  /**
+   * Roda UM comando e junta a saída (spec 053).
+   *
+   * Não é o terminal — aquilo é `shell`, e precisa de canal. Isto é para o que
+   * tem começo e fim: o `Execute shell` de um script, e as amostras do monitor
+   * na S6, que são `df`, `uptime` e leituras de `/proc`.
+   *
+   * **Nenhuma rota aceita comando livre.** Quem chama monta o comando a partir
+   * de coisa que a IDE já conhece — um caminho vindo da própria árvore —, e o
+   * que atravessa a API é o caminho, nunca a linha de comando.
+   */
+  readonly exec?: (comando: string) => Promise<ComandoRemoto>;
+  /**
+   * A conexão foi marcada somente-leitura.
+   *
+   * O driver já recusa a escrita por dentro, e é lá que a trava vale. Isto é
+   * para o que NÃO passa por escrita e ainda assim não é leitura — executar um
+   * script, por exemplo (spec 053).
+   */
+  readonly somenteLeitura?: boolean;
   readonly files?: RemoteFiles;
   readonly shell?: RemoteShell;
   readonly monitor?: HostMonitor;

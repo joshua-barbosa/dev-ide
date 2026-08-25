@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   agruparPorSecao,
   camposParaEnviar,
+  camposVisiveis,
   gruposExistentes,
   valoresIniciais,
   validar,
@@ -199,4 +200,116 @@ test('extrai todos os caminhos de grupo, ordenados e sem repetir', () => {
 
 test('a raiz não vira um grupo vazio na lista', () => {
   assert.deepEqual(gruposExistentes({ name: '', path: '', groups: [], connections: [] }), []);
+});
+
+// ---------------------------------------------------------------------------
+// Visibilidade condicional (spec 052, D20)
+// ---------------------------------------------------------------------------
+
+const AUTENTICACAO: readonly FieldSpec[] = [
+  { name: 'host', label: 'Host', type: 'string', required: true },
+  {
+    name: 'auth', label: 'Auth', type: 'select', default: 'password',
+    options: [
+      { value: 'password', label: 'Senha' },
+      { value: 'key', label: 'Chave' },
+      { value: 'agent', label: 'Agente' },
+    ],
+  },
+  {
+    name: 'password', label: 'Senha', type: 'password', secret: true, required: true,
+    showIf: { campo: 'auth', valores: ['password'] },
+  },
+  {
+    name: 'key_path', label: 'Chave', type: 'path', required: true,
+    showIf: { campo: 'auth', valores: ['key'] },
+  },
+  {
+    name: 'passphrase', label: 'Passphrase', type: 'password', secret: true,
+    showIf: { campo: 'auth', valores: ['key'] },
+  },
+];
+
+test('só aparecem os campos que o valor corrente pede', () => {
+  const nomes = (auth: string) =>
+    camposVisiveis(AUTENTICACAO, { host: 'h', auth }).map((c) => c.name);
+
+  assert.deepEqual(nomes('password'), ['host', 'auth', 'password']);
+  assert.deepEqual(nomes('key'), ['host', 'auth', 'key_path', 'passphrase']);
+  assert.deepEqual(nomes('agent'), ['host', 'auth']);
+});
+
+test('campo sem `showIf` aparece sempre', () => {
+  const semCondicao: readonly FieldSpec[] = [{ name: 'host', label: 'Host', type: 'string' }];
+  assert.equal(camposVisiveis(semCondicao, {}).length, 1);
+});
+
+test('campo obrigatório ESCONDIDO não bloqueia o formulário', () => {
+  // `password` é obrigatório e está escondido com `auth: 'key'`. Sem esta
+  // regra, escolher autenticação por chave travaria o botão de salvar num
+  // campo que a tela nem mostra — e o usuário não teria como adivinhar.
+  const erros = validar(AUTENTICACAO, { host: 'h', auth: 'key', key_path: '/k' });
+  assert.equal(erros.password, undefined);
+  assert.equal(Object.keys(erros).length, 0);
+});
+
+test('campo obrigatório VISÍVEL continua bloqueando', () => {
+  const erros = validar(AUTENTICACAO, { host: 'h', auth: 'password', password: '' });
+  assert.equal(erros.password, 'Campo obrigatório.');
+});
+
+test('campo escondido NÃO é enviado, mesmo preenchido', () => {
+  // Trocar de senha para chave tem que levar o segredo embora: guardar uma
+  // senha cifrada para um modo de autenticação que não se usa é guardar risco
+  // sem utilidade.
+  const enviado = camposParaEnviar(AUTENTICACAO, {
+    host: 'h', auth: 'key', password: 'ficou-de-antes', key_path: '/k',
+  });
+  assert.equal('password' in enviado, false);
+  assert.equal(enviado.key_path, '/k');
+});
+
+test('o agrupamento por seção só recebe o que está visível', () => {
+  const secoes = agruparPorSecao(camposVisiveis(AUTENTICACAO, { auth: 'agent' }));
+  const principal = secoes.find((s) => s.titulo === SECAO_PRINCIPAL);
+  assert.deepEqual(principal?.campos.map((c) => c.name), ['host', 'auth']);
+});
+
+test('condição que aponta para campo inexistente esconde, e não explode', () => {
+  const torto: readonly FieldSpec[] = [
+    { name: 'x', label: 'X', type: 'string', showIf: { campo: 'nao_existe', valores: ['a'] } },
+  ];
+  assert.deepEqual(camposVisiveis(torto, {}), []);
+});
+
+test('booleano na condição compara como TEXTO', () => {
+  // O controle de um `boolean` guarda `true`/`false`, e a condição vem do
+  // driver como texto — é o formato que atravessa JSON sem ambiguidade.
+  const campos: readonly FieldSpec[] = [
+    { name: 'tls', label: 'TLS', type: 'boolean', default: false },
+    { name: 'ca', label: 'CA', type: 'path', showIf: { campo: 'tls', valores: ['true'] } },
+  ];
+  assert.deepEqual(camposVisiveis(campos, { tls: true }).map((c) => c.name), ['tls', 'ca']);
+  assert.deepEqual(camposVisiveis(campos, { tls: false }).map((c) => c.name), ['tls']);
+});
+
+test('sugestão NÃO é lista fechada — só `select` recusa o que está fora', () => {
+  // Achado no navegador: o campo da chave SSH oferece o que existe em `~/.ssh`
+  // e recusava qualquer outro caminho digitado, que é exatamente o caso em que
+  // ninguém adivinha (spec 052, D22).
+  const comSugestao: readonly FieldSpec[] = [
+    {
+      name: 'chave', label: 'Chave', type: 'path',
+      options: [{ value: '/home/eu/.ssh/id_ed25519', label: 'id_ed25519' }],
+    },
+    {
+      name: 'auth', label: 'Auth', type: 'select',
+      options: [{ value: 'key', label: 'Chave' }],
+    },
+  ];
+  const erros = validar(comSugestao, { chave: '/outro/lugar/chave.pem', auth: 'key' });
+  assert.equal(erros.chave, undefined);
+
+  // O `select` continua fechado: ali a lista É a regra.
+  assert.equal(validar(comSugestao, { auth: 'inventado' }).auth, 'Escolha uma das opções.');
 });

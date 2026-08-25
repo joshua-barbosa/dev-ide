@@ -41,6 +41,17 @@ export interface FieldSpec {
   readonly default?: FieldValue;
   readonly placeholder?: string;
   readonly help?: string;
+  /**
+   * As opções.
+   *
+   * Em `select` é **lista fechada** — o servidor recusa o que não estiver aqui.
+   * Em qualquer outro tipo são **sugestões**: a tela oferece, e o usuário pode
+   * digitar outra coisa.
+   *
+   * A distinção nasceu do caminho da chave SSH (spec 052, D22): faz sentido
+   * oferecer o que existe em `~/.ssh`, e não faz sentido proibir uma chave que
+   * mora noutro lugar.
+   */
   readonly options?: readonly FieldOption[];
   /**
    * Seção do formulário. Ausente = a principal, que vem aberta; as demais vêm
@@ -51,6 +62,23 @@ export interface FieldSpec {
    * mesma regra do ícone e do painel.
    */
   readonly section?: string;
+  /**
+   * Só existe quando outro campo tem um dos valores dados (spec 052, D20).
+   *
+   * O SSH pediu isto: `Auth` tem cinco valores, e cada um muda quais campos
+   * fazem sentido — `Passphrase` só com chave, `Agent Path` só com agente.
+   *
+   * É **dado**, e não função, porque atravessa a API como JSON. E mora no
+   * driver pela mesma razão da `section`: quem sabe que passphrase pertence à
+   * chave é quem declarou os dois, não a tela.
+   *
+   * O valor é comparado como TEXTO — um `boolean` marcado vira `'true'` —,
+   * porque é o único formato em que a condição sobrevive à ida e à volta.
+   */
+  readonly showIf?: {
+    readonly campo: string;
+    readonly valores: readonly string[];
+  };
 }
 
 export interface ConnectionInput {

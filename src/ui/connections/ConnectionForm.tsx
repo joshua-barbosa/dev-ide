@@ -19,6 +19,7 @@ import TextField from '@mui/material/TextField';
 import {
   agruparPorSecao,
   camposParaEnviar,
+  camposVisiveis,
   validar,
   valoresIniciais,
   type ErrosDoFormulario,
@@ -69,9 +70,12 @@ export function ConnectionForm({
     setErros({});
   }
 
+  // Depende dos VALORES, e não só do driver: desde a spec 052 um campo pode
+  // existir por causa de outro (`Auth` decide se há senha, chave ou agente), e
+  // memoizar só pelo driver congelaria o formulário no primeiro `Auth`.
   const secoes = useMemo(
-    () => (driver === null ? [] : agruparPorSecao(driver.fields)),
-    [driver]
+    () => (driver === null ? [] : agruparPorSecao(camposVisiveis(driver.fields, valores))),
+    [driver, valores]
   );
 
   const mudar = (nome: string, valor: string | boolean): void => {
