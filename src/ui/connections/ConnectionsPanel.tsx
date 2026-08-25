@@ -615,7 +615,7 @@ function AcoesDoNoRemoto({
         />
       )}
       <AcaoDaLinha
-        icone={no.meta?.favorito === true ? 'lucide:key-round' : 'lucide:key'}
+        icone="lucide:star"
         rotulo={`Favoritar ${no.label}`}
         onClick={chamar(() => acoes.favoritar(conexaoId, remoto))}
       />

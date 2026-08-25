@@ -14,7 +14,7 @@ import { ICONES_DE_LINGUAGEM } from './editor/idiomas';
 /** Ícones que um nó da árvore pode pedir. `NodeIcon` do contrato deriva daqui. */
 export const NODE_ICONS = [
   'server', 'database', 'schema', 'table', 'view', 'column',
-  'function', 'procedure', 'index', 'collection', 'key',
+  'function', 'procedure', 'index', 'collection', 'key', 'star',
   'folder', 'file', 'link', 'query',
 ] as const;
 
@@ -43,6 +43,9 @@ const MAPA: Record<Icone, string> = {
   index: 'lucide:key-round',
   collection: 'lucide:package',
   key: 'lucide:key',
+  // Favorito é ESTRELA, e não chave — chave é o que a árvore de banco usa para
+  // índice e chave estrangeira, e as duas coisas apareceriam iguais.
+  star: 'lucide:star',
   folder: 'lucide:folder',
   file: 'lucide:file',
   link: 'lucide:link',
@@ -132,7 +135,6 @@ const ICONES_DA_INTERFACE = [
   'lucide:code',
   'lucide:zap',
   'lucide:download',
-  'lucide:key-round',
   // A aba de tabela (spec 041): abrir a tabela, e exportar a página em dois
   // formatos. `braces` são as chaves do JSON; `file-down` é a seta de baixar.
   'lucide:table-2',

@@ -142,7 +142,7 @@ export function nosDeAtalho(quantosUsuarios: number, quantosFavoritos: number): 
     {
       id: NO_FAVORITES,
       label: 'Favorites',
-      icon: 'key',
+      icon: 'star',
       // Zero aparece: um `Favorites` sem número pareceria não ter carregado.
       detail: String(quantosFavoritos),
       hasChildren: true,
