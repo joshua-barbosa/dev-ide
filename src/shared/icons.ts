@@ -140,6 +140,10 @@ const ICONES_DA_INTERFACE = [
   'lucide:table-2',
   'lucide:file-down',
   'lucide:braces',
+  // O visor de célula (spec 062, fase D): a lupa que abre o valor inteiro, e o
+  // `Load` que traz o conteúdo de um arquivo para dentro da célula.
+  'lucide:zoom-in',
+  'lucide:file-up',
   // `Abrir Query` num database (spec 038). Ficou de fora na entrega e saía como
   // bolinha — o guard de ícones só olhava literal entre aspas simples, e JSX usa
   // aspas duplas.
