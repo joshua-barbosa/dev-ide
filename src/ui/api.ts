@@ -29,6 +29,7 @@ import type {
   ConnectionKind,
   FieldSpec,
   HostMetrics,
+  PortForward,
   RemoteEntry,
 } from '../shared/contracts';
 import type { PatchDePreferencias, Preferencias } from '../shared/prefs';
@@ -290,6 +291,14 @@ export const Api = {
       'GET',
       `${conexoes}/${id}/files?path=${encodeURIComponent(caminho)}`
     ),
+  encaminhamentos: (id: string) =>
+    request<readonly PortForward[]>('GET', `${conexoes}/${id}/forwards`),
+  abrirEncaminhamento: (
+    id: string,
+    dados: { remoteHost: string; remotePort: number; localPort?: number }
+  ) => request<PortForward>('POST', `${conexoes}/${id}/forwards`, dados),
+  fecharEncaminhamento: (id: string, forwardId: string) =>
+    request<{ id: string }>('DELETE', `${conexoes}/${id}/forwards/${encodeURIComponent(forwardId)}`),
   snippetsDoTerminal: (id: string) =>
     request<readonly SnippetDeTerminal[]>('GET', `${conexoes}/${id}/snippets`),
   guardarSnippetDeTerminal: (id: string, snippet: { id?: string; nome: string; comando: string }) =>

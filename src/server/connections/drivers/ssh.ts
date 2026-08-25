@@ -18,6 +18,7 @@ import { lerPasswd, usuariosDe, type UsuarioRemoto } from './ssh-entradas';
 import { criarArquivosRemotos, listarEntradas, type ContextoDeArquivos } from './ssh-arquivos';
 import { criarShellRemoto } from './ssh-terminal';
 import { criarMonitorRemoto } from './ssh-monitor';
+import { criarEncaminhamento, fecharTodos } from './ssh-portas';
 import {
   caminhoDoNo,
   noDeEntrada,
@@ -103,6 +104,8 @@ async function connect(config: ResolvedConfig): Promise<Session> {
   const cliente = await conectar(ssh);
   const retrato = await retratar(cliente);
 
+  const encaminhamento = criarEncaminhamento(cliente.bruto());
+
   const ctx: ContextoDeArquivos = {
     sftp: cliente.sftp,
     raiz: ssh.rootPath,
@@ -123,12 +126,18 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     exec: (comando) => cliente.executar(comando),
     shell: criarShellRemoto(cliente.bruto(), ssh.shell),
     monitor: criarMonitorRemoto((comando) => cliente.executar(comando)),
+    forwarding: encaminhamento,
     somenteLeitura: config.readOnly,
     rootPath: ssh.rootPath,
     // O que a árvore mostra ao lado do nome da conexão (AC-11).
     describe: async () => retrato.distribuicao,
     onClosed: cliente.aoFechar,
-    close: async () => cliente.fechar(),
+    close: async () => {
+      // Os túneis primeiro: cada um segura uma porta local e um servidor TCP, e
+      // fechar só o SSH os deixaria escutando para sempre.
+      await fecharTodos(encaminhamento);
+      cliente.fechar();
+    },
   };
 }
 

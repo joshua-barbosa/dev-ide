@@ -14,6 +14,7 @@ import { Icon } from '../Icon';
 import { tokens } from '../theme';
 import { SftpPanel } from '../sftp/SftpPanel';
 import { MonitorPanel } from '../monitor/MonitorPanel';
+import { PortasPanel } from '../portas/PortasPanel';
 import type { SessionCapabilities } from '../../shared/contracts';
 
 export type SubAbaDoServidor = 'monitor' | 'terminal' | 'sftp' | 'portas';
@@ -129,6 +130,9 @@ export function ServidorHost({
               ativo={atual === 'monitor'}
               onErro={onErro}
             />
+          )}
+          {d.id === 'portas' && (
+            <PortasPanel conexaoId={conexaoId} ativo={atual === 'portas'} onErro={onErro} />
           )}
           {d.id === 'terminal' && (
             <Box sx={{ p: 2, fontSize: 12, color: 'text.secondary' }}>

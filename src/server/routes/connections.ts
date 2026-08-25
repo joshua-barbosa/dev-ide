@@ -215,6 +215,38 @@ export function createConnectionsRouter(
     res.json(ok(apagarSnippet(req.params.id, req.params.snippet)));
   }));
 
+  // Encaminhamento de portas (spec 059).
+  router.get('/:id/forwards', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    res.json(ok(session.forwarding === undefined ? [] : await session.forwarding.list()));
+  }));
+
+  router.post('/:id/forwards', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (session.forwarding === undefined) {
+      throw new Error(`A conexão "${req.params.id}" não encaminha portas.`);
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const remoteHost = requireString(body.remoteHost, 'remoteHost');
+    const remotePort = Number(body.remotePort);
+    const localPort = Number(body.localPort);
+    if (!Number.isInteger(remotePort) || remotePort < 1 || remotePort > 65_535) {
+      throw new Error('A porta remota precisa estar entre 1 e 65535.');
+    }
+    // Porta local ausente, zero ou inválida: o SO escolhe uma livre. Recusar
+    // aqui faria o usuário adivinhar qual porta da máquina dele está livre.
+    const local = Number.isInteger(localPort) && localPort > 0 && localPort < 65_536
+      ? localPort
+      : undefined;
+    res.json(ok(await session.forwarding.open(remoteHost, remotePort, local)));
+  }));
+
+  router.delete('/:id/forwards/:forward', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (session.forwarding !== undefined) await session.forwarding.close(req.params.forward);
+    res.json(ok({ id: req.params.forward }));
+  }));
+
   router.get('/:id/metrics', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
     if (session.monitor === undefined) {

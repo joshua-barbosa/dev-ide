@@ -34,10 +34,11 @@ test('a aba do servidor mostra só as sub-abas que a sessão SABE oferecer', asy
   await expect(page.locator('[data-sub-aba="sftp"]')).toBeVisible();
   await expect(page.locator('[data-sub-aba="terminal"]')).toBeVisible();
   await expect(page.locator('[data-sub-aba="monitor"]')).toBeVisible();
-  // `Port Forwarding` ainda não existe (S7): a sessão não declara `forwarding`,
-  // e por isso a divisória não aparece — em vez de aparecer vazia. É a prova de
-  // que elas saem das capacidades, e não de uma lista fixa.
-  await expect(page.locator('[data-sub-aba="portas"]')).toHaveCount(0);
+  // E `portas` desde a spec 059. As quatro divisórias do print dele existem
+  // agora — cada uma porque a sessão declarou a capacidade dela, e não porque
+  // alguém escreveu a lista. Quem prova o contrário é o FTP, cuja sessão só
+  // declara `files`.
+  await expect(page.locator('[data-sub-aba="portas"]')).toBeVisible();
 });
 
 test('a tabela SFTP lista com as cinco colunas e o caminho à vista', async ({ page }) => {

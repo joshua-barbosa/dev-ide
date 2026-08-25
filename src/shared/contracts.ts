@@ -440,6 +440,14 @@ export interface HostMetrics {
   readonly rede: { readonly recebidoBytes: number; readonly enviadoBytes: number } | null;
 }
 
+/** Um encaminhamento de porta aberto (spec 059). */
+export interface PortForward {
+  readonly id: string;
+  readonly localPort: number;
+  readonly remoteHost: string;
+  readonly remotePort: number;
+}
+
 export interface SessionCapabilities {
   readonly kind: ConnectionKind;
   readonly execute: boolean;
