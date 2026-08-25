@@ -193,6 +193,21 @@ export function createConnectionsRouter(
   // O sistema de arquivos do outro lado mora num roteador próprio (spec 053).
   router.use('/:id/files', createRemoteFilesRouter(pool));
 
+  /**
+   * Uma amostra de saúde do servidor (spec 056).
+   *
+   * `GET` e não socket: a tela pede quando quer, e uma aba escondida
+   * simplesmente para de pedir. Um fluxo empurrado do servidor continuaria
+   * medindo para uma tela que ninguém está olhando.
+   */
+  router.get('/:id/metrics', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (session.monitor === undefined) {
+      throw new Error(`A conexão "${req.params.id}" não sabe se medir.`);
+    }
+    res.json(ok(await session.monitor.sample()));
+  }));
+
   router.get('/:id/describe', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
     res.json(ok(typeof session.describe === 'function' ? await session.describe() : null));

@@ -166,15 +166,48 @@ export interface RemoteShell {
   open(size: ShellSize): Promise<ShellChannel>;
 }
 
-/** Amostra de saúde do servidor, para a aba Monitor. */
+/**
+ * Amostra de saúde do servidor, para a aba Monitor.
+ *
+ * Reescrita na spec 056, quando a capacidade foi implementada pela primeira
+ * vez. A forma original tinha sete números soltos (`cpuPercent`,
+ * `memoryUsedBytes`…) e não cabia o que a tela mostra: CPU repartida entre
+ * usuário e sistema, o top de processos e o tráfego de rede.
+ *
+ * **Todo campo pode ser `null`**, e isso é informação: um contêiner mínimo não
+ * tem `/proc/net/dev`, e um servidor recém-medido ainda não tem duas amostras
+ * de CPU para comparar. `null` diz "não sei"; zero diria "está parado".
+ */
 export interface HostMetrics {
-  readonly uptimeSeconds: number | null;
-  readonly loadAverage: readonly number[] | null;
-  readonly cpuPercent: number | null;
-  readonly memoryTotalBytes: number | null;
-  readonly memoryUsedBytes: number | null;
-  readonly diskTotalBytes: number | null;
-  readonly diskUsedBytes: number | null;
+  readonly cpu: {
+    readonly total: number;
+    readonly usuario: number;
+    readonly sistema: number;
+    readonly espera: number;
+  } | null;
+  readonly memoria: {
+    readonly totalBytes: number;
+    readonly usadoBytes: number;
+    readonly porcentagem: number;
+  } | null;
+  readonly disco: {
+    readonly totalBytes: number;
+    readonly usadoBytes: number;
+    readonly livreBytes: number;
+    readonly porcentagem: number;
+  } | null;
+  readonly uptimeSegundos: number | null;
+  readonly carga: readonly number[] | null;
+  readonly processos: readonly {
+    readonly pid: number;
+    readonly usuario: string;
+    readonly cpu: number;
+    readonly memoria: number;
+    readonly rssBytes: number;
+    readonly comando: string;
+  }[];
+  /** Contadores DESDE O BOOT. Quem quiser taxa calcula a diferença. */
+  readonly rede: { readonly recebidoBytes: number; readonly enviadoBytes: number } | null;
 }
 
 export interface HostMonitor {

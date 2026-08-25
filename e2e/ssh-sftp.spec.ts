@@ -15,6 +15,11 @@ async function abrirAbaDoServidor(page: Page): Promise<void> {
   await linha.hover();
   await linha.getByRole('button', { name: /numa aba/ }).click();
   await expect(aba(page, CONEXAO_SSH)).toBeVisible();
+
+  // A aba abre no MONITOR desde a spec 056 — é o que se quer ver ao chegar num
+  // servidor. Quem vai testar a tabela pede a divisória dela.
+  await page.locator('[data-sub-aba="sftp"]').click();
+  await expect(page.locator('[data-caminho-sftp]')).toBeVisible({ timeout: 30_000 });
 }
 
 test.beforeEach(async ({ page }) => {
@@ -25,12 +30,13 @@ test.beforeEach(async ({ page }) => {
 test('a aba do servidor mostra só as sub-abas que a sessão SABE oferecer', async ({ page }) => {
   await abrirAbaDoServidor(page);
 
-  // SSH expõe `files` e `shell` — então SFTP e Terminal existem.
+  // SSH expõe `files`, `shell` e — desde a spec 056 — `monitor`.
   await expect(page.locator('[data-sub-aba="sftp"]')).toBeVisible();
   await expect(page.locator('[data-sub-aba="terminal"]')).toBeVisible();
-  // Monitor e Port Forwarding ainda não são implementados: a sessão não os
-  // declara, e por isso a divisória não existe — em vez de existir vazia.
-  await expect(page.locator('[data-sub-aba="monitor"]')).toHaveCount(0);
+  await expect(page.locator('[data-sub-aba="monitor"]')).toBeVisible();
+  // `Port Forwarding` ainda não existe (S7): a sessão não declara `forwarding`,
+  // e por isso a divisória não aparece — em vez de aparecer vazia. É a prova de
+  // que elas saem das capacidades, e não de uma lista fixa.
   await expect(page.locator('[data-sub-aba="portas"]')).toHaveCount(0);
 });
 
@@ -113,5 +119,6 @@ test('abrir a aba do servidor SEM ter conectado conecta sozinho', async ({ page 
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
 
   await expect(page.locator('[data-sub-aba="sftp"]')).toBeVisible({ timeout: 30_000 });
+  await page.locator('[data-sub-aba="sftp"]').click();
   await expect(page.locator('[data-caminho-sftp]')).toContainText('/arvore');
 });

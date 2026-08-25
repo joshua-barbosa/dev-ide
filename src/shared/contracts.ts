@@ -402,6 +402,44 @@ export interface RemoteEntry {
   readonly executable?: boolean;
 }
 
+/**
+ * A saúde de um servidor remoto (spec 056).
+ *
+ * Cada campo pode ser `null`, e isso é informação: um contêiner mínimo não tem
+ * `/proc/net/dev`, e a PRIMEIRA amostra não tem CPU — porcentagem exige duas
+ * leituras. `null` diz "não sei"; zero diria "está parado".
+ */
+export interface HostMetrics {
+  readonly cpu: {
+    readonly total: number;
+    readonly usuario: number;
+    readonly sistema: number;
+    readonly espera: number;
+  } | null;
+  readonly memoria: {
+    readonly totalBytes: number;
+    readonly usadoBytes: number;
+    readonly porcentagem: number;
+  } | null;
+  readonly disco: {
+    readonly totalBytes: number;
+    readonly usadoBytes: number;
+    readonly livreBytes: number;
+    readonly porcentagem: number;
+  } | null;
+  readonly uptimeSegundos: number | null;
+  readonly carga: readonly number[] | null;
+  readonly processos: readonly {
+    readonly pid: number;
+    readonly usuario: string;
+    readonly cpu: number;
+    readonly memoria: number;
+    readonly rssBytes: number;
+    readonly comando: string;
+  }[];
+  readonly rede: { readonly recebidoBytes: number; readonly enviadoBytes: number } | null;
+}
+
 export interface SessionCapabilities {
   readonly kind: ConnectionKind;
   readonly execute: boolean;

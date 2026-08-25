@@ -23,7 +23,13 @@ import type {
   TableWriteResult,
   TreeNode,
 } from '../shared/contracts';
-import type { DriverPanel, ConnectionKind, FieldSpec, RemoteEntry } from '../shared/contracts';
+import type {
+  DriverPanel,
+  ConnectionKind,
+  FieldSpec,
+  HostMetrics,
+  RemoteEntry,
+} from '../shared/contracts';
 import type { PatchDePreferencias, Preferencias } from '../shared/prefs';
 import type { ArquivoDeQuery, Vinculo } from '../shared/sql/vinculo';
 import type {
@@ -283,6 +289,8 @@ export const Api = {
       'GET',
       `${conexoes}/${id}/files?path=${encodeURIComponent(caminho)}`
     ),
+  metricasDoServidor: (id: string) =>
+    request<HostMetrics>('GET', `${conexoes}/${id}/metrics`),
   listarRemoto: (id: string, caminho: string) =>
     request<readonly RemoteEntry[]>(
       'GET',

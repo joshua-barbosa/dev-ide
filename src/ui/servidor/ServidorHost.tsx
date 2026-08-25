@@ -13,6 +13,7 @@ import Box from '@mui/material/Box';
 import { Icon } from '../Icon';
 import { tokens } from '../theme';
 import { SftpPanel } from '../sftp/SftpPanel';
+import { MonitorPanel } from '../monitor/MonitorPanel';
 import type { SessionCapabilities } from '../../shared/contracts';
 
 export type SubAbaDoServidor = 'monitor' | 'terminal' | 'sftp' | 'portas';
@@ -51,7 +52,9 @@ export function ServidorHost({
   const disponiveis = DIVISORIAS.filter(
     (d) => capacidades !== null && capacidades[d.exige] === true
   );
-  const [ativa, setAtiva] = useState<SubAbaDoServidor>('sftp');
+  // Abre no Monitor, como a ferramenta de referência: é o que se quer ver ao
+  // chegar num servidor.
+  const [ativa, setAtiva] = useState<SubAbaDoServidor>('monitor');
   const atual = disponiveis.some((d) => d.id === ativa) ? ativa : disponiveis[0]?.id;
 
   if (disponiveis.length === 0) {
@@ -115,6 +118,15 @@ export function ServidorHost({
               raiz={capacidades?.rootPath ?? '/'}
               somenteLeitura={somenteLeitura}
               onAbrirArquivo={onAbrirArquivo}
+              onErro={onErro}
+            />
+          )}
+          {d.id === 'monitor' && (
+            <MonitorPanel
+              conexaoId={conexaoId}
+              // Escondido, o monitor PARA de medir: um relógio que sobrevive à
+              // troca de aba mediria um servidor que ninguém está olhando.
+              ativo={atual === 'monitor'}
               onErro={onErro}
             />
           )}
