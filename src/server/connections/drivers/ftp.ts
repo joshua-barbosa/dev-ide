@@ -190,6 +190,12 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       return { path: alvo, content: conteudo.toString('utf8'), bytes: conteudo.byteLength };
     },
 
+    writeBytes: async (caminho, dados) => {
+      podeEscrever();
+      const alvo = dentro(caminho);
+      await fila(() => client.uploadFrom(Readable.from([dados]), alvo));
+    },
+
     write: async (caminho, conteudo) => {
       podeEscrever();
       const alvo = dentro(caminho);

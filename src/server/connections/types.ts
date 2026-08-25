@@ -131,6 +131,14 @@ export interface RemoteFile {
  */
 export interface RemoteFiles {
   list(remotePath: string): Promise<RemoteEntry[]>;
+  /**
+   * Grava BYTES (spec 060).
+   *
+   * Separado do `write`, que recebe texto, porque upload de pasta carrega
+   * imagem, `.tgz` e binário — e passá-los por `string` os corromperia em
+   * silêncio, que é a pior forma de corromper.
+   */
+  writeBytes(remotePath: string, dados: Buffer): Promise<void>;
   read(remotePath: string): Promise<RemoteFile>;
   write(remotePath: string, content: string): Promise<void>;
   mkdir(remotePath: string): Promise<void>;

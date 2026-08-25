@@ -103,6 +103,13 @@ export function criarArquivosRemotos(ctx: ContextoDeArquivos): RemoteFiles {
       return { path: alvo, content: buffer.toString('utf8'), bytes: buffer.byteLength };
     },
 
+    writeBytes: async (remotePath, dados) => {
+      podeEscrever(ctx);
+      const alvo = dentroDaCerca(ctx, remotePath);
+      const sftp = await ctx.sftp();
+      await prometer<void>((pronto) => sftp.writeFile(alvo, dados, (e) => pronto(e, undefined)));
+    },
+
     write: async (remotePath, content) => {
       podeEscrever(ctx);
       const alvo = dentroDaCerca(ctx, remotePath);

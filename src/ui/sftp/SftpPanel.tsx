@@ -13,6 +13,7 @@ import { Icon } from '../Icon';
 import { tokens } from '../theme';
 import { paiDe } from '../../shared/remoto/caminho';
 import { ordenarPorColuna, type ColunaDeOrdem, type Direcao } from '../../shared/remoto/ordenacao';
+import { useUpload } from './useUpload';
 import type { RemoteEntry } from '../../shared/contracts';
 
 interface Coluna {
@@ -78,6 +79,7 @@ export function SftpPanel({
   const [coluna, setColuna] = useState<ColunaDeOrdem>('nome');
   const [direcao, setDirecao] = useState<Direcao>('asc');
   const [carregando, setCarregando] = useState(false);
+  const [sobre, setSobre] = useState(false);
 
   const listar = useCallback(
     async (alvo: string) => {
@@ -104,6 +106,12 @@ export function SftpPanel({
     listar(alvo).catch(onErro);
   };
 
+  // O arraste de fora (spec 060). Depois de subir, a lista recarrega sozinha —
+  // um upload que não aparece parece um upload que não aconteceu.
+  const upload = useUpload(() => {
+    listar(caminho).catch(onErro);
+  });
+
   const ordenadas = entradas === null ? [] : ordenarPorColuna(entradas, coluna, direcao);
   // Não há para onde subir a partir da raiz da CONEXÃO — e com `Prender na
   // raiz` ligado, tentar seria recusado pela rota.
@@ -118,7 +126,28 @@ export function SftpPanel({
   };
 
   return (
-    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <Box
+      sx={{
+        flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0,
+        position: 'relative',
+        ...(sobre && { outline: 2, outlineStyle: 'dashed', outlineColor: 'primary.main' }),
+      }}
+      onDragOver={(e: React.DragEvent) => {
+        // Sem o `preventDefault` o navegador ABRE o arquivo arrastado, em vez
+        // de entregá-lo à página.
+        if (somenteLeitura) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        setSobre(true);
+      }}
+      onDragLeave={() => setSobre(false)}
+      onDrop={(e: React.DragEvent) => {
+        if (somenteLeitura) return;
+        e.preventDefault();
+        setSobre(false);
+        void upload.soltar(e, conexaoId, caminho).catch(onErro);
+      }}
+    >
       <Box
         sx={{
           display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5,
@@ -158,6 +187,13 @@ export function SftpPanel({
         {carregando && (
           <Box sx={{ ml: 'auto', fontSize: 11, color: 'text.secondary' }}>carregando…</Box>
         )}
+        {upload.estado.total > 0 && (
+          <Box data-progresso-upload sx={{ ml: 'auto', fontSize: 11, color: 'text.secondary' }}>
+            {upload.estado.enviando
+              ? `enviando ${upload.estado.enviados} de ${upload.estado.total}…`
+              : `${upload.estado.enviados} de ${upload.estado.total} enviados`}
+          </Box>
+        )}
       </Box>
 
       <Box
@@ -196,6 +232,26 @@ export function SftpPanel({
           </Box>
         ))}
       </Box>
+
+      {upload.estado.erro !== null && (
+        <Box
+          data-erro-upload
+          sx={{
+            px: 1.25, py: 0.5, bgcolor: 'error.main', color: 'background.default',
+            fontSize: 11, flexShrink: 0,
+          }}
+        >
+          {upload.estado.erro}
+        </Box>
+      )}
+      {upload.estado.recusados.length > 0 && (
+        <Box
+          data-recusados-upload
+          sx={{ px: 1.25, py: 0.5, bgcolor: 'warning.main', color: 'background.default', fontSize: 11 }}
+        >
+          {upload.estado.recusados.length} arquivo(s) recusado(s) por tentarem sair da pasta.
+        </Box>
+      )}
 
       <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {!naRaiz && (

@@ -8,7 +8,7 @@
 // driver (`ssh-arquivos.ts`), que é por onde toda escrita passa — inclusive uma
 // que venha de outra rota, de outro driver, ou de código que ainda não existe.
 // Repeti-la aqui daria duas chances de divergirem.
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { alternarFavorito, lerFavoritos } from '../favoritos';
 import { aspasDeShell } from '../../shared/remoto/shell';
 import { requireString, wrap } from '../http/handlers';
@@ -17,6 +17,20 @@ import type { RemoteFiles, Session } from '../connections/types';
 
 /** Teto do que se manda executar. Script maior que isto ninguém lê antes. */
 export const MAX_BYTES_DE_SCRIPT = 256 * 1024;
+
+/** Teto por arquivo enviado. Acima disso, o terminal e o `scp` servem melhor. */
+export const MAX_UPLOAD = 64 * 1024 * 1024;
+
+/**
+ * Os níveis de um caminho, da raiz para baixo.
+ *
+ * `/a/b/c` vira `['/a', '/a/b', '/a/b/c']` — é a ordem em que as pastas têm que
+ * ser criadas, porque nenhum servidor cria a de dentro antes da de fora.
+ */
+function niveisDe(caminho: string): readonly string[] {
+  const partes = caminho.split('/').filter((p) => p !== '');
+  return partes.map((_, i) => `/${partes.slice(0, i + 1).join('/')}`);
+}
 
 function ok<T>(data: T): { success: true; data: T; error: null } {
   return { success: true, data, error: null };
@@ -79,6 +93,39 @@ export function createRemoteFilesRouter(pool: SessionPool): Router {
     const caminho = requireString(req.query.path, 'path');
     await files.remove(caminho);
     res.json(ok({ path: caminho }));
+  }));
+
+  /**
+   * Sobe UM arquivo, em bytes (spec 060).
+   *
+   * O corpo é binário cru (`application/octet-stream`) e o caminho vai na URL.
+   * Não é `multipart` nem base64: o primeiro pediria um analisador novo, e o
+   * segundo engorda o corpo em um terço para nada — o navegador já tem os bytes.
+   *
+   * `mkdir` do pai vem junto, e ignora o erro de "já existe": subir uma pasta
+   * significa criar a estrutura, e perguntar antes por cada nível dobraria o
+   * número de idas ao servidor.
+   */
+  router.post('/upload', express.raw({ type: '*/*', limit: MAX_UPLOAD }), wrap(async (req, res) => {
+    const files = await arquivos(req.params.id);
+    const caminho = requireString(req.query.path, 'path');
+    const criarPastas = req.query.mkdir === '1';
+
+    if (criarPastas) {
+      const pai = caminho.slice(0, Math.max(1, caminho.lastIndexOf('/')));
+      for (const nivel of niveisDe(pai)) {
+        try {
+          await files.mkdir(nivel);
+        } catch {
+          // Já existe, ou não temos permissão de criar aqui — nos dois casos o
+          // erro que interessa é o da gravação, que vem logo abaixo.
+        }
+      }
+    }
+
+    const dados = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    await files.writeBytes(caminho, dados);
+    res.json(ok({ path: caminho, bytes: dados.byteLength }));
   }));
 
   // ------------------------------------------------------------------ favoritos

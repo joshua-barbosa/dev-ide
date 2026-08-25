@@ -310,6 +310,29 @@ export const Api = {
     ),
   metricasDoServidor: (id: string) =>
     request<HostMetrics>('GET', `${conexoes}/${id}/metrics`),
+  /**
+   * Sobe um arquivo em bytes (spec 060).
+   *
+   * Não passa pelo `request` genérico: aquele manda e espera JSON, e aqui o
+   * corpo é binário cru.
+   */
+  enviarArquivoRemoto: async (
+    id: string,
+    caminho: string,
+    dados: ArrayBuffer,
+    criarPastas = true
+  ): Promise<void> => {
+    const url =
+      `${conexoes}/${id}/files/upload?path=${encodeURIComponent(caminho)}` +
+      `${criarPastas ? '&mkdir=1' : ''}`;
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: dados,
+    });
+    const payload = (await r.json()) as { success: boolean; error: string | null };
+    if (!payload.success) throw new Error(payload.error ?? 'Falha ao enviar.');
+  },
   listarRemoto: (id: string, caminho: string) =>
     request<readonly RemoteEntry[]>(
       'GET',
