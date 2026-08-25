@@ -8,6 +8,7 @@ import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import type { DriverPanel, GroupNode, PublicConnection, TreeNode } from '../../shared/contracts';
+import { noRemotoDe, type NoRemoto as NoRemotoDaLinha } from '../acoes/useAcoesRemotas';
 import type { Vinculo } from '../../shared/sql/vinculo';
 import { Icon } from '../Icon';
 import { TreeRow } from '../tree/TreeRow';
@@ -15,6 +16,15 @@ import type { ConnectionsController } from './useConnections';
 
 export interface ConnectionsPanelProps {
   readonly painel: DriverPanel;
+  /** Abre um arquivo que mora no servidor (spec 053). */
+  onAbrirArquivoRemoto(conexaoId: string, caminho: string): Promise<void>;
+  /** As ações de passar o mouse num nó remoto (spec 053). */
+  acoesRemotas: {
+    favoritar(conexaoId: string, remoto: NoRemotoDaLinha): Promise<void>;
+    baixar(conexaoId: string, remoto: NoRemotoDaLinha): Promise<void>;
+    executarScript(conexaoId: string, remoto: NoRemotoDaLinha): Promise<void>;
+  };
+  somenteLeitura(conexaoId: string): boolean;
   readonly ctrl: ConnectionsController;
   readonly onMenuNo: (
     e: React.MouseEvent,
@@ -148,6 +158,9 @@ export function ConnectionsPanel({
   onAbrirQueryDoDatabase,
   onAbrirTabela,
   onAbrirArquivoDeQuery,
+  onAbrirArquivoRemoto,
+  acoesRemotas,
+  somenteLeitura,
   onNovaQuery,
   onRenomearQuery,
   onApagarQuery,
@@ -213,14 +226,27 @@ export function ConnectionsPanel({
             detalhe={no.detail}
             expansivel={no.hasChildren}
             aberto={aberto}
-            titulo={no.hasChildren ? undefined : 'Clique duplo abre uma query'}
+            // O nó remoto traz o próprio tooltip: datas, permissão e dono
+            // (spec 052, AC-10). Onde ele existe, manda — dizer "clique duplo
+            // abre uma query" sobre um arquivo de servidor seria mentira.
+            titulo={
+              typeof no.meta?.tooltip === 'string'
+                ? no.meta.tooltip
+                : no.hasChildren
+                  ? undefined
+                  : 'Clique duplo abre uma query'
+            }
             onClick={
               // O arquivo de query abre no editor; o resto segue como antes.
               no.meta?.arquivoDeQuery === true
                 ? comErro(() => onAbrirArquivoDeQuery(no))
                 : no.hasChildren
                   ? comErro(() => ctrl.alternarNo(id, filho, no))
-                  : () => onAbrirQuery(id, no, bancoAqui)
+                  : typeof no.meta?.remotePath === 'string'
+                    ? // Arquivo do SERVIDOR (spec 053): um clique abre, como na
+                      // árvore de arquivos local. Não há query para montar aqui.
+                      comErro(() => onAbrirArquivoRemoto(id, String(no.meta?.remotePath)))
+                    : () => onAbrirQuery(id, no, bancoAqui)
             }
             // O duplo clique continua abrindo a QUERY, como desde a spec 009.
             // Chegou a abrir a aba de tabela durante a spec 041, e foi um passo
@@ -228,7 +254,9 @@ export function ConnectionsPanel({
             // da linha, não o duplo clique. Trocar um gesto que ele já tem na
             // mão precisa ser decisão dele, não efeito colateral.
             onDoubleClick={
-              no.meta?.arquivoDeQuery === true ? undefined : () => onAbrirQuery(id, no, bancoAqui)
+              no.meta?.arquivoDeQuery === true || typeof no.meta?.remotePath === 'string'
+                ? undefined
+                : () => onAbrirQuery(id, no, bancoAqui)
             }
             onContextMenu={(e) => onMenuNo(e, id, filho, no, bancoAqui)}
             acoes={
@@ -237,7 +265,18 @@ export function ConnectionsPanel({
               // A categoria `Query` tem ações próprias: nela se CRIA arquivo, e
               // não objeto de banco. Filtrar não faz sentido numa pasta com
               // meia dúzia de arquivos.
-              no.meta?.queries === true ? (
+              // Nó do SERVIDOR (spec 053): recarregar, favoritar, baixar, e
+              // executar quando o arquivo tem o bit. É a barra do print dele.
+              noRemotoDe(no) !== null ? (
+                <AcoesDoNoRemoto
+                  conexaoId={id}
+                  no={no}
+                  trancada={somenteLeitura(id)}
+                  acoes={acoesRemotas}
+                  onRecarregar={comErro(() => ctrl.recarregarNo(id, filho))}
+                  aoFalhar={onErro}
+                />
+              ) : no.meta?.queries === true ? (
                 <AcaoDaLinha
                   icone="lucide:plus"
                   rotulo="Nova query — SQL ou Query Book"
@@ -328,7 +367,15 @@ export function ConnectionsPanel({
           rotulo={conexao.label}
           icone={driver?.icon ?? 'connection'}
           conectado={viva}
-          detalhe={conexao.readOnly ? 'RO' : undefined}
+          // A distro do servidor ao lado do nome (spec 052), como na
+          // ferramenta de referência. O `RO` continua vindo junto quando for o
+          // caso: são duas informações, e esconder uma pela outra seria perder
+          // justamente a que avisa que a conexão não escreve.
+          detalhe={
+            [ctrl.descricaoDe(conexao.id), conexao.readOnly ? 'RO' : null]
+              .filter((p) => p !== null)
+              .join(' · ') || undefined
+          }
           titulo={`${conexao.type}${conexao.fields.host === undefined ? '' : ` · ${String(conexao.fields.host)}`}`}
           expansivel
           aberto={aberto}
@@ -495,5 +542,74 @@ export function ConnectionsPanel({
         )}
       </Box>
     </Box>
+  );
+}
+
+/**
+ * A barra de ações de um nó da árvore remota (spec 053, AC-7 e AC-8).
+ *
+ * Pasta e arquivo oferecem coisas diferentes, e é isso que o print do usuário
+ * mostra: pasta tem recarregar; arquivo executável tem executar. O que escreve
+ * some com a conexão trancada — a trava de valer está na rota.
+ */
+function AcoesDoNoRemoto({
+  conexaoId, no, trancada, acoes, onRecarregar, aoFalhar,
+}: {
+  readonly conexaoId: string;
+  readonly no: TreeNode;
+  readonly trancada: boolean;
+  readonly acoes: {
+    favoritar(conexaoId: string, remoto: NoRemotoDaLinha): Promise<void>;
+    baixar(conexaoId: string, remoto: NoRemotoDaLinha): Promise<void>;
+    executarScript(conexaoId: string, remoto: NoRemotoDaLinha): Promise<void>;
+  };
+  readonly onRecarregar: () => void;
+  readonly aoFalhar: (erro: unknown) => void;
+}) {
+  const remoto = noRemotoDe(no);
+  if (remoto === null) return null;
+
+  /**
+   * A ação só acontece no CLIQUE.
+   *
+   * A primeira versão recebia a promessa pronta — `chamar(acoes.favoritar(...))`
+   * —, e isso a executava **a cada renderização**: favoritar, baixar e até
+   * EXECUTAR O SCRIPT rodavam sozinhos, e cada um provocava a renderização
+   * seguinte. A árvore nunca parava de piscar. O que se passa aqui é a função,
+   * nunca o resultado dela.
+   */
+  const chamar = (acao: () => Promise<unknown>) => () => {
+    acao().catch(aoFalhar);
+  };
+
+  return (
+    <>
+      {remoto.kind !== 'file' && (
+        <AcaoDaLinha
+          icone="lucide:refresh-cw"
+          rotulo={`Recarregar ${no.label}`}
+          onClick={onRecarregar}
+        />
+      )}
+      <AcaoDaLinha
+        icone={no.meta?.favorito === true ? 'lucide:key-round' : 'lucide:key'}
+        rotulo={`Favoritar ${no.label}`}
+        onClick={chamar(() => acoes.favoritar(conexaoId, remoto))}
+      />
+      {remoto.kind === 'file' && (
+        <AcaoDaLinha
+          icone="lucide:download"
+          rotulo={`Baixar ${no.label}`}
+          onClick={chamar(() => acoes.baixar(conexaoId, remoto))}
+        />
+      )}
+      {remoto.executable && !trancada && (
+        <AcaoDaLinha
+          icone="lucide:play"
+          rotulo={`Executar ${no.label} no servidor`}
+          onClick={chamar(() => acoes.executarScript(conexaoId, remoto))}
+        />
+      )}
+    </>
   );
 }

@@ -44,6 +44,14 @@ export interface Execution {
    */
   executarTexto(linguagem: string, codigo: string): Promise<void>;
   /**
+   * Escreve direto no painel `Output` (spec 053).
+   *
+   * Existe porque nem tudo que produz saída passa pelo runner: o `Execute
+   * shell` roda no SERVIDOR, e o resultado dele precisa cair no mesmo lugar de
+   * sempre — um segundo painel de saída seria dividir a atenção do usuário.
+   */
+  escreverNaSaida(texto: string, erro: boolean): void;
+  /**
    * Executa UM statement, vindo do `Run | +Tab | JSON` do editor (spec 038).
    *
    * `modo` decide onde o resultado cai: `run` repinta a aba daquele arquivo,
@@ -371,6 +379,7 @@ export function useExecution(
     conexaoAtiva: conexaoVisivel,
     executando,
     executarTexto,
+    escreverNaSaida: escrever,
     definirConexaoAtiva: (id: string | null) => {
       conexaoAtiva.current = id;
       setConexaoVisivel(id);

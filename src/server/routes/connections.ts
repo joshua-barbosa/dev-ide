@@ -11,6 +11,7 @@ import type { SessionPool } from '../connections/pool';
 import type { Vault } from '../connections/vault';
 import { diasDeLembranca, type RememberedKey } from '../connections/remember';
 import type { ConnectionInput, FieldValue, Session, VaultState } from '../connections/types';
+import { createRemoteFilesRouter } from './arquivos-remotos';
 import { queryList, requireString, wrap } from '../http/handlers';
 import type { LeitorDePreferencias } from '../prefs';
 
@@ -178,6 +179,21 @@ export function createConnectionsRouter(
       ? req.query.filter
       : null;
     res.json(ok(await session.children(queryList(req.query.path), { filtro })));
+  }));
+
+  /**
+   * Uma linha sobre o que há do outro lado (spec 052, AC-11).
+   *
+   * Separada de `children` porque o custo é outro: a árvore recarrega a cada
+   * expansão, e perguntar "que servidor é este" a cada pasta aberta seria um
+   * comando remoto por clique. Aqui a resposta é buscada uma vez.
+   */
+  // O sistema de arquivos do outro lado mora num roteador próprio (spec 053).
+  router.use('/:id/files', createRemoteFilesRouter(pool));
+
+  router.get('/:id/describe', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    res.json(ok(typeof session.describe === 'function' ? await session.describe() : null));
   }));
 
   router.post('/:id/action', wrap(async (req, res) => {

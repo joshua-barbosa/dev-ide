@@ -98,6 +98,8 @@ export interface ConnectionsController {
   /** Garante o cofre aberto, pedindo a senha se preciso. Falso = cancelado. */
   garantirDestrancado(): Promise<boolean>;
   chaveDe(id: string, caminho: readonly string[]): string;
+  /** O que o servidor respondeu sobre si — a distro, no caso do SSH. */
+  descricaoDe(id: string): string | null;
 }
 
 /** Mesma injeção do workspace: quem desenha o diálogo é o App. */
@@ -266,6 +268,8 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
     [marcar]
   );
 
+  const [descricoes, setDescricoes] = useState<ReadonlyMap<string, string>>(new Map());
+
   const abrirConexao = useCallback(
     async (conexao: PublicConnection) => {
       const chave = `conn:${conexao.id}`;
@@ -280,6 +284,17 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
         await Api.connect(conexao.id);
         await buscarFilhos(conexao.id, []);
         await recarregar(); // atualiza openIds, que marca a conexão como viva
+        // A descrição vem DEPOIS e sem travar a árvore: ela é enfeite útil, e
+        // esperar por ela adiaria o que o usuário clicou para ver.
+        Api.describe(conexao.id)
+          .then((texto) => {
+            if (texto !== null) {
+              setDescricoes((atual) => new Map(atual).set(conexao.id, texto));
+            }
+          })
+          .catch(() => {
+            // Um servidor que não sabe se descrever não é um erro de conexão.
+          });
       } catch (e) {
         setExpandidos((atual) => marcar(atual, chave, false));
         throw new Error(
@@ -462,10 +477,11 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
       recarregarNo,
       garantirDestrancado,
       chaveDe,
+      descricaoDe: (id: string) => descricoes.get(id) ?? null,
     }),
     [
       abrirConexao, acharConexao, alternarGrupo, alternarNo, cancelarSenha, carregando, criarCofre,
-      desconectar, destrancar, drivers, erro, estado, excluir, expandidos, filhos,
+      desconectar, descricoes, destrancar, drivers, erro, estado, excluir, expandidos, filhos,
       garantirDestrancado,
       grupos, pedidoDeSenha, recarregar, recarregarMetadados, responderSenha,
       salvarConexao, todasAsConexoes, trancar,

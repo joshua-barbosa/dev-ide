@@ -35,7 +35,7 @@ import { QuickInput } from './QuickInput';
 import { pedirComRetentativa, useQuickInput } from './useQuickInput';
 import {
   comandoDoAtalho, filtrarComandos, formatarAtalho,
-  type ContextoDeComandos, type IdImplementado,
+  type ContextoDeComandos,
 } from '../shared/commands';
 import { BottomPanel } from './BottomPanel';
 import { ResizerHorizontal } from './ResizerHorizontal';
@@ -52,6 +52,9 @@ import { propsDaAbaDeTabela } from './tabela/propsDaAbaDeTabela';
 import { useMenusDeConexao } from './acoes/useMenusDeConexao';
 import { useVinculo } from './query/useVinculo';
 import { ligarCodeLensDeSql, propsDeVinculo, useAcoesDeQuery } from './query/useAcoesDeQuery';
+import { useAcoesRemotas } from './acoes/useAcoesRemotas';
+import { depsDasAcoesRemotas } from './acoes/depsDasAcoesRemotas';
+import { mapaDeAcoes } from './acoes/mapaDeAcoes';
 import { usePasta } from './files/usePasta';
 import { usePrefs } from './usePrefs';
 import { useAutoSave } from './useAutoSave';
@@ -300,8 +303,20 @@ export function App() {
     void navigator.clipboard?.writeText(texto);
   };
 
+  // As ações da árvore remota (spec 053). Vêm antes dos menus porque eles as
+  // consomem: o menu de um nó remoto é inteiramente delas.
+  const acoesRemotas = useAcoesRemotas(
+    depsDasAcoesRemotas({
+      ws, qi, exec, conexoes, copiar,
+      confirmar: dialogs.confirmar,
+      mostrarSaida: () => layout.mostrarPainel('output'),
+      onErro: falhaDeConexao,
+    })
+  );
+
   const menusDeConexao = useMenusDeConexao({
     abrir: menu.abrir,
+    acoesRemotas,
     copiar,
     abrirQuery: ws.abrirQuery,
     abrirFormulario: (conexao) => conexoesAcoes.abrirFormulario(conexao),
@@ -405,96 +420,16 @@ export function App() {
 
   // O `Run | +Tab | JSON` do editor precisa de alguém que saiba executar.
   ligarCodeLensDeSql(ws, exec, avisar);
-
-  /**
-   * Liga cada id declarado à função que o executa.
-   *
-   * Um comando não pendente sem entrada aqui vira clique morto — por isso há
-   * teste de completude cruzando as duas listas.
-   */
-  const ACOES: Readonly<Record<IdImplementado, () => void>> = {
-    'file.new': novoArquivo,
-    'file.newProject': () => avisar(pastaAcoes.novoProjeto()),
-    'file.open': () => avisar(abrirPorCaminho()),
-    'file.openFolder': () => avisar(pastaAcoes.abrirPasta()),
-    'file.openWorkspace': () => avisar(pastaAcoes.escolherProjeto()),
-    'file.openRecent': () => avisar(pastaAcoes.abrirRecente()),
-    'file.save': () => avisar(arquivoAcoes.salvarArquivo()),
-    'file.saveAs': () => avisar(arquivoAcoes.salvarArquivo()),
-    'file.saveAll': () => avisar(arquivoAcoes.salvarTudo()),
-    'file.autoSave': () => avisar(arquivoAcoes.alternarAutoSave()),
-    'file.revert': () => avisar(arquivoAcoes.reverterArquivo()),
-    'file.preferences': () => avisar(abrirPreferencias()),
-    'file.closeEditor': () => { if (ws.activeId !== null) ws.fechar(ws.activeId); },
-
-    'edit.undo': () => document.execCommand('undo'),
-    'edit.redo': () => document.execCommand('redo'),
-    'edit.cut': () => document.execCommand('cut'),
-    'edit.copy': () => document.execCommand('copy'),
-    'edit.snippets': () => avisar(snippetsAcoes.abrir()),
-    'edit.paste': () => avisar(navigator.clipboard.readText().then((t) => {
-      document.execCommand('insertText', false, t);
-    })),
-
-    'selection.all': () => document.execCommand('selectAll'),
-
-    'view.commandPalette': () => avisar(abrirPaleta()),
-    'view.explorer': () => setPainelLateral('files'),
-    // Os três abrem o MESMO painel: `Find in Files` e `Replace in Files` são a
-    // busca vista do menu Edit, e `Search` é a mesma vista da lateral.
-    'view.search': () => setPainelLateral('search'),
-    'edit.findInFiles': () => setPainelLateral('search'),
-    'edit.replaceInFiles': () => setPainelLateral('search'),
-    'view.symbols': () => setPainelLateral('symbols'),
-    'view.database': () => setPainelLateral('database'),
-    'view.service': () => setPainelLateral('service'),
-    // Passou a significar o que o nome diz: mostrar o painel naquela aba. Antes
-    // este comando LIMPAVA a saída, o que ninguém adivinharia pelo rótulo.
-    'view.appearance': () => avisar(escolherTema()),
-    'view.output': () => layout.mostrarPainel('output'),
-    'view.problems': () => layout.mostrarPainel('problems'),
-    'view.toggleSidebar': layout.alternarLateral,
-    'view.togglePanel': layout.alternarPainel,
-    'view.splitEditor': ws.dividir,
-    // Alterna e PERSISTE. A ação do Monaco alternaria e esqueceria — e o
-    // usuário espera que a escolha sobreviva a recarregar a página.
-    'view.wordWrap': () =>
-      avisar(prefs.definir({ 'editor.wordWrap': !prefs.prefs['editor.wordWrap'] })),
-
-    'go.file': () => avisar(abrirPorCaminho()),
-    'go.symbol': () => setPainelLateral('symbols'),
-    'go.line': () => avisar(irParaLinha()),
-    'go.definition': () => avisar(codigoAcoes.irParaDefinicao()),
-    'go.typeDefinition': () => avisar(codigoAcoes.irParaDefinicaoDeTipo()),
-    'go.references': () => avisar(codigoAcoes.verReferencias()),
-    'go.back': () => irPara(nav.voltar()),
-    'go.forward': () => irPara(nav.avancar()),
-
-    'run.file': () => executar('file'),
-    'run.selection': () => executar('block'),
-    'run.stop': () => avisar(exec.parar()),
-    'run.disconnect': () => {
-      const id = exec.conexaoAtiva;
-      if (id !== null) avisar(conexoes.desconectar(id));
-    },
-
-    'terminal.new': () => novoTerminalNoPainel(),
-    'terminal.split': dividirTerminalNoPainel,
-    'terminal.runTask': () => avisar(comandosAcoes.abrir()),
-    'terminal.connection': () => {
-      const conexao = conexoes.acharConexao(exec.conexaoAtiva);
-      if (conexao !== null) avisar(conexoesAcoes.abrirTerminalDaConexao(conexao));
-    },
-
-    'help.commands': () => avisar(abrirPaleta()),
-    // Destino honesto em vez de remoção: a IDE não tem documentação escrita,
-    // mas tem um README — e é para ele que o usuário deve ser levado.
-    'help.docs': () => avisar(Api.docs().then(({ path }) => ws.abrirArquivo(path))),
-    'help.about': () => void dialogs.avisar(
-      'IDE local com painéis de banco e serviço, sem licença e sem limite de conexões.',
-      'dev-ide'
-    ),
-  };
+  // O que cada comando faz. Mora em `acoes/mapaDeAcoes.ts` desde a spec 053,
+  // quando o `App` bateu no teto do Artigo IV pela quinta vez — é o maior bloco
+  // coeso do arquivo, e "o que cada comando faz" é um assunto só.
+  const ACOES = mapaDeAcoes({
+    ws, exec, conexoes, dialogs, layout, prefs, nav,
+    arquivoAcoes, codigoAcoes, comandosAcoes, conexoesAcoes, pastaAcoes, snippetsAcoes,
+    novoArquivo, novoTerminalNoPainel, dividirTerminalNoPainel, abrirPorCaminho,
+    abrirPreferencias, abrirPaleta, escolherTema, irPara, irParaLinha, executar,
+    setPainelLateral, avisar,
+  });
 
   const executarComando = (id: string): void => {
     // Comando atendido pelo editor não tem entrada em `ACOES`: quem o executa é
@@ -619,6 +554,9 @@ export function App() {
           conexoes={{
             ctrl: conexoes,
             onAbrirQuery: conexoesAcoes.abrirQueryDoNo,
+            onAbrirArquivoRemoto: ws.abrirArquivoRemoto,
+            acoesRemotas,
+            somenteLeitura: (id: string) => conexoes.acharConexao(id)?.readOnly === true,
             onNovaConexao: (grupo?: string) => conexoesAcoes.abrirFormulario(null, grupo),
             onRenomearGrupo: (caminho: string) => avisar(conexoesAcoes.renomearGrupo(caminho)),
             onAbrirTerminal: (conexao: PublicConnection) => avisar(conexoesAcoes.abrirTerminalDaConexao(conexao)),

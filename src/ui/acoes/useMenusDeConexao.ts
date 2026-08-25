@@ -38,6 +38,8 @@ export interface DepsDosMenus {
   recarregarMetadados(id: string): Promise<void>;
   /** Abre a lista de processos do servidor (spec 047). */
   abrirProcessos(conexao: PublicConnection): void;
+  /** As ações da árvore remota (spec 053). */
+  readonly acoesRemotas: { menu(id: string, caminho: readonly string[], no: TreeNode): readonly unknown[] };
   /** Cria um arquivo na pasta `Query`, do tipo escolhido (spec 049). */
   novaQuery(connectionId: string, no: TreeNode, tipo: 'sql' | 'sqlbook'): Promise<void>;
   estaAberta(id: string): boolean;
@@ -54,7 +56,14 @@ export interface DepsDosMenus {
 export function useMenusDeConexao(deps: DepsDosMenus): MenusDeConexao {
   const { abrir: menuAbrir, copiar } = deps;
   return {
-        onMenuNo: (e, id, caminho, no, database) =>
+        onMenuNo: (e, id, caminho, no, database) => {
+          // Nó da árvore REMOTA tem vocabulário próprio (spec 053): ali as
+          // ações mexem no servidor, e não geram SQL.
+          const remoto = deps.acoesRemotas.menu(id, caminho, no);
+          if (remoto.length > 0) {
+            menuAbrir(e, remoto as readonly EntradaMenu[]);
+            return;
+          }
           menuAbrir(e, [
             { label: 'Copiar nome', onClick: () => copiar(no.label) },
 
@@ -94,7 +103,8 @@ export function useMenusDeConexao(deps: DepsDosMenus): MenusDeConexao {
                 );
               },
             })),
-          ]),
+          ]);
+        },
         onMenuConexao: (e, conexao) =>
           menuAbrir(e, [
             { label: 'Copiar nome', onClick: () => copiar(conexao.label) },

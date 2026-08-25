@@ -14,13 +14,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { GRUPO_PADRAO, type Tab, type TabStore } from '../shared/tabs';
 import {
   dividir as dividirLayout, LAYOUT_INICIAL, normalizarLayout, podeDividir,
-  proximoGrupo, type Lado, type NoDeLayout,
+  proximoGrupo, type NoDeLayout,
 } from '../shared/layout-editor';
 import type { CargaDeArraste, Zona } from '../shared/arrastar';
 import { proximoSemTitulo } from '../shared/untitled';
 import { ICONE_DE_ARQUIVO, iconeDeArquivo } from '../shared/editor/arquivos';
 import type { EditorHandle, ViewState } from './editor/EditorHost';
 import { EXT_TO_LANG, NOME_TO_LANG } from '../shared/editor/languages';
+import { gravarSeRemota, idDaAbaRemota, lerParaAba } from './remoto/abaRemota';
+import { soltarNoGrupoCom } from './tabs/soltura';
 import { Api } from './api';
 import { useTabs } from './tabs/useTabs';
 import { useAbasDeDados } from './tabs/useAbasDeDados';
@@ -105,6 +107,15 @@ export interface Workspace {
   readonly edicoes: number;
   aoMoverCursor(linha: number, coluna: number): void;
   abrirArquivo(caminho: string): Promise<void>;
+  /**
+   * Abre um arquivo que mora NO SERVIDOR (spec 053).
+   *
+   * Não baixa para o disco. A ferramenta de referência copia para uma pasta
+   * temporária e abre o arquivo local — solução de extensão, que precisa
+   * entregar um caminho de disco ao editor do hospedeiro. Aqui a aba já guarda
+   * o conteúdo, e `Ctrl+S` devolve pelo mesmo caminho por onde veio.
+   */
+  abrirArquivoRemoto(conexaoId: string, caminho: string): Promise<void>;
   /** Abre o arquivo e leva o cursor à linha e coluna dadas. */
   abrirArquivoEm(caminho: string, linha: number, coluna: number): Promise<void>;
   abrirQuery(
@@ -278,6 +289,20 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     [salvarGrupoFocado, store]
   );
 
+  const abrirArquivoRemoto = useCallback(
+    async (conexaoId: string, caminho: string) => {
+      const jaAberta = store.get(idDaAbaRemota(conexaoId, caminho));
+      if (jaAberta !== null) {
+        store.activate(jaAberta.id);
+        return;
+      }
+      // Salva a aba corrente antes de abrir a nova, senão o conteúdo se perde.
+      salvarGrupoFocado();
+      store.open(await lerParaAba(conexaoId, caminho, linguagemDe, iconeDeArquivo));
+    },
+    [salvarGrupoFocado, store]
+  );
+
   /**
    * Abre o arquivo e leva o cursor até a posição — venha ele de onde vier.
    *
@@ -402,6 +427,19 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     const aba = active;
     if (aba === null) return null;
     const meta = metaDe(aba);
+
+    // Arquivo do servidor (spec 053): vai de volta por onde veio. Vem ANTES da
+    // guarda de `path`, que é nulo aqui — o arquivo não existe em disco.
+    const remoto = await gravarSeRemota(
+      aba,
+      ehEditavel(aba) ? editorRef.current : null,
+      meta.content
+    );
+    if (remoto !== null) {
+      store.update(aba.id, { dirty: false });
+      return remoto;
+    }
+
     if (meta.path === null) return null;
 
     // O caderno (spec 048) não tem editor do Monaco: o conteúdo dele já mora no
@@ -530,35 +568,16 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     [abrirNoGrupo, store]
   );
 
+  // Onde uma aba cai ao ser solta. Mora em `tabs/soltura.ts` desde a spec 053,
+  // quando este arquivo bateu no teto do Artigo IV.
   const soltarNoGrupo = useCallback(
-    (grupoAlvo: number, zona: Zona, carga: CargaDeArraste): void => {
-      salvarTodosOsGrupos();
-
-      const aplicar = (destino: number): void => {
-        if (carga.tipo === 'aba') {
-          store.mover(carga.id, destino);
-          return;
-        }
-        void abrirNoGrupo(carga.caminho, destino);
-      };
-
-      if (zona === 'centro') {
-        aplicar(grupoAlvo);
-        return;
-      }
-
-      setLayout((atual) => {
-        // No teto, soltar na borda vira soltar no centro: recusar em silêncio
-        // deixaria o usuário arrastando de novo sem entender.
-        if (!podeDividir(atual)) {
-          aplicar(grupoAlvo);
-          return atual;
-        }
-        const novo = proximoGrupo(atual);
-        aplicar(novo);
-        return dividirLayout(atual, grupoAlvo, zona as Lado, novo);
-      });
-    },
+    (grupoAlvo: number, zona: Zona, carga: CargaDeArraste): void =>
+      soltarNoGrupoCom({
+        mover: store.mover,
+        abrirNoGrupo,
+        salvarTodosOsGrupos,
+        setLayout,
+      })(grupoAlvo, zona, carga),
     [abrirNoGrupo, salvarTodosOsGrupos, store]
   );
 
@@ -724,6 +743,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     cursor,
     edicoes,
     abrirArquivo,
+    abrirArquivoRemoto,
     abrirArquivoEm,
     abrirQuery: dados.abrirQuery,
     abrirTexto: dados.abrirTexto,
