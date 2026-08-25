@@ -16,6 +16,7 @@ import { listarChaves } from './ssh-chaves';
 import { lerDistribuicao, sistemaDe, type SistemaRemoto } from './ssh-diagnostico';
 import { lerPasswd, usuariosDe, type UsuarioRemoto } from './ssh-entradas';
 import { criarArquivosRemotos, listarEntradas, type ContextoDeArquivos } from './ssh-arquivos';
+import { criarShellRemoto } from './ssh-terminal';
 import {
   caminhoDoNo,
   noDeEntrada,
@@ -119,6 +120,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     children: (nodePath) => navegar(ctx, retrato, favoritos, nodePath),
     files: criarArquivosRemotos(ctx),
     exec: (comando) => cliente.executar(comando),
+    shell: criarShellRemoto(cliente.bruto(), ssh.shell),
     somenteLeitura: config.readOnly,
     // O que a árvore mostra ao lado do nome da conexão (AC-11).
     describe: async () => retrato.distribuicao,

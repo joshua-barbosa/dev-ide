@@ -390,7 +390,7 @@ export function ConnectionsPanel({
                 onClick={comErro(() => ctrl.recarregarMetadados(conexao.id))}
               />
               {/* Só aparece onde o driver declara cliente — SQLite não tem. */}
-              {driver?.hasCli === true && (
+              {driver?.hasTerminal === true && (
                 <AcaoDaLinha
                   icone="lucide:square-terminal"
                   rotulo="Abrir no terminal"

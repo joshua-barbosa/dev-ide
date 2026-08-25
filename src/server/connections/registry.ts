@@ -83,6 +83,11 @@ export class DriverRegistry {
       // Booleano, e não o objeto: `cli` carrega funções, que não
       // atravessam JSON. A interface só precisa saber se existe.
       hasCli: driver.cli !== undefined,
+      // O terminal de uma conexão pode vir de duas fontes: um cliente de linha
+      // de comando local (`cli`, os bancos) ou um canal da própria conexão
+      // (SSH, spec 054). A tela oferece a ação nos dois casos, e não precisa
+      // saber qual é qual.
+      hasTerminal: driver.cli !== undefined || driver.kind === 'files',
     }));
   }
 

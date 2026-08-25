@@ -10,6 +10,8 @@
 // ficar mais frouxa que o resto da API.
 import type { Server } from 'http';
 import { WebSocketServer, type WebSocket } from 'ws';
+import { SEM_CLIENTE_USE_CANAL } from './abertura';
+import type { CanalDeTerminal } from './canal';
 import { isAllowedRequest } from '../http/security';
 import type { TerminalRegistry } from './registry';
 import type { OpcoesDeSessao } from './session';
@@ -61,11 +63,18 @@ export interface DepsDoSocket {
   readonly registry: TerminalRegistry;
   /** Monta as opções a partir do que o cliente pediu; valida na fronteira. */
   resolverAbertura(pedido: unknown): Promise<OpcoesDeSessao>;
+  /**
+   * Abre o terminal de uma conexão que tem canal próprio (SSH, spec 054).
+   *
+   * Injetado, e não importado, pelo mesmo motivo do `resolverAbertura`: o
+   * socket não conhece pool nem driver, e não pode passar a conhecer.
+   */
+  abrirCanalDaConexao(pedido: unknown): Promise<CanalDeTerminal>;
 }
 
 export function montarSocketDeTerminal(
   server: Server,
-  { registry, resolverAbertura }: DepsDoSocket
+  { registry, resolverAbertura, abrirCanalDaConexao }: DepsDoSocket
 ): WebSocketServer {
   // `noServer` para que o `upgrade` passe pela guarda antes de virar WebSocket.
   const wss = new WebSocketServer({ noServer: true });
@@ -83,6 +92,21 @@ export function montarSocketDeTerminal(
 
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   });
+
+  /**
+   * Um terminal novo: PTY local, ou canal de uma conexão que tem o seu.
+   *
+   * Quem decide é `resolverAbertura`, que avisa por exceção quando o caminho é
+   * o outro — ver `SEM_CLIENTE_USE_CANAL`.
+   */
+  const abrirNovo = async (id: string, opcoes: unknown): Promise<CanalDeTerminal> => {
+    try {
+      return registry.abrir(id, await resolverAbertura(opcoes));
+    } catch (e) {
+      if ((e as Error).message !== SEM_CLIENTE_USE_CANAL) throw e;
+      return registry.abrirCanal(id, await abrirCanalDaConexao(opcoes));
+    }
+  };
 
   let proximo = 0;
   wss.on('connection', (ws: WebSocket) => {
@@ -113,7 +137,7 @@ export function montarSocketDeTerminal(
             // a tela com o histórico antes de qualquer byte novo — terminal vivo
             // com tela em branco é pior que terminal novo.
             const existente = registry.reatar(id);
-            const sessao = existente ?? registry.abrir(id, await resolverAbertura(msg.opcoes));
+            const sessao = existente ?? (await abrirNovo(id, msg.opcoes));
             if (existente !== null) {
               enviar({ tipo: 'reconectado' });
               const historico = existente.historico();

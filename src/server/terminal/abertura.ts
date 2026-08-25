@@ -10,6 +10,16 @@ import type { DriverRegistry } from '../connections/registry';
 import type { Vault } from '../connections/vault';
 import { MARCADOR_DE_CREDENCIAL, type OpcoesDeSessao } from './session';
 
+/**
+ * O sinal de que este terminal não é um PTY local.
+ *
+ * Uma exceção com mensagem fixa, e não um tipo de retorno novo: `resolverAbertura`
+ * é síncrona do ponto de vista de quem a chama e devolve `OpcoesDeSessao`.
+ * Trocar a assinatura por uma união obrigaria os dois chamadores a se
+ * desdobrarem — e há um só que precisa saber a diferença.
+ */
+export const SEM_CLIENTE_USE_CANAL = '__canal_de_conexao__';
+
 export interface DepsDeAbertura {
   readonly registry: DriverRegistry;
   readonly vault: Vault;
@@ -52,6 +62,12 @@ export function criarResolvedorDeAbertura({ registry, vault, cwdPadrao }: DepsDe
 
     // Terminal de conexão: o cliente do banco, direto, sem shell no meio.
     const config = vault.resolve(p.connectionId);
+    // Conexão que expõe `shell` (SSH, spec 054) não usa cliente de linha de
+    // comando: o terminal é um canal da conexão que já está aberta, e por isso
+    // nenhuma senha vai para linha de comando nem para arquivo temporário.
+    if (registry.get(config.type).kind === 'files') {
+      throw new Error(SEM_CLIENTE_USE_CANAL);
+    }
     const driver = registry.get(config.type);
     const secretos = registry.secretFields(config.type);
 

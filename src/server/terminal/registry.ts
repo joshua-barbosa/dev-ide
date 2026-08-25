@@ -7,6 +7,7 @@
 //   sozinhos — e, no caso do cliente de banco, com o arquivo de credencial
 //   ainda em disco.
 import { TerminalSession, type OpcoesDeSessao } from './session';
+import type { CanalDeTerminal } from './canal';
 
 /** Teto de terminais simultâneos. Não é limite de recurso, é rede de proteção. */
 const MAXIMO = 12;
@@ -22,7 +23,7 @@ const MAXIMO = 12;
 const PRAZO_DE_RECONEXAO_MS = 30_000;
 
 export class TerminalRegistry {
-  private readonly vivos = new Map<string, TerminalSession>();
+  private readonly vivos = new Map<string, CanalDeTerminal>();
   /** Sessões soltas, esperando o navegador voltar. */
   private readonly esperando = new Map<string, NodeJS.Timeout>();
 
@@ -35,7 +36,25 @@ export class TerminalRegistry {
     return this.vivos.size;
   }
 
-  abrir(id: string, opcoes: OpcoesDeSessao): TerminalSession {
+  abrir(id: string, opcoes: OpcoesDeSessao): CanalDeTerminal {
+    // A fábrica é passada, e não o objeto pronto: `registrar` confere id
+    // repetido e limite ANTES de criar. Criar primeiro faria um PTY nascer só
+    // para ser recusado — processo vazado a cada tentativa acima do teto.
+    return this.registrar(id, () => new TerminalSession(opcoes));
+  }
+
+  /**
+   * Registra um canal já pronto — o do SSH, que nasce assíncrono (spec 054).
+   *
+   * Separado de `abrir` porque abrir um canal remoto exige uma ida à rede, e
+   * `abrir` é síncrono desde a spec 017. Fundir os dois obrigaria o PTY local,
+   * que é imediato, a virar promessa por causa do outro.
+   */
+  abrirCanal(id: string, canal: CanalDeTerminal): CanalDeTerminal {
+    return this.registrar(id, () => canal);
+  }
+
+  private registrar(id: string, criar: () => CanalDeTerminal): CanalDeTerminal {
     if (this.vivos.has(id)) {
       throw new Error(`Já existe um terminal com o id "${id}".`);
     }
@@ -45,7 +64,7 @@ export class TerminalRegistry {
       );
     }
 
-    const sessao = new TerminalSession(opcoes);
+    const sessao = criar();
     this.vivos.set(id, sessao);
     // Sai do registro sozinho ao morrer, seja por `close` ou por conta própria.
     sessao.onExit(() => {
@@ -54,7 +73,7 @@ export class TerminalRegistry {
     return sessao;
   }
 
-  obter(id: string): TerminalSession | null {
+  obter(id: string): CanalDeTerminal | null {
     return this.vivos.get(id) ?? null;
   }
 
@@ -85,7 +104,7 @@ export class TerminalRegistry {
    * Devolve `null` quando não há — e aí quem chamou abre uma nova, que é o
    * comportamento certo depois de o prazo estourar.
    */
-  reatar(id: string): TerminalSession | null {
+  reatar(id: string): CanalDeTerminal | null {
     const timer = this.esperando.get(id);
     if (timer !== undefined) {
       clearTimeout(timer);

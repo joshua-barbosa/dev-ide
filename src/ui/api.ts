@@ -55,6 +55,8 @@ export interface DriverInfo {
   readonly fields: readonly FieldSpec[];
   /** Se o driver tem cliente de linha de comando (habilita "abrir no terminal"). */
   readonly hasCli: boolean;
+  /** Abre terminal — por cliente local ou por canal da própria conexão. */
+  readonly hasTerminal: boolean;
 }
 
 export interface Projeto {

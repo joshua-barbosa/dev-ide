@@ -55,6 +55,10 @@ test('fecharTodos não deixa processo vivo', async () => {
 
   assert.equal(reg.quantidade, 0);
   for (const pid of pids) {
+    // `pid` é nulo em canal remoto (spec 054) — ali o processo é da outra
+    // máquina. Neste teste todos são PTY local, então todos têm número.
+    assert.notEqual(pid, null);
+    if (pid === null) continue;
     assert.throws(() => process.kill(pid, 0), /ESRCH/, `processo ${pid} sobreviveu`);
   }
 });
@@ -68,6 +72,8 @@ async function comServidor(
   const server = http.createServer((_req, res) => res.end('ok'));
   montarSocketDeTerminal(server, {
     registry: reg,
+    // Nenhum teste daqui abre canal de conexão — só PTY local (spec 054).
+    abrirCanalDaConexao: () => Promise.reject(new Error('não usado neste teste')),
     resolverAbertura: async () => ({ comando: { ...SH, args: ['-c', 'echo PRONTO; sleep 5'] } }),
   });
 
@@ -203,6 +209,8 @@ test('erro na abertura vira mensagem, e não silêncio', async () => {
   const server = http.createServer((_req, res) => res.end('ok'));
   montarSocketDeTerminal(server, {
     registry: reg,
+    // Nenhum teste daqui abre canal de conexão — só PTY local (spec 054).
+    abrirCanalDaConexao: () => Promise.reject(new Error('não usado neste teste')),
     resolverAbertura: async () => ({ comando: { ...SH, exec: 'nao-existe-mesmo' } }),
   });
   server.listen(0, '127.0.0.1');

@@ -23,6 +23,7 @@ import { createLinguagemRouter } from './routes/linguagem';
 import { SnippetsStore } from './snippets';
 import { EstadoStore } from './estado';
 import { TerminalRegistry } from './terminal/registry';
+import { CanalSsh } from './terminal/canal-ssh';
 import { montarSocketDeTerminal } from './terminal/socket';
 import { montarSocketDoVigia } from './vigia-socket';
 import { criarResolvedorDeAbertura } from './terminal/abertura';
@@ -226,7 +227,24 @@ if (require.main === module) {
   });
 
   // O socket compartilha o servidor HTTP: mesma porta, mesma guarda de origem.
-  montarSocketDeTerminal(server, { registry: terminais, resolverAbertura });
+  montarSocketDeTerminal(server, {
+    registry: terminais,
+    resolverAbertura,
+    // O terminal de uma conexão que tem canal próprio (SSH, spec 054): abre um
+    // canal na sessão que já está autenticada, em vez de um processo local —
+    // e por isso nenhuma senha vai para linha de comando nem arquivo temporário.
+    abrirCanalDaConexao: async (pedido) => {
+      const p = (pedido ?? {}) as { connectionId?: unknown; cols?: unknown; rows?: unknown };
+      if (typeof p.connectionId !== 'string' || p.connectionId === '') {
+        throw new Error('Sem conexão para abrir o terminal.');
+      }
+      const sessao = await pool.acquire(p.connectionId);
+      if (sessao.shell === undefined) throw new Error('Esta conexão não tem terminal.');
+      const cols = typeof p.cols === 'number' && p.cols > 0 ? Math.trunc(p.cols) : 80;
+      const rows = typeof p.rows === 'number' && p.rows > 0 ? Math.trunc(p.rows) : 24;
+      return new CanalSsh(await sessao.shell.open({ cols, rows }));
+    },
+  });
   montarSocketDoVigia(server, estado);
 
   const sweeper = setInterval(() => {

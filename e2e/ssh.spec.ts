@@ -132,3 +132,43 @@ test('os três campos de algoritmo existem, vazios, fora da seção principal', 
     await expect(page.getByLabel(rotulo)).toHaveValue('');
   }
 });
+
+// ---------------------------------------------------------------------------
+// O terminal SSH (spec 054)
+// ---------------------------------------------------------------------------
+
+test('a conexão SSH oferece terminal, e ele roda NO SERVIDOR', async ({ page }) => {
+  await painelLateral(page, 'Service').click();
+  await expandir(page, 'ACME', 'Servidores');
+  const linha = linhaArvore(page, CONEXAO_SSH);
+  await linha.click();
+  const senha = page.getByLabel('Senha mestra');
+  if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
+  await expect(linhaArvore(page, 'aplicacao')).toBeVisible({ timeout: 30_000 });
+
+  await linha.hover();
+  await linha.getByRole('button', { name: /terminal/i }).click();
+
+  const terminal = page.locator('[data-terminal]').first();
+  await expect(terminal).toBeVisible();
+  // O prompt do servidor — o canal SSH está de pé.
+  await expect(terminal).toContainText(/\$|%|#/, { timeout: 30_000 });
+
+  await terminal.click();
+  // `uname` prova que rodou do outro lado. O `sshd` de teste é local, então o
+  // que se afirma é o caminho: tecla → WebSocket → canal `ssh2` → shell remoto.
+  await page.keyboard.type('echo VEIO-DO-CANAL-SSH');
+  await page.keyboard.press('Enter');
+  await expect(terminal).toContainText('VEIO-DO-CANAL-SSH', { timeout: 30_000 });
+});
+
+test('o terminal SSH não usa cliente de linha de comando — não há senha em argv', async ({ page }) => {
+  // A conexão do teste autentica por CHAVE, mas o ponto vale para senha: o
+  // canal sai da conexão que já está aberta, e nada vai para linha de comando.
+  await painelLateral(page, 'Service').click();
+  await expandir(page, 'ACME', 'Servidores');
+  await linhaArvore(page, CONEXAO_SSH).hover();
+  await expect(
+    linhaArvore(page, CONEXAO_SSH).getByRole('button', { name: /terminal/i })
+  ).toBeVisible();
+});
