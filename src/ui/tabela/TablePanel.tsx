@@ -5,7 +5,7 @@
 // auditáveis, e o que ensina quem quiser escrever a consulta na mão.
 //
 // Nada aqui escreve no banco. Editar célula é a fase F5.
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import InputBase from '@mui/material/InputBase';
 import MenuItem from '@mui/material/MenuItem';
@@ -15,6 +15,8 @@ import { Icon } from '../Icon';
 import { tokens } from '../theme';
 import { paraCsv, paraJson } from '../../shared/exportar';
 import { TAMANHOS_DE_PAGINA, type EstadoDaTabela } from './useTabela';
+import { useLarguras } from './useLarguras';
+import { larguraDoConteudo } from '../../shared/grade/larguras';
 import type { CellValue, TableColumn } from '../../shared/contracts';
 import { BarraDeRascunho } from './BarraDeRascunho';
 import { idDaLinha, type Rascunho } from './useRascunho';
@@ -28,8 +30,27 @@ import { idDaLinha, type Rascunho } from './useRascunho';
 // com a janela em 1920. O `minHeight: 0` já estava aqui desde a spec 041; o
 // irmão dele faltava.
 
-/** Largura máxima de coluna, para um BLOB não empurrar a tabela inteira. */
-const LARGURA_MAX = 420;
+/**
+ * Quanto um caractere ocupa na fonte da grade, para o duplo clique na alça.
+ *
+ * Medido, e não chutado: `0.6em` é a regra de bolso para monoespaçada, e a
+ * grade usa 12 px. Erro aqui só afeta o ajuste automático, que o usuário
+ * corrige arrastando.
+ */
+const POR_CARACTERE = 12 * 0.6;
+
+/**
+ * O tipo da coluna é desenhado numa fonte menor (10 px), e mede diferente.
+ *
+ * Sem contá-lo, a coluna `id` de uma tabela do MySQL nascia com 48 px — o
+ * mínimo — e escondia o próprio `bigint unsigned` e o campo `contém…`. A grade
+ * ficava tecnicamente correta e inútil naquela coluna.
+ */
+const POR_CARACTERE_DO_TIPO = 10 * 0.6;
+
+/** A coluna do número da linha e a da caixa de apagar: fixas, não se arrastam. */
+const LARGURA_DO_NUMERO = 44;
+const LARGURA_DA_MARCA = 30;
 
 /**
  * O SQL do topo, editável (spec 043).
@@ -38,6 +59,11 @@ const LARGURA_MAX = 420;
  * por aba de tabela custaria memória e um ciclo de montagem, e traria minimapa,
  * dobradura e lente de código para dentro de uma caixa de três linhas. Quem quer
  * editor completo abre uma query — que é um clique.
+ *
+ * Sem botão nenhum pendurado no canto (spec 062, fase B). O `▷` morava aqui, à
+ * direita de um campo que ocupa a largura da tela — ou seja, a mil e setecentos
+ * pixels do olho de quem acabou de editar o SQL na esquerda. Ele foi para a
+ * barra de comando, que é onde o olho já está.
  */
 function CampoDeSql({ estado }: { readonly estado: EstadoDaTabela }) {
   return (
@@ -69,16 +95,6 @@ function CampoDeSql({ estado }: { readonly estado: EstadoDaTabela }) {
           fontFamily: tokens.fontMono, fontSize: 11, lineHeight: 1.5,
         }}
       />
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-        <Acao icone="lucide:play" rotulo="Executar este SQL" onClick={estado.executarSql} />
-        {estado.modoLivre && (
-          <Acao
-            icone="lucide:corner-left-up"
-            rotulo="Voltar ao SQL da tabela"
-            onClick={estado.voltarParaTabela}
-          />
-        )}
-      </Box>
     </Box>
   );
 }
@@ -185,6 +201,7 @@ function BarraDeComando({
 
   return (
     <Box
+      data-barra-de-comando
       sx={{
         display: 'flex', alignItems: 'center', gap: 0.75, px: 1, py: 0.5,
         borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper',
@@ -210,6 +227,22 @@ function BarraDeComando({
       )}
       <Acao icone="lucide:file-down" rotulo="Exportar CSV" onClick={() => onExportar('csv')} />
       <Acao icone="lucide:braces" rotulo="Exportar JSON" onClick={() => onExportar('json')} />
+
+      {/* O atalho vai NO RÓTULO, e não só numa dica: quem lê o nome do botão
+          descobre que não precisa dele. */}
+      <Acao
+        icone="lucide:play"
+        rotulo="Executar este SQL (Ctrl+Enter)"
+        onClick={estado.executarSql}
+        cor="success.main"
+      />
+      {estado.modoLivre && (
+        <Acao
+          icone="lucide:corner-left-up"
+          rotulo="Voltar ao SQL da tabela"
+          onClick={estado.voltarParaTabela}
+        />
+      )}
 
       <Box sx={{ flex: 1 }} />
 
@@ -291,12 +324,14 @@ function Total({
 }
 
 function Acao({
-  icone, rotulo, onClick, desabilitada = false,
+  icone, rotulo, onClick, desabilitada = false, cor,
 }: {
   readonly icone: string;
   readonly rotulo: string;
   readonly onClick: () => void;
   readonly desabilitada?: boolean;
+  /** Destaque. Sem isto o botão herda a cor do texto e some entre os vizinhos. */
+  readonly cor?: string;
 }) {
   return (
     // `describeChild`: sem ele o MUI põe o `title` como `aria-label` TAMBÉM no
@@ -311,7 +346,7 @@ function Acao({
           disabled={desabilitada}
           onClick={onClick}
           sx={{
-            border: 0, bgcolor: 'transparent', color: 'inherit', p: 0.4, borderRadius: 0.5,
+            border: 0, bgcolor: 'transparent', color: cor ?? 'inherit', p: 0.4, borderRadius: 0.5,
             display: 'flex', cursor: desabilitada ? 'default' : 'pointer',
             opacity: desabilitada ? 0.35 : 1,
             '&:hover': { bgcolor: desabilitada ? 'transparent' : 'action.hover' },
@@ -334,26 +369,93 @@ function Grade({
   readonly motivoSemEdicao: string | null;
 }) {
   const editavel = rascunho !== undefined && motivoSemEdicao === null;
+  const larguras = useLarguras();
+
+  /**
+   * A largura com que cada coluna nasce: o que o conteúdo da PÁGINA pede, com
+   * teto. Recalculada quando a página muda, e não a cada repintura — são 500
+   * linhas vezes o número de colunas.
+   */
+  const automaticas = useMemo(
+    () =>
+      Object.fromEntries(
+        colunas.map((c, j) => [
+          c.name,
+          Math.max(
+            larguraDoConteudo([c.name, ...linhas.map((l) => String(l[j] ?? ''))], POR_CARACTERE),
+            larguraDoConteudo([c.type ?? ''], POR_CARACTERE_DO_TIPO)
+          ),
+        ])
+      ),
+    [colunas, linhas]
+  );
+  const larguraDe = (coluna: string): number =>
+    larguras.larguraDe(coluna) ?? automaticas[coluna] ?? 120;
+
+  // A largura TOTAL, somada aqui.
+  //
+  // `table-layout: fixed` não vale nada quando a largura da tabela é
+  // `auto` ou `max-content`: o navegador volta ao arranjo automático e
+  // dimensiona pelo conteúdo — foi assim que uma célula de 120 caracteres
+  // ficou com 902 px numa coluna declarada de 420. Com a soma explícita, o
+  // arranjo fixo entra em vigor e o `colgroup` passa a mandar.
+  const larguraTotal =
+    LARGURA_DO_NUMERO +
+    (editavel ? LARGURA_DA_MARCA : 0) +
+    colunas.reduce((soma, c) => soma + larguraDe(c.name), 0);
   return (
     <Box data-grade sx={{ flex: 1, overflow: 'auto', minHeight: 0, minWidth: 0 }}>
       <Box
         component="table"
         sx={{
-          borderCollapse: 'collapse', fontFamily: tokens.fontMono, fontSize: 12,
+          // `table-layout: fixed` (spec 062, fase C): sem ele o navegador
+          // redistribui as larguras sozinho a cada repintura, e arrastar UMA
+          // coluna mexeria em todas as outras.
+          borderCollapse: 'collapse', tableLayout: 'fixed', width: larguraTotal,
+          fontFamily: tokens.fontMono, fontSize: 12,
           '& th, & td': {
             borderRight: 1, borderBottom: 1, borderColor: 'divider', px: 1, py: '3px',
             textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap', maxWidth: LARGURA_MAX,
+            whiteSpace: 'nowrap',
           },
           '& thead th': { position: 'sticky', top: 0, bgcolor: 'background.paper', zIndex: 1 },
         }}
       >
+        {/* O `colgroup` é o que faz a largura valer (spec 062, fase C).
+            Com `table-layout: fixed` o navegador tira as larguras da PRIMEIRA
+            linha — mas só quando a tabela tem largura definida. Como a nossa é
+            `max-content`, o `width` posto no `th` não chegava às células: a
+            coluna continuava se dimensionando pelo conteúdo, e arrastar a alça
+            mexia no cabeçalho sem mexer no corpo. O `colgroup` declara a largura
+            da COLUNA, e não de uma célula, e vale para os dois. */}
+        <colgroup>
+          <col style={{ width: LARGURA_DO_NUMERO }} />
+          {editavel && <col style={{ width: LARGURA_DA_MARCA }} />}
+          {colunas.map((coluna) => (
+            <col key={coluna.name} style={{ width: larguraDe(coluna.name) }} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
             <Box component="th" sx={{ bgcolor: 'background.paper' }} />
             {editavel && <Box component="th" sx={{ bgcolor: 'background.paper' }} />}
-            {colunas.map((coluna) => (
-              <Cabecalho key={coluna.name} coluna={coluna} estado={estado} />
+            {colunas.map((coluna, j) => (
+              <Cabecalho
+                key={coluna.name}
+                coluna={coluna}
+                estado={estado}
+                largura={larguraDe(coluna.name)}
+                onArrastar={(x) => larguras.comecar(coluna.name, x, larguraDe(coluna.name))}
+                onAjustar={() =>
+                  larguras.ajustar(
+                    coluna.name,
+                    // O cabeçalho conta junto: uma coluna chamada
+                    // `data_de_atualizacao` com valores `1` precisa caber o nome.
+                    [coluna.name, ...linhas.map((l) => String(l[j] ?? ''))],
+                    POR_CARACTERE
+                  )
+                }
+              />
             ))}
           </tr>
         </thead>
@@ -414,10 +516,13 @@ function Grade({
 }
 
 function Cabecalho({
-  coluna, estado,
+  coluna, estado, largura, onArrastar, onAjustar,
 }: {
   readonly coluna: TableColumn;
   readonly estado: EstadoDaTabela;
+  readonly largura: number;
+  readonly onArrastar: (xInicial: number) => void;
+  readonly onAjustar: () => void;
 }) {
   const ordem = estado.ordenar?.coluna === coluna.name ? estado.ordenar : null;
   const seta = ordem === null ? '' : ordem.desc ? ' ▼' : ' ▲';
@@ -426,7 +531,15 @@ function Cabecalho({
   const estruturado = !estado.modoLivre;
 
   return (
-    <Box component="th" data-coluna={coluna.name} sx={{ verticalAlign: 'top' }}>
+    <Box
+      component="th"
+      data-coluna={coluna.name}
+      // `position: relative` para a alça poder se pendurar na borda direita.
+      // A LARGURA não vem daqui: vem do `colgroup`, que é quem o
+      // `table-layout: fixed` obedece. Este `width` fica como redundância
+      // barata para quem lê o DOM — e é o que o teste mede.
+      sx={{ verticalAlign: 'top', width: largura, position: 'relative' }}
+    >
       <Box
         component="button"
         type="button"
@@ -457,6 +570,12 @@ function Cabecalho({
 
       <Box sx={{ color: 'text.secondary', fontSize: 10, fontWeight: 400 }}>{coluna.type}</Box>
 
+      <Alca
+        coluna={coluna.name}
+        onArrastar={onArrastar}
+        onAjustar={onAjustar}
+      />
+
       {estruturado && (
       <InputBase
         value={estado.filtros[coluna.name] ?? ''}
@@ -465,11 +584,60 @@ function Cabecalho({
         inputProps={{ 'aria-label': `Filtrar ${coluna.name}` }}
         sx={{
           fontSize: 10, fontFamily: tokens.fontMono, border: 1, borderColor: 'divider',
-          borderRadius: 0.5, px: 0.5, py: 0, width: '100%', mt: 0.25, bgcolor: tokens.bgEditor,
+          borderRadius: 0.5, px: 0.5, py: 0, mt: 0.25, bgcolor: tokens.bgEditor,
+          // Não `100%`: os 8 px da direita são da alça, e um campo que passa
+          // por baixo dela rouba o arrasto de quem mira a borda.
+          width: 'calc(100% - 8px)',
         }}
       />
       )}
     </Box>
+  );
+}
+
+/**
+ * A alça de redimensionar, na borda direita do cabeçalho (spec 062, fase C).
+ *
+ * Seis pixels de largura, metade para cada lado da borda: uma alça de 1 px é
+ * impossível de pegar, e uma de 12 px rouba o clique de ordenar. A cor só
+ * aparece sob o mouse.
+ *
+ * É um `div`, e não um `button`: arrastar não é ativar, e um botão aqui
+ * apareceria na navegação por teclado prometendo algo que o teclado não faz.
+ * `aria-hidden` pelo mesmo motivo — quem usa leitor de tela não redimensiona
+ * coluna, e o dado está todo acessível sem isso.
+ */
+function Alca({
+  coluna, onArrastar, onAjustar,
+}: {
+  readonly coluna: string;
+  readonly onArrastar: (xInicial: number) => void;
+  readonly onAjustar: () => void;
+}) {
+  return (
+    <Box
+      aria-hidden
+      data-alca={coluna}
+      onMouseDown={(e: React.MouseEvent) => {
+        // `stopPropagation` para o clique não chegar ao botão de ordenar: quem
+        // pega a borda quer largura, não ordem.
+        e.preventDefault();
+        e.stopPropagation();
+        onArrastar(e.clientX);
+      }}
+      onDoubleClick={(e: React.MouseEvent) => {
+        e.stopPropagation();
+        onAjustar();
+      }}
+      sx={{
+        // DENTRO do cabeçalho, e não a cavalo na borda: o `th` tem
+        // `overflow: hidden` para as reticências, e o que passa da borda é
+        // recortado — a alça existia e não podia ser pega.
+        position: 'absolute', top: 0, right: 0, width: 8, height: '100%',
+        cursor: 'col-resize', zIndex: 2,
+        '&:hover': { bgcolor: 'primary.main' },
+      }}
+    />
   );
 }
 

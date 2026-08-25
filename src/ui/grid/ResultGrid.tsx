@@ -6,12 +6,17 @@
 //
 // Paridade apenas nesta servidor-1 — paginação, ordenação, busca e edição de célula
 // têm spec própria, e misturá-las aqui confundiria regressão com feature.
+import { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import type { CellValue, QueryResult } from '../../shared/contracts';
 import { tokens } from '../theme';
+import { useLarguras } from '../tabela/useLarguras';
+import { larguraDoConteudo } from '../../shared/grade/larguras';
 
-/** Largura máxima de coluna, para um BLOB não empurrar a tabela inteira. */
-const LARGURA_MAX = 420;
+/** Ver a nota da aba de tabela: estas duas não se arrastam. */
+const LARGURA_DO_NUMERO = 44;
+const POR_CARACTERE = 12 * 0.6;
+const POR_CARACTERE_DO_TIPO = 10 * 0.6;
 
 export interface ResultGridProps {
   readonly resultado: QueryResult | null;
@@ -21,6 +26,25 @@ export interface ResultGridProps {
 }
 
 export function ResultGrid({ resultado, erro = null, carregando = false, rotulo }: ResultGridProps) {
+  // Antes de qualquer `return`: gancho não pode viver depois de saída
+  // condicional, e as três abaixo são exatamente isso.
+  const larguras = useLarguras();
+  const automaticas = useMemo(() => {
+    const cols = resultado?.columns ?? [];
+    const rs = resultado?.rows ?? [];
+    return Object.fromEntries(
+      cols.map((c, j) => [
+        c.name,
+        Math.max(
+          larguraDoConteudo([c.name, ...rs.map((l) => String(l[j] ?? ''))], POR_CARACTERE),
+          larguraDoConteudo([c.type ?? ''], POR_CARACTERE_DO_TIPO)
+        ),
+      ])
+    );
+  }, [resultado]);
+  const larguraDe = (coluna: string): number =>
+    larguras.larguraDe(coluna) ?? automaticas[coluna] ?? 120;
+
   if (carregando) return <Mensagem texto="executando…" />;
   if (erro !== null) return <Mensagem texto={erro} erro />;
   if (resultado === null) return <Mensagem texto="Execute uma consulta para ver o resultado." />;
@@ -71,7 +95,14 @@ export function ResultGrid({ resultado, erro = null, carregando = false, rotulo 
           <Box
             component="table"
             sx={{
+              // A mesma decisão da aba de tabela (spec 062, fase C): arranjo
+              // fixo com largura somada, porque `fixed` com largura automática
+              // não vale nada. E o teto de 420 virou largura INICIAL.
               borderCollapse: 'collapse',
+              tableLayout: 'fixed',
+              width:
+                LARGURA_DO_NUMERO +
+                columns.reduce((soma, c) => soma + larguraDe(c.name), 0),
               fontFamily: tokens.fontMono,
               fontSize: 12,
               '& th, & td': {
@@ -84,7 +115,6 @@ export function ResultGrid({ resultado, erro = null, carregando = false, rotulo 
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
-                maxWidth: LARGURA_MAX,
               },
               '& thead th': {
                 position: 'sticky',
@@ -94,18 +124,51 @@ export function ResultGrid({ resultado, erro = null, carregando = false, rotulo 
               },
             }}
           >
+            <colgroup>
+              <col style={{ width: LARGURA_DO_NUMERO }} />
+              {columns.map((coluna, i) => (
+                <col key={`${coluna.name}-${i}`} style={{ width: larguraDe(coluna.name) }} />
+              ))}
+            </colgroup>
             <thead>
               <tr>
                 <Box component="th" sx={{ bgcolor: 'background.paper' }} />
                 {columns.map((coluna, i) => (
-                  <th key={`${coluna.name}-${i}`}>
+                  <Box
+                    component="th"
+                    key={`${coluna.name}-${i}`}
+                    data-coluna={coluna.name}
+                    sx={{ position: 'relative' }}
+                  >
                     <Box>{coluna.name}</Box>
                     {coluna.type !== undefined && (
                       <Box sx={{ color: 'text.secondary', fontSize: 10, fontWeight: 400 }}>
                         {coluna.type}
                       </Box>
                     )}
-                  </th>
+                    <Box
+                      aria-hidden
+                      data-alca={coluna.name}
+                      onMouseDown={(e: React.MouseEvent) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        larguras.comecar(coluna.name, e.clientX, larguraDe(coluna.name));
+                      }}
+                      onDoubleClick={(e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        larguras.ajustar(
+                          coluna.name,
+                          [coluna.name, ...rows.map((l) => String(l[i] ?? ''))],
+                          POR_CARACTERE
+                        );
+                      }}
+                      sx={{
+                        position: 'absolute', top: 0, right: 0, width: 8, height: '100%',
+                        cursor: 'col-resize', zIndex: 2,
+                        '&:hover': { bgcolor: 'primary.main' },
+                      }}
+                    />
+                  </Box>
                 ))}
               </tr>
             </thead>
