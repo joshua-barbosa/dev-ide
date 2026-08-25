@@ -23,7 +23,7 @@ import type {
   TableWriteResult,
   TreeNode,
 } from '../shared/contracts';
-import type { DriverPanel, ConnectionKind, FieldSpec } from '../shared/contracts';
+import type { DriverPanel, ConnectionKind, FieldSpec, RemoteEntry } from '../shared/contracts';
 import type { PatchDePreferencias, Preferencias } from '../shared/prefs';
 import type { ArquivoDeQuery, Vinculo } from '../shared/sql/vinculo';
 import type {
@@ -282,6 +282,11 @@ export const Api = {
     request<{ path: string; content: string; bytes: number }>(
       'GET',
       `${conexoes}/${id}/files?path=${encodeURIComponent(caminho)}`
+    ),
+  listarRemoto: (id: string, caminho: string) =>
+    request<readonly RemoteEntry[]>(
+      'GET',
+      `${conexoes}/${id}/files/list?path=${encodeURIComponent(caminho)}`
     ),
   gravarArquivoRemoto: (id: string, caminho: string, conteudo: string) =>
     request<{ path: string; bytes: number }>('POST', `${conexoes}/${id}/files`, {

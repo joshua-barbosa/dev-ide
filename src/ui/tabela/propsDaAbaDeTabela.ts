@@ -84,6 +84,15 @@ return {
     // Sem caminho não há o que lembrar: um caderno vive em arquivo, sempre.
     if (caminho !== null) void vinculos.trocar(caminho).catch(onErro);
   },
+  // O que a aba de SERVIDOR precisa (spec 055).
+  capacidadesDe: (conexaoId: string) => conexoes.capacidadesDe(conexaoId),
+  onAbrirArquivoRemoto: ws.abrirArquivoRemoto,
+  onAbrirTerminalDoServidor: (t: Tab) => {
+    const meta = t.meta as { connectionId?: string; label?: string };
+    if (meta.connectionId !== undefined) {
+      ws.abrirTerminal(meta.connectionId, meta.label ?? t.title);
+    }
+  },
   conexaoSomenteLeitura: (t: Tab) =>
     conexoes.acharConexao((t.meta as { connectionId?: string }).connectionId)?.readOnly === true,
 };

@@ -32,6 +32,8 @@ function capabilities(session: Session) {
     shell: session.shell !== undefined,
     monitor: session.monitor !== undefined,
     forwarding: session.forwarding !== undefined,
+    // Onde a tabela SFTP abre (spec 055). `/` para quem não disser nada.
+    rootPath: session.rootPath ?? '/',
   };
 }
 

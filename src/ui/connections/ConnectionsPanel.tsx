@@ -18,6 +18,8 @@ export interface ConnectionsPanelProps {
   readonly painel: DriverPanel;
   /** Abre um arquivo que mora no servidor (spec 053). */
   onAbrirArquivoRemoto(conexaoId: string, caminho: string): Promise<void>;
+  /** Abre a aba do servidor, com as sub-abas (spec 055). */
+  onAbrirServidor(conexao: PublicConnection): void;
   /** As ações de passar o mouse num nó remoto (spec 053). */
   acoesRemotas: {
     favoritar(conexaoId: string, remoto: NoRemotoDaLinha): Promise<void>;
@@ -159,6 +161,7 @@ export function ConnectionsPanel({
   onAbrirTabela,
   onAbrirArquivoDeQuery,
   onAbrirArquivoRemoto,
+  onAbrirServidor,
   acoesRemotas,
   somenteLeitura,
   onNovaQuery,
@@ -246,7 +249,13 @@ export function ConnectionsPanel({
                     ? // Arquivo do SERVIDOR (spec 053): um clique abre, como na
                       // árvore de arquivos local. Não há query para montar aqui.
                       comErro(() => onAbrirArquivoRemoto(id, String(no.meta?.remotePath)))
-                    : () => onAbrirQuery(id, no, bancoAqui)
+                    : no.meta?.atalho !== undefined
+                      ? // `Users` e `Favorites` são atalhos da própria IDE
+                        // (spec 052): não são objeto de banco, e clicar neles
+                        // chegou a abrir `SELECT * FROM Favorites` — visto no
+                        // navegador.
+                        comErro(() => ctrl.alternarNo(id, filho, no))
+                      : () => onAbrirQuery(id, no, bancoAqui)
             }
             // O duplo clique continua abrindo a QUERY, como desde a spec 009.
             // Chegou a abrir a aba de tabela durante a spec 041, e foi um passo
@@ -254,7 +263,9 @@ export function ConnectionsPanel({
             // da linha, não o duplo clique. Trocar um gesto que ele já tem na
             // mão precisa ser decisão dele, não efeito colateral.
             onDoubleClick={
-              no.meta?.arquivoDeQuery === true || typeof no.meta?.remotePath === 'string'
+              no.meta?.arquivoDeQuery === true ||
+              typeof no.meta?.remotePath === 'string' ||
+              no.meta?.atalho !== undefined
                 ? undefined
                 : () => onAbrirQuery(id, no, bancoAqui)
             }
@@ -390,6 +401,18 @@ export function ConnectionsPanel({
                 onClick={comErro(() => ctrl.recarregarMetadados(conexao.id))}
               />
               {/* Só aparece onde o driver declara cliente — SQLite não tem. */}
+              {/*
+                A aba do SERVIDOR (spec 055): SFTP em tabela e o que mais a
+                sessão souber. Só onde há arquivos remotos — num banco a aba
+                não teria nada dentro.
+              */}
+              {driver?.kind === 'files' && (
+                <AcaoDaLinha
+                  icone="lucide:server"
+                  rotulo={`Abrir ${conexao.label} numa aba`}
+                  onClick={() => onAbrirServidor(conexao)}
+                />
+              )}
               {driver?.hasTerminal === true && (
                 <AcaoDaLinha
                   icone="lucide:square-terminal"

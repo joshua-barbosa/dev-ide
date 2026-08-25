@@ -33,6 +33,8 @@ export interface AbasDeDados {
   abrirTerminal(connectionId: string | null, titulo: string): void;
   /** A lista de processos de uma conexão (spec 047). */
   abrirProcessos(connectionId: string, titulo: string): void;
+  /** A aba de um SERVIDOR, com as sub-abas que ele sabe oferecer (spec 055). */
+  abrirServidor(connectionId: string, titulo: string): void;
 }
 
 export function useAbasDeDados(store: TabStore, salvarGrupoFocado: () => void): AbasDeDados {
@@ -146,6 +148,23 @@ export function useAbasDeDados(store: TabStore, salvarGrupoFocado: () => void): 
   );
 
 
+  const abrirServidor = useCallback(
+    (connectionId: string, titulo: string) => {
+      salvarGrupoFocado();
+      // Uma aba por servidor: reabrir foca a existente. Duplicar daria duas
+      // sub-abas de SFTP na mesma conexão, cada uma numa pasta diferente — e o
+      // usuário não teria como saber qual é qual.
+      store.open({
+        id: `servidor:${connectionId}`,
+        type: 'servidor',
+        title: titulo,
+        icon: 'lucide:server',
+        meta: { connectionId, label: titulo },
+      });
+    },
+    [salvarGrupoFocado, store]
+  );
+
   const abrirProcessos = useCallback(
     (connectionId: string, titulo: string) => {
       salvarGrupoFocado();
@@ -163,5 +182,6 @@ export function useAbasDeDados(store: TabStore, salvarGrupoFocado: () => void): 
 
   return {
     abrirQuery, abrirTexto, abrirTabela, abrirFormulario, abrirTerminal, abrirProcessos,
+    abrirServidor,
   };
 }

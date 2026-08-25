@@ -18,11 +18,13 @@ import { ResultGrid } from './grid/ResultGrid';
 import { TabelaHost } from './tabela/TabelaHost';
 import { ProcessosHost } from './processos/ProcessosHost';
 import { CadernoHost } from './caderno/CadernoHost';
+import { ServidorHost } from './servidor/ServidorHost';
 import type { QuickInputController } from './useQuickInput';
 import { MarkdownPreview } from './editor/MarkdownPreview';
 import { tokens } from './theme';
 import type { Tab } from '../shared/tabs';
 import type { NomeDoTema } from '../shared/temas';
+import type { SessionCapabilities } from '../shared/contracts';
 import type { Vinculo } from '../shared/sql/vinculo';
 import type { Snippet } from '../shared/snippets';
 import type { EstadoGrade } from './useExecution';
@@ -48,6 +50,10 @@ export interface EditorGroupProps {
   readonly onMudarCaderno: (id: string, conteudo: string) => void;
   /** Roda um bloco de caderno no runner (spec 051). */
   readonly onRodarCodigoDoBloco: (linguagem: string, codigo: string) => Promise<void>;
+  /** O que a aba de servidor precisa (spec 055). */
+  readonly capacidadesDe: (conexaoId: string) => SessionCapabilities | null;
+  readonly onAbrirArquivoRemoto: (conexaoId: string, caminho: string) => Promise<void>;
+  readonly onAbrirTerminalDoServidor: (aba: Tab) => void;
   /** Pergunta a linguagem de um bloco (spec 051). */
   readonly onPedirLinguagem: (atual: string) => Promise<string | null>;
   /** Contra quem um caderno roda, e como trocar (spec 051). */
@@ -101,6 +107,7 @@ export function EditorGroup({
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
   onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
   qi, abrirComando, onErroDaTabela, onMudarCaderno, onRodarBloco,
+  capacidadesDe, onAbrirArquivoRemoto, onAbrirTerminalDoServidor,
   onRodarCodigoDoBloco, onPedirLinguagem, vinculoDoCaderno, onTrocarVinculoDoCaderno,
 }: EditorGroupProps) {
   const caixa = useRef<HTMLDivElement>(null);
@@ -160,7 +167,9 @@ export function EditorGroup({
     !semAbas &&
     ativa !== null &&
     !mostrandoPreview &&
-    !['grid', 'conexao', 'terminal', 'tabela', 'processos', 'caderno'].includes(ativa.type);
+    !['grid', 'conexao', 'terminal', 'tabela', 'processos', 'caderno', 'servidor'].includes(
+      ativa.type
+    );
 
   return (
     <Box
@@ -310,6 +319,34 @@ export function EditorGroup({
         ))}
 
       {ativa?.type === 'conexao' && formulario}
+
+      {/*
+        A aba de servidor (spec 055). Como todas as outras, ela é escondida com
+        `display: none` e não desmontada: dentro dela há a pasta em que o
+        usuário estava no SFTP.
+      */}
+      {abas
+        .filter((t) => t.type === 'servidor')
+        .map((t) => (
+          <Box
+            key={t.id}
+            sx={{
+              flex: 1, minHeight: 0,
+              display: ativa?.id === t.id ? 'flex' : 'none',
+              flexDirection: 'column',
+            }}
+          >
+            <ServidorHost
+              conexaoId={String((t.meta as { connectionId?: string }).connectionId ?? '')}
+              rotulo={t.title}
+              capacidades={capacidadesDe(String((t.meta as { connectionId?: string }).connectionId ?? ''))}
+              somenteLeitura={conexaoSomenteLeitura(t)}
+              onAbrirArquivo={onAbrirArquivoRemoto}
+              onAbrirTerminal={() => onAbrirTerminalDoServidor(t)}
+              onErro={onErroDaTabela}
+            />
+          </Box>
+        ))}
 
       {semAbas && (
         <Box

@@ -384,6 +384,24 @@ export interface VaultState {
 }
 
 /** O que a rota de conectar devolve; a UI liga as abas conforme o que existir. */
+/**
+ * Uma entrada de diretório remoto, como a tela a vê (spec 055).
+ *
+ * O servidor tem a sua em `connections/types.ts`, com os campos que só ele usa.
+ * Esta é a parte que atravessa a API — e ela mora aqui porque a tabela SFTP e a
+ * árvore lateral precisam do mesmo tipo.
+ */
+export interface RemoteEntry {
+  readonly name: string;
+  readonly path: string;
+  readonly kind: 'file' | 'folder' | 'link';
+  readonly size: number | null;
+  readonly modifiedAt: number | null;
+  readonly owner?: string;
+  readonly mode?: string;
+  readonly executable?: boolean;
+}
+
 export interface SessionCapabilities {
   readonly kind: ConnectionKind;
   readonly execute: boolean;
@@ -391,6 +409,8 @@ export interface SessionCapabilities {
   readonly shell: boolean;
   readonly monitor: boolean;
   readonly forwarding: boolean;
+  /** Onde a navegação de arquivos começa. `/` quando a sessão não diz. */
+  readonly rootPath: string;
 }
 
 export interface ConnectionsState {

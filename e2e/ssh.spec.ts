@@ -172,3 +172,20 @@ test('o terminal SSH não usa cliente de linha de comando — não há senha em 
     linhaArvore(page, CONEXAO_SSH).getByRole('button', { name: /terminal/i })
   ).toBeVisible();
 });
+
+test('clicar num ATALHO não abre query — ele não é objeto de banco', async ({ page }) => {
+  // `Favorites` vazio chegou a abrir `SELECT * FROM Favorites LIMIT 100`: sem
+  // filhos, o clique caía no caminho de folha, que é o do banco. Visto no
+  // navegador (spec 055).
+  await painelLateral(page, 'Service').click();
+  await expandir(page, 'ACME', 'Servidores');
+  await linhaArvore(page, CONEXAO_SSH).click();
+  const senha = page.getByLabel('Senha mestra');
+  if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
+  await expect(linhaArvore(page, 'Favorites')).toBeVisible({ timeout: 30_000 });
+
+  await linhaArvore(page, 'Favorites').click();
+  await expect(page.locator('[data-tab="Favorites.sql"]')).toHaveCount(0);
+  // Ele ABRE, e mostra que está vazio — em vez de não responder.
+  await expect(page.getByText('(vazio)')).toBeVisible();
+});

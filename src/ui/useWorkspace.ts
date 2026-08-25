@@ -131,6 +131,8 @@ export interface Workspace {
   abrirTerminal(connectionId: string | null, titulo: string): void;
   /** A lista de processos de uma conexão (spec 047). */
   abrirProcessos(connectionId: string, titulo: string): void;
+  /** A aba de um SERVIDOR, com as sub-abas que ele sabe oferecer (spec 055). */
+  abrirServidor(connectionId: string, titulo: string): void;
   /**
    * A aba de uma TABELA (spec 041), com página, ordenação e filtros próprios.
    *
@@ -750,6 +752,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     abrirFormulario: dados.abrirFormulario,
     abrirTerminal: dados.abrirTerminal,
     abrirProcessos: dados.abrirProcessos,
+    abrirServidor: dados.abrirServidor,
     abrirTabela: dados.abrirTabela,
     abrirSemTitulo,
     mudarCaderno,

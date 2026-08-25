@@ -125,6 +125,7 @@ const ICONES_DA_INTERFACE = [
   // inteiro — senão selecionar texto com o mouse viraria um arraste.
   'lucide:grip-vertical',
   // A árvore remota (spec 053): baixar, e a estrela cheia/vazia do favorito.
+  'lucide:chevrons-up-down',
   'lucide:download',
   'lucide:key-round',
   // A aba de tabela (spec 041): abrir a tabela, e exportar a página em dois

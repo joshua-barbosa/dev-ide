@@ -555,6 +555,15 @@ export function App() {
             ctrl: conexoes,
             onAbrirQuery: conexoesAcoes.abrirQueryDoNo,
             onAbrirArquivoRemoto: ws.abrirArquivoRemoto,
+            onAbrirServidor: (conexao: PublicConnection) => {
+              // Conecta ANTES de abrir a aba quando ainda não há sessão: sem
+              // isto a aba nascia dizendo "Conectando…" para sempre, porque
+              // ninguém chegava a conectar. Visto no navegador.
+              if (conexoes.capacidadesDe(conexao.id) === null) {
+                avisar(conexoes.abrirConexao(conexao));
+              }
+              ws.abrirServidor(conexao.id, conexao.label);
+            },
             acoesRemotas,
             somenteLeitura: (id: string) => conexoes.acharConexao(id)?.readOnly === true,
             onNovaConexao: (grupo?: string) => conexoesAcoes.abrirFormulario(null, grupo),

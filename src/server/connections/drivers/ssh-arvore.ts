@@ -117,7 +117,10 @@ export function nosDeAtalho(quantosUsuarios: number, quantosFavoritos: number): 
       label: 'Users',
       icon: 'folder',
       detail: String(quantosUsuarios),
-      hasChildren: quantosUsuarios > 0,
+      // Sempre expansível, mesmo vazio: um atalho que não abre parece defeito,
+      // e "(vazio)" é a resposta honesta. Vazio também era o que fazia o clique
+      // cair no caminho de folha e abrir uma QUERY — visto no navegador.
+      hasChildren: true,
       meta: { atalho: NO_USERS },
     },
     {
@@ -126,7 +129,7 @@ export function nosDeAtalho(quantosUsuarios: number, quantosFavoritos: number): 
       icon: 'key',
       // Zero aparece: um `Favorites` sem número pareceria não ter carregado.
       detail: String(quantosFavoritos),
-      hasChildren: quantosFavoritos > 0,
+      hasChildren: true,
       meta: { atalho: NO_FAVORITES },
     },
   ];

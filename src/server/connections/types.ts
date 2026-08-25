@@ -285,6 +285,14 @@ export interface Session {
    * script, por exemplo (spec 053).
    */
   readonly somenteLeitura?: boolean;
+  /**
+   * Onde a navegação de arquivos COMEÇA (spec 055).
+   *
+   * A árvore lateral já sabia disso porque o driver monta os nós; a tabela
+   * SFTP não sabia, e abria em `/` — que num servidor com raiz configurada é
+   * outro lugar, e num com `Prender na raiz` seria recusado.
+   */
+  readonly rootPath?: string;
   readonly files?: RemoteFiles;
   readonly shell?: RemoteShell;
   readonly monitor?: HostMonitor;

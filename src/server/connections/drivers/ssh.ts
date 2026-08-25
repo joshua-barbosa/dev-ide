@@ -122,6 +122,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     exec: (comando) => cliente.executar(comando),
     shell: criarShellRemoto(cliente.bruto(), ssh.shell),
     somenteLeitura: config.readOnly,
+    rootPath: ssh.rootPath,
     // O que a árvore mostra ao lado do nome da conexão (AC-11).
     describe: async () => retrato.distribuicao,
     onClosed: cliente.aoFechar,

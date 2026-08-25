@@ -6,6 +6,7 @@
 // então não há como uma confundir a outra.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  SessionCapabilities,
   ConnectionInput, ConnectionsState, GroupNode, PublicConnection, TreeNode,
 } from '../../shared/contracts';
 import { gruposExistentes } from '../../shared/connections/form';
@@ -100,6 +101,8 @@ export interface ConnectionsController {
   chaveDe(id: string, caminho: readonly string[]): string;
   /** O que o servidor respondeu sobre si — a distro, no caso do SSH. */
   descricaoDe(id: string): string | null;
+  /** O que a sessão sabe fazer — é o que liga as sub-abas do servidor. */
+  capacidadesDe(id: string): SessionCapabilities | null;
 }
 
 /** Mesma injeção do workspace: quem desenha o diálogo é o App. */
@@ -269,6 +272,9 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
   );
 
   const [descricoes, setDescricoes] = useState<ReadonlyMap<string, string>>(new Map());
+  const [capacidades, setCapacidades] = useState<ReadonlyMap<string, SessionCapabilities>>(
+    new Map()
+  );
 
   const abrirConexao = useCallback(
     async (conexao: PublicConnection) => {
@@ -281,7 +287,8 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
 
       setExpandidos((atual) => marcar(atual, chave, true));
       try {
-        await Api.connect(conexao.id);
+        const caps = await Api.connect(conexao.id);
+        setCapacidades((atual) => new Map(atual).set(conexao.id, caps));
         await buscarFilhos(conexao.id, []);
         await recarregar(); // atualiza openIds, que marca a conexão como viva
         // A descrição vem DEPOIS e sem travar a árvore: ela é enfeite útil, e
@@ -478,10 +485,11 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
       garantirDestrancado,
       chaveDe,
       descricaoDe: (id: string) => descricoes.get(id) ?? null,
+      capacidadesDe: (id: string) => capacidades.get(id) ?? null,
     }),
     [
       abrirConexao, acharConexao, alternarGrupo, alternarNo, cancelarSenha, carregando, criarCofre,
-      desconectar, descricoes, destrancar, drivers, erro, estado, excluir, expandidos, filhos,
+      capacidades, desconectar, descricoes, destrancar, drivers, erro, estado, excluir, expandidos, filhos,
       garantirDestrancado,
       grupos, pedidoDeSenha, recarregar, recarregarMetadados, responderSenha,
       salvarConexao, todasAsConexoes, trancar,

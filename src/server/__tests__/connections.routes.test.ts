@@ -174,6 +174,10 @@ test('rotas de conexão', async (t) => {
       shell: false,
       monitor: false,
       forwarding: false,
+      // Onde a tabela SFTP abre (spec 055). Quem não navega arquivos manda `/`
+      // e ninguém olha — mas o campo existe para não haver dois formatos de
+      // resposta.
+      rootPath: '/',
     });
   });
 
