@@ -28,7 +28,14 @@ export function ResultGrid({ resultado, erro = null, carregando = false, rotulo 
   const { columns, rows, rowCount, durationMs, truncated, message } = resultado;
 
   return (
-    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, bgcolor: tokens.bgEditor }}>
+    // `minWidth: 0` pelo mesmo motivo da aba de tabela — ver a nota na spec 062.
+    <Box
+      data-grade-de-resultado
+      sx={{
+        flex: 1, display: 'flex', flexDirection: 'column',
+        minHeight: 0, minWidth: 0, bgcolor: tokens.bgEditor,
+      }}
+    >
       <Box
         sx={{
           display: 'flex',
@@ -60,7 +67,7 @@ export function ResultGrid({ resultado, erro = null, carregando = false, rotulo 
       {columns.length === 0 ? (
         <Mensagem texto={message ?? 'Comando executado.'} />
       ) : (
-        <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        <Box data-grade sx={{ flex: 1, overflow: 'auto', minHeight: 0, minWidth: 0 }}>
           <Box
             component="table"
             sx={{

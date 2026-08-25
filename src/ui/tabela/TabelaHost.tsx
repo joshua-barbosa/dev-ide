@@ -121,13 +121,13 @@ export function TabelaHost({
   };
 
   return (
-    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
       <SubAbas ativa={subAba} onTrocar={setSubAba} />
 
       {/* As duas ficam MONTADAS: trocar de sub-aba não pode custar outra ida ao
           banco nem apagar página, filtros e rascunho. É a regra constitucional
           do editor e do terminal, aplicada aqui. */}
-      <Box sx={{ flex: 1, minHeight: 0, display: subAba === 'dados' ? 'flex' : 'none' }}>
+      <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, display: subAba === 'dados' ? 'flex' : 'none' }}>
         <TablePanel
       estado={estado}
       titulo={aba.title}
@@ -139,7 +139,7 @@ export function TabelaHost({
         />
       </Box>
 
-      <Box sx={{ flex: 1, minHeight: 0, display: subAba === 'estrutura' ? 'flex' : 'none' }}>
+      <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, display: subAba === 'estrutura' ? 'flex' : 'none' }}>
         <EstruturaPanel
           estrutura={estrutura.estrutura}
           carregando={estrutura.carregando}

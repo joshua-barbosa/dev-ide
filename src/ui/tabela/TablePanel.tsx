@@ -19,6 +19,15 @@ import type { CellValue, TableColumn } from '../../shared/contracts';
 import { BarraDeRascunho } from './BarraDeRascunho';
 import { idDaLinha, type Rascunho } from './useRascunho';
 
+// `minWidth: 0` NÃO é enfeite (spec 062).
+//
+// Coluna flex nasce com `min-width: auto`, o que a faz crescer até o
+// min-content do filho mais largo em vez de deixá-lo rolar. Com uma tabela de
+// 1796 px dentro de uma aba de 1677, o painel inteiro virava 1806 e transbordava
+// para FORA da tela — levando junto o botão de executar, que ficava em x=2021
+// com a janela em 1920. O `minHeight: 0` já estava aqui desde a spec 041; o
+// irmão dele faltava.
+
 /** Largura máxima de coluna, para um BLOB não empurrar a tabela inteira. */
 const LARGURA_MAX = 420;
 
@@ -118,7 +127,13 @@ export function TablePanel({
   };
 
   return (
-    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, bgcolor: tokens.bgEditor }}>
+    <Box
+      data-aba-de-tabela
+      sx={{
+        flex: 1, display: 'flex', flexDirection: 'column',
+        minHeight: 0, minWidth: 0, bgcolor: tokens.bgEditor,
+      }}
+    >
       <CampoDeSql estado={estado} />
 
       <BarraDeComando
@@ -320,7 +335,7 @@ function Grade({
 }) {
   const editavel = rascunho !== undefined && motivoSemEdicao === null;
   return (
-    <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+    <Box data-grade sx={{ flex: 1, overflow: 'auto', minHeight: 0, minWidth: 0 }}>
       <Box
         component="table"
         sx={{
