@@ -129,6 +129,8 @@ const ICONES_DA_INTERFACE = [
   'lucide:grip-vertical',
   // A árvore remota (spec 053): baixar, e a estrela cheia/vazia do favorito.
   'lucide:chevrons-up-down',
+  'lucide:code',
+  'lucide:zap',
   'lucide:download',
   'lucide:key-round',
   // A aba de tabela (spec 041): abrir a tabela, e exportar a página em dois

@@ -13,7 +13,7 @@ import Box from '@mui/material/Box';
 import { TabBar } from './tabs/TabBar';
 import { ZonaDeSoltura } from './ZonaDeSoltura';
 import { EditorHost, type EditorHandle } from './editor/EditorHost';
-import { TerminalHost } from './terminal/TerminalHost';
+import { AbaDeTerminal } from './terminal/AbaDeTerminal';
 import { ResultGrid } from './grid/ResultGrid';
 import { TabelaHost } from './tabela/TabelaHost';
 import { ProcessosHost } from './processos/ProcessosHost';
@@ -54,6 +54,13 @@ export interface EditorGroupProps {
   readonly capacidadesDe: (conexaoId: string) => SessionCapabilities | null;
   readonly onAbrirArquivoRemoto: (conexaoId: string, caminho: string) => Promise<void>;
   readonly onAbrirTerminalDoServidor: (aba: Tab) => void;
+  /** Abre outro terminal da mesma conexão (spec 058). */
+  readonly onDuplicarTerminal: (aba: Tab) => void;
+  readonly onConfirmarSnippet: (o: {
+    mensagem: string;
+    rotuloConfirmar?: string;
+    destrutivo?: boolean;
+  }) => Promise<boolean>;
   /** Pergunta a linguagem de um bloco (spec 051). */
   readonly onPedirLinguagem: (atual: string) => Promise<string | null>;
   /** Contra quem um caderno roda, e como trocar (spec 051). */
@@ -108,6 +115,7 @@ export function EditorGroup({
   onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
   qi, abrirComando, onErroDaTabela, onMudarCaderno, onRodarBloco,
   capacidadesDe, onAbrirArquivoRemoto, onAbrirTerminalDoServidor,
+  onDuplicarTerminal, onConfirmarSnippet,
   onRodarCodigoDoBloco, onPedirLinguagem, vinculoDoCaderno, onTrocarVinculoDoCaderno,
 }: EditorGroupProps) {
   const caixa = useRef<HTMLDivElement>(null);
@@ -307,13 +315,20 @@ export function EditorGroup({
         .map((t) => (
           <Box
             key={t.id}
-            sx={{ flex: 1, minHeight: 0, display: ativaId === t.id ? 'flex' : 'none' }}
+            sx={{
+              flex: 1, minHeight: 0, flexDirection: 'column',
+              display: ativaId === t.id ? 'flex' : 'none',
+            }}
           >
-            <TerminalHost
+            <AbaDeTerminal
+              aba={t}
               ativo={ativaId === t.id}
               fontSize={terminalFontSize}
               tema={tema}
-              connectionId={typeof t.meta.connectionId === 'string' ? t.meta.connectionId : null}
+              onDuplicar={onDuplicarTerminal}
+              pedir={(o) => qi.pedir(o)}
+              confirmar={onConfirmarSnippet}
+              onErro={onErroDaTabela}
             />
           </Box>
         ))}

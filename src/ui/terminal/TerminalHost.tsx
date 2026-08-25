@@ -47,6 +47,14 @@ export interface TerminalHostProps {
    */
   readonly comandoInicial?: string | null;
   /**
+   * Um comando para enviar AGORA — o snippet da barra (spec 058).
+   *
+   * É um objeto com id porque o gatilho é a MUDANÇA: enviar o mesmo texto duas
+   * vezes é um caso legítimo (rodar o mesmo snippet de novo), e comparar só o
+   * texto engoliria a segunda vez.
+   */
+  readonly comandoParaEnviar?: { readonly id: number; readonly texto: string } | null;
+  /**
    * Id da sessão, escolhido pelo cliente (spec 023).
    *
    * É o que permite reatar o mesmo processo depois de um F5: o servidor não tem
@@ -69,7 +77,7 @@ function coresDoTerminal(nome: NomeDoTema): ITheme {
 
 export function TerminalHost({
   connectionId = null, ativo = true, onFim, fontSize = 13, tema = 'escuro',
-  comandoInicial = null, sessaoId,
+  comandoInicial = null, comandoParaEnviar = null, sessaoId,
 }: TerminalHostProps) {
   const caixa = useRef<HTMLDivElement>(null);
   const aoFim = useRef(onFim);
@@ -84,6 +92,7 @@ export function TerminalHost({
   const temaAtual = useRef(tema);
   temaAtual.current = tema;
   const comandoPendente = useRef(comandoInicial);
+  const enviarRef = useRef<((msg: unknown) => void) | null>(null);
   const reconectado = useRef(false);
   const emUso = useRef<{
     term: Terminal;
@@ -162,6 +171,9 @@ export function TerminalHost({
     const enviar = (msg: unknown): void => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
     };
+    // Guardado num ref para a barra poder mandar um snippet depois (spec 058):
+    // o socket vive dentro deste efeito, e o botão está fora dele.
+    enviarRef.current = enviar;
 
     ws.onopen = () => {
       enviar({
@@ -241,6 +253,15 @@ export function TerminalHost({
       term.dispose();
     };
   }, [connectionId, sessaoId]);
+
+  // O snippet da barra: vai como DIGITAÇÃO, exatamente como o comando inicial —
+  // é o que o usuário faria com as mãos, e não abre superfície nova.
+  const ultimoEnviado = useRef<number>(-1);
+  useEffect(() => {
+    if (comandoParaEnviar === null || comandoParaEnviar.id === ultimoEnviado.current) return;
+    ultimoEnviado.current = comandoParaEnviar.id;
+    enviarRef.current?.({ tipo: 'dados', dados: `${comandoParaEnviar.texto}\r` });
+  }, [comandoParaEnviar]);
 
   return (
     <Box

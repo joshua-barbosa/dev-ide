@@ -93,6 +93,17 @@ return {
       ws.abrirTerminal(meta.connectionId, meta.label ?? t.title);
     }
   },
+  // Outro terminal da mesma conexão (spec 058). O id muda porque cada terminal
+  // é uma sessão própria — reabrir o mesmo id apenas focaria o que já existe.
+  onDuplicarTerminal: (t: Tab) => {
+    const meta = t.meta as { connectionId?: string };
+    ws.abrirTerminal(meta.connectionId ?? null, t.title);
+  },
+  onConfirmarSnippet: (o: {
+    mensagem: string;
+    rotuloConfirmar?: string;
+    destrutivo?: boolean;
+  }) => dialogs.confirmar(o),
   conexaoSomenteLeitura: (t: Tab) =>
     conexoes.acharConexao((t.meta as { connectionId?: string }).connectionId)?.readOnly === true,
 };

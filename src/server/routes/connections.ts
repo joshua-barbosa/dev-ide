@@ -12,6 +12,7 @@ import type { Vault } from '../connections/vault';
 import { diasDeLembranca, type RememberedKey } from '../connections/remember';
 import type { ConnectionInput, FieldValue, Session, VaultState } from '../connections/types';
 import { createRemoteFilesRouter } from './arquivos-remotos';
+import { apagarSnippet, guardarSnippet, lerSnippets } from '../snippets-de-terminal';
 import { queryList, requireString, wrap } from '../http/handlers';
 import type { LeitorDePreferencias } from '../prefs';
 
@@ -200,6 +201,20 @@ export function createConnectionsRouter(
    * simplesmente para de pedir. Um fluxo empurrado do servidor continuaria
    * medindo para uma tela que ninguém está olhando.
    */
+  // Os snippets de terminal (spec 058). Não passam pelo pool: são do CADASTRO,
+  // e ler a lista não pode exigir que a conexão esteja de pé.
+  router.get('/:id/snippets', wrap((req, res) => {
+    res.json(ok(lerSnippets(req.params.id)));
+  }));
+
+  router.post('/:id/snippets', wrap((req, res) => {
+    res.json(ok(guardarSnippet(req.params.id, req.body)));
+  }));
+
+  router.delete('/:id/snippets/:snippet', wrap((req, res) => {
+    res.json(ok(apagarSnippet(req.params.id, req.params.snippet)));
+  }));
+
   router.get('/:id/metrics', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
     if (session.monitor === undefined) {

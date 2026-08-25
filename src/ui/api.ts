@@ -23,6 +23,7 @@ import type {
   TableWriteResult,
   TreeNode,
 } from '../shared/contracts';
+import type { SnippetDeTerminal } from '../shared/terminal/snippets';
 import type {
   DriverPanel,
   ConnectionKind,
@@ -288,6 +289,15 @@ export const Api = {
     request<{ path: string; content: string; bytes: number }>(
       'GET',
       `${conexoes}/${id}/files?path=${encodeURIComponent(caminho)}`
+    ),
+  snippetsDoTerminal: (id: string) =>
+    request<readonly SnippetDeTerminal[]>('GET', `${conexoes}/${id}/snippets`),
+  guardarSnippetDeTerminal: (id: string, snippet: { id?: string; nome: string; comando: string }) =>
+    request<readonly SnippetDeTerminal[]>('POST', `${conexoes}/${id}/snippets`, snippet),
+  apagarSnippetDeTerminal: (id: string, snippetId: string) =>
+    request<readonly SnippetDeTerminal[]>(
+      'DELETE',
+      `${conexoes}/${id}/snippets/${encodeURIComponent(snippetId)}`
     ),
   metricasDoServidor: (id: string) =>
     request<HostMetrics>('GET', `${conexoes}/${id}/metrics`),
