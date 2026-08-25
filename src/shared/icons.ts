@@ -81,6 +81,9 @@ export const ICONES_DE_SERVICO = {
 /** O ícone do driver SSH (spec 052). */
 export const ICONE_DE_SSH = 'lucide:server-cog';
 
+/** O ícone do driver FTP/FTPS (spec 057). */
+export const ICONE_DE_FTP = 'lucide:folder-symlink';
+
 /**
  * O ícone por sistema do servidor (spec 052, AC-11).
  *
@@ -174,6 +177,7 @@ export const ICONES_USADOS: readonly string[] = [
     ...ICONES_DE_ARQUIVO,
     ...Object.values(ICONES_DE_SERVICO),
     ICONE_DE_SSH,
+    ICONE_DE_FTP,
     ...Object.values(ICONES_DE_SISTEMA_REMOTO),
     ICONE_GENERICO,
   ]),

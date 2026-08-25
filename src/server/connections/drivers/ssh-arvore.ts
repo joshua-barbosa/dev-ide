@@ -8,7 +8,15 @@
 // A tradução mora aqui, num lugar só, e é o que impede o resto do driver de ter
 // que saber que `users` é especial.
 import { nomeDe } from '../../../shared/remoto/caminho';
-import type { EntradaRemota, UsuarioRemoto } from './ssh-entradas';
+import type { UsuarioRemoto } from './ssh-entradas';
+import type { RemoteEntry } from '../types';
+
+/** O que a árvore precisa saber de uma entrada, venha ela de SFTP ou de FTP. */
+export interface EntradaDaArvore extends RemoteEntry {
+  readonly executable: boolean;
+  /** Só o SFTP tem. */
+  readonly accessedAt?: number | null;
+}
 import type { TreeNode } from '../types';
 
 export const NO_USERS = 'users';
@@ -37,12 +45,12 @@ export function tamanhoCurto(bytes: number | null): string | undefined {
  * de criação, e a ferramenta de referência escreve "Create Time" sobre o valor
  * de acesso. Repetir o rótulo errado seria copiar a mentira junto com a tela.
  */
-export function descricaoDeTempos(entrada: EntradaRemota): string | undefined {
+export function descricaoDeTempos(entrada: EntradaDaArvore): string | undefined {
   const quando = (ms: number | null): string | null =>
     ms === null ? null : new Date(ms).toLocaleString('pt-BR');
   const linhas: string[] = [];
   const mod = quando(entrada.modifiedAt);
-  const aces = quando(entrada.accessedAt);
+  const aces = quando(entrada.accessedAt ?? null);
   if (mod !== null) linhas.push(`Modificado: ${mod}`);
   if (aces !== null) linhas.push(`Acesso: ${aces}`);
   if (entrada.mode !== undefined) linhas.push(`Permissão: ${entrada.mode}`);
@@ -51,13 +59,21 @@ export function descricaoDeTempos(entrada: EntradaRemota): string | undefined {
 }
 
 /** Que ícone a entrada pede. Link tem o próprio — ele não é o que parece. */
-function iconeDe(entrada: EntradaRemota): string {
+function iconeDe(entrada: EntradaDaArvore): string {
   if (entrada.kind === 'folder') return 'folder';
   if (entrada.kind === 'link') return 'link';
   return entrada.executable ? 'terminal' : 'file';
 }
 
-export function noDeEntrada(entrada: EntradaRemota): TreeNode {
+/**
+ * Um nó da árvore a partir de uma entrada remota.
+ *
+ * Aceita o que QUALQUER driver de arquivos produz — o SFTP e o FTP (spec 057)
+ * têm campos diferentes, e o que a árvore precisa é o subconjunto comum. Amarrar
+ * esta função ao tipo do SSH faria o FTP desenhar a própria árvore, e as duas
+ * divergiriam na primeira mudança.
+ */
+export function noDeEntrada(entrada: EntradaDaArvore): TreeNode {
   return {
     id: entrada.path,
     label: entrada.name,
@@ -72,7 +88,7 @@ export function noDeEntrada(entrada: EntradaRemota): TreeNode {
       executable: entrada.executable,
       size: entrada.size,
       modifiedAt: entrada.modifiedAt,
-      accessedAt: entrada.accessedAt,
+      accessedAt: entrada.accessedAt ?? null,
       owner: entrada.owner,
       mode: entrada.mode,
       tooltip: descricaoDeTempos(entrada),

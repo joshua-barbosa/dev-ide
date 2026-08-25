@@ -189,3 +189,25 @@ test('clicar num ATALHO não abre query — ele não é objeto de banco', async 
   // Ele ABRE, e mostra que está vazio — em vez de não responder.
   await expect(page.getByText('(vazio)')).toBeVisible();
 });
+
+// ---------------------------------------------------------------------------
+// FTP (spec 057)
+// ---------------------------------------------------------------------------
+
+test('o FTP aparece no cadastro, ao lado do SSH, com os campos dele', async ({ page }) => {
+  // A CONEXÃO com um servidor FTP não é testada: a suíte não tem um. O que se
+  // prova aqui é que o driver chegou à tela, e com a declaração certa.
+  await painelLateral(page, 'Service').click();
+  await page.getByRole('button', { name: /Nova conexão/ }).first().click();
+  await expect(page.getByRole('button', { name: 'FTP / FTPS', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'FTP / FTPS', exact: true }).click();
+  await expect(page.getByLabel('Host')).toHaveValue('127.0.0.1');
+  await expect(page.getByLabel('Porta')).toHaveValue('21');
+  await expect(page.getByLabel('Usuário')).toHaveValue('anonymous');
+  await expect(page.getByLabel('TLS (FTPS)')).toBeVisible();
+  await expect(page.getByLabel('Modo compatível')).toBeVisible();
+  // E NÃO tem o que é do SSH.
+  await expect(page.getByLabel('Autenticação')).toHaveCount(0);
+  await expect(page.getByLabel('Prender na raiz')).toHaveCount(0);
+});
