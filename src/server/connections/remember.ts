@@ -89,12 +89,21 @@ export interface CofreRestauravel {
  * informar. A lembrança que não serve é apagada — deixá-la no disco só faria a
  * próxima subida repetir o mesmo trabalho inútil.
  */
-export function restaurarCofre(vault: CofreRestauravel, remember: RememberedKey): boolean {
+export function restaurarCofre(
+  vault: CofreRestauravel,
+  remember: RememberedKey,
+  dias?: number
+): boolean {
   try {
     if (!vault.exists()) return false;
     const chave = remember.load();
     if (chave === null) return false;
     vault.unlockWithKey(chave);
+    // Prazo DESLIZANTE (T101): usar renova. Eu tinha recusado dizendo que
+    // renovar "faz 15 dias virarem para sempre para quem usa todos os dias" —
+    // e isso é a descrição da feature, não uma objeção. Quem some por 15 dias
+    // continua tendo que redigitar, que é o ponto do prazo.
+    if (dias !== undefined) remember.save(chave, dias);
     return true;
   } catch {
     // Chave de um cofre antigo (senha trocada) ou arquivo inconsistente.

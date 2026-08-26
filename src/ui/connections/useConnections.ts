@@ -62,12 +62,13 @@ const chaveDe = (id: string, caminho: readonly string[]): string =>
 
 /** Um pedido de senha em aberto — o que o diálogo precisa saber para se desenhar. */
 export interface PedidoDeSenha {
-  readonly modo: 'criar' | 'destrancar';
+  /** `trocar` pede DUAS senhas: a atual e a nova (T100). */
+  readonly modo: 'criar' | 'destrancar' | 'trocar';
 }
 
 export interface ConnectionsController {
   readonly pedidoDeSenha: PedidoDeSenha | null;
-  responderSenha(senha: string, lembrar: boolean): Promise<void>;
+  responderSenha(senha: string, lembrar: boolean, nova?: string): Promise<void>;
   cancelarSenha(): void;
   readonly estado: ConnectionsState | null;
   readonly drivers: ReadonlyMap<string, DriverInfo>;
@@ -78,6 +79,8 @@ export interface ConnectionsController {
   recarregar(): Promise<void>;
   criarCofre(): Promise<void>;
   destrancar(): Promise<void>;
+  /** Troca a senha mestra, recifrando todos os segredos (T100). */
+  trocarSenha(): Promise<void>;
   trancar(): Promise<void>;
   alternarGrupo(caminho: string): void;
   recolherTudo(): void;
@@ -160,11 +163,13 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
    * o diálogo, que precisa continuar aberto com o que foi digitado.
    */
   const responderSenha = useCallback(
-    async (senha: string, lembrar: boolean) => {
+    async (senha: string, lembrar: boolean, nova?: string) => {
       const pedido = pedidoDeSenha;
       if (pedido === null) return;
       if (pedido.modo === 'criar') await Api.createVault(senha, lembrar);
-      else await Api.unlockVault(senha, lembrar);
+      else if (pedido.modo === 'trocar') {
+        await Api.trocarSenhaMestra(senha, nova ?? '', lembrar);
+      } else await Api.unlockVault(senha, lembrar);
 
       setPedidoDeSenha(null);
       await recarregar();
@@ -203,6 +208,10 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
 
   const destrancar = useCallback(async () => {
     await pedirSenha('destrancar');
+  }, [pedirSenha]);
+
+  const trocarSenha = useCallback(async () => {
+    await pedirSenha('trocar');
   }, [pedirSenha]);
 
   const trancar = useCallback(async () => {
@@ -467,6 +476,7 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
       cancelarSenha,
       criarCofre,
       destrancar,
+      trocarSenha,
       trancar,
       alternarGrupo,
       recolherTudo,

@@ -282,3 +282,41 @@ test('sem a variável, a raiz é a pasta do usuário', () => {
     if (anterior !== undefined) process.env.DEV_IDE_HOME = anterior;
   }
 });
+
+// ---- Prazo deslizante (T101) ----
+//
+// Eu tinha recusado dizendo que renovar a cada uso "faz 15 dias virarem para
+// sempre para quem usa todos os dias". Isso é a DESCRIÇÃO da feature, não uma
+// objeção — e quem some pelo prazo inteiro continua tendo que redigitar.
+
+test('destrancar pela lembrança RENOVA o prazo', () => {
+  const remember = nova();
+  remember.save(CHAVE, 15);
+
+  const antes = remember.validUntil();
+  assert.ok(antes !== null);
+
+  // Uma lembrança de 1 dia, para o novo prazo ser MENOR e a diferença não
+  // poder vir de arredondamento.
+  const cofre = {
+    exists: () => true,
+    unlockWithKey: () => undefined,
+  };
+  assert.equal(restaurarCofre(cofre, remember, 1), true);
+
+  const depois = remember.validUntil();
+  assert.ok(depois !== null);
+  assert.notEqual(antes, depois);
+  assert.ok(Date.parse(depois) < Date.parse(antes), `${depois} deveria ser antes de ${antes}`);
+});
+
+test('sem prazo informado, restaurar NÃO mexe na lembrança', () => {
+  // É o caminho de quem chama só para saber se destrancou — e mudar o prazo
+  // ali seria efeito colateral escondido.
+  const remember = nova();
+  remember.save(CHAVE, 15);
+  const antes = remember.validUntil();
+
+  restaurarCofre({ exists: () => true, unlockWithKey: () => undefined }, remember);
+  assert.equal(remember.validUntil(), antes);
+});

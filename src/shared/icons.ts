@@ -150,6 +150,12 @@ const ICONES_DA_INTERFACE = [
   'lucide:rotate-ccw',
   // `Parar esta consulta` (T005). Quadrado, como todo botão de parar.
   'lucide:square',
+  // O olho que revela a senha guardada (N001), e o que a esconde de volta.
+  'lucide:eye-off',
+  // `testar` no formulário de conexão (T103).
+  'lucide:plug-zap',
+  // Exportar as conexões COM as senhas (N001).
+  'lucide:hard-drive-download',
   // `Abrir Query` num database (spec 038). Ficou de fora na entrega e saía como
   // bolinha — o guard de ícones só olhava literal entre aspas simples, e JSX usa
   // aspas duplas.

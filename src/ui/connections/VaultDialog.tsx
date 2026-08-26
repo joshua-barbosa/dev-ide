@@ -22,12 +22,15 @@ export interface VaultDialogProps {
   readonly pedido: PedidoDeSenha | null;
   /** Falso quando a máquina não pode ser identificada: aí a caixa nem aparece. */
   readonly podeLembrar: boolean;
-  readonly onResponder: (senha: string, lembrar: boolean) => Promise<void>;
+  readonly onResponder: (senha: string, lembrar: boolean, nova?: string) => Promise<void>;
   readonly onCancelar: () => void;
 }
 
 export function VaultDialog({ pedido, podeLembrar, onResponder, onCancelar }: VaultDialogProps) {
   const [senha, setSenha] = useState('');
+  /** Só no modo `trocar`: a senha nova (T100). */
+  const [nova, setNova] = useState('');
+  const [confirmacao, setConfirmacao] = useState('');
   const [lembrar, setLembrar] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -36,6 +39,8 @@ export function VaultDialog({ pedido, podeLembrar, onResponder, onCancelar }: Va
   useEffect(() => {
     if (pedido !== null) {
       setSenha('');
+      setNova('');
+      setConfirmacao('');
       setLembrar(false);
       setErro(null);
     }
@@ -43,13 +48,23 @@ export function VaultDialog({ pedido, podeLembrar, onResponder, onCancelar }: Va
 
   if (pedido === null) return null;
   const criando = pedido.modo === 'criar';
+  const trocando = pedido.modo === 'trocar';
 
   const enviar = async () => {
     if (senha === '' || enviando) return;
+    if (trocando) {
+      if (nova === '') return;
+      // Conferir AQUI, e não no servidor: um erro de digitação na senha nova
+      // trancaria o cofre com uma senha que ninguém sabe qual é.
+      if (nova !== confirmacao) {
+        setErro('A senha nova e a confirmação não batem.');
+        return;
+      }
+    }
     setEnviando(true);
     setErro(null);
     try {
-      await onResponder(senha, lembrar);
+      await onResponder(senha, lembrar, trocando ? nova : undefined);
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -60,30 +75,62 @@ export function VaultDialog({ pedido, podeLembrar, onResponder, onCancelar }: Va
   return (
     <Dialog open onClose={onCancelar} maxWidth="xs" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: 15 }}>
-        <Icon name={criando ? 'lucide:lock' : 'lucide:unlock'} size={16} />
-        {criando ? 'Criar o cofre' : 'Destrancar o cofre'}
+        <Icon name={criando || trocando ? 'lucide:lock' : 'lucide:unlock'} size={16} />
+        {criando ? 'Criar o cofre' : trocando ? 'Trocar a senha mestra' : 'Destrancar o cofre'}
       </DialogTitle>
 
       <DialogContent>
         <Box sx={{ color: 'text.secondary', fontSize: 12, mb: 1.5, lineHeight: 1.5 }}>
           {criando
             ? 'A senha mestra protege as credenciais guardadas. Não há recuperação: perdê-la significa perder os segredos.'
-            : 'As credenciais estão cifradas. A senha mestra abre o cofre nesta sessão.'}
+            : trocando
+              ? 'Todos os segredos são recifrados com a senha nova. A lembrança neste computador é apagada, porque a chave muda.'
+              : 'As credenciais estão cifradas. A senha mestra abre o cofre nesta sessão.'}
         </Box>
 
         <TextField
           autoFocus
           fullWidth
           type="password"
-          label="Senha mestra"
+          label={trocando ? 'Senha mestra atual' : 'Senha mestra'}
           value={senha}
           disabled={enviando}
           onChange={(e) => setSenha(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') void enviar();
           }}
-          slotProps={{ htmlInput: { 'aria-label': 'Senha mestra' } }}
+          slotProps={{
+            htmlInput: { 'aria-label': trocando ? 'Senha mestra atual' : 'Senha mestra' },
+          }}
         />
+
+        {trocando && (
+          <>
+            <TextField
+              fullWidth
+              sx={{ mt: 1.5 }}
+              type="password"
+              label="Senha nova"
+              value={nova}
+              disabled={enviando}
+              onChange={(e) => setNova(e.target.value)}
+              slotProps={{ htmlInput: { 'aria-label': 'Senha nova' } }}
+            />
+            <TextField
+              fullWidth
+              sx={{ mt: 1.5 }}
+              type="password"
+              label="Repita a senha nova"
+              value={confirmacao}
+              disabled={enviando}
+              onChange={(e) => setConfirmacao(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void enviar();
+              }}
+              slotProps={{ htmlInput: { 'aria-label': 'Repita a senha nova' } }}
+            />
+          </>
+        )}
 
         {podeLembrar && (
           <FormControlLabel
@@ -119,7 +166,7 @@ export function VaultDialog({ pedido, podeLembrar, onResponder, onCancelar }: Va
           cancelar
         </Button>
         <Button onClick={() => void enviar()} disabled={senha === '' || enviando}>
-          {criando ? 'criar' : 'destrancar'}
+          {criando ? 'criar' : trocando ? 'trocar' : 'destrancar'}
         </Button>
       </DialogActions>
     </Dialog>

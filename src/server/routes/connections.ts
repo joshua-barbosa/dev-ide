@@ -108,6 +108,23 @@ export function createConnectionsRouter(
     res.json(ok(estadoDoCofre()));
   }));
 
+  /**
+   * Trocar a senha mestra (T100).
+   *
+   * A lembrança de 15 dias é APAGADA junto: ela guarda a chave cifrada, e a
+   * chave acabou de mudar. Manter a antiga faria o próximo início destrancar o
+   * cofre com uma chave que não abre mais nada — erro sem causa aparente.
+   */
+  router.post('/vault/password', wrap((req, res) => {
+    vault.trocarSenhaMestra(
+      requireString(req.body?.atual, 'atual'),
+      requireString(req.body?.nova, 'nova')
+    );
+    remember.clear();
+    talvezLembrar(req.body?.remember);
+    res.json(ok(estadoDoCofre()));
+  }));
+
   router.post('/vault/lock', wrap(async (_req, res) => {
     vault.lock();
     // Trancar é um pedido explícito de fechar: a lembrança some junto, senão o
@@ -131,6 +148,57 @@ export function createConnectionsRouter(
     const input = readInput(req.body, registry);
     const criada = vault.add(input, registry.secretFields(input.type));
     res.status(201).json(ok(criada));
+  }));
+
+  /**
+   * TESTAR a conexão sem salvar (T103).
+   *
+   * Antes só existia `Salvar e conectar`: se a senha estivesse errada, a conexão
+   * já estava gravada no cofre quando o erro aparecia.
+   *
+   * Abre, pergunta a versão do servidor e fecha. NÃO passa pelo pool: uma sessão
+   * de teste entrando lá ficaria viva depois, e o usuário teria uma conexão
+   * aberta para algo que ele nem salvou.
+   */
+  router.post('/test', wrap(async (req, res) => {
+    const input = readInput(req.body, registry);
+    const driver = registry.get(input.type);
+
+    /**
+     * Segredo em branco numa conexão que JÁ EXISTE vem do cofre.
+     *
+     * No formulário de edição, campo de senha vazio significa "mantenha a
+     * guardada" — é assim desde a spec 005. O teste mandava o vazio adiante e o
+     * servidor respondia `using password: NO`, que é verdade e não é o que o
+     * usuário queria saber.
+     *
+     * Achado NO NAVEGADOR, contra o MySQL dele. O e2e não pegou porque a
+     * conexão de teste é SQLite, que não tem senha nenhuma.
+     *
+     * O segredo não passa pelo navegador para isso: quem completa é o servidor.
+     */
+    const campos = { ...input.fields };
+    const id = typeof (req.body as Record<string, unknown>)?.id === 'string'
+      ? String((req.body as Record<string, unknown>).id)
+      : null;
+    if (id !== null) {
+      for (const campo of vault.camposSecretos(id)) {
+        const atual = campos[campo];
+        if (atual === undefined || atual === '') campos[campo] = vault.revelar(id, campo);
+      }
+    }
+    // Um id de mentira: nada disto vai para o cofre. O `resolve()` normal
+    // decifra do cofre, e aqui os valores vieram do FORMULÁRIO, em claro.
+    const sessao = await driver.connect({
+      id: 'teste', type: input.type, label: input.label,
+      readOnly: input.readOnly, fields: campos,
+    } as never);
+    try {
+      const descricao = typeof sessao.describe === 'function' ? await sessao.describe() : null;
+      res.json(ok({ conectou: true, descricao }));
+    } finally {
+      await sessao.close().catch(() => undefined);
+    }
   }));
 
   router.patch('/:id', wrap((req, res) => {
@@ -169,6 +237,54 @@ export function createConnectionsRouter(
       renomeadas += 1;
     }
     res.json(ok({ from, to, renomeadas }));
+  }));
+
+  /**
+   * VER a senha guardada de uma conexão (N001).
+   *
+   * Ele pediu: *"eu preciso pegar as senhas das conexões também"*. Até aqui o
+   * segredo ia do cofre direto para o driver — `GET /api/connections` continua
+   * sem devolvê-lo, e isso não muda.
+   *
+   * Três estreitamentos deliberados:
+   *   1. UM campo por chamada. Um engano de uma linha não despeja tudo.
+   *   2. Pedir campo que não é segredo é ERRO, não silêncio — senão esta rota
+   *      viraria um jeito torto de ler campo comum.
+   *   3. Exige o cofre destrancado, como tudo que decifra.
+   *
+   * Sem trava adicional além disso: foi a escolha dele, e o servidor escuta só
+   * em `127.0.0.1` com token desde a spec 002.
+   */
+  router.get('/:id/secret/:field', wrap(async (req, res) => {
+    res.json(ok({ valor: vault.revelar(req.params.id, req.params.field) }));
+  }));
+
+  /** Quais campos daquela conexão são segredo — para a tela saber onde pôr o olho. */
+  router.get('/:id/secret-fields', wrap(async (req, res) => {
+    res.json(ok({ campos: vault.camposSecretos(req.params.id) }));
+  }));
+
+  /**
+   * TODAS as conexões, com as senhas, em JSON claro (N001).
+   *
+   * Ele escolheu claro, sabendo o que é: um arquivo com credencial de produção
+   * legível. A IDE não decide onde ele fica — quem baixa é o navegador dele.
+   */
+  router.post('/export-all', wrap(async (_req, res) => {
+    const conexoes = vault.list().map((c) => {
+      const campos: Record<string, unknown> = { ...c.fields };
+      for (const campo of vault.camposSecretos(c.id)) {
+        campos[campo] = vault.revelar(c.id, campo);
+      }
+      return {
+        type: c.type, label: c.label, group: c.group, readOnly: c.readOnly, fields: campos,
+      };
+    });
+    res.json(ok({
+      exportadoEm: new Date().toISOString(),
+      aviso: 'Este arquivo contém SENHAS EM CLARO.',
+      conexoes,
+    }));
   }));
 
   // ---- sessão viva ----

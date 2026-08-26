@@ -186,6 +186,59 @@ export class Vault {
   }
 
   /**
+   * Troca a senha mestra (T100).
+   *
+   * Não existia caminho nenhum para isso — quem quisesse trocar não tinha por
+   * onde. Eu escrevi na spec 004 que "hoje não existe" e deixei assim.
+   *
+   * A chave é DERIVADA da senha, então trocar a senha muda a chave, e cada
+   * segredo precisa ser **recifrado**. É feito em memória e gravado de uma vez:
+   * gravar no meio deixaria metade do arquivo cifrado com a senha velha e
+   * metade com a nova — e nenhuma das duas abriria o cofre inteiro.
+   *
+   * Sal novo junto: reaproveitá-lo faria a senha nova herdar o trabalho de
+   * derivação da antiga, e duas senhas diferentes com o mesmo sal é
+   * exatamente o que o sal existe para evitar.
+   */
+  trocarSenhaMestra(atual: string, nova: string): void {
+    if (nova.trim() === '') throw new Error('A senha nova não pode ser vazia.');
+    // Confere a atual ANTES de mexer em qualquer coisa. Sem isto, quem
+    // digitasse errado descobriria depois de o arquivo já ter sido reescrito.
+    this.unlock(atual);
+    const chaveVelha = this.requireKey();
+
+    const file = this.load();
+    const salt = crypto.randomBytes(SALT_BYTES);
+    const kdf: KdfParams = {
+      algorithm: 'scrypt',
+      salt: salt.toString('base64'),
+      N: SCRYPT.N,
+      r: SCRYPT.r,
+      p: SCRYPT.p,
+      keyLength: KEY_BYTES,
+    };
+    const chaveNova = deriveKey(nova, salt, kdf);
+
+    const conexoes = file.connections.map((c) => {
+      const secrets: Record<string, EncryptedValue> = {};
+      for (const [campo, cifrado] of Object.entries(c.secrets)) {
+        const claro = decrypt(cifrado, chaveVelha, secretAad(c.id, campo));
+        secrets[campo] = encrypt(claro, chaveNova, secretAad(c.id, campo));
+      }
+      return { ...c, secrets };
+    });
+
+    this.file = {
+      ...file,
+      kdf,
+      verifier: encrypt(VERIFIER_PLAINTEXT, chaveNova, VERIFIER_AAD),
+      connections: conexoes,
+    };
+    this.key = chaveNova;
+    this.persist();
+  }
+
+  /**
    * Devolve a chave derivada, para a lembrança guardá-la cifrada (spec 004).
    *
    * Exporta a CHAVE, nunca a senha: é o que permite lembrar sem que a senha
@@ -294,6 +347,40 @@ export class Vault {
       readOnly: stored.readOnly,
       fields,
     };
+  }
+
+  /**
+   * UM segredo, decifrado, para o usuário VER (N001).
+   *
+   * Existe porque ele pediu: *"eu preciso pegar as senhas das conexões
+   * também"*. Até aqui o segredo ia do cofre direto para o driver e nunca
+   * passava pela tela — `GET /api/connections` continua sem devolvê-lo.
+   *
+   * **Um campo por chamada, de propósito.** `resolve()` devolve a conexão
+   * inteira e é o caminho do driver; expor aquilo a uma rota faria um engano de
+   * uma linha despejar tudo. Aqui o chamador precisa dizer qual campo quer, e
+   * pedir um que não é segredo é ERRO, não silêncio — senão a rota viraria um
+   * jeito torto de ler campo comum.
+   */
+  revelar(id: string, campo: string): string {
+    const key = this.requireKey();
+    const stored = this.find(id);
+    const cifrado = stored.secrets[campo];
+    if (cifrado === undefined) {
+      throw new Error(`O campo "${campo}" não é um segredo desta conexão.`);
+    }
+    try {
+      return decrypt(cifrado, key, secretAad(stored.id, campo));
+    } catch {
+      throw new Error(
+        `O segredo "${campo}" da conexão "${stored.label}" está adulterado ou foi cifrado com outra senha.`
+      );
+    }
+  }
+
+  /** Quais campos desta conexão são segredo — para a tela saber onde pôr o olho. */
+  camposSecretos(id: string): readonly string[] {
+    return Object.keys(this.find(id).secrets).sort();
   }
 
   // ---- internos ----

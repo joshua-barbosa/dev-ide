@@ -268,3 +268,115 @@ test('recusa chave com tamanho errado', () => {
   const alvo = new Vault(file);
   assert.throws(() => alvo.unlockWithKey(Buffer.alloc(16)), /chave/i);
 });
+
+// ---- Ver a senha guardada (N001) ----
+//
+// Ele pediu: "eu preciso pegar as senhas das conexões também". Até aqui o
+// segredo ia do cofre direto para o driver e nunca passava pela tela.
+//
+// O que estes testes guardam é o ESTREITAMENTO: um campo por chamada, e pedir
+// campo que não é segredo é ERRO — senão a rota viraria um jeito torto de ler
+// campo comum, e um engano de uma linha despejaria tudo.
+
+test('revelar devolve o segredo decifrado, um campo por vez', () => {
+  const vault = novoVault();
+  const c = vault.add(
+    { type: 'mysql', label: 'x', group: '', readOnly: false, fields: { host: 'h', password: 'segredo-do-teste' } },
+    ['password']
+  );
+  assert.equal(vault.revelar(c.id, 'password'), 'segredo-do-teste');
+});
+
+test('pedir campo que NÃO é segredo é erro, e não o valor em claro', () => {
+  const vault = novoVault();
+  const c = vault.add(
+    { type: 'mysql', label: 'x', group: '', readOnly: false, fields: { host: 'h', password: 'p' } },
+    ['password']
+  );
+  assert.throws(() => vault.revelar(c.id, 'host'), /não é um segredo/);
+});
+
+test('com o cofre trancado, revelar não revela nada', () => {
+  const vault = novoVault();
+  const c = vault.add(
+    { type: 'mysql', label: 'x', group: '', readOnly: false, fields: { password: 'p' } },
+    ['password']
+  );
+  vault.lock();
+  assert.throws(() => vault.revelar(c.id, 'password'));
+});
+
+test('camposSecretos diz onde a tela põe o olho', () => {
+  const vault = novoVault();
+  const c = vault.add(
+    {
+      type: 'ssh', label: 'x', group: '', readOnly: false,
+      fields: { host: 'h', password: 'p', passphrase: 'f' },
+    },
+    ['password', 'passphrase']
+  );
+  assert.deepEqual(vault.camposSecretos(c.id), ['passphrase', 'password']);
+});
+
+// ---- Trocar a senha mestra (T100) ----
+//
+// Não existia caminho nenhum para isso. Eu escrevi na spec 004 que "hoje não
+// existe" e deixei assim por dois meses.
+
+test('trocar a senha mestra mantém os segredos legíveis', () => {
+  const vault = novoVault();
+  const c = vault.add(CONEXAO, ['password']);
+  vault.trocarSenhaMestra(SENHA, 'senha-nova-do-cofre');
+
+  // A chave é DERIVADA da senha, então cada segredo foi recifrado. Se a
+  // recifragem falhasse, isto viria adulterado em vez de vir errado.
+  assert.equal(vault.revelar(c.id, 'password'), 'p4ssw0rd-secreta');
+});
+
+test('depois de trocar, a senha VELHA não abre mais', () => {
+  const vault = novoVault();
+  vault.add(CONEXAO, ['password']);
+  vault.trocarSenhaMestra(SENHA, 'senha-nova-do-cofre');
+  vault.lock();
+  assert.throws(() => vault.unlock(SENHA), /incorreta/);
+  vault.unlock('senha-nova-do-cofre');
+});
+
+test('a senha nova abre o cofre depois de reabrir o ARQUIVO', () => {
+  // Reabrir prova que a troca foi ao disco, e não só à memória.
+  const caminho = tempVaultPath();
+  const primeiro = new Vault(caminho);
+  primeiro.create(SENHA);
+  const c = primeiro.add(CONEXAO, ['password']);
+  primeiro.trocarSenhaMestra(SENHA, 'outra-senha');
+
+  const segundo = new Vault(caminho);
+  segundo.unlock('outra-senha');
+  assert.equal(segundo.revelar(c.id, 'password'), 'p4ssw0rd-secreta');
+});
+
+test('senha atual errada não mexe em nada', () => {
+  const vault = novoVault();
+  const c = vault.add(CONEXAO, ['password']);
+  assert.throws(() => vault.trocarSenhaMestra('errada', 'nova'), /incorreta/);
+  // O cofre continua inteiro e com a senha de sempre — a conferência vem ANTES
+  // de qualquer escrita, senão digitar errado reescreveria o arquivo.
+  assert.equal(vault.revelar(c.id, 'password'), 'p4ssw0rd-secreta');
+});
+
+test('senha nova vazia é recusada', () => {
+  const vault = novoVault();
+  assert.throws(() => vault.trocarSenhaMestra(SENHA, '   '), /não pode ser vazia/);
+});
+
+test('o SAL muda junto com a senha', () => {
+  const caminho = tempVaultPath();
+  const vault = new Vault(caminho);
+  vault.create(SENHA);
+  const antes = JSON.parse(fs.readFileSync(caminho, 'utf8')) as { kdf: { salt: string } };
+  vault.trocarSenhaMestra(SENHA, 'nova');
+  const depois = JSON.parse(fs.readFileSync(caminho, 'utf8')) as { kdf: { salt: string } };
+  // Reaproveitar o sal faria duas senhas diferentes compartilharem o trabalho
+  // de derivação — que é exatamente o que o sal existe para evitar.
+  assert.notEqual(antes.kdf.salt, depois.kdf.salt);
+});

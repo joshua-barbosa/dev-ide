@@ -8,6 +8,7 @@ import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import type { DriverPanel, GroupNode, PublicConnection, TreeNode } from '../../shared/contracts';
+import { Api } from '../api';
 import { noRemotoDe, type NoRemoto as NoRemotoDaLinha } from '../acoes/useAcoesRemotas';
 import type { Vinculo } from '../../shared/sql/vinculo';
 import { Icon } from '../Icon';
@@ -521,6 +522,32 @@ export function ConnectionsPanel({
           rotulo="Nova conexão"
           desabilitada={!vault.unlocked}
           onClick={onNovaConexao}
+        />
+        {/* Exportar TUDO com as senhas (N001). Só com o cofre destrancado,
+            como tudo que decifra. Ele escolheu JSON em claro, sabendo o que é —
+            e por isso o arquivo carrega o aviso dentro. */}
+        {/* Trocar a senha mestra (T100). Não existia caminho nenhum para isso. */}
+        <AcaoDoPainel
+          icone="lucide:key-round"
+          rotulo="Trocar a senha mestra"
+          desabilitada={!vault.unlocked}
+          onClick={comErro(ctrl.trocarSenha)}
+        />
+        <AcaoDoPainel
+          icone="lucide:hard-drive-download"
+          rotulo="Exportar conexões COM as senhas"
+          desabilitada={!vault.unlocked}
+          onClick={comErro(async () => {
+            const tudo = await Api.exportarConexoes();
+            const url = URL.createObjectURL(
+              new Blob([JSON.stringify(tudo, null, 2)], { type: 'application/json' })
+            );
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'conexoes-com-senhas.json';
+            a.click();
+            URL.revokeObjectURL(url);
+          })}
         />
         <AcaoDoPainel
           icone={vault.unlocked ? 'lucide:lock' : 'lucide:unlock'}

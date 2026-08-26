@@ -5,7 +5,7 @@ import { registerBuiltinDrivers } from './connections/drivers';
 import { SessionPool } from './connections/pool';
 import { DriverRegistry } from './connections/registry';
 import { Vault } from './connections/vault';
-import { RememberedKey, restaurarCofre } from './connections/remember';
+import { diasDeLembranca, RememberedKey, restaurarCofre } from './connections/remember';
 import { errorEnvelope, requireString, wrap } from './http/handlers';
 import { localhostOnly } from './http/security';
 import { PreferencesStore } from './prefs';
@@ -64,7 +64,10 @@ const pool = new SessionPool(async (connectionId) => {
 const remember = new RememberedKey(
   process.env.DEV_IDE_SESSION ?? RememberedKey.defaultPath()
 );
-restaurarCofre(vault, remember);
+// O prazo vai junto (T101): destrancar pela lembrança RENOVA a lembrança, e
+// quem usa a IDE todo dia não redigita a senha mestra. Quem some pelo prazo
+// inteiro continua tendo que digitar — é o que o prazo existe para garantir.
+restaurarCofre(vault, remember, diasDeLembranca(process.env, prefs.ler()['vault.rememberDays']));
 
 // ---- Terminal ----
 const terminais = new TerminalRegistry();

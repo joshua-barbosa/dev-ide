@@ -26,7 +26,7 @@ import {
   type ValoresDoFormulario,
 } from '../../shared/connections/form';
 import type { ConnectionInput, PublicConnection } from '../../shared/contracts';
-import type { DriverInfo } from '../api';
+import { Api, type DriverInfo } from '../api';
 import { Icon } from '../Icon';
 import { CampoDinamico } from './CampoDinamico';
 import { TypeGrid } from './TypeGrid';
@@ -56,6 +56,43 @@ export function ConnectionForm({
   const [erros, setErros] = useState<ErrosDoFormulario>({});
   const [erroGeral, setErroGeral] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [testando, setTestando] = useState(false);
+  const [testado, setTestado] = useState<{ readonly ok: boolean; readonly texto: string } | null>(null);
+
+  /**
+   * Abre a conexão com o que está no FORMULÁRIO e fecha, sem gravar nada.
+   *
+   * Numa conexão que já existe, o campo de senha em branco significa "mantenha
+   * a guardada" — e aqui não há cofre para manter de onde. Por isso o teste
+   * exige a senha digitada quando ela está vazia: testar com senha vazia daria
+   * um erro de autenticação que não é o que o usuário quer saber.
+   */
+  const testar = async (): Promise<void> => {
+    setTestando(true);
+    setTestado(null);
+    try {
+      if (driver === null) return;
+      const r = await Api.testarConexao({
+        // O id vai junto quando a conexão já existe: é o que deixa o SERVIDOR
+        // completar a senha guardada quando o campo está em branco. Sem isso o
+        // teste dizia `using password: NO` numa conexão perfeitamente boa.
+        ...(conexao === undefined || conexao === null ? {} : { id: conexao.id }),
+        type: driver.type,
+        label: rotulo.trim() === '' ? 'teste' : rotulo.trim(),
+        group: '',
+        readOnly: somenteLeitura,
+        fields: camposParaEnviar(driver.fields, valores),
+      });
+      setTestado({
+        ok: true,
+        texto: r.descricao === null ? 'Conectou.' : `Conectou — ${r.descricao}`,
+      });
+    } catch (e) {
+      setTestado({ ok: false, texto: (e as Error).message });
+    } finally {
+      setTestando(false);
+    }
+  };
 
   const driver = useMemo(
     () => drivers.find((d) => d.type === tipo) ?? null,
@@ -219,6 +256,13 @@ export function ConnectionForm({
                     segredoGuardado={
                       campo.secret === true && conexao?.secretFields.includes(campo.name) === true
                     }
+                    // Só há o que revelar quando o segredo JÁ ESTÁ no cofre —
+                    // numa conexão nova não existe nada guardado ainda (N001).
+                    revelar={
+                      conexao === undefined || conexao === null || campo.secret !== true
+                        ? undefined
+                        : () => Api.revelarSegredo(conexao.id, campo.name)
+                    }
                     onChange={(valor) => mudar(campo.name, valor)}
                   />
                 ))}
@@ -228,8 +272,22 @@ export function ConnectionForm({
         )}
 
         {erroGeral !== null && <Alert severity="error" sx={{ fontSize: 12 }}>{erroGeral}</Alert>}
+        {testado !== null && (
+          <Alert
+            data-resultado-do-teste
+            severity={testado.ok ? 'success' : 'error'}
+            sx={{ fontSize: 12 }}
+          >
+            {testado.texto}
+          </Alert>
+        )}
 
         <Box sx={{ display: 'flex', gap: 1, pb: 2 }}>
+          {/* Testar SEM salvar (T103): antes, se a senha estivesse errada, a
+              conexão já estava no cofre quando o erro aparecia. */}
+          <Button onClick={() => void testar()} disabled={driver === null || salvando || testando}>
+            <Icon name="lucide:plug-zap" size={13} />&nbsp;{testando ? 'testando…' : 'testar'}
+          </Button>
           <Button onClick={() => void salvar(false)} disabled={driver === null || salvando}>
             <Icon name="lucide:save" size={13} />&nbsp;salvar
           </Button>

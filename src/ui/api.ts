@@ -28,6 +28,8 @@ import type {
   FiltroDeTabela,
   ColumnInfo,
   CellValue,
+  FieldValue,
+  VaultState,
 } from '../shared/contracts';
 import type { SnippetDeTerminal } from '../shared/terminal/snippets';
 import type {
@@ -382,6 +384,42 @@ export const Api = {
     request<QueryResult>('POST', `${conexoes}/${id}/execute`, payload),
   readTable: (id: string, payload: TableRequest) =>
     request<TablePage>('POST', `${conexoes}/${id}/table`, payload),
+  /**
+   * A senha guardada de UMA conexão, para o olho do formulário (N001).
+   *
+   * Um campo por chamada, de propósito: o cofre recusa campo que não é segredo,
+   * e assim esta rota não vira um jeito torto de ler campo comum.
+   */
+  revelarSegredo: (id: string, campo: string) =>
+    request<{ valor: string }>(
+      'GET',
+      `${conexoes}/${id}/secret/${encodeURIComponent(campo)}`
+    ).then((r) => r.valor),
+  /** Troca a senha mestra, recifrando todos os segredos (T100). */
+  trocarSenhaMestra: (atual: string, nova: string, remember?: boolean) =>
+    request<VaultState>('POST', `${conexoes}/vault/password`, { atual, nova, remember }),
+  /** Abre e fecha a conexão do formulário, sem gravar nada no cofre (T103). */
+  testarConexao: (input: {
+    /** Da conexão que já existe: o servidor completa os segredos em branco. */
+    readonly id?: string;
+    readonly type: string;
+    readonly label: string;
+    readonly group: string;
+    readonly readOnly: boolean;
+    readonly fields: Readonly<Record<string, FieldValue>>;
+  }) =>
+    request<{ readonly conectou: boolean; readonly descricao: string | null }>(
+      'POST',
+      `${conexoes}/test`,
+      input
+    ),
+  /** Todas as conexões COM as senhas, em JSON claro. Escolha dele (N001). */
+  exportarConexoes: () =>
+    request<{
+      readonly exportadoEm: string;
+      readonly aviso: string;
+      readonly conexoes: readonly unknown[];
+    }>('POST', `${conexoes}/export-all`),
   /** Varre a tabela inteira para exportar (T058). Filtros e ordem vão junto. */
   exportTable: (
     id: string,
