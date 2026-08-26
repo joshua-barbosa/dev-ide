@@ -369,16 +369,36 @@ async function executar(
     })
   );
 
+  const ler = (quantas: number) =>
+    new Promise<{ lote: unknown[][]; fields: FieldDef[] }>((resolve, reject) => {
+      cursor.read(quantas, (err, rows, result) => {
+        if (err) reject(new Error(err.message));
+        else resolve({ lote: rows, fields: result?.fields ?? [] });
+      });
+    });
+
   try {
-    // Uma linha a mais que o limite: é ela que revela o truncamento.
-    const { lote, fields } = await new Promise<{ lote: unknown[][]; fields: FieldDef[] }>(
-      (resolve, reject) => {
-        cursor.read(limite + 1, (err, rows, result) => {
-          if (err) reject(new Error(err.message));
-          else resolve({ lote: rows, fields: result?.fields ?? [] });
-        });
+    // Pular as linhas das páginas anteriores (T056): o cursor lê e descarta.
+    // O SQL do usuário não é tocado — envolvê-lo num `SELECT * FROM (…)`
+    // quebraria em consulta com colunas homônimas.
+    let pular = Math.max(0, Math.trunc(request.offset ?? 0));
+    while (pular > 0) {
+      const descartado = await ler(Math.min(pular, 1000));
+      // Acabaram as linhas antes do offset: a página pedida está além do fim.
+      if (descartado.lote.length === 0) {
+        return {
+          columns: colunasDe(descartado.fields),
+          rows: [],
+          rowCount: 0,
+          durationMs: Date.now() - inicio,
+          truncated: false,
+        };
       }
-    );
+      pular -= descartado.lote.length;
+    }
+
+    // Uma linha a mais que o limite: é ela que revela o truncamento.
+    const { lote, fields } = await ler(limite + 1);
 
     const colunas = colunasDe(fields);
 

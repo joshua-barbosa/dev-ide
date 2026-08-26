@@ -244,7 +244,14 @@ function executar(
   // Puxa uma linha a mais que o limite: é ela que revela o truncamento.
   const rows: CellValue[][] = [];
   let truncated = false;
+  // Linhas a pular (T056), descartadas do próprio iterador.
+  const pular = Math.max(0, Math.trunc(request.offset ?? 0));
+  let puladas = 0;
   for (const linha of stmt.iterate(...params)) {
+    if (puladas < pular) {
+      puladas += 1;
+      continue;
+    }
     if (rows.length === limite) {
       truncated = true;
       break;

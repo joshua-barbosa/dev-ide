@@ -45,6 +45,9 @@ export function executar(
   params: readonly string[] = []
 ): Promise<QueryResult> {
   const limite = resolveRowLimit(request.rowLimit);
+  // Linhas a pular (T056). O fluxo já existe; pular é não guardar.
+  const pular = Math.max(0, Math.trunc(request.offset ?? 0));
+  let puladas = 0;
   const inicio = Date.now();
 
   return new Promise((resolve, reject) => {
@@ -66,6 +69,10 @@ export function executar(
       if (colunas.length === 0) {
         // OkPacket de INSERT/UPDATE/DDL: não há linhas, só o total afetado.
         afetadas = Number(registro.affectedRows ?? 0);
+        return;
+      }
+      if (puladas < pular) {
+        puladas += 1;
         return;
       }
       if (rows.length >= limite) {

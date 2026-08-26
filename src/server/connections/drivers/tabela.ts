@@ -13,6 +13,7 @@
 //    escolher coluna de outra tabela num `ORDER BY` correlacionado.
 // 2. **Valor de filtro NUNCA entra no SQL.** Vai como parâmetro, sempre.
 import { quoteIdentifier, type QuoteStyle } from './sql-base';
+import { interpretarFiltro } from '../../../shared/grade/filtro';
 
 /** Tamanhos de página oferecidos, e o teto que o servidor impõe. */
 export const TAMANHOS_DE_PAGINA: readonly number[] = [50, 100, 200, 500];
@@ -132,6 +133,55 @@ function escaparLike(valor: string): string {
   return valor.replace(/([\\%_])/g, '\\$1');
 }
 
+/**
+ * Uma condição de `WHERE` a partir do que o usuário digitou (T057).
+ *
+ * O VALOR nunca entra no SQL — vai como parâmetro, sempre, inclusive nos
+ * operadores de comparação. A única coisa que vira texto é o nome da coluna, e
+ * ele é citado depois de conferido contra as colunas reais.
+ */
+function condicaoDoFiltro(
+  f: FiltroDeColuna,
+  alvo: AlvoDeTabela,
+  params: string[],
+  numerado: boolean
+): string | null {
+  const lido = interpretarFiltro(f.valor);
+  if (lido === null) return null;
+
+  const coluna = quoteIdentifier(f.coluna, alvo.estilo);
+  const marca = (valor: string): string => {
+    params.push(valor);
+    return numerado ? `$${params.length}` : '?';
+  };
+
+  switch (lido.operador) {
+    // `IS NULL`, e não `= NULL`: em SQL `NULL = NULL` é desconhecido, e a
+    // condição nunca casaria — o usuário filtraria por nulo e receberia zero
+    // linhas numa coluna cheia de nulos.
+    case 'nulo':
+      return `${coluna} IS NULL`;
+    case 'naoNulo':
+      return `${coluna} IS NOT NULL`;
+    case 'entre':
+      return `${coluna} BETWEEN ${marca(lido.valores[0] ?? '')} AND ${marca(lido.valores[1] ?? '')}`;
+    case 'igual':
+      return `${coluna} = ${marca(lido.valores[0] ?? '')}`;
+    case 'diferente':
+      return `${coluna} <> ${marca(lido.valores[0] ?? '')}`;
+    case 'maior':
+      return `${coluna} > ${marca(lido.valores[0] ?? '')}`;
+    case 'maiorOuIgual':
+      return `${coluna} >= ${marca(lido.valores[0] ?? '')}`;
+    case 'menor':
+      return `${coluna} < ${marca(lido.valores[0] ?? '')}`;
+    case 'menorOuIgual':
+      return `${coluna} <= ${marca(lido.valores[0] ?? '')}`;
+    case 'contem':
+      return `${coluna} LIKE ${marca(`%${escaparLike(lido.valores[0] ?? '')}%`)}`;
+  }
+}
+
 export function montarConsultaDeTabela(
   alvo: AlvoDeTabela,
   pedido: PedidoDeTabela
@@ -139,11 +189,9 @@ export function montarConsultaDeTabela(
   const numerado = alvo.marcador === 'numerado';
   const params: string[] = [];
 
-  const condicoes = pedido.filtros.map((f) => {
-    params.push(`%${escaparLike(f.valor)}%`);
-    const marca = numerado ? `$${params.length}` : '?';
-    return `${quoteIdentifier(f.coluna, alvo.estilo)} LIKE ${marca}`;
-  });
+  const condicoes = pedido.filtros
+    .map((f) => condicaoDoFiltro(f, alvo, params, numerado))
+    .filter((c): c is string => c !== null);
 
   const onde = condicoes.length === 0 ? '' : `\n WHERE ${condicoes.join(' AND ')}`;
   const ordem =

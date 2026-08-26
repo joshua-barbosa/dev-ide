@@ -84,16 +84,22 @@ test('filtrar por coluna reduz as linhas E o total, juntos', async ({ page }) =>
   await expect(sqlDaAba(page)).toContainText('LIKE');
 });
 
+// Os dois testes abaixo passaram a abrir um MENU antes de escolher o formato.
+// O `Export` deixou de ser dois botões e virou um com escopo (T058): a pergunta
+// que faltava não era o formato, era "isto leva a página ou a tabela inteira".
+
 test('exportar abre o CSV numa aba, com cabeçalho e escape', async ({ page }) => {
   await abrirTabela(page);
-  await page.getByLabel('Exportar CSV').click();
+  await page.getByRole('button', { name: 'Exportar' }).click();
+  await page.getByRole('menuitem', { name: 'CSV · esta página' }).click();
   await expect.poll(() => textoDoEditor(page)).toContain('id,nome,nota');
   expect(await textoDoEditor(page)).toContain('joshua');
 });
 
 test('exportar JSON sai como lista de objetos', async ({ page }) => {
   await abrirTabela(page);
-  await page.getByLabel('Exportar JSON').click();
+  await page.getByRole('button', { name: 'Exportar' }).click();
+  await page.getByRole('menuitem', { name: 'JSON · esta página' }).click();
   await expect.poll(() => textoDoEditor(page)).toContain('"nome"');
 });
 
@@ -104,7 +110,8 @@ test('trocar de aba e voltar NÃO perde o filtro', async ({ page }) => {
   await page.getByLabel('Filtrar nome').fill('josh');
   await expect(total(page)).toContainText('de 1');
 
-  await page.getByLabel('Exportar JSON').click();
+  await page.getByRole('button', { name: 'Exportar' }).click();
+  await page.getByRole('menuitem', { name: 'JSON · esta página' }).click();
   await aba(page, TABELA).click();
   await expect(page.getByLabel('Filtrar nome')).toHaveValue('josh');
   await expect(total(page)).toContainText('de 1');

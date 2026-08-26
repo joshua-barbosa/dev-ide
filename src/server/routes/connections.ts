@@ -13,6 +13,7 @@ import { diasDeLembranca, type RememberedKey } from '../connections/remember';
 import type { ConnectionInput, FieldValue, Session, VaultState } from '../connections/types';
 import { createRemoteFilesRouter } from './arquivos-remotos';
 import { SEM_CANCELAMENTO } from '../connections/drivers/cancelar';
+import { varrerTabela } from '../connections/exportacao';
 import { apagarSnippet, guardarSnippet, lerSnippets } from '../snippets-de-terminal';
 import { queryList, requireString, wrap } from '../http/handlers';
 import type { LeitorDePreferencias } from '../prefs';
@@ -344,6 +345,27 @@ export function createConnectionsRouter(
   }));
 
   /**
+   * Exportar a TABELA INTEIRA (T058).
+   *
+   * Varre em lotes usando o `readTable` que os três drivers já têm — nenhum
+   * driver precisou de uma linha nova. Os filtros e a ordem da tela vão junto,
+   * senão o arquivo não seria o que está na tela.
+   */
+  router.post('/:id/table/export', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (typeof session.readTable !== 'function') {
+      throw new Error(`A conexão "${req.params.id}" não tem tabelas navegáveis.`);
+    }
+    const ler = session.readTable.bind(session);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    res.json(ok(await varrerTabela(ler, {
+      nodePath: Array.isArray(body.nodePath) ? body.nodePath.map(String) : [],
+      ordenar: (body.ordenar ?? null) as never,
+      filtros: (Array.isArray(body.filtros) ? body.filtros : []) as never,
+    })));
+  }));
+
+  /**
    * Escrever pela grade (spec 044).
    *
    * `simular: true` devolve o SQL sem executar — é o que a confirmação mostra.
@@ -437,6 +459,9 @@ export function createConnectionsRouter(
       database: typeof body.database === 'string' && body.database !== '' ? body.database : undefined,
       nodePath: Array.isArray(body.nodePath) ? body.nodePath.map(String) : undefined,
       rowLimit: typeof body.rowLimit === 'number' ? body.rowLimit : undefined,
+      // Paginação do resultado (T056). Negativo e fracionário são aparados no
+      // driver; aqui só se repassa a forma.
+      offset: typeof body.offset === 'number' ? body.offset : undefined,
       timeoutMs: typeof body.timeoutMs === 'number' ? body.timeoutMs : undefined,
     });
     res.json(ok(resultado));

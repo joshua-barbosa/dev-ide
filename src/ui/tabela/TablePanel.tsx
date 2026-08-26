@@ -8,10 +8,12 @@
 import { useState } from 'react';
 import Box from '@mui/material/Box';
 import InputBase from '@mui/material/InputBase';
+import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
 import Tooltip from '@mui/material/Tooltip';
 import { Icon } from '../Icon';
+import { Api } from '../api';
 import { Grade } from './GradeDaTabela';
 import { PainelDeAparencia } from './PainelDeAparencia';
 import { APARENCIA_PADRAO, type Aparencia } from '../../shared/grade/aparencia';
@@ -119,13 +121,52 @@ export function TablePanel({
       ? linhas
       : linhas.filter((l) => l.some((v) => String(v ?? '').toLowerCase().includes(busca.toLowerCase())));
 
-  const exportar = (formato: 'csv' | 'json'): void => {
+  const [exportando, setExportando] = useState(false);
+  const [avisoDaExportacao, setAvisoDaExportacao] = useState<string | null>(null);
+
+  /**
+   * A PÁGINA vai para uma aba do editor; TUDO vira arquivo baixado.
+   *
+   * A diferença não é capricho: a página cabe numa aba e é o que se quer para
+   * copiar um pedaço. Uma tabela inteira aberta no editor mataria o Monaco —
+   * cem mil linhas de CSV não são um arquivo para editar, são um arquivo para
+   * guardar.
+   */
+  const exportarPagina = (formato: 'csv' | 'json'): void => {
     if (pagina === null) return;
     const cols = colunas.map((c) => ({ name: c.name, type: c.type }));
     onExportar(
       formato === 'csv' ? paraCsv(cols, visiveis) : paraJson(cols, visiveis),
       formato === 'csv' ? 'plain' : 'json'
     );
+  };
+
+  const exportarTudo = async (formato: 'csv' | 'json'): Promise<void> => {
+    setExportando(true);
+    try {
+      // Os filtros e a ordem da TELA vão junto: exportar outra coisa do que
+      // está à vista seria a pior surpresa possível num arquivo.
+      const tudo = await Api.exportTable(connectionId, {
+        nodePath,
+        ordenar: estado.ordenar,
+        filtros: Object.entries(estado.filtros)
+          .filter(([, v]) => v.trim() !== '')
+          .map(([coluna, valor]) => ({ coluna, valor })),
+      });
+      const texto =
+        formato === 'csv'
+          ? paraCsv(tudo.columns, tudo.rows)
+          : paraJson(tudo.columns, tudo.rows);
+      baixarArquivo(`${titulo}.${formato}`, texto);
+      setAvisoDaExportacao(
+        tudo.truncado
+          ? `Exportei ${tudo.rows.length.toLocaleString('pt-BR')} linhas e PAREI aí: ` +
+            'o arquivo inteiro passa pela memória do navegador antes de virar download.'
+          : null
+      );
+    } finally {
+      setExportando(false);
+    }
   };
 
   return (
@@ -142,12 +183,27 @@ export function TablePanel({
         estado={estado}
         busca={busca}
         onBusca={setBusca}
-        onExportar={exportar}
+        onExportarPagina={exportarPagina}
+        onExportarTudo={(f) => void exportarTudo(f)}
+        exportando={exportando}
         onOlho={setOlho}
         mostrando={visiveis.length}
         podeEditar={rascunho !== undefined && motivoSemEdicao === null}
         onAcrescentar={() => rascunho?.acrescentarLinha()}
       />
+
+      {avisoDaExportacao !== null && (
+        <Box
+          data-aviso-de-exportacao
+          onClick={() => setAvisoDaExportacao(null)}
+          sx={{
+            px: 1, py: 0.5, fontSize: 11, color: 'warning.main', cursor: 'pointer',
+            borderBottom: 1, borderColor: 'divider',
+          }}
+        >
+          ⚠ {avisoDaExportacao} <em>(clique para dispensar)</em>
+        </Box>
+      )}
 
       {rascunho !== undefined && onGravar !== undefined && (
         <BarraDeRascunho rascunho={rascunho} gravando={gravando} onGravar={onGravar} />
@@ -183,12 +239,15 @@ export function TablePanel({
 }
 
 function BarraDeComando({
-  estado, busca, onBusca, onExportar, onOlho, mostrando, podeEditar, onAcrescentar,
+  estado, busca, onBusca, onExportarPagina, onExportarTudo, exportando, onOlho,
+  mostrando, podeEditar, onAcrescentar,
 }: {
   readonly estado: EstadoDaTabela;
   readonly busca: string;
   readonly onBusca: (v: string) => void;
-  readonly onExportar: (formato: 'csv' | 'json') => void;
+  readonly onExportarPagina: (formato: 'csv' | 'json') => void;
+  readonly onExportarTudo: (formato: 'csv' | 'json') => void;
+  readonly exportando: boolean;
   readonly onOlho: (ancora: HTMLElement) => void;
   readonly mostrando: number;
   readonly podeEditar: boolean;
@@ -223,8 +282,12 @@ function BarraDeComando({
       {podeEditar && (
         <Acao icone="lucide:plus" rotulo="Acrescentar linha" onClick={onAcrescentar} />
       )}
-      <Acao icone="lucide:file-down" rotulo="Exportar CSV" onClick={() => onExportar('csv')} />
-      <Acao icone="lucide:braces" rotulo="Exportar JSON" onClick={() => onExportar('json')} />
+      <Exportador
+        onPagina={onExportarPagina}
+        onTudo={onExportarTudo}
+        exportando={exportando}
+        modoLivre={estado.modoLivre}
+      />
 
       {/* O atalho vai NO RÓTULO, e não só numa dica: quem lê o nome do botão
           descobre que não precisa dele. */}
@@ -316,6 +379,73 @@ function BarraDeComando({
  * Um número exato que não é seria pior que nenhum número: é a mesma regra do
  * "resultado cortado" que a grade segue desde a spec 001.
  */
+/**
+ * O `Export`, com o ESCOPO à vista (T058).
+ *
+ * Dois botões — CSV e JSON — viraram um menu porque a pergunta que faltava não
+ * era o formato, era "isto leva o quê". A resposta antiga era sempre "a página
+ * que está na tela", e ninguém sabia disso até abrir o arquivo.
+ *
+ * Em SQL livre `Tudo` não existe: a IDE não sabe qual tabela é para varrer, e é
+ * a mesma razão pela qual ali não há paginação nem filtro por coluna.
+ */
+function Exportador({
+  onPagina, onTudo, exportando, modoLivre,
+}: {
+  readonly onPagina: (formato: 'csv' | 'json') => void;
+  readonly onTudo: (formato: 'csv' | 'json') => void;
+  readonly exportando: boolean;
+  readonly modoLivre: boolean;
+}) {
+  const [ancora, setAncora] = useState<HTMLElement | null>(null);
+  const fechar = (): void => setAncora(null);
+
+  const item = (rotulo: string, aoClicar: () => void) => (
+    <MenuItem
+      key={rotulo}
+      sx={{ fontSize: 11.5 }}
+      onClick={() => {
+        fechar();
+        aoClicar();
+      }}
+    >
+      {rotulo}
+    </MenuItem>
+  );
+
+  return (
+    <>
+      <Acao
+        icone="lucide:file-down"
+        rotulo={exportando ? 'Exportando…' : 'Exportar'}
+        desabilitada={exportando}
+        onClick={(e) => setAncora(e.currentTarget)}
+      />
+      <Menu open={ancora !== null} anchorEl={ancora} onClose={fechar}>
+        {item('CSV · esta página', () => onPagina('csv'))}
+        {item('JSON · esta página', () => onPagina('json'))}
+        {!modoLivre && item('CSV · a tabela inteira', () => onTudo('csv'))}
+        {!modoLivre && item('JSON · a tabela inteira', () => onTudo('json'))}
+      </Menu>
+    </>
+  );
+}
+
+/**
+ * Entrega o arquivo ao usuário.
+ *
+ * `revokeObjectURL` sempre: sem ele o conteúdo fica preso na memória da aba até
+ * a página recarregar, e aqui isso são cem mil linhas.
+ */
+function baixarArquivo(nome: string, conteudo: string): void {
+  const url = URL.createObjectURL(new Blob([conteudo], { type: 'text/plain;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nome;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function Total({
   pagina, mostrando,
 }: {

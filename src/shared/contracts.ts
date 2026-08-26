@@ -144,6 +144,18 @@ export interface ColumnInfo {
 }
 
 export interface ExecuteRequest {
+  /**
+   * Quantas linhas PULAR antes de começar a devolver (T056).
+   *
+   * O SQL do usuário NÃO é reescrito: envolvê-lo num `SELECT * FROM (…)`
+   * quebraria em consulta com colunas homônimas (`select a.id, b.id`), que é
+   * erro de tabela derivada nos três dialetos. Aqui os drivers simplesmente
+   * descartam as primeiras `offset` linhas do fluxo que já leem.
+   *
+   * O preço é honesto e explícito: o banco calcula as linhas puladas. Paginar
+   * um `SELECT` arbitrário sem isso exigiria mentir sobre o total.
+   */
+  readonly offset?: number;
   readonly statement: string;
   /**
    * Contra qual database rodar (spec 038).

@@ -197,3 +197,91 @@ test('todo tamanho oferecido cabe no teto do servidor', () => {
     assert.equal(normalizarPedidoDeTabela({ porPagina: n }, COLUNAS).porPagina, n, String(n));
   }
 });
+
+// ---- Filtro com operadores (T057) ----
+//
+// Na spec 041 eu escrevi que "`contém` cobre o uso diário" e deixei o resto de
+// fora. O valor NUNCA entra no SQL em nenhum destes caminhos — é o que estes
+// testes guardam, junto com a semântica de cada operador.
+
+const ALVO_FILTRO = {
+  alvo: '`app`.`logs`',
+  colunas: ['id', 'nome', 'criado_em'],
+  estilo: 'backtick' as const,
+  marcador: 'interrogacao' as const,
+};
+
+function ondeDe(valor: string) {
+  const q = montarConsultaDeTabela(ALVO_FILTRO, {
+    pagina: 1,
+    porPagina: 10,
+    ordenar: null,
+    filtros: [{ coluna: 'id', valor }],
+  });
+  return { sql: q.sql, params: q.params };
+}
+
+test('`contém` continua sendo o padrão, com os curingas escapados', () => {
+  const r = ondeDe('100%');
+  assert.ok(r.sql.includes('`id` LIKE ?'));
+  // `100%` é texto literal, e não "qualquer coisa começando com 100".
+  assert.deepEqual(r.params, ['%100\\%%']);
+});
+
+test('maior, menor e igual viram o operador do SQL, com o valor como parâmetro', () => {
+  assert.ok(ondeDe('>10').sql.includes('`id` > ?'));
+  assert.deepEqual(ondeDe('>10').params, ['10']);
+  assert.ok(ondeDe('<=10').sql.includes('`id` <= ?'));
+  assert.ok(ondeDe('=10').sql.includes('`id` = ?'));
+  assert.ok(ondeDe('!=10').sql.includes('`id` <> ?'));
+});
+
+test('nulo vira IS NULL, e não `= NULL`, que nunca casaria', () => {
+  const r = ondeDe('null');
+  assert.ok(r.sql.includes('`id` IS NULL'));
+  // Sem parâmetro nenhum: não há valor a comparar.
+  assert.deepEqual(r.params, []);
+  assert.ok(ondeDe('!null').sql.includes('`id` IS NOT NULL'));
+});
+
+test('intervalo vira BETWEEN com dois parâmetros', () => {
+  const r = ondeDe('1..5');
+  assert.ok(r.sql.includes('`id` BETWEEN ? AND ?'));
+  assert.deepEqual(r.params, ['1', '5']);
+});
+
+test('a contagem leva os MESMOS filtros — sem isso a paginação mentiria', () => {
+  const q = montarConsultaDeTabela(ALVO_FILTRO, {
+    pagina: 1, porPagina: 10, ordenar: null,
+    filtros: [{ coluna: 'id', valor: '>10' }],
+  });
+  assert.ok(q.contagem.includes('`id` > ?'));
+});
+
+test('operador sem valor NÃO vira condição — e não devolve a tabela inteira calada', () => {
+  const q = montarConsultaDeTabela(ALVO_FILTRO, {
+    pagina: 1, porPagina: 10, ordenar: null,
+    filtros: [{ coluna: 'id', valor: '>' }],
+  });
+  assert.ok(!q.sql.includes('WHERE'));
+  assert.deepEqual(q.params, []);
+});
+
+test('o valor não escapa para o SQL nem tentando', () => {
+  const r = ondeDe(">1 OR 1=1; DROP TABLE logs--");
+  assert.ok(!r.sql.includes('DROP'));
+  assert.deepEqual(r.params, ["1 OR 1=1; DROP TABLE logs--"]);
+});
+
+test('dois filtros com operadores diferentes numeram os parâmetros na ordem', () => {
+  const q = montarConsultaDeTabela(
+    { ...ALVO_FILTRO, estilo: 'double', marcador: 'numerado' },
+    {
+      pagina: 1, porPagina: 10, ordenar: null,
+      filtros: [{ coluna: 'id', valor: '>10' }, { coluna: 'nome', valor: 'ana' }],
+    }
+  );
+  assert.ok(q.sql.includes('"id" > $1'));
+  assert.ok(q.sql.includes('"nome" LIKE $2'));
+  assert.deepEqual(q.params, ['10', '%ana%']);
+});

@@ -9,6 +9,7 @@
 // sobrescreveria a nova.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Api } from '../api';
+import { alvoDaQuery, colunasSaoDaTabela } from '../../shared/sql/alvo-da-query';
 import type { FiltroDeTabela, OrdenacaoDeTabela, TablePage } from '../../shared/contracts';
 
 /** Precisa bater com `TAMANHOS_DE_PAGINA` do servidor. Há teste amarrando. */
@@ -26,6 +27,13 @@ export interface EstadoDaTabela {
   readonly sql: string;
   /** O usuário mexeu no SQL: paginação, ordem e filtro saem de cena. */
   readonly modoLivre: boolean;
+  /**
+   * Por que a edição não vale para ESTE SQL livre (T060), ou `null` se vale.
+   *
+   * Texto e não booleano, pela mesma razão de sempre: "não responde ao clique"
+   * é a pior interface possível.
+   */
+  readonly motivoDoLivre: string | null;
   readonly carregando: boolean;
   readonly erro: string | null;
   readonly numero: number;
@@ -179,13 +187,60 @@ export function useTabela({ connectionId, nodePath, database }: DepsDaTabela): E
   const emUso = livre === null ? pagina : resultadoLivre;
   const sql = sqlEditado ?? emUso?.sql ?? '';
 
+  /**
+   * Dá para editar o resultado deste SQL livre? (T060)
+   *
+   * Na spec 044 eu escrevi que não dava porque "a IDE não sabe qual tabela é".
+   * Ela sabe em muito caso — `select * from alunos where id = 1` é inequívoco.
+   *
+   * A regra é deliberadamente ESTREITA: só quando o SELECT lê a MESMA tabela
+   * desta aba. Resolver um nome qualquer para um caminho da árvore exigiria
+   * adivinhar schema e conexão, e o custo de errar aqui não é uma coluna
+   * torta — é um `UPDATE` na tabela errada.
+   */
+  const editavelNoLivre = ((): { readonly ok: boolean; readonly motivo: string | null } => {
+    if (livre === null) return { ok: true, motivo: null };
+    const daAba = nodePath[nodePath.length - 1];
+    const { alvo, motivo } = alvoDaQuery(livre.sql);
+    if (alvo === null) return { ok: false, motivo: `Sem edição: ${motivo ?? 'consulta não reconhecida'}.` };
+    if (daAba === undefined || alvo.tabela.toLowerCase() !== daAba.toLowerCase()) {
+      return {
+        ok: false,
+        motivo: `Sem edição: esta consulta lê \`${alvo.tabela}\`, e a aba é de \`${daAba ?? '?'}\`.`,
+      };
+    }
+    const reais = (pagina?.columns ?? []).map((c) => c.name);
+    if (!colunasSaoDaTabela((resultadoLivre?.resultado.columns ?? []).map((c) => c.name), reais)) {
+      return { ok: false, motivo: 'Sem edição: o resultado tem colunas que não são da tabela.' };
+    }
+    return { ok: true, motivo: null };
+  })();
+
+  /**
+   * Em modo livre editável, as colunas ganham de volta a marca de CHAVE.
+   *
+   * Sem isto a grade continuaria achando que não há chave primária — e é a
+   * chave que o `WHERE` usa para achar a linha.
+   */
+  const comChaves =
+    livre !== null && editavelNoLivre.ok && resultadoLivre !== null && pagina !== null
+      ? {
+          ...resultadoLivre,
+          columns: resultadoLivre.columns.map((c) => {
+            const real = pagina.columns.find((r) => r.name === c.name);
+            return real === undefined ? c : { ...c, chave: real.chave, obrigatoria: real.obrigatoria };
+          }),
+        }
+      : resultadoLivre;
+
   const total = emUso?.total ?? null;
   const totalDePaginas = total === null ? null : Math.max(1, Math.ceil(total / porPagina));
 
   return {
-    pagina: emUso,
+    pagina: livre === null ? pagina : comChaves,
     sql,
     modoLivre: livre !== null,
+    motivoDoLivre: editavelNoLivre.motivo,
     carregando,
     erro,
     numero,

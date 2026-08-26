@@ -69,8 +69,11 @@ export function TabelaHost({
    */
   const motivoSemEdicao: string | null = somenteLeitura
     ? 'Esta conexão está marcada como somente-leitura.'
-    : estado.modoLivre
-      ? 'Em SQL livre a IDE não sabe qual tabela é. Volte ao SQL da tabela para editar.'
+    : // Em SQL livre a IDE tenta descobrir a tabela (T060). Quando consegue, a
+      // edição vale; quando não, ela diz o motivo EXATO — "tem JOIN", "lê outra
+      // tabela", "tem coluna calculada" — em vez do genérico de antes.
+      estado.modoLivre && estado.motivoDoLivre !== null
+      ? `${estado.motivoDoLivre} Volte ao SQL da tabela para editar.`
       : colunas.length === 0
         ? null
         : temChave

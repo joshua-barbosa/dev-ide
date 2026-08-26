@@ -10,6 +10,7 @@ import InputBase from '@mui/material/InputBase';
 import { Icon } from '../Icon';
 import { tokens } from '../theme';
 import { larguraDoConteudo } from '../../shared/grade/larguras';
+import { explicarFiltro } from '../../shared/grade/filtro';
 import {
   alinhamentoDe, bordasDe, ehTipoNumerico, type Aparencia,
 } from '../../shared/grade/aparencia';
@@ -249,7 +250,10 @@ export function Grade({
           // o que a grade tem e diz que está cortado — que é honesto, e melhor
           // que uma promessa quebrada em silêncio.
           buscarInteiro={
-            estado.modoLivre || !colunas.some((c) => c.chave)
+            // No livre EDITÁVEL (T060) a IDE já sabe a tabela e a chave, então
+            // a lupa também passa a buscar o valor inteiro ali.
+            (estado.modoLivre && estado.motivoDoLivre !== null) ||
+            !colunas.some((c) => c.chave)
               ? undefined
               : () =>
                   Api.readCell(connectionId, {
@@ -358,6 +362,13 @@ function Cabecalho({
         placeholder="contém…"
         onChange={(e) => estado.definirFiltro(coluna.name, e.target.value)}
         inputProps={{ 'aria-label': `Filtrar ${coluna.name}` }}
+        // A dica sai da MESMA função que o servidor usa para montar o `WHERE`
+        // (T057). Duas implementações da mesma gramática divergiriam, e a
+        // divergência apareceria como "filtrei e veio coisa errada".
+        title={
+          explicarFiltro(estado.filtros[coluna.name] ?? '') ??
+          'contém… · use >, <, >=, <=, =, != · null · 1..5'
+        }
         sx={{
           fontSize: 10, fontFamily: tokens.fontMono, border: 1, borderColor: 'divider',
           borderRadius: 0.5, px: 0.5, py: 0, mt: 0.25, bgcolor: tokens.bgEditor,
@@ -366,6 +377,16 @@ function Cabecalho({
           width: 'calc(100% - 8px)',
         }}
       />
+      )}
+      {/* O que a IDE ENTENDEU do que foi digitado. Só aparece quando não é o
+          padrão: escrever "contém joshua" embaixo de toda caixa seria ruído. */}
+      {estruturado && explicarFiltro(estado.filtros[coluna.name] ?? '') !== null && (
+        <Box
+          data-leitura-do-filtro
+          sx={{ fontSize: 9.5, color: 'primary.main', fontWeight: 400, mt: 0.25 }}
+        >
+          {explicarFiltro(estado.filtros[coluna.name] ?? '')}
+        </Box>
       )}
     </Box>
   );

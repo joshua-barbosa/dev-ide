@@ -14,11 +14,27 @@ export type ModoExecucao = 'file' | 'block' | 'function';
 /** De onde o resultado de um statement vai aparecer. */
 export type ModoDeStatement = 'run' | 'tab' | 'json';
 
+/**
+ * Linhas por página do RESULTADO (T056).
+ *
+ * Era o teto fixo de 500 com um aviso de "resultado cortado" e nada a fazer
+ * sobre ele. Continua 500, mas agora é o tamanho da PÁGINA.
+ */
+export const LINHAS_POR_PAGINA = 500;
+
 export interface EstadoGrade {
   readonly resultado: QueryResult | null;
   readonly erro: string | null;
   readonly carregando: boolean;
   readonly rotulo?: string;
+  /**
+   * Vai para outra página deste resultado (T056).
+   *
+   * Ausente quando não faz sentido: comando sem linhas, ou erro.
+   */
+  readonly irPara?: (pagina: number) => void;
+  /** Em qual página está, contando de 1. O TOTAL é desconhecido — e dito. */
+  readonly pagina?: number;
   /**
    * Interrompe esta consulta (T005).
    *
@@ -219,16 +235,47 @@ export function useExecution(
         });
       }
 
+      /** Roda a MESMA consulta noutra página (T056). */
+      const rodarPagina = async (pagina: number): Promise<void> => {
+        atualizarGrade(gridId, {
+          resultado: null, erro: null, carregando: true, rotulo, pagina,
+          parar: () => void Api.cancelQuery(vinculo.connectionId).catch(() => undefined),
+        });
+        try {
+          const r = await Api.execute(vinculo.connectionId, {
+            statement: texto,
+            database: vinculo.database,
+            rowLimit: LINHAS_POR_PAGINA,
+            offset: (pagina - 1) * LINHAS_POR_PAGINA,
+          });
+          atualizarGrade(gridId, {
+            resultado: r, erro: null, carregando: false, rotulo, pagina,
+            irPara: rodarPagina2,
+          });
+        } catch (e) {
+          atualizarGrade(gridId, {
+            resultado: null, erro: (e as Error).message, carregando: false, rotulo, pagina,
+          });
+        }
+      };
+      const rodarPagina2 = (pagina: number): void => void rodarPagina(pagina);
+
       try {
         const resultado = await Api.execute(vinculo.connectionId, {
           statement: texto,
           database: vinculo.database,
-          rowLimit: 500,
+          rowLimit: LINHAS_POR_PAGINA,
         });
         if (modo === 'json') {
           ws.abrirSemTitulo(JSON.stringify(paraObjetos(resultado), null, 2), 'json');
         } else {
-          atualizarGrade(gridId, { resultado, erro: null, carregando: false, rotulo });
+          atualizarGrade(gridId, {
+            resultado, erro: null, carregando: false, rotulo,
+            pagina: 1,
+            // Só há para onde ir quando a primeira página veio cheia. Botão de
+            // página numa consulta de três linhas seria ruído.
+            irPara: resultado.truncated ? rodarPagina2 : undefined,
+          });
         }
         setStatus({
           texto: `${resultado.rowCount} linha(s) · ${resultado.durationMs}ms`,

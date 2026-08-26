@@ -24,6 +24,10 @@ import type {
   TreeNode,
   CellRequest,
   CellResult,
+  OrdenacaoDeTabela,
+  FiltroDeTabela,
+  ColumnInfo,
+  CellValue,
 } from '../shared/contracts';
 import type { SnippetDeTerminal } from '../shared/terminal/snippets';
 import type {
@@ -378,6 +382,20 @@ export const Api = {
     request<QueryResult>('POST', `${conexoes}/${id}/execute`, payload),
   readTable: (id: string, payload: TableRequest) =>
     request<TablePage>('POST', `${conexoes}/${id}/table`, payload),
+  /** Varre a tabela inteira para exportar (T058). Filtros e ordem vão junto. */
+  exportTable: (
+    id: string,
+    payload: {
+      readonly nodePath: readonly string[];
+      readonly ordenar: OrdenacaoDeTabela | null;
+      readonly filtros: readonly FiltroDeTabela[];
+    }
+  ) =>
+    request<{
+      readonly columns: readonly ColumnInfo[];
+      readonly rows: readonly (readonly CellValue[])[];
+      readonly truncado: boolean;
+    }>('POST', `${conexoes}/${id}/table/export`, payload),
   /** Interrompe a consulta em andamento naquela conexão (T005). */
   cancelQuery: (id: string) =>
     request<{ cancelado: boolean }>('POST', `${conexoes}/${id}/cancel`),

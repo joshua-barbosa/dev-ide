@@ -1,60 +1,69 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { detalheDaCategoria, padraoDeFiltro, temFiltro } from '../tree/filtro';
+import test from 'node:test';
+import { explicarFiltro, interpretarFiltro } from '../grade/filtro';
 
-// ---- tradução do padrão (AC-5, AC-6) ----
-
-test('sem curinga, o padrão vira "contém"', () => {
-  // Digitar um pedaço do nome é o uso comum; exigir % seria hostil.
-  assert.equal(padraoDeFiltro('alunos'), '%alunos%');
+test('texto sem sinal continua sendo `contém` — o dedo de quem já usa não quebra', () => {
+  assert.deepEqual(interpretarFiltro('joshua'), { operador: 'contem', valores: ['joshua'] });
 });
 
-test('com curinga, o padrão é respeitado como escrito', () => {
-  assert.equal(padraoDeFiltro('tiraduvidas_%'), 'tiraduvidas_%');
-  assert.equal(padraoDeFiltro('%_alunos'), '%_alunos');
-  assert.equal(padraoDeFiltro('gr%cos'), 'gr%cos');
+test('vazio e só espaço não filtram nada', () => {
+  assert.equal(interpretarFiltro(''), null);
+  assert.equal(interpretarFiltro('   '), null);
 });
 
-test('o sublinhado sozinho já conta como curinga', () => {
-  // `_` casa um caractere no LIKE; envolvê-lo em % mudaria o que foi pedido.
-  assert.equal(padraoDeFiltro('alun_s'), 'alun_s');
+test('`>=` é lido antes de `>` — senão `>=10` viraria maior que "=10"', () => {
+  assert.deepEqual(interpretarFiltro('>=10'), { operador: 'maiorOuIgual', valores: ['10'] });
+  assert.deepEqual(interpretarFiltro('<=10'), { operador: 'menorOuIgual', valores: ['10'] });
+  assert.deepEqual(interpretarFiltro('>10'), { operador: 'maior', valores: ['10'] });
+  assert.deepEqual(interpretarFiltro('<10'), { operador: 'menor', valores: ['10'] });
 });
 
-test('espaços em volta não contam', () => {
-  assert.equal(padraoDeFiltro('  alunos  '), '%alunos%');
+test('as duas formas de "diferente" que o SQL aceita', () => {
+  assert.deepEqual(interpretarFiltro('!=x'), { operador: 'diferente', valores: ['x'] });
+  assert.deepEqual(interpretarFiltro('<>x'), { operador: 'diferente', valores: ['x'] });
 });
 
-test('vazio significa ausência de filtro', () => {
-  assert.equal(padraoDeFiltro(''), null);
-  assert.equal(padraoDeFiltro('   '), null);
+test('nulo em português e em SQL, e a negação dele', () => {
+  for (const t of ['null', 'NULL', 'nulo', ' Nulo ']) {
+    assert.deepEqual(interpretarFiltro(t), { operador: 'nulo', valores: [] }, t);
+  }
+  assert.deepEqual(interpretarFiltro('!null'), { operador: 'naoNulo', valores: [] });
+  assert.deepEqual(interpretarFiltro('!nulo'), { operador: 'naoNulo', valores: [] });
 });
 
-test('o padrão hostil sai como texto, e não vira sintaxe', () => {
-  // Sair intacto é o certo: quem impede o estrago é a LIGAÇÃO como parâmetro,
-  // não uma limpeza aqui — limpar daria falsa sensação e quebraria nomes
-  // legítimos.
-  assert.equal(padraoDeFiltro("'; DROP TABLE alunos; --"), "%'; DROP TABLE alunos; --%");
+test('intervalo fechado dos dois lados, com número e com data', () => {
+  assert.deepEqual(interpretarFiltro('1..5'), { operador: 'entre', valores: ['1', '5'] });
+  assert.deepEqual(interpretarFiltro('2024-01-01..2024-12-31'), {
+    operador: 'entre',
+    valores: ['2024-01-01', '2024-12-31'],
+  });
 });
 
-// ---- sinal de filtro ativo (AC-8) ----
-
-test('reconhece quando há filtro em vigor', () => {
-  assert.equal(temFiltro('alunos'), true);
-  assert.equal(temFiltro(''), false);
-  assert.equal(temFiltro('  '), false);
-  assert.equal(temFiltro(null), false);
-  assert.equal(temFiltro(undefined), false);
+test('`=` é o escape para quem procura o TEXTO literal', () => {
+  // Sem isto não haveria como procurar a palavra "null" numa coluna de texto.
+  assert.deepEqual(interpretarFiltro('=null'), { operador: 'igual', valores: ['null'] });
+  assert.deepEqual(interpretarFiltro('=1..5'), { operador: 'igual', valores: ['1..5'] });
 });
 
-test('o detalhe mostra achado e total quando filtrado', () => {
-  assert.equal(detalheDaCategoria(12, 92), '12 de 92');
+test('operador sem valor não filtra: `>` sozinho é meio caminho', () => {
+  // Tratar como string vazia devolveria a tabela inteira sem o usuário
+  // entender por quê.
+  assert.equal(interpretarFiltro('>'), null);
+  assert.equal(interpretarFiltro('>=  '), null);
 });
 
-test('sem filtro, mostra só a contagem', () => {
-  assert.equal(detalheDaCategoria(92, null), '92');
-  assert.equal(detalheDaCategoria(92, 92), '92');
+test('intervalo pela metade cai em `contém`, e não em `entre` quebrado', () => {
+  assert.deepEqual(interpretarFiltro('1..'), { operador: 'contem', valores: ['1..'] });
+  assert.deepEqual(interpretarFiltro('..5'), { operador: 'contem', valores: ['..5'] });
 });
 
-test('filtro que não acha nada mostra zero de total', () => {
-  assert.equal(detalheDaCategoria(0, 92), '0 de 92');
+test('três pontos não é intervalo de três pedaços', () => {
+  assert.deepEqual(interpretarFiltro('1..2..3'), { operador: 'contem', valores: ['1..2..3'] });
+});
+
+test('a explicação some no padrão e aparece no resto', () => {
+  assert.equal(explicarFiltro('joshua'), null);
+  assert.equal(explicarFiltro('>10'), 'maior que 10');
+  assert.equal(explicarFiltro('null'), 'é nulo');
+  assert.equal(explicarFiltro('1..5'), 'entre 1 e 5');
 });
