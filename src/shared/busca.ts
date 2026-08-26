@@ -40,6 +40,27 @@ export interface ArquivoComOcorrencias {
   readonly ocorrencias: readonly Ocorrencia[];
 }
 
+/**
+ * A linha como ela FICARIA depois da substituição (T033 · spec 027).
+ *
+ * Na spec 027 eu listei "prévia da substituição" nos `Non-Goals` sem escrever
+ * desculpa nenhuma. A lista de resultados mostrava a linha encontrada e nada
+ * sobre como ela ia ficar — e substituição em massa é destrutiva.
+ *
+ * Devolve `null` quando o resultado é IGUAL ao original: mostrar duas linhas
+ * idênticas lado a lado seria ruído, e o usuário procuraria a diferença que não
+ * existe.
+ */
+export function previaDaLinha(
+  ocorrencia: Ocorrencia,
+  regex: RegExp,
+  substituto: string,
+  ehRegex: boolean
+): string | null {
+  const depois = substituirNaLinha(ocorrencia.texto, regex, substituto, ehRegex);
+  return depois === ocorrencia.texto ? null : depois;
+}
+
 /** Teto do tamanho da expressão. Um padrão gigante já é sinal de engano. */
 export const MAX_TERMO = 1_000;
 

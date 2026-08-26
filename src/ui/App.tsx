@@ -569,6 +569,7 @@ export function App() {
                 rotuloConfirmar: rotulo,
                 destrutivo: true,
               }),
+            onErro: falhaDaIde,
           }}
           onErro={falhaDaIde}
           onAbrirArquivo={ws.abrirArquivo}

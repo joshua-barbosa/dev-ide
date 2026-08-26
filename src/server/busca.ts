@@ -15,6 +15,9 @@ import {
   type ArquivoComOcorrencias, type OpcoesDeBusca,
 } from '../shared/busca';
 import { varrerArquivos } from './pastas';
+import {
+  passaNoFiltro, SEM_FILTRO, type FiltroDeArquivos,
+} from '../shared/busca-filtro';
 
 /** Arquivo maior que isto não é código: é dado, e varrer não ajuda ninguém. */
 export const MAX_BYTES_POR_ARQUIVO = 2 * 1024 * 1024;
@@ -47,6 +50,11 @@ const VAZIO: ResultadoDaBusca = {
   arquivosVisitados: 0,
 };
 
+/** O caminho como os padrões do filtro o enxergam: relativo, com `/`. */
+function relativo(pasta: string, caminho: string): string {
+  return path.relative(pasta, caminho).split(path.sep).join('/');
+}
+
 /** Lê um arquivo de texto, ou `null` se não vale a pena (grande, ilegível). */
 function lerTexto(caminho: string): string | null {
   try {
@@ -60,7 +68,8 @@ function lerTexto(caminho: string): string | null {
 export function buscarNaPasta(
   pasta: string,
   termo: string,
-  opcoes: OpcoesDeBusca
+  opcoes: OpcoesDeBusca,
+  filtro: FiltroDeArquivos = SEM_FILTRO
 ): ResultadoDaBusca {
   const regex = montarRegex(termo, opcoes);
   if (regex === null) return VAZIO;
@@ -80,6 +89,10 @@ export function buscarNaPasta(
       truncado = true;
       break;
     }
+    // O filtro (T031) é aplicado ao caminho RELATIVO, que é o vocabulário dos
+    // padrões — `src/**/*.ts` não faria sentido contra um caminho absoluto.
+    // Vem antes de ler o arquivo: filtrar depois pagaria a leitura à toa.
+    if (!passaNoFiltro(relativo(pasta, caminho), filtro)) continue;
     const conteudo = lerTexto(caminho);
     if (conteudo === null) continue;
     visitados += 1;
@@ -96,6 +109,8 @@ export function buscarNaPasta(
 export interface ResultadoDaSubstituicao {
   readonly arquivosAlterados: number;
   readonly trocas: number;
+  /** O que desfazer isto exigiria: caminho → conteúdo ANTES (T032). */
+  readonly antes: ReadonlyMap<string, string>;
 }
 
 /**
@@ -114,9 +129,10 @@ export function substituirNaPasta(
   substituto: string
 ): ResultadoDaSubstituicao {
   const regex = montarRegex(termo, opcoes);
-  if (regex === null) return { arquivosAlterados: 0, trocas: 0 };
+  if (regex === null) return { arquivosAlterados: 0, trocas: 0, antes: new Map() };
 
   const raiz = path.resolve(pasta);
+  const antes = new Map<string, string>();
   let alterados = 0;
   let trocas = 0;
 
@@ -133,10 +149,48 @@ export function substituirNaPasta(
     const { texto, trocas: n } = substituirNoConteudo(conteudo, regex, substituto, opcoes.regex);
     if (n === 0) continue;
 
+    // O "antes" é guardado ANTES de escrever, e só de quem de fato muda (T032).
+    // Guardar arquivo sem troca incharia o histórico com cópias idênticas.
+    antes.set(caminho, conteudo);
     fs.writeFileSync(caminho, texto, 'utf8');
     alterados += 1;
     trocas += n;
   }
 
-  return { arquivosAlterados: alterados, trocas };
+  return { arquivosAlterados: alterados, trocas, antes };
+}
+
+/**
+ * Desfaz uma substituição, devolvendo cada arquivo ao conteúdo anterior (T032).
+ *
+ * A cerca da pasta é conferida de novo, e não confiada ao que foi guardado: o
+ * histórico vive em memória do servidor, e reescrever caminho absoluto é a
+ * operação mais destrutiva desta IDE. Conferir duas vezes custa nada.
+ *
+ * Arquivo que sumiu no meio-tempo é PULADO, e não recriado: recriar traria de
+ * volta algo que o usuário pode ter apagado de propósito depois.
+ */
+export function desfazerSubstituicao(
+  pasta: string,
+  antes: ReadonlyMap<string, string>
+): { readonly restaurados: number; readonly pulados: number } {
+  const raiz = path.resolve(pasta);
+  let restaurados = 0;
+  let pulados = 0;
+
+  for (const [bruto, conteudo] of antes) {
+    const caminho = path.resolve(bruto);
+    if (caminho !== raiz && !caminho.startsWith(raiz + path.sep)) {
+      pulados += 1;
+      continue;
+    }
+    if (!fs.existsSync(caminho)) {
+      pulados += 1;
+      continue;
+    }
+    fs.writeFileSync(caminho, conteudo, 'utf8');
+    restaurados += 1;
+  }
+
+  return { restaurados, pulados };
 }

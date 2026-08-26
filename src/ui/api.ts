@@ -214,15 +214,34 @@ export const Api = {
     request<{ removido: boolean }>('DELETE', `/api/snippets/${encodeURIComponent(id)}`),
 
   // ---- busca em arquivos (spec 027) ----
-  search: (termo: string, opcoes: OpcoesDeBusca) =>
-    request<ResultadoDaBusca>('POST', '/api/search', { termo, ...opcoes }),
+  /** `filtros` são os padrões `include`/`exclude`, por vírgula (T031). */
+  search: (
+    termo: string,
+    opcoes: OpcoesDeBusca,
+    filtros: { readonly incluir: string; readonly excluir: string } = { incluir: '', excluir: '' }
+  ) => request<ResultadoDaBusca>('POST', '/api/search', { termo, ...opcoes, ...filtros }),
+  /** Desfaz uma substituição pelo id que ela devolveu (T032). */
+  undoReplace: (id: string) =>
+    request<{
+      readonly restaurados: number;
+      readonly pulados: number;
+      readonly restauradosCaminhos: readonly string[];
+      readonly termo: string;
+      readonly substituto: string;
+    }>('POST', '/api/search/undo', { id }),
   replaceInFiles: (
     termo: string,
     opcoes: OpcoesDeBusca,
     substituto: string,
     caminhos: readonly string[]
   ) =>
-    request<{ arquivosAlterados: number; trocas: number }>('POST', '/api/search/replace', {
+    request<{
+      arquivosAlterados: number;
+      trocas: number;
+      /** O id para desfazer, ou `null` quando nada mudou (T032). */
+      desfazer: string | null;
+      descartadasDoHistorico: number;
+    }>('POST', '/api/search/replace', {
       termo,
       ...opcoes,
       substituto,

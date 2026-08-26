@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buscarNoConteudo, escaparRegex, MAX_TERMO, montarRegex, ocorrenciasNaLinha, OPCOES_PADRAO,
-  pareceBinario, substituirNaLinha, substituirNoConteudo,
+  pareceBinario, previaDaLinha, substituirNaLinha, substituirNoConteudo,
 } from '../busca';
 
 const re = (termo: string, opcoes = {}): RegExp => {
@@ -164,4 +164,36 @@ test('arquivo binário não é modificado', () => {
 test('a quebra de linha final sobrevive à substituição', () => {
   const { texto } = substituirNoConteudo('foo\n', re('foo'), 'bar', false);
   assert.equal(texto, 'bar\n', 'perder a linha em branco final sujaria todo diff');
+});
+
+// ---- Prévia da substituição (T033) ----
+//
+// Na spec 027 eu listei isto nos `Non-Goals` sem escrever desculpa nenhuma. A
+// lista mostrava a linha ENCONTRADA e nada sobre como ela ia ficar — e
+// substituição em massa é destrutiva.
+
+test('a prévia mostra a linha como ela vai FICAR', () => {
+  const regex = montarRegex('velho', OPCOES_PADRAO)!;
+  const oco = { linha: 1, coluna: 1, colunaFim: 6, texto: 'o nome velho aqui' };
+  assert.equal(previaDaLinha(oco, regex, 'novo', false), 'o nome novo aqui');
+});
+
+test('a prévia é `null` quando nada muda — duas linhas iguais seriam ruído', () => {
+  const regex = montarRegex('velho', OPCOES_PADRAO)!;
+  const oco = { linha: 1, coluna: 1, colunaFim: 6, texto: 'o nome velho aqui' };
+  assert.equal(previaDaLinha(oco, regex, 'velho', false), null);
+});
+
+test('a prévia respeita o `$` literal fora do modo regex', () => {
+  // O mesmo detalhe que estraga em silêncio na substituição de verdade: quem
+  // digitou `US$1` espera `US$1`, e não o grupo 1.
+  const regex = montarRegex('preco', OPCOES_PADRAO)!;
+  const oco = { linha: 1, coluna: 1, colunaFim: 6, texto: 'o preco' };
+  assert.equal(previaDaLinha(oco, regex, 'US$1', false), 'o US$1');
+});
+
+test('em modo regex, `$1` continua sendo o grupo', () => {
+  const regex = montarRegex('(\\w+)@', { ...OPCOES_PADRAO, regex: true })!;
+  const oco = { linha: 1, coluna: 1, colunaFim: 5, texto: 'joshua@servidor-1' };
+  assert.equal(previaDaLinha(oco, regex, '<$1>', true), '<joshua>servidor-1');
 });

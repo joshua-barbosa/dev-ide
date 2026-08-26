@@ -168,8 +168,13 @@ test('substitui num arquivo só, deixando os outros intactos', async () => {
     fs.writeFileSync(dois, 'alvo ali\n');
 
     const r = (await call('/replace', { termo: 'alvo', substituto: 'X', caminhos: [um] }))
-      .data as { arquivosAlterados: number; trocas: number };
-    assert.deepEqual(r, { arquivosAlterados: 1, trocas: 1 });
+      .data as { arquivosAlterados: number; trocas: number; desfazer: string | null };
+    // A resposta ganhou o `desfazer` (T032): o id que devolve o arquivo ao que
+    // era. Comparo os campos que importam e confiro que o id EXISTE — o valor
+    // dele carrega o instante, então fixá-lo seria um teste que quebra sozinho.
+    assert.equal(r.arquivosAlterados, 1);
+    assert.equal(r.trocas, 1);
+    assert.equal(typeof r.desfazer, 'string');
     assert.equal(fs.readFileSync(um, 'utf8'), 'X aqui\n');
     assert.equal(fs.readFileSync(dois, 'utf8'), 'alvo ali\n', 'o outro não podia mudar');
   });
@@ -183,8 +188,10 @@ test('substitui em todos os indicados de uma vez', async () => {
     fs.writeFileSync(dois, 'alvo\n');
 
     const r = (await call('/replace', { termo: 'alvo', substituto: 'X', caminhos: [um, dois] }))
-      .data as { arquivosAlterados: number; trocas: number };
-    assert.deepEqual(r, { arquivosAlterados: 2, trocas: 3 });
+      .data as { arquivosAlterados: number; trocas: number; desfazer: string | null };
+    assert.equal(r.arquivosAlterados, 2);
+    assert.equal(r.trocas, 3);
+    assert.equal(typeof r.desfazer, 'string');
   });
 });
 

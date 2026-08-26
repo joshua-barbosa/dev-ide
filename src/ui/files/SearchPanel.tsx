@@ -14,7 +14,7 @@ import InputBase from '@mui/material/InputBase';
 import Tooltip from '@mui/material/Tooltip';
 import { Icon } from '../Icon';
 import { tokens } from '../theme';
-import type { Ocorrencia } from '../../shared/busca';
+import { montarRegex, previaDaLinha, type Ocorrencia } from '../../shared/busca';
 import type { Busca } from './useBusca';
 
 export interface SearchPanelProps {
@@ -23,6 +23,8 @@ export interface SearchPanelProps {
   readonly onAbrir: (caminho: string, ocorrencia: Ocorrencia) => void;
   /** Confirma antes de reescrever arquivos. */
   readonly onConfirmar: (mensagem: string, rotulo: string) => Promise<boolean>;
+  /** Mostra o erro do desfazer sem derrubar o painel (T032). */
+  readonly onErro: (erro: unknown) => void;
 }
 
 /** Recorta a linha em volta da ocorrência, para caber na lateral estreita. */
@@ -37,8 +39,9 @@ function trecho(o: Ocorrencia): { antes: string; casado: string; depois: string 
 
 const nomeDe = (caminho: string): string => caminho.split('/').pop() ?? caminho;
 
-export function SearchPanel({ busca, onAbrir, onConfirmar }: SearchPanelProps) {
+export function SearchPanel({ busca, onAbrir, onConfirmar, onErro }: SearchPanelProps) {
   const [recolhidos, setRecolhidos] = useState<ReadonlySet<string>>(new Set());
+  const [filtroAberto, setFiltroAberto] = useState(false);
 
   const alternar = (caminho: string): void => {
     setRecolhidos((atual) => {
@@ -49,17 +52,26 @@ export function SearchPanel({ busca, onAbrir, onConfirmar }: SearchPanelProps) {
     });
   };
 
+  /**
+   * @param nome O nome ACESSÍVEL, quando o texto visível não serve.
+   *
+   * Os três primeiros alternadores desenham `Aa`, `ab` e `.*` — abreviações que
+   * fazem sentido para o olho e nenhuma para quem ouve a tela. Foram assim
+   * desde a spec 027; o parâmetro entra agora sem mudá-los, e o `filtro` já
+   * nasce com nome de gente.
+   */
   const alternador = (
     titulo: string,
     rotulo: string,
     ligado: boolean,
-    aoClicar: () => void
+    aoClicar: () => void,
+    nome?: string
   ): React.ReactNode => (
     <Tooltip title={titulo} placement="bottom">
       <Box
         component="button"
         type="button"
-        aria-label={rotulo}
+        aria-label={nome ?? rotulo}
         aria-pressed={ligado}
         onClick={aoClicar}
         sx={{
@@ -136,6 +148,26 @@ export function SearchPanel({ busca, onAbrir, onConfirmar }: SearchPanelProps) {
     />
   );
 
+  /**
+   * A linha como ela vai ficar depois da substituição (T033).
+   *
+   * `null` quando não há substituto, quando a expressão não compila, ou quando
+   * o resultado é IGUAL — nos três casos não há nada útil a mostrar.
+   *
+   * A regex é montada da MESMA função que o servidor usa. Uma segunda leitura
+   * do termo aqui poderia divergir, e a prévia mentiria sobre o que vai
+   * acontecer — que é a pior falha possível numa prévia.
+   */
+  const regexDaPrevia =
+    busca.substituto === '' || busca.termoInvalido
+      ? null
+      : montarRegex(busca.termo, busca.opcoes);
+
+  const previa = (o: Ocorrencia): string | null =>
+    regexDaPrevia === null
+      ? null
+      : previaDaLinha(o, regexDaPrevia, busca.substituto, busca.opcoes.regex);
+
   const substituirEm = async (caminhos: readonly string[], quantos: number): Promise<void> => {
     const ok = await onConfirmar(
       `Substituir "${busca.termo}" por "${busca.substituto}" em ${quantos} ocorrência(s), ` +
@@ -187,7 +219,66 @@ export function SearchPanel({ busca, onAbrir, onConfirmar }: SearchPanelProps) {
             </Box>
           </Tooltip>
         </Box>
+        {/* `include`/`exclude` (T031), atrás de um botão: são úteis e raros, e
+            dois campos sempre abertos empurrariam a lista de resultados para
+            baixo em toda busca. */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
+          {alternador(
+            'Filtrar por arquivo',
+            'filtro',
+            filtroAberto || busca.incluir !== '' || busca.excluir !== '',
+            () => setFiltroAberto((v) => !v),
+            'Filtrar por arquivo'
+          )}
+          {(busca.incluir !== '' || busca.excluir !== '') && !filtroAberto && (
+            <Box sx={{ color: 'primary.main', fontSize: 10 }}>filtro ativo</Box>
+          )}
+        </Box>
+
+        {filtroAberto && (
+          <>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              {campo(busca.incluir, 'Incluir', 'Incluir (ex.: src/**/*.ts)', busca.definirIncluir)}
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              {campo(busca.excluir, 'Excluir', 'Excluir (ex.: **/*.test.ts)', busca.definirExcluir)}
+            </Box>
+            <Box sx={{ color: 'text.secondary', fontSize: 10, lineHeight: 1.4 }}>
+              Padrões separados por vírgula, na gramática do <code>.gitignore</code>.
+              O excluir vence o incluir.
+            </Box>
+          </>
+        )}
       </Box>
+
+      {/* Desfazer a última substituição (T032). Some quando não há o que
+          desfazer — e o histórico vive na memória do servidor, então
+          recarregar a IDE zera, como o desfazer de qualquer editor. */}
+      {busca.desfazivel !== null && (
+        <Box
+          data-desfazer-substituicao
+          sx={{
+            mx: 1, mb: 0.75, px: 0.75, py: 0.4, borderRadius: 0.5,
+            border: 1, borderColor: 'warning.main', color: 'warning.main',
+            fontSize: 11, display: 'flex', alignItems: 'center', gap: 0.75,
+          }}
+        >
+          <span>Substituído em {busca.desfazivel.arquivos} arquivo(s).</span>
+          <Box
+            component="button"
+            type="button"
+            aria-label="Desfazer a substituição"
+            onClick={() => void busca.desfazer().catch(onErro)}
+            sx={{
+              border: 1, borderColor: 'warning.main', bgcolor: 'transparent',
+              color: 'inherit', font: 'inherit', fontSize: 10.5,
+              px: 0.6, py: 0.1, borderRadius: 0.5, cursor: 'pointer',
+            }}
+          >
+            desfazer
+          </Box>
+        </Box>
+      )}
 
       <Box
         data-resumo-busca
@@ -264,15 +355,39 @@ export function SearchPanel({ busca, onAbrir, onConfirmar }: SearchPanelProps) {
                         '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
                       }}
                     >
-                      <Box component="span" sx={{ minWidth: 0, overflow: 'hidden' }}>
-                        {t.antes}
-                        <Box
-                          component="span"
-                          sx={{ bgcolor: 'primary.main', color: 'background.default' }}
-                        >
-                          {t.casado}
+                      <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
+                        <Box component="span">
+                          {t.antes}
+                          <Box
+                            component="span"
+                            sx={{
+                              bgcolor: 'primary.main', color: 'background.default',
+                              // Riscado quando há prévia: é o que deixa claro
+                              // que ESTA parte sai. Sem isso, duas linhas
+                              // parecidas empilhadas viram um "achar a
+                              // diferença", que é trabalho para o usuário.
+                              textDecoration: previa(o) === null ? 'none' : 'line-through',
+                            }}
+                          >
+                            {t.casado}
+                          </Box>
+                          {t.depois}
                         </Box>
-                        {t.depois}
+                        {/* A prévia (T033): a linha como ela vai FICAR.
+                            Só aparece quando há substituto e quando o
+                            resultado é DIFERENTE — duas linhas idênticas lado
+                            a lado seriam ruído. */}
+                        {previa(o) !== null && (
+                          <Box
+                            data-previa-da-substituicao
+                            sx={{ color: 'success.main', display: 'flex', gap: 0.5 }}
+                          >
+                            <Box component="span" sx={{ opacity: 0.7 }}>→</Box>
+                            <Box component="span" sx={{ minWidth: 0, overflow: 'hidden' }}>
+                              {previa(o)}
+                            </Box>
+                          </Box>
+                        )}
                       </Box>
                     </Box>
                   );

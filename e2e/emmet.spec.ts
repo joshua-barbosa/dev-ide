@@ -3,8 +3,31 @@
 // `div.foo>ul>li*3` vira HTML. O motor é o oficial, embrulhado para o Monaco
 // pelo `emmet-monaco-es`, que o registra como **provedor de conclusão** — a
 // expansão aparece na lista de sugestões e é aceita com Tab.
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { entradaRapida, esperarEditorPronto, menu, textoDoEditor, esperarIdePronta } from './fixtures';
+
+/**
+ * Espera a lista de sugestões — e PEDE, se ela não vier sozinha.
+ *
+ * O gatilho automático do Monaco depende de temporizador, e sob carga (a suíte
+ * inteira rodando) ele passa dos 10 segundos. Este teste ficou instável por
+ * isso: falhou duas vezes na suíte completa e passou sempre sozinho.
+ *
+ * `Ctrl+Espaço` abre a mesma lista, do mesmo provedor. O que se quer provar
+ * aqui é que o Emmet EXPANDE na ilha de HTML — não que o Monaco decidiu abrir
+ * a lista sem ninguém pedir.
+ */
+async function esperarSugestoes(page: Page): Promise<void> {
+  const lista = page.locator('.suggest-widget');
+  if (await lista.isVisible().catch(() => false)) return;
+  try {
+    await expect(lista).toBeVisible({ timeout: 4_000 });
+  } catch {
+    await page.keyboard.press('Control+Space');
+    await expect(lista).toBeVisible({ timeout: 10_000 });
+  }
+}
+
 
 /** Cria um arquivo sem título e escolhe a linguagem. */
 async function arquivoEm(
@@ -40,7 +63,7 @@ test('uma abreviação simples vira HTML', async ({ page }) => {
   await page.locator('[data-grupo-focado="true"] [data-editor]').click();
   await page.keyboard.type('ul>li');
 
-  await expect(page.locator('.suggest-widget')).toBeVisible({ timeout: 10_000 });
+  await esperarSugestoes(page);
   await page.keyboard.press('Tab');
 
   await expect.poll(() => textoDoEditor(page)).toMatch(/<ul>/);
@@ -52,7 +75,7 @@ test('multiplicação e classe: div.card*2', async ({ page }) => {
   await page.locator('[data-grupo-focado="true"] [data-editor]').click();
   await page.keyboard.type('div.card*2');
 
-  await expect(page.locator('.suggest-widget')).toBeVisible({ timeout: 10_000 });
+  await esperarSugestoes(page);
   await page.keyboard.press('Tab');
 
   // `poll`, e não leitura direta: o Monaco aplica a expansão fora do turno em
@@ -93,7 +116,7 @@ test('em PHP, a abreviação expande na ILHA de HTML', async ({ page }) => {
   await page.keyboard.type('<?php $x = 1; ?>\n');
   await page.keyboard.type('ul>li*2');
 
-  await expect(page.locator('.suggest-widget')).toBeVisible({ timeout: 10_000 });
+  await esperarSugestoes(page);
   await page.keyboard.press('Tab');
 
   await expect
