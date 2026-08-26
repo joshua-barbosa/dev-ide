@@ -484,6 +484,14 @@ export interface SessionCapabilities {
   readonly rootPath: string;
   /** O que digitar no terminal quando o prompt aparecer (spec 061). */
   readonly comandoDeTerminal: string;
+  /**
+   * Sabe interromper uma consulta em andamento (T005)?
+   *
+   * `false` no SQLite: `node:sqlite` é síncrono, e enquanto a consulta roda o
+   * processo inteiro está parado nela — não há segundo instante para mandar um
+   * `KILL`. A interface não desenha o botão onde isto é `false`.
+   */
+  readonly cancelaQuery: boolean;
 }
 
 export interface ConnectionsState {

@@ -12,6 +12,7 @@ import type { Vault } from '../connections/vault';
 import { diasDeLembranca, type RememberedKey } from '../connections/remember';
 import type { ConnectionInput, FieldValue, Session, VaultState } from '../connections/types';
 import { createRemoteFilesRouter } from './arquivos-remotos';
+import { SEM_CANCELAMENTO } from '../connections/drivers/cancelar';
 import { apagarSnippet, guardarSnippet, lerSnippets } from '../snippets-de-terminal';
 import { queryList, requireString, wrap } from '../http/handlers';
 import type { LeitorDePreferencias } from '../prefs';
@@ -33,6 +34,10 @@ function capabilities(session: Session) {
     shell: session.shell !== undefined,
     monitor: session.monitor !== undefined,
     forwarding: session.forwarding !== undefined,
+    // Parar consulta em andamento (T005). Aqui, e não numa rota própria: este
+    // objeto já é o lugar onde a sessão DECLARA e a interface OBEDECE, e uma
+    // segunda fonte para a mesma pergunta é o defeito, não a feature.
+    cancelaQuery: typeof session.cancelQuery === 'function',
     // Onde a tabela SFTP abre (spec 055). `/` para quem não disser nada.
     rootPath: session.rootPath ?? '/',
     // O que a tela digita quando o prompt aparecer (spec 061).
@@ -297,6 +302,22 @@ export function createConnectionsRouter(
       ordenar: (body.ordenar ?? null) as never,
       filtros: (Array.isArray(body.filtros) ? body.filtros : []) as never,
     })));
+  }));
+
+  /**
+   * Parar a consulta em andamento (T005).
+   *
+   * Vem por uma requisição SEPARADA de propósito: a que está rodando a query
+   * está parada esperando a resposta do banco, e é justamente ela que o usuário
+   * quer interromper.
+   */
+  router.post('/:id/cancel', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (typeof session.cancelQuery !== 'function') {
+      throw new Error(SEM_CANCELAMENTO);
+    }
+    await session.cancelQuery();
+    res.json(ok({ cancelado: true }));
   }));
 
   /**

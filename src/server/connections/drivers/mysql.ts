@@ -16,6 +16,7 @@ import {
   PROCESSOS_SQL,
 } from './mysql-sql';
 import { escrever, lerCelula, lerTabela } from './mysql-tabela';
+import { comandoDeCancelamento } from './cancelar';
 import { estruturaDaTabela } from './mysql-estrutura';
 import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
 import { executar, qualificar, query } from './mysql-base';
@@ -453,6 +454,11 @@ async function connect(config: ResolvedConfig): Promise<Session> {
 
   const [info] = await query<{ versao: string }>(conn, 'SELECT VERSION() AS versao');
   const versao = info?.versao ?? '';
+
+  // O próprio id no servidor, pego AGORA: perguntar na hora de cancelar
+  // exigiria a conexão livre, que é exatamente o que não se tem então.
+  const [meu] = await query<{ id: number }>(conn, 'SELECT CONNECTION_ID() AS id');
+  const meuId = Number(meu?.id ?? 0);
   const rotulo = socket === '' ? `${f.host}:${f.port}` : socket;
 
   /** Falha cedo e com mensagem clara, em vez de estourar dentro do driver. */
@@ -472,6 +478,30 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       return navegar(conn, rotulo, versao, exibicao, nodePath, opcoes);
     },
     readCell: async (request) => lerCelula(conn, request),
+    cancelQuery: async () => {
+      const comando = comandoDeCancelamento('mysql', meuId);
+      // Conexão nova, curta, e sem `database`: ela existe para mandar uma linha
+      // e morrer, e escolher schema custaria uma ida a mais ao servidor.
+      const matadora = mysql.createConnection({
+        ...(socket === '' ? { host: String(f.host), port: Number(f.port) } : { socketPath: socket }),
+        user: String(f.user),
+        password: f.password === undefined ? undefined : String(f.password),
+        ssl: opcaoSsl(String(f.ssl_mode ?? 'DISABLED'), String(f.ssl_ca ?? '')),
+        multipleStatements: false,
+        connectTimeout: 15_000,
+      });
+      // Sem este ouvinte um erro de socket vira exceção não tratada e MATA O
+      // PROCESSO — é a mesma armadilha documentada na conexão principal.
+      matadora.on('error', () => undefined);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          matadora.connect((err) => (err ? reject(new Error(err.message)) : resolve()));
+        });
+        await query(matadora, comando.sql);
+      } finally {
+        matadora.destroy();
+      }
+    },
     readTable: async (request) => {
       exigirViva();
       await usar(conn, request.nodePath[1]);

@@ -241,6 +241,17 @@ function BarraDeComando({
           onClick={estado.voltarParaTabela}
         />
       )}
+      {/* `Parar` só existe enquanto há o que parar, e só onde o banco sabe
+          fazer. Um botão sempre visível e quase sempre inútil seria ruído; um
+          que não para seria pior. */}
+      {estado.parar !== null && (
+        <Acao
+          icone="lucide:square"
+          rotulo="Parar esta consulta"
+          onClick={estado.parar}
+          cor="error.main"
+        />
+      )}
       {/* Ao lado do `▷`, como no print da ferramenta de referência. */}
       <Acao
         icone="lucide:eye"

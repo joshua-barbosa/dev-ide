@@ -26,6 +26,7 @@ import {
 } from './postgres-sql';
 import { estruturaDaTabela } from './postgres-estrutura';
 import { escrever, lerCelula, lerTabela } from './postgres-tabela';
+import { comandoDeCancelamento } from './cancelar';
 import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
 import {
   ACOES_DE_TABELA,
@@ -107,6 +108,14 @@ function criarPool(base: ClientConfig, config: ResolvedConfig, startupSql: strin
   const clientes = new Map<string, Client>();
   const abrindo = new Map<string, Promise<Client>>();
   const ouvintes: Array<(motivo: string) => void> = [];
+  /**
+   * O pid de cada cliente no servidor, e qual está rodando algo agora.
+   *
+   * No Postgres há um cliente POR BANCO — cancelar exige saber qual deles está
+   * ocupado. Cancelar todos mataria a consulta de outra aba junto.
+   */
+  const pids = new Map<Client, number>();
+  let rodando: number | null = null;
 
   const abrir = async (banco: string): Promise<Client> => {
     const client = new Client({ ...base, database: banco });
@@ -115,10 +124,15 @@ function criarPool(base: ClientConfig, config: ResolvedConfig, startupSql: strin
     // derruba o processo. O cliente morto sai do mapa para não ser reentregue.
     client.on('error', (err: Error) => {
       clientes.delete(banco);
+      pids.delete(client);
       for (const ouvinte of ouvintes) ouvinte(err.message);
     });
 
     await client.connect();
+    // O pid AGORA: perguntar na hora de cancelar exigiria o cliente livre, que
+    // é exatamente o que não se tem então.
+    const { rows: eu } = await client.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+    if (eu[0] !== undefined) pids.set(client, Number(eu[0].pid));
     if (config.readOnly) {
       await client.query('SET default_transaction_read_only = on');
     }
@@ -150,7 +164,25 @@ function criarPool(base: ClientConfig, config: ResolvedConfig, startupSql: strin
     ouvintes.push(listener);
   };
 
-  return { clienteDe, fecharTudo, aoMorrer };
+  /**
+   * Marca qual cliente está ocupado, para o cancelamento saber a quem mirar.
+   *
+   * Envolve a execução inteira, e limpa no `finally` — deixar a marca depois de
+   * a query terminar faria o próximo `Parar` cancelar o que já acabou (ou, pior,
+   * o que começou depois no mesmo backend).
+   */
+  const marcando = async <T>(client: Client, tarefa: () => Promise<T>): Promise<T> => {
+    rodando = pids.get(client) ?? null;
+    try {
+      return await tarefa();
+    } finally {
+      rodando = null;
+    }
+  };
+
+  const pidEmUso = (): number | null => rodando;
+
+  return { clienteDe, fecharTudo, aoMorrer, marcando, pidEmUso };
 }
 
 // ---------------------------------------------------------------------------
@@ -545,7 +577,8 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     statement_timeout: resolveTimeout(undefined),
   };
 
-  const { clienteDe, fecharTudo, aoMorrer } = criarPool(base, config, String(f.startup_sql ?? '').trim());
+  const { clienteDe, fecharTudo, aoMorrer, marcando, pidEmUso } =
+    criarPool(base, config, String(f.startup_sql ?? '').trim());
   const principalClient = await clienteDe(principal);
 
   // SHOW não aceita alias; current_setting devolve o mesmo valor como coluna nomeada.
@@ -563,13 +596,27 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     // a conexão é presa a um banco, e usar o principal leria a tabela errada.
     readCell: async (request) =>
       lerCelula(await clienteDe(request.nodePath[1] ?? principal), request),
-    readTable: async (request) =>
-      lerTabela(
-        await clienteDe(request.nodePath[1] ?? principal),
-        request,
-        exibicao.rowLimit,
-        executar
-      ),
+    cancelQuery: async () => {
+      const alvo = pidEmUso();
+      // Nada rodando: não é erro, é o botão chegando depois da resposta. Dizer
+      // "falhou" aí seria mentir sobre o que aconteceu.
+      if (alvo === null) return;
+      const comando = comandoDeCancelamento('postgres', alvo);
+      // Cliente NOVO, curto: os do pool estão ocupados — é justamente por isso
+      // que o cancelamento existe.
+      const matador = new Client({ ...base, database: principal });
+      matador.on('error', () => undefined);
+      try {
+        await matador.connect();
+        await matador.query(comando.sql, [...comando.params]);
+      } finally {
+        await matador.end().catch(() => undefined);
+      }
+    },
+    readTable: async (request) => {
+      const client = await clienteDe(request.nodePath[1] ?? principal);
+      return marcando(client, () => lerTabela(client, request, exibicao.rowLimit, executar));
+    },
     writeTable: async (request) =>
       escrever(await clienteDe(request.nodePath[1] ?? principal), request),
     processList: async () => {
@@ -625,7 +672,8 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       // é a mesma armadilha do `pgdb` sem `-d`, que responde do banco errado
       // sem dar erro.
       const banco = request.database ?? request.nodePath?.[1] ?? principal;
-      return executar(await clienteDe(banco), request, exibicao.rowLimit);
+      const client = await clienteDe(banco);
+      return marcando(client, () => executar(client, request, exibicao.rowLimit));
     },
     runAction: (request) => acao(clienteDe, principal, request),
     close: fecharTudo,

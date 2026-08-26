@@ -19,6 +19,14 @@ export interface EstadoGrade {
   readonly erro: string | null;
   readonly carregando: boolean;
   readonly rotulo?: string;
+  /**
+   * Interrompe esta consulta (T005).
+   *
+   * Ausente quando não há o que parar, ou quando o banco não sabe parar. A
+   * grade só desenha o botão quando ele existe — botão que não para é pior que
+   * botão ausente.
+   */
+  readonly parar?: () => void;
 }
 
 export interface LinhaSaida {
@@ -189,7 +197,26 @@ export function useExecution(
 
       if (modo !== 'json') {
         ws.store.open({ id: gridId, type: 'grid', title: 'Resultado', meta: {} });
-        atualizarGrade(gridId, { resultado: null, erro: null, carregando: true, rotulo });
+        // O `Parar` nasce junto com o "executando…", e some com ele: perguntar
+        // as capacidades aqui atrasaria a query por uma ida ao servidor que o
+        // usuário não pediu. Se o banco não souber cancelar, o próprio servidor
+        // responde dizendo isso, e a mensagem aparece na grade.
+        atualizarGrade(gridId, {
+          resultado: null,
+          erro: null,
+          carregando: true,
+          rotulo,
+          parar: () => {
+            void Api.cancelQuery(vinculo.connectionId).catch((e: Error) => {
+              atualizarGrade(gridId, {
+                resultado: null,
+                erro: e.message,
+                carregando: false,
+                rotulo,
+              });
+            });
+          },
+        });
       }
 
       try {

@@ -280,6 +280,17 @@ export interface Session {
    */
   readonly readCell?: (request: CellRequest) => Promise<CellResult>;
   /**
+   * Interrompe a consulta que está rodando NESTA sessão (T005).
+   *
+   * Só existe onde o banco sabe fazer: o SQLite não sabe, e a interface só
+   * oferece o botão onde a sessão declara o método — a mesma regra do Artigo
+   * III que fez a aba de FTP nascer sem terminal.
+   *
+   * Manda por uma conexão NOVA, porque a que está rodando a query está ocupada
+   * esperando a resposta do próprio comando que se quer matar.
+   */
+  readonly cancelQuery?: () => Promise<void>;
+  /**
    * A estrutura de uma tabela ou view (spec 045).
    *
    * Uma ida ao servidor traz as seis listas: seis idas para desenhar uma tela

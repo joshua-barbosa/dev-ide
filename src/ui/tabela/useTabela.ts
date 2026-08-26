@@ -40,6 +40,14 @@ export interface EstadoDaTabela {
   alternarOrdem(coluna: string): void;
   definirFiltro(coluna: string, valor: string): void;
   recarregar(): void;
+  /**
+   * Interrompe a consulta em andamento (T005).
+   *
+   * `null` quando o banco não sabe fazer — o SQLite não sabe, porque
+   * `node:sqlite` é síncrono e enquanto a consulta roda não há segundo instante
+   * para mandar nada. Botão que não para é pior que botão ausente.
+   */
+  readonly parar: (() => void) | null;
   definirSql(texto: string): void;
   /** Roda o SQL do topo. Entra em modo livre se ele foi editado. */
   executarSql(): void;
@@ -69,6 +77,24 @@ export function useTabela({ connectionId, nodePath, database }: DepsDaTabela): E
   const [sqlEditado, setSqlEditado] = useState<string | null>(null);
   const [livre, setLivre] = useState<{ readonly sql: string } | null>(null);
   const [resultadoLivre, setResultadoLivre] = useState<TablePage | null>(null);
+
+  // O banco sabe cancelar? Perguntado uma vez por conexão, ao montar a aba.
+  const [cancela, setCancela] = useState(false);
+  useEffect(() => {
+    let vigente = true;
+    // `connect` é o que a IDE já chama ao abrir a conexão, e é ele que devolve
+    // o que a sessão declara. Perguntar por uma rota própria criaria uma
+    // segunda fonte para a mesma verdade.
+    void Api.connect(connectionId)
+      .then((c) => {
+        if (vigente) setCancela(c.cancelaQuery);
+      })
+      // Falhar aqui só esconde o botão, e esconder é o lado seguro.
+      .catch(() => undefined);
+    return () => {
+      vigente = false;
+    };
+  }, [connectionId]);
 
   const geracao = useRef(0);
   // O caminho vira texto para poder entrar na lista de dependências: um vetor
@@ -181,6 +207,18 @@ export function useTabela({ connectionId, nodePath, database }: DepsDaTabela): E
     definirFiltro: (coluna, valor) =>
       doInicio(() => setFiltros((atual) => ({ ...atual, [coluna]: valor }))),
     recarregar: () => setVersao((v) => v + 1),
+
+    parar:
+      cancela && carregando
+        ? () => {
+            // O erro do cancelamento não pode apagar o erro DA QUERY, que é o
+            // que o usuário precisa ler. Vai para o mesmo campo só quando não
+            // há nada lá.
+            void Api.cancelQuery(connectionId).catch((e: Error) => {
+              setErro((atual) => atual ?? `Não deu para parar: ${e.message}`);
+            });
+          }
+        : null,
 
     definirSql: (texto: string) => setSqlEditado(texto),
 

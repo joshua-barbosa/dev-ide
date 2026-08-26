@@ -182,6 +182,10 @@ test('rotas de conexão', async (t) => {
       // quem não tem terminal — e o campo existe para não haver dois formatos
       // de resposta.
       comandoDeTerminal: '',
+      // Parar consulta em andamento (T005). `false` aqui porque o driver falso
+      // deste teste não declara `cancelQuery` — que é exatamente a mecânica: a
+      // sessão declara, a interface obedece.
+      cancelaQuery: false,
     });
   });
 

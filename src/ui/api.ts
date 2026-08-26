@@ -378,6 +378,9 @@ export const Api = {
     request<QueryResult>('POST', `${conexoes}/${id}/execute`, payload),
   readTable: (id: string, payload: TableRequest) =>
     request<TablePage>('POST', `${conexoes}/${id}/table`, payload),
+  /** Interrompe a consulta em andamento naquela conexão (T005). */
+  cancelQuery: (id: string) =>
+    request<{ cancelado: boolean }>('POST', `${conexoes}/${id}/cancel`),
   /** O valor inteiro de uma célula, sem o corte da grade (spec 062). */
   readCell: (id: string, payload: CellRequest) =>
     request<CellResult>('POST', `${conexoes}/${id}/table/cell`, payload),

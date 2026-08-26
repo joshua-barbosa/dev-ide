@@ -148,6 +148,8 @@ const ICONES_DA_INTERFACE = [
   'lucide:eye',
   'lucide:minus',
   'lucide:rotate-ccw',
+  // `Parar esta consulta` (T005). Quadrado, como todo botão de parar.
+  'lucide:square',
   // `Abrir Query` num database (spec 038). Ficou de fora na entrega e saía como
   // bolinha — o guard de ícones só olhava literal entre aspas simples, e JSX usa
   // aspas duplas.

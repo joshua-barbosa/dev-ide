@@ -10,6 +10,7 @@ import { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import type { CellValue, QueryResult } from '../../shared/contracts';
 import { tokens } from '../theme';
+import { Icon } from '../Icon';
 import { useLarguras } from '../tabela/useLarguras';
 import { larguraDoConteudo } from '../../shared/grade/larguras';
 
@@ -23,9 +24,13 @@ export interface ResultGridProps {
   readonly erro?: string | null;
   readonly carregando?: boolean;
   readonly rotulo?: string;
+  /** Interrompe a consulta em andamento (T005). */
+  readonly parar?: () => void;
 }
 
-export function ResultGrid({ resultado, erro = null, carregando = false, rotulo }: ResultGridProps) {
+export function ResultGrid({
+  resultado, erro = null, carregando = false, rotulo, parar,
+}: ResultGridProps) {
   // Antes de qualquer `return`: gancho não pode viver depois de saída
   // condicional, e as três abaixo são exatamente isso.
   const larguras = useLarguras();
@@ -45,7 +50,35 @@ export function ResultGrid({ resultado, erro = null, carregando = false, rotulo 
   const larguraDe = (coluna: string): number =>
     larguras.larguraDe(coluna) ?? automaticas[coluna] ?? 120;
 
-  if (carregando) return <Mensagem texto="executando…" />;
+  if (carregando) {
+    return (
+      <Box
+        sx={{
+          flex: 1, display: 'flex', alignItems: 'center', gap: 1.5,
+          p: 1.75, color: 'text.secondary', fontSize: 12,
+        }}
+      >
+        <span>executando…</span>
+        {parar !== undefined && (
+          <Box
+            component="button"
+            type="button"
+            aria-label="Parar esta consulta"
+            onClick={parar}
+            sx={{
+              border: 1, borderColor: 'error.main', bgcolor: 'transparent',
+              color: 'error.main', font: 'inherit', fontSize: 11,
+              px: 1, py: 0.25, borderRadius: 0.5, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 0.5,
+            }}
+          >
+            <Icon name="lucide:square" size={11} />
+            Parar
+          </Box>
+        )}
+      </Box>
+    );
+  }
   if (erro !== null) return <Mensagem texto={erro} erro />;
   if (resultado === null) return <Mensagem texto="Execute uma consulta para ver o resultado." />;
 
