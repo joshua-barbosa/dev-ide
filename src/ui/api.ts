@@ -22,6 +22,8 @@ import type {
   TableWriteRequest,
   TableWriteResult,
   TreeNode,
+  CellRequest,
+  CellResult,
 } from '../shared/contracts';
 import type { SnippetDeTerminal } from '../shared/terminal/snippets';
 import type {
@@ -376,6 +378,9 @@ export const Api = {
     request<QueryResult>('POST', `${conexoes}/${id}/execute`, payload),
   readTable: (id: string, payload: TableRequest) =>
     request<TablePage>('POST', `${conexoes}/${id}/table`, payload),
+  /** O valor inteiro de uma célula, sem o corte da grade (spec 062). */
+  readCell: (id: string, payload: CellRequest) =>
+    request<CellResult>('POST', `${conexoes}/${id}/table/cell`, payload),
   tableStructure: (id: string, nodePath: readonly string[]) =>
     request<TableStructure>('GET', comCaminho(`${conexoes}/${id}/structure`, nodePath)),
   processList: (id: string) =>

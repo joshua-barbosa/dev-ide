@@ -92,10 +92,14 @@ export interface TablePanelProps {
    * somente-leitura, ou se ele está em modo livre.
    */
   readonly motivoSemEdicao?: string | null;
+  /** Para o visor buscar o valor inteiro de uma célula (spec 062, fase D). */
+  readonly connectionId: string;
+  readonly nodePath: readonly string[];
 }
 
 export function TablePanel({
   estado, titulo, onExportar, rascunho, gravando = false, onGravar, motivoSemEdicao = null,
+  connectionId, nodePath,
 }: TablePanelProps) {
   const { pagina, carregando, erro } = estado;
   const [busca, setBusca] = useState('');
@@ -155,6 +159,8 @@ export function TablePanel({
           linhas={visiveis}
           rascunho={rascunho}
           motivoSemEdicao={motivoSemEdicao}
+          connectionId={connectionId}
+          nodePath={nodePath}
         />
       )}
     </Box>

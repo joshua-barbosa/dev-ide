@@ -327,6 +327,31 @@ export interface AlterCapabilities {
 }
 
 /** Escrever pela grade (spec 044). Valores vão parametrizados, sempre. */
+/**
+ * Pedido do valor INTEIRO de uma célula (spec 062, fase D).
+ *
+ * A grade corta em `MAX_CELL_CHARS` porque uma página de 500 linhas com JSON de
+ * 40 KB em cada uma seriam 20 MB atravessando a rede para caber em colunas de
+ * 400 px. O visor pede de novo, uma célula por vez, e aí sem corte.
+ */
+export interface CellRequest {
+  readonly nodePath: readonly string[];
+  /** A linha, pela chave primária — a mesma que o `UPDATE` usa. */
+  readonly chave: Readonly<Record<string, CellValue>>;
+  readonly coluna: string;
+}
+
+export interface CellResult {
+  readonly valor: CellValue;
+  /**
+   * Cortado mesmo assim, e em quantos caracteres.
+   *
+   * Existe um teto aqui também: um `blob` de 500 MB mataria a aba do navegador,
+   * e "a IDE travou" é pior resposta que "este valor tem 500 MB".
+   */
+  readonly cortadoEm: number | null;
+}
+
 export interface TableWriteRequest {
   readonly nodePath: readonly string[];
   readonly insercoes?: readonly Readonly<Record<string, CellValue>>[];

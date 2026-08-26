@@ -136,6 +136,8 @@ export function TabelaHost({
       gravando={gravando}
       onGravar={somenteLeitura ? undefined : () => void gravar()}
           motivoSemEdicao={motivoSemEdicao}
+          connectionId={connectionId}
+          nodePath={nodePath}
         />
       </Box>
 

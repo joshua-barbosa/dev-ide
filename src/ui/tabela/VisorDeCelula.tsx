@@ -43,7 +43,16 @@ const ESTILO_DO_TEXTO = {
 export interface VisorDeCelulaProps {
   readonly aberto: boolean;
   readonly coluna: string;
+  /** O valor como está na GRADE — que pode vir cortado pelo servidor. */
   readonly valor: CellValue;
+  /**
+   * Busca o valor inteiro no banco.
+   *
+   * Ausente quando não há como: em SQL livre a IDE não sabe a tabela, e sem
+   * chave primária não há como apontar uma linha só. Nesses casos o visor
+   * mostra o que a grade tem, e DIZ que está cortado.
+   */
+  readonly buscarInteiro?: () => Promise<{ readonly valor: CellValue; readonly cortadoEm: number | null }>;
   /** Por que não dá para editar, quando não dá. Texto, não booleano. */
   readonly motivoSemEdicao: string | null;
   readonly onFechar: () => void;
@@ -52,14 +61,19 @@ export interface VisorDeCelulaProps {
 }
 
 export function VisorDeCelula({
-  aberto, coluna, valor, motivoSemEdicao, onFechar, onSalvar,
+  aberto, coluna, valor, motivoSemEdicao, onFechar, onSalvar, buscarInteiro,
 }: VisorDeCelulaProps) {
-  const original = paraEditar(valor);
+  const arquivo = useRef<HTMLInputElement | null>(null);
+  const camada = useRef<HTMLPreElement>(null);
+  const [buscando, setBuscando] = useState(false);
+  /** O valor inteiro, quando já chegou. Antes disso vale o da grade. */
+  const [inteiro, setInteiro] = useState<CellValue | undefined>(undefined);
+  const [cortadoEm, setCortadoEm] = useState<number | null>(null);
+
+  const original = paraEditar(inteiroOuDaGrade(inteiro, valor));
   const [texto, setTexto] = useState(original);
   const [modo, setModo] = useState<ModoDoVisor>('texto');
   const [aviso, setAviso] = useState<string | null>(null);
-  const arquivo = useRef<HTMLInputElement | null>(null);
-  const camada = useRef<HTMLPreElement>(null);
 
   // O tema sai do MUI, que já o acompanha (`criarTema` mapeia `escuro`→`dark`).
   // A alternativa era enfiar `tema` por quatro camadas de props até aqui, para
@@ -70,10 +84,43 @@ export function VisorDeCelula({
   // Reabrir noutra célula precisa recomeçar. Sem isto, o visor mostraria o
   // valor da célula ANTERIOR — que parece um valor legítimo, e é o pior tipo
   // de erro: silencioso e plausível.
+  // Buscar o valor INTEIRO ao abrir.
+  //
+  // A grade corta em 2048 caracteres para não arrastar megabytes por página — e
+  // o visor promete o valor inteiro. Ele estava mostrando o cortado, com as
+  // reticências do servidor no fim: um JSON de simulado parava no meio de
+  // `"nota":…`, e nada na tela dizia que faltava coisa.
+  useEffect(() => {
+    if (!aberto) {
+      setInteiro(undefined);
+      setCortadoEm(null);
+      return;
+    }
+    if (buscarInteiro === undefined) return;
+    let vigente = true;
+    setBuscando(true);
+    void buscarInteiro()
+      .then((r) => {
+        if (!vigente) return;
+        setInteiro(r.valor);
+        setCortadoEm(r.cortadoEm);
+      })
+      .catch((e: Error) => {
+        // Falhar aqui NÃO pode esvaziar o visor: o valor da grade continua
+        // valendo, e o usuário fica sabendo por que não veio o resto.
+        if (vigente) setAviso(`Não deu para buscar o valor inteiro: ${e.message}`);
+      })
+      .finally(() => {
+        if (vigente) setBuscando(false);
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [aberto, buscarInteiro]);
+
   useEffect(() => {
     if (!aberto) return;
     setTexto(original);
-    setAviso(null);
     // Abre já indentado quando é JSON: é para isso que se abre um JSON.
     const bonito = indentar(original);
     setModo(bonito === null ? 'texto' : 'json');
@@ -113,7 +160,14 @@ export function VisorDeCelula({
       <Box data-visor-de-celula sx={{ p: 2, bgcolor: 'background.paper' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
           <Box sx={{ fontSize: 13, fontWeight: 600 }}>{coluna}</Box>
-          <Box sx={{ color: 'text.secondary', fontSize: 11 }}>{resumoDe(texto)}</Box>
+          <Box sx={{ color: 'text.secondary', fontSize: 11 }}>
+            {buscando ? 'buscando o valor inteiro…' : resumoDe(texto)}
+          </Box>
+          {avisoDeCorte(texto, inteiro, cortadoEm) !== null && (
+            <Box data-corte sx={{ color: 'warning.main', fontSize: 11 }}>
+              ⚠ {avisoDeCorte(texto, inteiro, cortadoEm)}
+            </Box>
+          )}
           <Box sx={{ flex: 1 }} />
 
           {modos.length > 1 && (
@@ -245,6 +299,36 @@ export function VisorDeCelula({
       </Box>
     </Dialog>
   );
+}
+
+/** O inteiro quando já chegou; senão o da grade, que é melhor que nada. */
+function inteiroOuDaGrade(inteiro: CellValue | undefined, daGrade: CellValue): CellValue {
+  return inteiro === undefined ? daGrade : inteiro;
+}
+
+/**
+ * O aviso de que o que está na tela NÃO é o valor inteiro.
+ *
+ * Dois casos diferentes, e o usuário precisa distinguir:
+ *   - não deu para buscar (SQL livre, tabela sem chave) e o que se vê é o
+ *     recorte da grade;
+ *   - veio do banco, mas é grande demais até para o visor.
+ */
+function avisoDeCorte(
+  texto: string,
+  inteiro: CellValue | undefined,
+  cortadoEm: number | null
+): string | null {
+  if (cortadoEm !== null) {
+    return `valor cortado em ${cortadoEm.toLocaleString('pt-BR')} caracteres — é grande demais para caber na tela`;
+  }
+  // As reticências do servidor no fim são o sinal de que a grade cortou. Só
+  // valem como aviso quando o inteiro NÃO chegou: com ele, o `…` pode ser
+  // simplesmente parte do texto.
+  if (inteiro === undefined && texto.endsWith('…')) {
+    return 'cortado pela grade — a IDE não sabe qual linha é para buscar o resto';
+  }
+  return null;
 }
 
 /**

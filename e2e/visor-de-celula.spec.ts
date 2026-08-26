@@ -5,10 +5,10 @@
 // nenhum deles poderia adivinhar: o modo JSON só aparece quando o valor É JSON,
 // e salvar aqui NÃO escreve no banco — alimenta o rascunho.
 import { expect, test, type Page } from '@playwright/test';
-import { CONEXAO, SENHA_MESTRA, TABELA } from './global-setup';
+import { CONEXAO, SENHA_MESTRA, TABELA, TABELA_EDITAVEL } from './global-setup';
 import { aba, destrancarCofre, expandir, linhaArvore, painelLateral, esperarIdePronta } from './fixtures';
 
-async function abrirTabela(page: Page): Promise<void> {
+async function abrirTabela(page: Page, tabela: string = TABELA): Promise<void> {
   await painelLateral(page, 'Database').click();
   await expandir(page, 'ACME', 'Bancos');
   await linhaArvore(page, CONEXAO).click();
@@ -16,9 +16,9 @@ async function abrirTabela(page: Page): Promise<void> {
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await expandir(page, 'escola.db');
   await linhaArvore(page, 'Tables').click({ position: { x: 24, y: 8 } });
-  await linhaArvore(page, TABELA).hover();
-  await page.getByRole('button', { name: `Abrir tabela ${TABELA}`, exact: true }).click();
-  await expect(aba(page, TABELA)).toBeVisible();
+  await linhaArvore(page, tabela).hover();
+  await page.getByRole('button', { name: `Abrir tabela ${tabela}`, exact: true }).click();
+  await expect(aba(page, tabela)).toBeVisible();
 }
 
 /** Roda um SQL na aba e espera a coluna nova aparecer. */
@@ -156,4 +156,55 @@ test('o JSON sai COLORIDO, e não em texto de uma cor só', async ({ page }) => 
     )
     // Chave, número e delimitador em cores diferentes. Tudo igual = uma só.
     .toBeGreaterThan(1);
+});
+
+// ---- O valor que a grade cortou ----
+//
+// Achado por ele usando: um JSON de simulado abria na lupa parando no meio de
+// `"nota":…`. O servidor corta cada célula em 2048 caracteres para a página não
+// arrastar megabytes; o visor promete "o valor inteiro" e mostrava o recorte,
+// com as reticências do servidor no fim e nada dizendo que faltava coisa.
+
+/** Um texto seguramente acima do teto de 2048 do servidor. */
+const GIGANTE = 'ABCDEFGHIJ'.repeat(400); // 4000 caracteres
+
+test('a lupa mostra o valor INTEIRO, mesmo quando a grade cortou', async ({ page }) => {
+  // `alunos_edicao`, e NUNCA `alunos`: o `global-setup` registra que escrever
+  // na tabela de leitura já quebrou três testes de outras specs.
+  await abrirTabela(page, TABELA_EDITAVEL);
+  await page.locator('[data-sql-da-tabela]').fill(
+    `update ${TABELA_EDITAVEL} set nome = '${GIGANTE}' where id = 1`
+  );
+  await page.getByRole('button', { name: 'Executar este SQL (Ctrl+Enter)' }).click();
+  await expect(page.locator('[data-modo-livre]')).toBeVisible();
+
+  // De volta ao SQL da tabela: é lá que a IDE sabe a chave primária, e sem ela
+  // não há como buscar o valor inteiro de uma linha só.
+  await page.getByRole('button', { name: 'Voltar ao SQL da tabela' }).click();
+  await expect(page.locator('[data-coluna="nome"]')).toBeVisible();
+
+  const naGrade = await page.evaluate(() => {
+    const td = [...document.querySelectorAll('[data-grade] tbody td')].find((e) =>
+      (e.textContent ?? '').startsWith('ABCDEFGHIJ')
+    );
+    return td?.textContent ?? '';
+  });
+  // A grade recebe o recorte do servidor — e isso é o comportamento CERTO dela.
+  expect(naGrade.length).toBeLessThan(GIGANTE.length);
+  expect(naGrade.endsWith('…')).toBe(true);
+
+  // A lupa, não. Ela pede de novo, uma célula por vez, e sem corte.
+  await abrirLupa(page, 'ABCDEFGHIJ');
+  await expect.poll(() => caixa(page).inputValue().then((v) => v.length), { timeout: 5000 })
+    .toBe(GIGANTE.length);
+  await expect(visor(page).locator('[data-corte]')).toHaveCount(0);
+});
+
+test('sem chave primária a lupa não promete o que não pode: avisa que está cortado', async ({ page }) => {
+  await abrirTabela(page);
+  await rodar(page, `select '${GIGANTE}' as gigante`, 'gigante');
+  await abrirLupa(page, 'ABCDEFGHIJ');
+  // Em SQL livre a IDE não sabe qual linha é. O aviso é a diferença entre
+  // "cortado, e eu te aviso" e uma promessa quebrada em silêncio.
+  await expect(visor(page).locator('[data-corte]')).toBeVisible();
 });

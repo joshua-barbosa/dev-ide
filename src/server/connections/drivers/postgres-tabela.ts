@@ -22,6 +22,9 @@ import {
   normalizarPedidoDeTabela,
 } from './tabela';
 import { escreverNaTabela } from './transacao';
+import { cortarParaOVisor, montarLeituraDeCelula } from './celula';
+import { paraCelulaCrua } from './sql-base';
+import type { CellRequest, CellResult } from '../../../shared/contracts';
 
 /** Quem executa a consulta da página — vem de `postgres.ts`, que a implementa. */
 export type Executor = (
@@ -112,4 +115,30 @@ export async function escrever(
       rodar: async (sql, params) => (await client.query(sql, [...params])).rowCount ?? 0,
     }
   );
+}
+
+/** O valor inteiro de uma célula (spec 062, fase D). Ver `celula.ts`. */
+export async function lerCelula(client: Client, request: CellRequest): Promise<CellResult> {
+  const [, , schema, , objeto] = request.nodePath;
+  if (schema === undefined || objeto === undefined) {
+    throw new Error('Ver o valor inteiro exige um objeto selecionado.');
+  }
+  const { rows } = await client.query<{ nome: string; pk: boolean }>(COLUNAS_SQL, [schema, objeto]);
+  if (rows.length === 0) throw new Error(`Tabela não encontrada: ${schema}.${objeto}`);
+
+  const comando = montarLeituraDeCelula(
+    {
+      alvo: `${quoteIdentifier(schema, 'double')}.${quoteIdentifier(objeto, 'double')}`,
+      colunas: rows.map((c) => ({ name: c.nome, chave: c.pk })),
+      estilo: 'double',
+      marcador: 'numerado',
+    },
+    request.coluna,
+    request.chave
+  );
+
+  const r = await client.query<Record<string, unknown>>(comando.sql, comando.params as unknown[]);
+  const primeira = r.rows[0];
+  if (primeira === undefined) throw new Error('Esta linha não existe mais no banco.');
+  return cortarParaOVisor(paraCelulaCrua(primeira[request.coluna]));
 }

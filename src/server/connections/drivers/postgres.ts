@@ -25,7 +25,7 @@ import {
   TABELAS_SQL,
 } from './postgres-sql';
 import { estruturaDaTabela } from './postgres-estrutura';
-import { escrever, lerTabela } from './postgres-tabela';
+import { escrever, lerCelula, lerTabela } from './postgres-tabela';
 import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
 import {
   ACOES_DE_TABELA,
@@ -559,6 +559,10 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     kind: 'sql',
     onClosed: aoMorrer,
     children: (nodePath, opcoes) => navegar(clienteDe, rotulo, versao, exibicao, nodePath, opcoes),
+    // O cliente sai do BANCO do caminho, como o `readTable` faz: no Postgres
+    // a conexão é presa a um banco, e usar o principal leria a tabela errada.
+    readCell: async (request) =>
+      lerCelula(await clienteDe(request.nodePath[1] ?? principal), request),
     readTable: async (request) =>
       lerTabela(
         await clienteDe(request.nodePath[1] ?? principal),

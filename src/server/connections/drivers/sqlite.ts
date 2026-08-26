@@ -14,6 +14,9 @@ import {
 } from './tabela';
 import { DEFAULT_ROW_LIMIT } from './sql-base';
 import { escreverNaTabela } from './transacao';
+import { cortarParaOVisor, montarLeituraDeCelula } from './celula';
+import { paraCelulaCrua } from './sql-base';
+import type { CellRequest, CellResult } from '../../../shared/contracts';
 import { estruturaDaTabela } from './sqlite-estrutura';
 import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
 import {
@@ -303,6 +306,32 @@ function lerTabela(db: DatabaseSync, request: TableRequest, limitePadrao: number
   };
 }
 
+/** O valor inteiro de uma célula (spec 062, fase D). Ver `celula.ts`. */
+function lerCelula(db: DatabaseSync, request: CellRequest): CellResult {
+  const objeto = request.nodePath[2];
+  if (objeto === undefined) throw new Error('Ver o valor inteiro exige um objeto selecionado.');
+  const info = db.prepare(`PRAGMA table_info(${quote(objeto)})`).all() as Array<{
+    name: string; pk: number;
+  }>;
+  if (info.length === 0) throw new Error(`Tabela não encontrada: ${objeto}`);
+
+  const comando = montarLeituraDeCelula(
+    {
+      alvo: quote(objeto),
+      colunas: info.map((c) => ({ name: c.name, chave: c.pk > 0 })),
+      estilo: 'double',
+    },
+    request.coluna,
+    request.chave
+  );
+
+  const linha = db.prepare(comando.sql).get(...(comando.params as never[])) as
+    | Record<string, unknown>
+    | undefined;
+  if (linha === undefined) throw new Error('Esta linha não existe mais no banco.');
+  return cortarParaOVisor(paraCelulaCrua(linha[request.coluna]));
+}
+
 /** Escrever pela grade (spec 044), em uma transação. */
 async function escrever(
   db: DatabaseSync,
@@ -406,6 +435,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     kind: 'sql',
     children: async (nodePath, opcoes) => navegar(db, file, nodePath, opcoes),
     readTable: async (request) => lerTabela(db, request, DEFAULT_ROW_LIMIT),
+    readCell: async (request) => lerCelula(db, request),
     writeTable: (request) => escrever(db, request),
     tableStructure: async (nodePath) => estruturaDaTabela(db, nodePath),
     // O SQLite é um arquivo, não um servidor: não há processo alheio para

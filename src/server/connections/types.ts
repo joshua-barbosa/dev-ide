@@ -34,6 +34,8 @@ import type {
   ProcessoDoBanco,
   TableStructure,
   TableWriteRequest,
+  CellRequest,
+  CellResult,
   TableWriteResult,
   TreeNode,
   VaultState,
@@ -269,6 +271,14 @@ export interface Session {
    * linha mudou por baixo entre a leitura e a gravação.
    */
   readonly writeTable?: (request: TableWriteRequest) => Promise<TableWriteResult>;
+  /**
+   * O valor inteiro de UMA célula (spec 062, fase D).
+   *
+   * Existe porque a grade corta em `MAX_CELL_CHARS`, e o visor da lupa promete
+   * "o valor inteiro" — ele estava mostrando o cortado, com as reticências do
+   * servidor no fim. Um pedido por célula, e só quando o usuário abre.
+   */
+  readonly readCell?: (request: CellRequest) => Promise<CellResult>;
   /**
    * A estrutura de uma tabela ou view (spec 045).
    *

@@ -22,6 +22,9 @@ import {
   normalizarPedidoDeTabela,
 } from './tabela';
 import { escreverNaTabela } from './transacao';
+import { cortarParaOVisor, montarLeituraDeCelula } from './celula';
+import { paraCelulaCrua } from './sql-base';
+import type { CellRequest, CellResult } from '../../../shared/contracts';
 import { executar, qualificar, query } from './mysql-base';
 
 // ---------------------------------------------------------------------------
@@ -143,4 +146,42 @@ export async function escrever(
       },
     }
   );
+}
+
+/**
+ * O valor inteiro de uma célula (spec 062, fase D).
+ *
+ * Sem `formatCell`: é exatamente o corte dele que se está contornando aqui. O
+ * teto do visor entra no lugar, e ele é dois mil vezes maior.
+ */
+export async function lerCelula(
+  conn: Connection,
+  request: CellRequest
+): Promise<CellResult> {
+  const [, schema, , objeto] = request.nodePath;
+  if (schema === undefined || objeto === undefined) {
+    throw new Error('Ver o valor inteiro exige um objeto selecionado.');
+  }
+  const colunas = await colunasDaTabela(conn, schema, objeto);
+  const comando = montarLeituraDeCelula(
+    {
+      alvo: qualificar(schema, objeto),
+      colunas: colunas.map((c) => ({ name: c.name, chave: c.chave })),
+      estilo: 'backtick',
+      marcador: 'interrogacao',
+    },
+    request.coluna,
+    request.chave
+  );
+
+  const linhas = (await query<Record<string, unknown>>(
+    conn,
+    comando.sql,
+    comando.params as never[]
+  )) as unknown as readonly Record<string, unknown>[];
+  const primeira = linhas[0];
+  if (primeira === undefined) {
+    throw new Error('Esta linha não existe mais no banco.');
+  }
+  return cortarParaOVisor(paraCelulaCrua(primeira[request.coluna]));
 }

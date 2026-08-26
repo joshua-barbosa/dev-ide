@@ -56,6 +56,28 @@ export function formatCell(value: unknown): CellValue {
   }
 }
 
+/**
+ * O mesmo que `formatCell`, mas SEM cortar (spec 062, fase D).
+ *
+ * Existe porque `formatCell` corta em `MAX_CELL_CHARS`, e é exatamente esse
+ * corte que o visor da lupa precisa contornar — ele promete "o valor inteiro".
+ * Toda a normalização de tipo continua igual: quem lê a tela não pode receber
+ * um `Buffer` nem um `bigint`.
+ */
+export function paraCelulaCrua(value: unknown): CellValue {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'bigint') return value.toString();
+  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Uint8Array) return `0x${Buffer.from(value).toString('hex')}`;
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(Math.trunc(value), min), max);
 }

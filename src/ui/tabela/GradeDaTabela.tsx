@@ -12,7 +12,8 @@ import { tokens } from '../theme';
 import { larguraDoConteudo } from '../../shared/grade/larguras';
 import { useLarguras } from './useLarguras';
 import { VisorDeCelula } from './VisorDeCelula';
-import { idDaLinha, type Rascunho } from './useRascunho';
+import { chaveDoId, idDaLinha, type Rascunho } from './useRascunho';
+import { Api } from '../api';
 import type { EstadoDaTabela } from './useTabela';
 import type { CellValue, TableColumn } from '../../shared/contracts';
 
@@ -37,13 +38,15 @@ const LARGURA_DO_NUMERO = 44;
 const LARGURA_DA_MARCA = 30;
 
 export function Grade({
-  estado, colunas, linhas, rascunho, motivoSemEdicao,
+  estado, colunas, linhas, rascunho, motivoSemEdicao, connectionId, nodePath,
 }: {
   readonly estado: EstadoDaTabela;
   readonly colunas: readonly TableColumn[];
   readonly linhas: readonly (readonly CellValue[])[];
   readonly rascunho?: Rascunho;
   readonly motivoSemEdicao: string | null;
+  readonly connectionId: string;
+  readonly nodePath: readonly string[];
 }) {
   const editavel = rascunho !== undefined && motivoSemEdicao === null;
   const larguras = useLarguras();
@@ -214,6 +217,21 @@ export function Grade({
           valor={naLupa.valor}
           motivoSemEdicao={
             naLupa.editavel ? null : motivoDaCelula(motivoSemEdicao, colunas, naLupa.coluna)
+          }
+          // Só dá para buscar o valor inteiro quando a IDE sabe QUAL LINHA é:
+          // precisa da tabela (em SQL livre ela não sabe) e de chave primária
+          // (sem ela, o `WHERE` casaria com várias). Fora disso o visor mostra
+          // o que a grade tem e diz que está cortado — que é honesto, e melhor
+          // que uma promessa quebrada em silêncio.
+          buscarInteiro={
+            estado.modoLivre || !colunas.some((c) => c.chave)
+              ? undefined
+              : () =>
+                  Api.readCell(connectionId, {
+                    nodePath,
+                    chave: chaveDoId(naLupa.id),
+                    coluna: naLupa.coluna,
+                  })
           }
           onFechar={() => setNaLupa(null)}
           onSalvar={

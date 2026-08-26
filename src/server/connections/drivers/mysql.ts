@@ -15,7 +15,7 @@ import {
   CONTAGENS_SQL,
   PROCESSOS_SQL,
 } from './mysql-sql';
-import { escrever, lerTabela } from './mysql-tabela';
+import { escrever, lerCelula, lerTabela } from './mysql-tabela';
 import { estruturaDaTabela } from './mysql-estrutura';
 import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
 import { executar, qualificar, query } from './mysql-base';
@@ -471,6 +471,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       exigirViva();
       return navegar(conn, rotulo, versao, exibicao, nodePath, opcoes);
     },
+    readCell: async (request) => lerCelula(conn, request),
     readTable: async (request) => {
       exigirViva();
       await usar(conn, request.nodePath[1]);

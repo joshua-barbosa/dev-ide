@@ -300,6 +300,29 @@ export function createConnectionsRouter(
   }));
 
   /**
+   * O valor INTEIRO de uma célula (spec 062, fase D).
+   *
+   * A rota de tabela corta cada célula em `MAX_CELL_CHARS`, porque uma página
+   * de 500 linhas com JSON de 40 KB seriam 20 MB atravessando a rede para caber
+   * em colunas de 400 px. Esta traz uma célula só, e sem esse corte — é o que
+   * a lupa promete, e o que ela não estava entregando.
+   */
+  router.post('/:id/table/cell', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (typeof session.readCell !== 'function') {
+      throw new Error(`A conexão "${req.params.id}" não sabe ler uma célula isolada.`);
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    res.json(ok(await session.readCell({
+      nodePath: Array.isArray(body.nodePath) ? body.nodePath.map(String) : [],
+      // A chave e a coluna são conferidas contra as colunas REAIS no driver:
+      // é lá que o nome vira identificador citado.
+      chave: (body.chave ?? {}) as never,
+      coluna: String(body.coluna ?? ''),
+    })));
+  }));
+
+  /**
    * Escrever pela grade (spec 044).
    *
    * `simular: true` devolve o SQL sem executar — é o que a confirmação mostra.
