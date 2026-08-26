@@ -144,6 +144,10 @@ const ICONES_DA_INTERFACE = [
   // `Load` que traz o conteúdo de um arquivo para dentro da célula.
   'lucide:zoom-in',
   'lucide:file-up',
+  // O `olho` da aparência da grade (spec 062, fase E).
+  'lucide:eye',
+  'lucide:minus',
+  'lucide:rotate-ccw',
   // `Abrir Query` num database (spec 038). Ficou de fora na entrega e saía como
   // bolinha — o guard de ícones só olhava literal entre aspas simples, e JSX usa
   // aspas duplas.

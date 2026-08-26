@@ -10,6 +10,9 @@ import InputBase from '@mui/material/InputBase';
 import { Icon } from '../Icon';
 import { tokens } from '../theme';
 import { larguraDoConteudo } from '../../shared/grade/larguras';
+import {
+  alinhamentoDe, bordasDe, ehTipoNumerico, type Aparencia,
+} from '../../shared/grade/aparencia';
 import { useLarguras } from './useLarguras';
 import { VisorDeCelula } from './VisorDeCelula';
 import { chaveDoId, idDaLinha, type Rascunho } from './useRascunho';
@@ -38,7 +41,7 @@ const LARGURA_DO_NUMERO = 44;
 const LARGURA_DA_MARCA = 30;
 
 export function Grade({
-  estado, colunas, linhas, rascunho, motivoSemEdicao, connectionId, nodePath,
+  estado, colunas, linhas, rascunho, motivoSemEdicao, connectionId, nodePath, aparencia,
 }: {
   readonly estado: EstadoDaTabela;
   readonly colunas: readonly TableColumn[];
@@ -47,8 +50,13 @@ export function Grade({
   readonly motivoSemEdicao: string | null;
   readonly connectionId: string;
   readonly nodePath: readonly string[];
+  readonly aparencia: Aparencia;
 }) {
   const editavel = rascunho !== undefined && motivoSemEdicao === null;
+  // Esconder a coluna de controle esconde as caixas de apagar, e é escolha
+  // dele. Editar célula continua funcionando: são coisas diferentes.
+  const marcas = editavel && aparencia.colunaDeControle;
+  const bordas = bordasDe(aparencia);
   const larguras = useLarguras();
 
   /**
@@ -89,8 +97,8 @@ export function Grade({
   // ficou com 902 px numa coluna declarada de 420. Com a soma explícita, o
   // arranjo fixo entra em vigor e o `colgroup` passa a mandar.
   const larguraTotal =
-    LARGURA_DO_NUMERO +
-    (editavel ? LARGURA_DA_MARCA : 0) +
+    (aparencia.numeroDaLinha ? LARGURA_DO_NUMERO : 0) +
+    (marcas ? LARGURA_DA_MARCA : 0) +
     colunas.reduce((soma, c) => soma + larguraDe(c.name), 0);
   return (
     <Box data-grade sx={{ flex: 1, overflow: 'auto', minHeight: 0, minWidth: 0 }}>
@@ -103,11 +111,18 @@ export function Grade({
           borderCollapse: 'collapse', tableLayout: 'fixed', width: larguraTotal,
           fontFamily: tokens.fontMono, fontSize: 12,
           '& th, & td': {
-            borderRight: 1, borderBottom: 1, borderColor: 'divider', px: 1, py: '3px',
-            textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            borderRight: bordas.direita ? 1 : 0,
+            borderBottom: bordas.baixo ? 1 : 0,
+            borderColor: 'divider', px: 1,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           },
-          '& thead th': { position: 'sticky', top: 0, bgcolor: 'background.paper', zIndex: 1 },
+          // A altura é da LINHA, e não da célula: pôr no `td` deixaria o
+          // cabeçalho de fora, e ele tem duas linhas (nome e tipo).
+          '& tbody td': { height: aparencia.alturaDaLinha, py: 0 },
+          '& thead th': {
+            py: '3px',
+            position: 'sticky', top: 0, bgcolor: 'background.paper', zIndex: 1,
+          },
         }}
       >
         {/* O `colgroup` é o que faz a largura valer (spec 062, fase C).
@@ -118,16 +133,16 @@ export function Grade({
             mexia no cabeçalho sem mexer no corpo. O `colgroup` declara a largura
             da COLUNA, e não de uma célula, e vale para os dois. */}
         <colgroup>
-          <col style={{ width: LARGURA_DO_NUMERO }} />
-          {editavel && <col style={{ width: LARGURA_DA_MARCA }} />}
+          {aparencia.numeroDaLinha && <col style={{ width: LARGURA_DO_NUMERO }} />}
+          {marcas && <col style={{ width: LARGURA_DA_MARCA }} />}
           {colunas.map((coluna) => (
             <col key={coluna.name} style={{ width: larguraDe(coluna.name) }} />
           ))}
         </colgroup>
         <thead>
           <tr>
-            <Box component="th" sx={{ bgcolor: 'background.paper' }} />
-            {editavel && <Box component="th" sx={{ bgcolor: 'background.paper' }} />}
+            {aparencia.numeroDaLinha && <Box component="th" sx={{ bgcolor: 'background.paper' }} />}
+            {marcas && <Box component="th" sx={{ bgcolor: 'background.paper' }} />}
             {colunas.map((coluna, j) => (
               <Cabecalho
                 key={coluna.name}
@@ -154,16 +169,18 @@ export function Grade({
             const aApagar = rascunho?.remocoes.has(id) === true;
             return (
               <tr key={i}>
-                <Box
-                  component="td"
-                  sx={{
-                    color: 'text.secondary', bgcolor: 'background.paper',
-                    textAlign: 'right', userSelect: 'none',
-                  }}
-                >
-                  {(estado.numero - 1) * estado.porPagina + i + 1}
-                </Box>
-                {editavel && (
+                {aparencia.numeroDaLinha && (
+                  <Box
+                    component="td"
+                    sx={{
+                      color: 'text.secondary', bgcolor: 'background.paper',
+                      textAlign: 'right', userSelect: 'none',
+                    }}
+                  >
+                    {(estado.numero - 1) * estado.porPagina + i + 1}
+                  </Box>
+                )}
+                {marcas && (
                   <Box component="td" sx={{ bgcolor: 'background.paper', textAlign: 'center' }}>
                     <Box
                       component="input"
@@ -186,6 +203,7 @@ export function Grade({
                       // A chave NÃO se edita: trocá-la aqui mudaria a linha que
                       // o `WHERE` usa para achar a própria linha.
                       editavel={editavel && !coluna.chave}
+                      alinhamento={alinhamentoDe(aparencia, ehTipoNumerico(coluna.type))}
                       mexida={editavel && rascunho.mexida(id, coluna.name)}
                       riscada={aApagar}
                       titulo={motivoSemEdicao ?? undefined}
@@ -205,7 +223,14 @@ export function Grade({
             );
           })}
           {rascunho?.novas.map((nova) => (
-            <LinhaNovaTr key={nova.id} nova={nova} colunas={colunas} rascunho={rascunho} />
+            <LinhaNovaTr
+              key={nova.id}
+              nova={nova}
+              colunas={colunas}
+              rascunho={rascunho}
+              comMarcas={marcas}
+              comNumero={aparencia.numeroDaLinha}
+            />
           ))}
         </tbody>
       </Box>
@@ -399,26 +424,30 @@ function Alca({
  * por isso nenhuma célula dela é intocável.
  */
 function LinhaNovaTr({
-  nova, colunas, rascunho,
+  nova, colunas, rascunho, comMarcas, comNumero,
 }: {
   readonly nova: { readonly id: string; readonly valores: Readonly<Record<string, CellValue>> };
   readonly colunas: readonly TableColumn[];
   readonly rascunho: Rascunho;
+  readonly comMarcas: boolean;
+  readonly comNumero: boolean;
 }) {
   return (
     <Box component="tr" data-linha-nova sx={{ bgcolor: 'action.selected' }}>
-      <Box component="td" sx={{ textAlign: 'center', userSelect: 'none' }}>
-        <Box
-          component="button"
-          type="button"
-          aria-label="Descartar esta linha nova"
-          onClick={() => rascunho.descartarNova(nova.id)}
-          sx={{ border: 0, bgcolor: 'transparent', color: 'inherit', cursor: 'pointer', p: 0 }}
-        >
-          ×
+      {comNumero && (
+        <Box component="td" sx={{ textAlign: 'center', userSelect: 'none' }}>
+          <Box
+            component="button"
+            type="button"
+            aria-label="Descartar esta linha nova"
+            onClick={() => rascunho.descartarNova(nova.id)}
+            sx={{ border: 0, bgcolor: 'transparent', color: 'inherit', cursor: 'pointer', p: 0 }}
+          >
+            ×
+          </Box>
         </Box>
-      </Box>
-      <Box component="td" />
+      )}
+      {comMarcas && <Box component="td" />}
       {colunas.map((coluna) => (
         <Celula
           key={coluna.name}
@@ -436,6 +465,7 @@ function LinhaNovaTr({
 
 function Celula({
   valor, editavel = false, mexida = false, riscada = false, titulo, rotulo, onEditar, onAbrir,
+  alinhamento = 'left',
 }: {
   readonly valor: CellValue;
   readonly editavel?: boolean;
@@ -446,6 +476,7 @@ function Celula({
   readonly onEditar?: (novo: CellValue) => void;
   /** Abre o visor. Ausente na linha nova, que ainda não tem valor guardado. */
   readonly onAbrir?: () => void;
+  readonly alinhamento?: 'left' | 'center' | 'right';
 }) {
   const nulo = valor === null;
   const [editando, setEditando] = useState(false);
@@ -498,6 +529,7 @@ function Celula({
       onClick={() => void navigator.clipboard?.writeText(nulo ? '' : String(valor))}
       sx={{
         cursor: 'pointer',
+        textAlign: alinhamento,
         // `relative` para a lupa se pendurar no canto direito da célula.
         position: 'relative',
         color: nulo ? 'text.secondary' : 'text.primary',

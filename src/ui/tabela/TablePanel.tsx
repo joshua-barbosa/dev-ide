@@ -13,6 +13,8 @@ import Select from '@mui/material/Select';
 import Tooltip from '@mui/material/Tooltip';
 import { Icon } from '../Icon';
 import { Grade } from './GradeDaTabela';
+import { PainelDeAparencia } from './PainelDeAparencia';
+import { APARENCIA_PADRAO, type Aparencia } from '../../shared/grade/aparencia';
 import { tokens } from '../theme';
 import { paraCsv, paraJson } from '../../shared/exportar';
 import { TAMANHOS_DE_PAGINA, type EstadoDaTabela } from './useTabela';
@@ -103,6 +105,10 @@ export function TablePanel({
 }: TablePanelProps) {
   const { pagina, carregando, erro } = estado;
   const [busca, setBusca] = useState('');
+  // A aparência vive na ABA, como a largura da coluna: some no F5, junto com a
+  // ordenação e o filtro, que também somem.
+  const [aparencia, setAparencia] = useState<Aparencia>(APARENCIA_PADRAO);
+  const [olho, setOlho] = useState<HTMLElement | null>(null);
 
   const colunas = pagina?.columns ?? [];
   const linhas = pagina?.resultado.rows ?? [];
@@ -137,6 +143,7 @@ export function TablePanel({
         busca={busca}
         onBusca={setBusca}
         onExportar={exportar}
+        onOlho={setOlho}
         mostrando={visiveis.length}
         podeEditar={rascunho !== undefined && motivoSemEdicao === null}
         onAcrescentar={() => rascunho?.acrescentarLinha()}
@@ -161,19 +168,28 @@ export function TablePanel({
           motivoSemEdicao={motivoSemEdicao}
           connectionId={connectionId}
           nodePath={nodePath}
+          aparencia={aparencia}
         />
       )}
+      <PainelDeAparencia
+        ancora={olho}
+        aparencia={aparencia}
+        onMudar={setAparencia}
+        onFechar={() => setOlho(null)}
+        onPadrao={() => setAparencia(APARENCIA_PADRAO)}
+      />
     </Box>
   );
 }
 
 function BarraDeComando({
-  estado, busca, onBusca, onExportar, mostrando, podeEditar, onAcrescentar,
+  estado, busca, onBusca, onExportar, onOlho, mostrando, podeEditar, onAcrescentar,
 }: {
   readonly estado: EstadoDaTabela;
   readonly busca: string;
   readonly onBusca: (v: string) => void;
   readonly onExportar: (formato: 'csv' | 'json') => void;
+  readonly onOlho: (ancora: HTMLElement) => void;
   readonly mostrando: number;
   readonly podeEditar: boolean;
   readonly onAcrescentar: () => void;
@@ -225,6 +241,12 @@ function BarraDeComando({
           onClick={estado.voltarParaTabela}
         />
       )}
+      {/* Ao lado do `▷`, como no print da ferramenta de referência. */}
+      <Acao
+        icone="lucide:eye"
+        rotulo="Aparência da grade"
+        onClick={(e) => onOlho(e.currentTarget)}
+      />
 
       <Box sx={{ flex: 1 }} />
 
@@ -310,7 +332,7 @@ function Acao({
 }: {
   readonly icone: string;
   readonly rotulo: string;
-  readonly onClick: () => void;
+  readonly onClick: (e: React.MouseEvent<HTMLElement>) => void;
   readonly desabilitada?: boolean;
   /** Destaque. Sem isto o botão herda a cor do texto e some entre os vizinhos. */
   readonly cor?: string;
