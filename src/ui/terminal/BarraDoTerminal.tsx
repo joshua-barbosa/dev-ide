@@ -12,6 +12,8 @@ import { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
 import Popover from '@mui/material/Popover';
 import { Api } from '../api';
+import { foiMexida, type AparenciaDoTerminal } from '../../shared/terminal/aparencia';
+import { PainelDeAparenciaDoTerminal } from './PainelDeAparenciaDoTerminal';
 import { Icon } from '../Icon';
 import { tokens } from '../theme';
 import type { SnippetDeTerminal } from '../../shared/terminal/snippets';
@@ -27,12 +29,32 @@ export interface BarraDoTerminalProps {
   pedir(opcoes: { titulo: string; placeholder: string; valorInicial?: string }): Promise<string | null>;
   confirmar(opcoes: { mensagem: string; rotuloConfirmar?: string; destrutivo?: boolean }): Promise<boolean>;
   onErro(erro: unknown): void;
+  /**
+   * Esconde `Reconectar` e `Duplicar` (T087).
+   *
+   * No painel de baixo os dois JÁ EXISTEM na gestão de terminais dele, e
+   * repeti-los aqui daria dois botões para a mesma coisa a dois centímetros um
+   * do outro. O que faltava lá eram os snippets.
+   */
+  readonly soSnippets?: boolean;
+  /** A aparência DESTE terminal, e como mudá-la (T086). */
+  readonly aparencia?: AparenciaDoTerminal;
+  readonly onAparencia?: (nova: AparenciaDoTerminal) => void;
+  /**
+   * Abre um arquivo no editor, para o `{}` (T085).
+   *
+   * Ausente no terminal do painel de baixo, que não tem para onde abrir sem
+   * roubar o foco da coisa que o usuário está fazendo.
+   */
+  abrirArquivo?(caminho: string): Promise<void>;
 }
 
 export function BarraDoTerminal({
-  conexaoId, onEnviar, onReconectar, onDuplicar, pedir, confirmar, onErro,
+  conexaoId, onEnviar, onReconectar, onDuplicar, pedir, confirmar, onErro, abrirArquivo,
+  soSnippets = false, aparencia, onAparencia,
 }: BarraDoTerminalProps) {
   const [ancora, setAncora] = useState<HTMLElement | null>(null);
+  const [ancoraDoVisual, setAncoraDoVisual] = useState<HTMLElement | null>(null);
   const [snippets, setSnippets] = useState<readonly SnippetDeTerminal[]>([]);
 
   useEffect(() => {
@@ -96,13 +118,50 @@ export function BarraDoTerminal({
       }}
     >
       <Box sx={{ flex: 1 }} />
+      {/* Aparência DESTE terminal (T086). Eu tinha recusado dizendo que a IDE
+          já tem as chaves no `config.json` — o argumento vale para
+          preferência, e não é disso que se trata: com N terminais abertos, ele
+          quer DISTINGUIR um dos outros. Some no F5, e herda o arquivo. */}
+      {onAparencia !== undefined && aparencia !== undefined && (
+        <Acao
+          icone="lucide:sliders-horizontal"
+          rotulo={foiMexida(aparencia) ? 'Aparência deste terminal (mexida)' : 'Aparência deste terminal'}
+          onClick={(e) => setAncoraDoVisual(e.currentTarget)}
+        />
+      )}
       <Acao
         icone="lucide:code"
         rotulo="Snippets"
         onClick={(e) => setAncora(e.currentTarget)}
       />
-      <Acao icone="lucide:zap" rotulo="Reconectar" onClick={onReconectar} />
-      <Acao icone="lucide:copy" rotulo="Duplicar terminal" onClick={onDuplicar} />
+      {/* O `{}` do print dele (T085): abre o arquivo de snippets no editor.
+          Eu tinha chutado duas vezes o que este botão fazia — ele respondeu
+          que é editar o `snippets.json` daquele servidor. */}
+      {abrirArquivo !== undefined && (
+        <Acao
+          icone="lucide:braces"
+          rotulo="Editar o arquivo de snippets (todas as conexões)"
+          onClick={chamar(async () => {
+            const { path } = await Api.arquivoDeSnippetsDeTerminal();
+            await abrirArquivo(path);
+          })}
+        />
+      )}
+      {!soSnippets && (
+        <>
+          <Acao icone="lucide:zap" rotulo="Reconectar" onClick={onReconectar} />
+          <Acao icone="lucide:copy" rotulo="Duplicar terminal" onClick={onDuplicar} />
+        </>
+      )}
+
+      {onAparencia !== undefined && aparencia !== undefined && (
+        <PainelDeAparenciaDoTerminal
+          ancora={ancoraDoVisual}
+          aparencia={aparencia}
+          onMudar={onAparencia}
+          onFechar={() => setAncoraDoVisual(null)}
+        />
+      )}
 
       <Popover
         open={ancora !== null}

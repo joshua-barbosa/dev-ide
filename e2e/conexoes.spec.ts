@@ -61,7 +61,7 @@ test('senha errada mantém o diálogo aberto, com o aviso', async ({ page }) => 
   await destrancarCofre(page, 'senha-que-nao-e-a-certa');
   await expect(page.getByText(/Senha mestra incorreta/i)).toBeVisible();
   // O diálogo continua de pé: errar não pode custar recomeçar do zero.
-  await expect(page.getByLabel('Senha mestra')).toBeVisible();
+  await expect(page.getByLabel('Senha mestra', { exact: true })).toBeVisible();
 
   await destrancarCofre(page, SENHA_MESTRA);
   await expect(linhaArvore(page, 'escola.db')).toBeVisible();

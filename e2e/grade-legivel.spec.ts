@@ -15,7 +15,7 @@ async function abrirTabela(page: Page): Promise<void> {
   await painelLateral(page, 'Database').click();
   await expandir(page, 'ACME', 'Bancos');
   await linhaArvore(page, CONEXAO).click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await expandir(page, 'escola.db');
   await linhaArvore(page, 'Tables').click({ position: { x: 24, y: 8 } });

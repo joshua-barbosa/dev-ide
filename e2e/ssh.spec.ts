@@ -11,7 +11,7 @@ async function abrirServidor(page: Page): Promise<void> {
   await painelLateral(page, 'Service').click();
   await expandir(page, 'ACME', 'Servidores');
   await linhaArvore(page, CONEXAO_SSH).click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   // A raiz do servidor de teste tem estas duas pastas.
   await expect(linhaArvore(page, 'aplicacao')).toBeVisible({ timeout: 30_000 });
@@ -142,7 +142,7 @@ test('a conexão SSH oferece terminal, e ele roda NO SERVIDOR', async ({ page })
   await expandir(page, 'ACME', 'Servidores');
   const linha = linhaArvore(page, CONEXAO_SSH);
   await linha.click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await expect(linhaArvore(page, 'aplicacao')).toBeVisible({ timeout: 30_000 });
 
@@ -169,7 +169,7 @@ test('o terminal abre NA RAIZ da conexão, e não no home', async ({ page }) => 
   await expandir(page, 'ACME', 'Servidores');
   const linha = linhaArvore(page, CONEXAO_SSH);
   await linha.click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await expect(linhaArvore(page, 'aplicacao')).toBeVisible({ timeout: 30_000 });
 
@@ -203,7 +203,7 @@ test('clicar num ATALHO não abre query — ele não é objeto de banco', async 
   await painelLateral(page, 'Service').click();
   await expandir(page, 'ACME', 'Servidores');
   await linhaArvore(page, CONEXAO_SSH).click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await expect(linhaArvore(page, 'Favorites')).toBeVisible({ timeout: 30_000 });
 
@@ -226,7 +226,7 @@ test('o FTP aparece no cadastro, ao lado do SSH, com os campos dele', async ({ p
 
   await page.getByRole('button', { name: 'FTP / FTPS', exact: true }).click();
   await expect(page.getByLabel('Host')).toHaveValue('127.0.0.1');
-  await expect(page.getByLabel('Porta')).toHaveValue('21');
+  await expect(page.getByLabel('Porta', { exact: true })).toHaveValue('21');
   await expect(page.getByLabel('Usuário')).toHaveValue('anonymous');
   await expect(page.getByLabel('TLS (FTPS)')).toBeVisible();
   await expect(page.getByLabel('Modo compatível')).toBeVisible();

@@ -14,7 +14,9 @@ import type { ConnectionInput, FieldValue, Session, VaultState } from '../connec
 import { createRemoteFilesRouter } from './arquivos-remotos';
 import { SEM_CANCELAMENTO } from '../connections/drivers/cancelar';
 import { varrerTabela } from '../connections/exportacao';
-import { apagarSnippet, guardarSnippet, lerSnippets } from '../snippets-de-terminal';
+import {
+  apagarSnippet, caminhoDosSnippets, guardarSnippet, lerSnippets,
+} from '../snippets-de-terminal';
 import { queryList, requireString, wrap } from '../http/handlers';
 import type { LeitorDePreferencias } from '../prefs';
 
@@ -285,6 +287,11 @@ export function createConnectionsRouter(
       aviso: 'Este arquivo contém SENHAS EM CLARO.',
       conexoes,
     }));
+  }));
+
+  /** Onde os snippets de terminal moram, para o `{}` abrir no editor (T085). */
+  router.get('/terminal-snippets/file', wrap(async (_req, res) => {
+    res.json(ok({ path: caminhoDosSnippets() }));
   }));
 
   // ---- sessão viva ----

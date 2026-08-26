@@ -14,7 +14,7 @@ async function abrirTabela(page: Page): Promise<void> {
   await painelLateral(page, 'Database').click();
   await expandir(page, 'ACME', 'Bancos');
   await linhaArvore(page, CONEXAO).click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await expandir(page, 'escola.db');
   await linhaArvore(page, 'Tables').click({ position: { x: 24, y: 8 } });
@@ -28,9 +28,14 @@ test.beforeEach(async ({ page }) => {
   await esperarIdePronta(page);
 });
 
+// `exact: true` em todo `Exportar` daqui para baixo: a spec 064 acrescentou
+// `Exportar conexões COM as senhas` no cabeçalho do painel, e sem o exato o
+// seletor casa com os dois. Foi assim que 51 testes ficaram vermelhos de uma
+// vez — um botão novo, com um nome que CONTÉM o de outro.
+
 test('o menu diz o ESCOPO, que era a pergunta que faltava', async ({ page }) => {
   await abrirTabela(page);
-  await page.getByRole('button', { name: 'Exportar' }).click();
+  await page.getByRole('button', { name: 'Exportar', exact: true }).click();
   // Antes eram dois botões — CSV e JSON — e nenhum dizia o que levava. A
   // resposta era sempre "a página", e ninguém sabia até abrir o arquivo.
   await expect(page.getByRole('menuitem', { name: 'CSV · esta página' })).toBeVisible();
@@ -39,7 +44,7 @@ test('o menu diz o ESCOPO, que era a pergunta que faltava', async ({ page }) => 
 
 test('a página vai para uma aba do editor, como antes', async ({ page }) => {
   await abrirTabela(page);
-  await page.getByRole('button', { name: 'Exportar' }).click();
+  await page.getByRole('button', { name: 'Exportar', exact: true }).click();
   await page.getByRole('menuitem', { name: 'CSV · esta página' }).click();
   await expect(page.locator('.monaco-editor')).toBeVisible();
 });
@@ -52,7 +57,7 @@ test('a tabela inteira vira ARQUIVO, com os filtros da tela junto', async ({ pag
   await expect(page.locator('[data-total-da-tabela]')).toContainText('de 1');
 
   const baixando = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Exportar' }).click();
+  await page.getByRole('button', { name: 'Exportar', exact: true }).click();
   await page.getByRole('menuitem', { name: 'CSV · a tabela inteira' }).click();
   const arquivo = await baixando;
 
@@ -70,7 +75,7 @@ test('em SQL livre `a tabela inteira` NÃO existe: a IDE não sabe o que varrer'
   await page.getByRole('button', { name: 'Executar este SQL (Ctrl+Enter)' }).click();
   await expect(page.locator('[data-modo-livre]')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Exportar' }).click();
+  await page.getByRole('button', { name: 'Exportar', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'CSV · esta página' })).toBeVisible();
   // Mesma razão pela qual ali não há paginação nem filtro por coluna.
   await expect(page.getByRole('menuitem', { name: 'CSV · a tabela inteira' })).toHaveCount(0);
@@ -84,7 +89,7 @@ test('a tela de RESULTADO exporta tudo que a query devolveu', async ({ page }) =
   await painelLateral(page, 'Database').click();
   await expandir(page, 'ACME', 'Bancos');
   await linhaArvore(page, CONEXAO).click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   const linha = linhaArvore(page, 'escola.db');
   await linha.hover();
@@ -114,7 +119,7 @@ test('o resultado ganha páginas, e NÃO inventa um total', async ({ page }) => 
   await painelLateral(page, 'Database').click();
   await expandir(page, 'ACME', 'Bancos');
   await linhaArvore(page, CONEXAO).click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   const linha = linhaArvore(page, 'escola.db');
   await linha.hover();

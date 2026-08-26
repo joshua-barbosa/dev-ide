@@ -9,6 +9,7 @@ import { BarraDoTerminal } from './BarraDoTerminal';
 import { TERMINAL_LOCAL } from '../../shared/terminal/chaves';
 import type { NomeDoTema } from '../../shared/temas';
 import type { Tab } from '../../shared/tabs';
+import type { AparenciaDoTerminal } from '../../shared/terminal/aparencia';
 
 export interface AbaDeTerminalProps {
   readonly aba: Tab;
@@ -26,15 +27,21 @@ export interface AbaDeTerminalProps {
   pedir(o: { titulo: string; placeholder: string; valorInicial?: string }): Promise<string | null>;
   confirmar(o: { mensagem: string; rotuloConfirmar?: string; destrutivo?: boolean }): Promise<boolean>;
   onErro(erro: unknown): void;
+  /** Abre um arquivo no editor, para o `{}` da barra (T085). */
+  abrirArquivo(caminho: string): Promise<void>;
 }
 
 export function AbaDeTerminal({
   aba, comandoDeAbertura, ativo, fontSize, tema, onDuplicar, pedir, confirmar, onErro,
+  abrirArquivo,
 }: AbaDeTerminalProps) {
   const conexaoId = typeof aba.meta.connectionId === 'string' ? aba.meta.connectionId : null;
   const [comando, setComando] = useState<{ id: number; texto: string } | null>(null);
   // `sessaoId` muda para forçar um socket novo: é o `Reconnect` da barra.
   const [sessao, setSessao] = useState(0);
+  // A aparência DESTE terminal (T086). Nasce vazia: herda tudo do
+  // `config.json`, e some no F5 — é marcação, não preferência.
+  const [aparencia, setAparencia] = useState<AparenciaDoTerminal>({});
 
   return (
     <>
@@ -48,6 +55,9 @@ export function AbaDeTerminal({
         pedir={pedir}
         confirmar={confirmar}
         onErro={onErro}
+        abrirArquivo={abrirArquivo}
+        aparencia={aparencia}
+        onAparencia={setAparencia}
       />
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex' }}>
         {comandoDeAbertura === null ? (
@@ -61,6 +71,7 @@ export function AbaDeTerminal({
           comandoInicial={comandoDeAbertura === '' ? null : comandoDeAbertura}
           comandoParaEnviar={comando}
           sessaoId={`${aba.id}#${sessao}`}
+          aparencia={aparencia}
         />
         )}
       </Box>

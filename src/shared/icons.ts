@@ -156,6 +156,8 @@ const ICONES_DA_INTERFACE = [
   'lucide:plug-zap',
   // Exportar as conexões COM as senhas (N001).
   'lucide:hard-drive-download',
+  // Aparência de UM terminal (T086).
+  'lucide:sliders-horizontal',
   // `Abrir Query` num database (spec 038). Ficou de fora na entrega e saía como
   // bolinha — o guard de ícones só olhava literal entre aspas simples, e JSX usa
   // aspas duplas.

@@ -15,7 +15,7 @@ async function abrirTabela(page: Page): Promise<void> {
   await painelLateral(page, 'Database').click();
   await expandir(page, 'ACME', 'Bancos');
   await linhaArvore(page, CONEXAO).click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await expandir(page, 'escola.db');
   await linhaArvore(page, 'Tables').click({ position: { x: 24, y: 8 } });
@@ -90,7 +90,7 @@ test('filtrar por coluna reduz as linhas E o total, juntos', async ({ page }) =>
 
 test('exportar abre o CSV numa aba, com cabeçalho e escape', async ({ page }) => {
   await abrirTabela(page);
-  await page.getByRole('button', { name: 'Exportar' }).click();
+  await page.getByRole('button', { name: 'Exportar', exact: true }).click();
   await page.getByRole('menuitem', { name: 'CSV · esta página' }).click();
   await expect.poll(() => textoDoEditor(page)).toContain('id,nome,nota');
   expect(await textoDoEditor(page)).toContain('joshua');
@@ -98,7 +98,7 @@ test('exportar abre o CSV numa aba, com cabeçalho e escape', async ({ page }) =
 
 test('exportar JSON sai como lista de objetos', async ({ page }) => {
   await abrirTabela(page);
-  await page.getByRole('button', { name: 'Exportar' }).click();
+  await page.getByRole('button', { name: 'Exportar', exact: true }).click();
   await page.getByRole('menuitem', { name: 'JSON · esta página' }).click();
   await expect.poll(() => textoDoEditor(page)).toContain('"nome"');
 });
@@ -110,7 +110,7 @@ test('trocar de aba e voltar NÃO perde o filtro', async ({ page }) => {
   await page.getByLabel('Filtrar nome').fill('josh');
   await expect(total(page)).toContainText('de 1');
 
-  await page.getByRole('button', { name: 'Exportar' }).click();
+  await page.getByRole('button', { name: 'Exportar', exact: true }).click();
   await page.getByRole('menuitem', { name: 'JSON · esta página' }).click();
   await aba(page, TABELA).click();
   await expect(page.getByLabel('Filtrar nome')).toHaveValue('josh');

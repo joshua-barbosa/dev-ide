@@ -9,6 +9,15 @@ import {
   destrancarCofre, entradaRapida, esperarIdePronta, expandir, linhaArvore, painelLateral,
 } from './fixtures';
 
+// `exact: true` em `Snippets`: a spec 066 acrescentou
+// `Editar o arquivo de snippets (todas as conexões)` na MESMA barra, e sem o
+// exato o seletor casa com os dois.
+//
+// Foi a TERCEIRA vez que um botão novo com nome contendo o de outro deixou
+// testes vermelhos — antes foram `Exportar` (spec 063) e `Senha mestra`
+// (spec 064). O padrão vale a pena lembrar: rótulo novo que CONTÉM o rótulo de
+// um vizinho quebra todo seletor por nome parcial daquela tela.
+
 /**
  * O terminal de uma CONEXÃO, que é onde a barra vive.
  *
@@ -21,7 +30,7 @@ async function abrirTerminal(page: Page): Promise<void> {
   const linha = linhaArvore(page, CONEXAO_SSH);
   await linha.hover();
   await linha.getByRole('button', { name: /terminal/i }).click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await expect(page.locator('[data-barra-do-terminal]')).toBeVisible({ timeout: 30_000 });
 }
@@ -33,7 +42,7 @@ async function abrirTerminal(page: Page): Promise<void> {
 async function criarSnippet(page: Page, nome: string, comando: string): Promise<void> {
   const lista = page.locator('[data-lista-de-snippets]');
   if (!(await lista.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: 'Snippets' }).click();
+    await page.getByRole('button', { name: 'Snippets', exact: true }).click();
   }
   await page.getByRole('button', { name: 'Novo snippet' }).click();
   await entradaRapida(page).fill(nome);
@@ -49,7 +58,7 @@ test.beforeEach(async ({ page }) => {
 
 test('a aba de terminal tem barra, e a barra tem Snippets', async ({ page }) => {
   await abrirTerminal(page);
-  await expect(page.getByRole('button', { name: 'Snippets' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Snippets', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Reconectar' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Duplicar terminal' })).toBeVisible();
 });
@@ -83,7 +92,7 @@ test('o snippet sobrevive ao F5 — ele é do trabalho, não da aba', async ({ p
   // A ABA de terminal não volta do F5 (é item do backlog); o snippet volta,
   // porque ele mora em disco e não na aba. Reabrir o terminal é o que prova.
   await abrirTerminal(page);
-  await page.getByRole('button', { name: 'Snippets' }).click();
+  await page.getByRole('button', { name: 'Snippets', exact: true }).click();
   await expect(page.locator('[data-snippet="Persistente"]')).toBeVisible();
 });
 

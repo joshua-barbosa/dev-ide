@@ -10,7 +10,7 @@ import { destrancarCofre, expandir, linhaArvore, painelLateral, esperarIdePronta
 async function abrirEdicao(page: Page): Promise<void> {
   await painelLateral(page, 'Database').click();
   await expandir(page, 'ACME', 'Bancos');
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await linhaArvore(page, CONEXAO).click({ button: 'right' });
   await page.getByText('Editar conexão…').click();
@@ -170,7 +170,7 @@ test('o olho revela na tela, e o campo deixa de ser bolinhas', async ({ page }) 
     await esperarIdePronta(page);
     await painelLateral(page, 'Database').click();
     await expandir(page, 'ACME', 'Bancos');
-    const senha = page.getByLabel('Senha mestra');
+    const senha = page.getByLabel('Senha mestra', { exact: true });
     if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
 
     await linhaArvore(page, 'com-senha').click({ button: 'right' });
@@ -207,7 +207,7 @@ test('exportar todas leva as senhas, e o arquivo avisa o que é', async ({ page 
     await page.reload();
     await esperarIdePronta(page);
     await painelLateral(page, 'Database').click();
-    const senha = page.getByLabel('Senha mestra');
+    const senha = page.getByLabel('Senha mestra', { exact: true });
     if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
 
     const baixando = page.waitForEvent('download');
@@ -231,7 +231,7 @@ test('exportar todas leva as senhas, e o arquivo avisa o que é', async ({ page 
 test('com o cofre TRANCADO não há o que exportar', async ({ page }) => {
   await esperarIdePronta(page);
   await painelLateral(page, 'Database').click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await page.getByRole('button', { name: /Trancar o cofre/ }).click();
   await expect(page.getByRole('button', { name: 'Exportar conexões COM as senhas' })).toBeDisabled();
@@ -261,7 +261,7 @@ test('trocar a senha mestra mantém as conexões e a senha VELHA para de abrir',
   const NOVA = 'senha-mestra-trocada-no-teste';
   try {
     await painelLateral(page, 'Database').click();
-    const pede = page.getByLabel('Senha mestra');
+    const pede = page.getByLabel('Senha mestra', { exact: true });
     if (await pede.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
 
     await page.getByRole('button', { name: 'Trocar a senha mestra' }).click();
@@ -313,7 +313,7 @@ test('trocar a senha mestra mantém as conexões e a senha VELHA para de abrir',
 test('a confirmação que não bate é recusada ANTES de tocar no cofre', async ({ page }) => {
   await esperarIdePronta(page);
   await painelLateral(page, 'Database').click();
-  const pede = page.getByLabel('Senha mestra');
+  const pede = page.getByLabel('Senha mestra', { exact: true });
   if (await pede.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
 
   await page.getByRole('button', { name: 'Trocar a senha mestra' }).click();

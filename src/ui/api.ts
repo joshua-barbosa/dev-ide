@@ -395,6 +395,9 @@ export const Api = {
       'GET',
       `${conexoes}/${id}/secret/${encodeURIComponent(campo)}`
     ).then((r) => r.valor),
+  /** O caminho do arquivo de snippets de terminal, para o `{}` (T085). */
+  arquivoDeSnippetsDeTerminal: () =>
+    request<{ path: string }>('GET', `${conexoes}/terminal-snippets/file`),
   /** Troca a senha mestra, recifrando todos os segredos (T100). */
   trocarSenhaMestra: (atual: string, nova: string, remember?: boolean) =>
     request<VaultState>('POST', `${conexoes}/vault/password`, { atual, nova, remember }),

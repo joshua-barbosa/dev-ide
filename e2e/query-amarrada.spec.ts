@@ -28,7 +28,7 @@ async function abrirQueryDoBanco(page: Page): Promise<void> {
   await expandir(page, 'ACME', 'Bancos');
   await linhaArvore(page, CONEXAO).click();
   // O cofre pode estar trancado por causa dos testes vizinhos.
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
 
   const linha = linhaArvore(page, 'escola.db');
@@ -150,7 +150,7 @@ test('aba de query nascida da árvore NÃO pergunta a conexão', async ({ page }
   await painelLateral(page, 'Database').click();
   await expandir(page, 'ACME', 'Bancos');
   await linhaArvore(page, CONEXAO).click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await expandir(page, 'escola.db', 'Tables');
 

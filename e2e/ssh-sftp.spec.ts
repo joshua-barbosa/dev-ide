@@ -8,7 +8,7 @@ async function abrirAbaDoServidor(page: Page): Promise<void> {
   await expandir(page, 'ACME', 'Servidores');
   const linha = linhaArvore(page, CONEXAO_SSH);
   await linha.click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await expect(linhaArvore(page, 'aplicacao')).toBeVisible({ timeout: 30_000 });
 
@@ -116,7 +116,7 @@ test('abrir a aba do servidor SEM ter conectado conecta sozinho', async ({ page 
   await linha.hover();
   await linha.getByRole('button', { name: /numa aba/ }).click();
 
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
 
   await expect(page.locator('[data-sub-aba="sftp"]')).toBeVisible({ timeout: 30_000 });

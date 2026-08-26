@@ -26,6 +26,17 @@ import { useConnections } from './connections/useConnections';
 import { VaultDialog } from './connections/VaultDialog';
 import { ConnectionForm } from './connections/ConnectionForm';
 import { TerminalHost } from './terminal/TerminalHost';
+import { BarraDoTerminal } from './terminal/BarraDoTerminal';
+import { TERMINAL_LOCAL } from '../shared/terminal/chaves';
+import type { AparenciaDoTerminal } from '../shared/terminal/aparencia';
+
+/**
+ * O "herda tudo" compartilhado.
+ *
+ * Constante, e não `{}` na chamada: um objeto literal novo a cada renderização
+ * faria o efeito do emulador disparar sempre, e ele remede e avisa o PTY.
+ */
+const VAZIA: AparenciaDoTerminal = {};
 import { useContextMenu } from './ContextMenu';
 import { useDialogs } from './useDialogs';
 import { Api } from './api';
@@ -92,6 +103,19 @@ export function App() {
   const falhaDaIde = falhou('ide');
 
   const ws = useWorkspace({ confirmar: dialogs.confirmar });
+  /**
+   * O snippet que a barra do painel mandou, por pane (T087).
+   *
+   * Por pane, e não um só: com quatro terminais lado a lado, um estado
+   * compartilhado mandaria o comando para todos ao mesmo tempo.
+   */
+  const [comandosDoPainel, setComandosDoPainel] = useState<
+    ReadonlyMap<string, { readonly id: number; readonly texto: string }>
+  >(new Map());
+  /** A aparência de cada pane do painel (T086). Vazia = herda tudo. */
+  const [aparenciasDoPainel, setAparenciasDoPainel] = useState<
+    ReadonlyMap<string, AparenciaDoTerminal>
+  >(new Map());
   const conexoes = useConnections({ confirmar: dialogs.confirmar });
   const menu = useContextMenu(falhaDaIde);
   const pasta = usePasta();
@@ -599,6 +623,9 @@ export function App() {
                   tabSize={prefs.prefs['editor.tabSize']}
                   wordWrap={prefs.prefs['editor.wordWrap']}
                   terminalFontSize={prefs.prefs['terminal.fontSize']}
+                  // O `{}` da barra do terminal abre o arquivo de snippets
+                  // aqui mesmo, pelo caminho — como o `config.json` (T085).
+                  onAbrirArquivo={ws.abrirArquivo}
                   tema={tema}
                   snippets={snippets.lista}
                   grades={exec.grades}
@@ -677,13 +704,40 @@ export function App() {
                       '&:first-of-type': { borderLeft: 0 },
                     }}
                   >
-                    <TerminalHost
-                      ativo={visiveisNoPainel.has(t.id) && layout.painelVisivel}
-                      fontSize={prefs.prefs['terminal.fontSize']}
-                      tema={tema}
-                      comandoInicial={comandosIniciais.get(t.id) ?? null}
-                      sessaoId={t.id}
-                    />
+                    <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                      {/* Snippets também no painel de baixo (T087). Eu tinha
+                          recusado escrevendo "ninguém pediu" — e ele pediu.
+                          `Reconectar` e `Duplicar` ficam de fora: o painel já
+                          tem os dois na própria gestão de terminais. */}
+                      <BarraDoTerminal
+                        soSnippets
+                        aparencia={aparenciasDoPainel.get(t.id) ?? VAZIA}
+                        onAparencia={(nova) =>
+                          setAparenciasDoPainel((atual) => new Map(atual).set(t.id, nova))
+                        }
+                        conexaoId={TERMINAL_LOCAL}
+                        onEnviar={(texto) =>
+                          setComandosDoPainel((atual) =>
+                            new Map(atual).set(t.id, { id: Date.now(), texto })
+                          )
+                        }
+                        onReconectar={() => undefined}
+                        onDuplicar={() => undefined}
+                        pedir={(o) => qi.pedir(o)}
+                        confirmar={dialogs.confirmar}
+                        onErro={dialogs.avisar}
+                        abrirArquivo={ws.abrirArquivo}
+                      />
+                      <TerminalHost
+                        ativo={visiveisNoPainel.has(t.id) && layout.painelVisivel}
+                        fontSize={prefs.prefs['terminal.fontSize']}
+                        tema={tema}
+                        comandoInicial={comandosIniciais.get(t.id) ?? null}
+                        comandoParaEnviar={comandosDoPainel.get(t.id) ?? null}
+                        sessaoId={t.id}
+                        aparencia={aparenciasDoPainel.get(t.id) ?? VAZIA}
+                      />
+                    </Box>
                   </Box>
                 ))}
               </BottomPanel>

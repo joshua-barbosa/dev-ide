@@ -117,12 +117,18 @@ export async function digitar(page: Page, texto: string): Promise<void> {
  * diálogo: é um componente da página, não um diálogo do navegador, então
  * precisa existir no DOM para ser preenchido.
  */
+/**
+ * `exact: true` no rótulo: a spec 064 acrescentou o botão
+ * `Trocar a senha mestra` no cabeçalho do painel, e sem o exato
+ * `getByLabel('Senha mestra')` casa com ele também. Um botão novo cujo nome
+ * CONTÉM o de um campo existente deixou 51 testes vermelhos de uma vez.
+ */
 export async function destrancarCofre(
   page: Page,
   senha: string,
   opcoes: { readonly lembrar?: boolean } = {}
 ): Promise<void> {
-  const campo = page.getByLabel('Senha mestra');
+  const campo = page.getByLabel('Senha mestra', { exact: true });
   await campo.fill(senha);
   if (opcoes.lembrar === true) {
     await page.getByRole('checkbox', { name: /Lembrar neste computador/ }).check();
@@ -161,7 +167,7 @@ export async function garantirCofreAberto(page: Page, senha: string): Promise<vo
   const destrancar = page.getByRole('button', { name: 'Destrancar o cofre' });
   if (await destrancar.isVisible()) {
     await destrancar.click();
-    const campo = page.getByLabel('Senha mestra');
+    const campo = page.getByLabel('Senha mestra', { exact: true });
     await campo.fill(senha);
     await page.getByRole('button', { name: 'destrancar' }).click();
   }

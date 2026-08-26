@@ -56,6 +56,8 @@ export interface EditorGroupProps {
   readonly onAbrirTerminalDoServidor: (aba: Tab) => void;
   /** Abre outro terminal da mesma conexão (spec 058). */
   readonly onDuplicarTerminal: (aba: Tab) => void;
+  /** Abre um arquivo no editor — o `{}` da barra do terminal usa (T085). */
+  readonly onAbrirArquivo: (caminho: string) => Promise<void>;
   readonly onConfirmarSnippet: (o: {
     mensagem: string;
     rotuloConfirmar?: string;
@@ -113,7 +115,7 @@ export function EditorGroup({
   grades, formulario, emPreview, conteudoDaAba, onPreview,
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
   onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
-  qi, abrirComando, onErroDaTabela, onMudarCaderno, onRodarBloco,
+  qi, abrirComando, onErroDaTabela, onMudarCaderno, onRodarBloco, onAbrirArquivo,
   capacidadesDe, onAbrirArquivoRemoto, onAbrirTerminalDoServidor,
   onDuplicarTerminal, onConfirmarSnippet,
   onRodarCodigoDoBloco, onPedirLinguagem, vinculoDoCaderno, onTrocarVinculoDoCaderno,
@@ -336,6 +338,7 @@ export function EditorGroup({
               pedir={(o) => qi.pedir(o)}
               confirmar={onConfirmarSnippet}
               onErro={onErroDaTabela}
+              abrirArquivo={onAbrirArquivo}
             />
           </Box>
         ))}

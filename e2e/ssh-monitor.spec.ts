@@ -13,7 +13,7 @@ async function abrirMonitor(page: Page): Promise<void> {
   const linha = linhaArvore(page, CONEXAO_SSH);
   await linha.hover();
   await linha.getByRole('button', { name: /numa aba/ }).click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await expect(page.locator('[data-sub-aba="monitor"]')).toBeVisible({ timeout: 30_000 });
 }

@@ -16,7 +16,7 @@ async function conectar(page: import('@playwright/test').Page): Promise<{ id: st
   await painelLateral(page, 'Service').click();
   await expandir(page, 'ACME', 'Servidores');
   await linhaArvore(page, CONEXAO_SSH).click();
-  const senha = page.getByLabel('Senha mestra');
+  const senha = page.getByLabel('Senha mestra', { exact: true });
   if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
   await expect(linhaArvore(page, 'aplicacao')).toBeVisible({ timeout: 30_000 });
 
