@@ -18,14 +18,13 @@ export interface TabBarProps {
   /** Numa aba SQL o mesmo botão manda para o banco. */
   readonly ehSql?: boolean;
   /** Ausente quando a aba ativa não é pré-visualizável (só markdown, hoje). */
-  readonly onPreview?: () => void;
+
   /** Verdadeiro quando a aba ativa já está mostrando o renderizado. */
-  readonly emPreview?: boolean;
+
 }
 
 export function TabBar({
   tabs, activeId, onActivate, onClose, onExecutar, ehSql = false,
-  onPreview, emPreview = false,
 }: TabBarProps) {
   if (tabs.length === 0) return null;
 
@@ -137,27 +136,6 @@ export function TabBar({
         );
       })}
 
-      {onPreview !== undefined && (
-        <Box
-          component="button"
-          type="button"
-          onClick={onPreview}
-          title={emPreview ? 'Mostrar o texto do arquivo' : 'Preview: mostrar o markdown renderizado'}
-          aria-label="Preview"
-          aria-pressed={emPreview}
-          sx={{
-            ml: onExecutar === undefined ? 'auto' : 0,
-            border: 0, bgcolor: 'transparent', cursor: 'pointer',
-            color: emPreview ? 'primary.main' : 'text.secondary',
-            px: 1.25, display: 'flex', alignItems: 'center', gap: 0.5, fontSize: 11,
-            '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
-          }}
-        >
-          <Icon name={emPreview ? 'lucide:file-code' : 'lucide:book-open'} size={13} />
-          Preview
-        </Box>
-      )}
-
       {onExecutar !== undefined && (
         <Box
           component="button"
@@ -166,7 +144,10 @@ export function TabBar({
           title={ehSql ? 'Executar consulta (Ctrl+Enter)' : 'Executar arquivo (Ctrl+Enter)'}
           aria-label={ehSql ? 'Executar consulta' : 'Executar arquivo'}
           sx={{
-            ml: onPreview === undefined ? 'auto' : 0,
+            // `auto` SEMPRE. Era condicional ao preview não existir, e com os
+            // dois na tela nenhum ganhava o empurrão: eles grudavam no fim das
+            // abas, no meio da barra. Ele mandou o print.
+            ml: 'auto',
             border: 0, bgcolor: 'transparent', cursor: 'pointer',
             color: 'success.main', px: 1.25, display: 'flex', alignItems: 'center',
             '&:hover': { bgcolor: 'action.hover' },

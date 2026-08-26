@@ -172,6 +172,56 @@ app.get('/api/file', wrap((req, res) => {
   });
 }));
 
+/**
+ * O arquivo como BYTES, para imagem e PDF (T027).
+ *
+ * Separada do `/api/file` de propósito: aquela devolve texto em JSON, e passar
+ * um PNG por ali significaria decodificá-lo como UTF-8 — o que o corrompe — ou
+ * embrulhá-lo em base64, que infla um terço e ainda passa pela memória do
+ * navegador inteiro antes de virar imagem.
+ *
+ * A cerca é a MESMA (`validateFilePath`): o caminho vem do cliente, e o que
+ * separa "ver uma imagem do projeto" de "ler qualquer arquivo da máquina" é
+ * exatamente essa função.
+ *
+ * O teto também é maior aqui: 2 MB é razoável para o editor e pequeno para um
+ * PDF de manual.
+ */
+const MAX_BYTES_BRUTOS = 64 * 1024 * 1024;
+
+const TIPOS: Readonly<Record<string, string>> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', ico: 'image/x-icon',
+  svg: 'image/svg+xml', pdf: 'application/pdf',
+};
+
+app.get('/api/file/raw', wrap((req, res) => {
+  const filePath = validateFilePath(requireString(req.query.path, 'path'));
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    throw new Error(`Arquivo não encontrado: ${filePath}`);
+  }
+  const tamanho = fs.statSync(filePath).size;
+  if (tamanho > MAX_BYTES_BRUTOS) {
+    throw new Error('Arquivo muito grande para abrir (limite de 64 MB).');
+  }
+
+  const ponto = filePath.toLowerCase().lastIndexOf('.');
+  const ext = ponto === -1 ? '' : filePath.toLowerCase().slice(ponto + 1);
+  const tipo = TIPOS[ext] ?? 'application/octet-stream';
+
+  // `Content-Disposition: inline` para o navegador MOSTRAR em vez de baixar —
+  // é o ponto inteiro. E `X-Content-Type-Options` porque o tipo sai de uma
+  // tabela nossa: sem ele o navegador poderia adivinhar outro e tratar um
+  // arquivo como script.
+  res.setHeader('Content-Type', tipo);
+  res.setHeader('Content-Disposition', 'inline');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // Nada de cache: o arquivo é local e pode mudar a qualquer momento — servir
+  // a versão velha depois de salvar seria a pior surpresa.
+  res.setHeader('Cache-Control', 'no-store');
+  fs.createReadStream(filePath).pipe(res);
+}));
+
 app.post('/api/file', wrap((req, res) => {
   const filePath = validateFilePath(requireString(req.body?.path, 'path'));
   const content = req.body?.content;

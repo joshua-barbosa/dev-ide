@@ -21,6 +21,7 @@ import { proximoSemTitulo } from '../shared/untitled';
 import { ICONE_DE_ARQUIVO, iconeDeArquivo } from '../shared/editor/arquivos';
 import type { EditorHandle, ViewState } from './editor/EditorHost';
 import { EXT_TO_LANG, NOME_TO_LANG } from '../shared/editor/languages';
+import { montarAbaDeArquivo } from './editor/abaDeArquivo';
 import { gravarSeRemota, idDaAbaRemota, lerParaAba } from './remoto/abaRemota';
 import { soltarNoGrupoCom } from './tabs/soltura';
 import { Api } from './api';
@@ -268,25 +269,10 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         return;
       }
 
-      const dados = await Api.readFile(caminho);
-      const language = linguagemDe(dados.path);
-
+      const { aba } = await montarAbaDeArquivo(caminho, Api.readFile, linguagemDe);
       // Salva a aba corrente antes de abrir a nova, senão o conteúdo se perde.
       salvarGrupoFocado();
-
-      // `.sqlbook` é um CADERNO (spec 048), e não texto para o Monaco: a
-      // aba é de outro tipo, o conteúdo é JSON, e quem o edita são os blocos.
-      // O `meta.content` continua sendo a verdade — é o que faz `Ctrl+S`
-      // gravar sem caminho especial.
-      const ehCaderno = dados.path.toLowerCase().endsWith('.sqlbook');
-
-      store.open({
-        id: `file:${dados.path}`,
-        type: ehCaderno ? 'caderno' : language === 'sql' ? 'sql' : 'editor',
-        title: dados.path.split('/').pop() ?? dados.path,
-        icon: ehCaderno ? 'lucide:notebook-pen' : iconeDeArquivo(dados.path, language),
-        meta: { path: dados.path, content: dados.content, language, view: null },
-      });
+      store.open(aba);
     },
     [salvarGrupoFocado, store]
   );

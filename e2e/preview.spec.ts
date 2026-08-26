@@ -10,7 +10,25 @@ import { editor, esperarEditorPronto, entradaRapida, menu, textoDoEditor, espera
 const preview = (page: Page) => page.locator('[data-markdown-preview]');
 // `exact`: o botão de fechar aba passou a se chamar "Fechar <arquivo>", e num
 // arquivo chamado `preview-*.md` isso também contém "preview".
-const botao = (page: Page) => page.getByRole('button', { name: 'Preview', exact: true });
+/**
+ * O controle de preview.
+ *
+ * Era um BOTÃO na barra de abas; virou um `radio` numa faixa própria abaixo
+ * dela (spec 068). O print dele mostrou por quê: com vários arquivos abertos o
+ * botão aparecia grudado no fim da última aba, no meio da tela.
+ */
+const botao = (page: Page) =>
+  page.locator('[data-barra-do-arquivo]').getByRole('radio', { name: 'Preview', exact: true });
+
+/**
+ * Voltar ao texto agora é clicar em `Markdown`, e não no mesmo controle.
+ *
+ * O switch tem dois estados explícitos: clicar no que JÁ está ativo não faz
+ * nada, senão ele voltaria a ser um botão que alterna — e quem clica em
+ * `Preview` estando no preview espera continuar nele.
+ */
+const voltarAoTexto = (page: Page) =>
+  page.locator('[data-barra-do-arquivo]').getByRole('radio', { name: 'Markdown', exact: true });
 
 /** Cria um `.md` na pasta aberta, com o conteúdo dado. */
 async function arquivoMarkdown(page: Page, nome: string, conteudo: string): Promise<void> {
@@ -48,7 +66,7 @@ test('o botão Preview só aparece em markdown', async ({ page }) => {
   await expect(botao(page)).toBeVisible();
 });
 
-test('o botão troca entre o texto e o renderizado', async ({ page }) => {
+test('o switch troca entre o texto e o renderizado', async ({ page }) => {
   await arquivoMarkdown(
     page,
     'preview-troca.md',
@@ -65,7 +83,7 @@ test('o botão troca entre o texto e o renderizado', async ({ page }) => {
   // O texto do arquivo sai de vista enquanto o renderizado está à frente.
   await expect(editor(page)).toBeHidden();
 
-  await botao(page).click();
+  await voltarAoTexto(page).click();
   await expect(preview(page)).toHaveCount(0);
   await expect(editor(page)).toBeVisible();
 });

@@ -21,6 +21,9 @@ import { CadernoHost } from './caderno/CadernoHost';
 import { ServidorHost } from './servidor/ServidorHost';
 import type { QuickInputController } from './useQuickInput';
 import { MarkdownPreview } from './editor/MarkdownPreview';
+import { VisualizadorDeArquivo } from './editor/VisualizadorDeArquivo';
+import { BarraDoArquivo } from './editor/BarraDoArquivo';
+import type { Visualizador } from '../shared/editor/visualizadores';
 import { tokens } from './theme';
 import type { Tab } from '../shared/tabs';
 import type { NomeDoTema } from '../shared/temas';
@@ -177,9 +180,12 @@ export function EditorGroup({
     !semAbas &&
     ativa !== null &&
     !mostrandoPreview &&
-    !['grid', 'conexao', 'terminal', 'tabela', 'processos', 'caderno', 'servidor'].includes(
-      ativa.type
-    );
+    ![
+      'grid', 'conexao', 'terminal', 'tabela', 'processos', 'caderno', 'servidor',
+      // Imagem, PDF e CSV têm tela própria (T027) — o Monaco não abre nenhum
+      // dos três de um jeito útil.
+      'visualizador',
+    ].includes(ativa.type);
 
   return (
     <Box
@@ -216,9 +222,11 @@ export function EditorGroup({
         onClose={onFechar}
         onExecutar={onExecutar}
         ehSql={ativa?.type === 'sql'}
-        onPreview={onPreview}
-        emPreview={mostrandoPreview}
       />
+
+      {/* A faixa abaixo das abas (T025). O switch morava DENTRO da barra de
+          abas e aparecia no meio da tela com vários arquivos abertos. */}
+      <BarraDoArquivo onPreview={onPreview} emPreview={mostrandoPreview} />
 
       {/* Montado sempre: desmontá-lo ao ficar sem abas perderia a instância e a
           fachada imperativa. Some de vista, não do DOM. */}
@@ -240,6 +248,17 @@ export function EditorGroup({
           para o renderizado não pode custar histórico de desfazer nem rolagem. */}
       {mostrandoPreview && ativa !== null && (
         <MarkdownPreview fonte={conteudoDaAba(ativa.id)} />
+      )}
+
+      {/* Imagem, PDF e CSV (T027). Montado só quando é a aba ativa: um PDF
+          escondido continuaria sendo desenhado pelo navegador, e um CSV grande
+          continuaria ocupando a memória da grade. */}
+      {ativa?.type === 'visualizador' && (
+        <VisualizadorDeArquivo
+          tipo={(ativa.meta.visualizador as Visualizador | undefined) ?? 'texto'}
+          caminho={String(ativa.meta.path ?? '')}
+          conteudo={conteudoDaAba(ativa.id)}
+        />
       )}
 
       {ativa?.type === 'grid' && (

@@ -59,8 +59,31 @@ export function escaparHtml(texto: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * A classe que marca um bloco de Mermaid no HTML (T026).
+ *
+ * O diagrama NÃO é desenhado aqui: este módulo é puro e roda no servidor
+ * também. Ele só marca o lugar e guarda a FONTE escapada num atributo — quem
+ * desenha é o preview, no navegador, com a biblioteca carregada sob demanda.
+ *
+ * A fonte vai escapada porque é texto do usuário indo para dentro de um
+ * atributo HTML. Sem isso, um `"` no diagrama fecharia o atributo e o resto
+ * viraria marcação — que é exatamente a classe de furo que este arquivo
+ * inteiro existe para fechar.
+ */
+export const CLASSE_DO_MERMAID = 'mermaid-por-desenhar';
+
 function criarRenderer(): Renderer {
   const r = new Renderer();
+
+  // ```mermaid vira um marcador, e não um bloco de código.
+  r.code = ({ text, lang }: Tokens.Code): string => {
+    if ((lang ?? '').trim().toLowerCase() === 'mermaid') {
+      return `<div class="${CLASSE_DO_MERMAID}" data-fonte="${escaparHtml(text)}"></div>`;
+    }
+    const classe = (lang ?? '').trim() === '' ? '' : ` class="language-${escaparHtml(lang ?? '')}"`;
+    return `<pre><code${classe}>${escaparHtml(text)}</code></pre>`;
+  };
 
   // HTML bruto do documento vira TEXTO VISÍVEL, não marcação. É a defesa que
   // mata `<script>`, `<iframe>` e `<img onerror=…>` de uma vez — inclusive os
