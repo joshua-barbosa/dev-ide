@@ -3,18 +3,24 @@
 // O SQLite responde quase tudo por `PRAGMA`, e guarda o DDL original no
 // `sqlite_master` — então aqui não há reconstrução, ao contrário do PostgreSQL.
 //
-// O que ele NÃO responde bem fica declarado como "não sei", e não como lista
-// vazia: `PRAGMA foreign_key_list` devolve as chaves declaradas mesmo com o
-// suporte desligado, mas gatilho exigiria interpretar o texto do
-// `CREATE TRIGGER`, e checagem não tem pragma nenhum.
+// Gatilho e checagem não têm pragma: o primeiro mora inteiro no `sqlite_master`
+// e a segunda dentro do texto do `CREATE TABLE`. A spec 069 (T063) passou a
+// interpretá-los — a varredura é pura e vive em `shared/sql/sqlite-ddl.ts`.
+//
+// O que a varredura não conseguir ler continua voltando como "não sei", e não
+// como lista vazia: são coisas diferentes, e a spec 045 já paga esse preço.
 import type { DatabaseSync } from 'node:sqlite';
 import type {
   ChaveEstrangeira,
+  ChecagemDaTabela,
   ColunaDetalhada,
+  GatilhoDaTabela,
   IndiceDaTabela,
+  ListaOuNaoSei,
   TableStructure,
 } from '../types';
 import { quoteIdentifier } from './sql-base';
+import { lerChecagens, lerGatilho } from '../../../shared/sql/sqlite-ddl';
 
 const quote = (nome: string): string => quoteIdentifier(nome, 'double');
 
@@ -92,6 +98,15 @@ export function estruturaDaTabela(db: DatabaseSync, nodePath: readonly string[])
     aoApagar: f.on_delete,
   }));
 
+  // Os gatilhos DESTA tabela, do `sqlite_master`. Um cujo texto a varredura não
+  // reconheça derruba a lista inteira para `naoSei`: listar três de quatro e
+  // não dizer nada do quarto seria a tela afirmando o que não sabe.
+  const gatilhos = lerGatilhosDaTabela(db, objeto);
+  const checagens: ListaOuNaoSei<ChecagemDaTabela> =
+    mestre.sql === null || mestre.sql === undefined
+      ? { naoSei: 'O SQLite não guardou o DDL desta tabela.' }
+      : lerChecagens(mestre.sql);
+
   return {
     nome: objeto,
     // Comentário, motor e colação não existem no SQLite.
@@ -103,13 +118,40 @@ export function estruturaDaTabela(db: DatabaseSync, nodePath: readonly string[])
     colunas,
     chavesEstrangeiras: { itens: chavesEstrangeiras },
     indices: { itens: indices },
-    gatilhos: {
-      naoSei:
-        'O SQLite guarda o gatilho como texto do `CREATE TRIGGER`, e a IDE ainda não o ' +
-        'interpreta. Veja o DDL do gatilho pela árvore.',
-    },
-    checagens: {
-      naoSei: 'O SQLite não expõe as checagens fora do DDL da tabela — veja a aba DDL.',
-    },
+    gatilhos,
+    checagens,
   };
+}
+
+/**
+ * Os gatilhos de uma tabela, lidos do texto que o SQLite guardou.
+ *
+ * `tbl_name` é o que amarra o gatilho à tabela — o nome dentro do `ON` seria a
+ * segunda fonte da mesma verdade, e as duas divergiriam num `ALTER TABLE
+ * RENAME`, que reescreve o texto mas não o `tbl_name`.
+ */
+function lerGatilhosDaTabela(db: DatabaseSync, objeto: string): ListaOuNaoSei<GatilhoDaTabela> {
+  const linhas = db
+    .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ?")
+    .all(objeto) as Array<{ name: string; sql: string | null }>;
+
+  const itens: GatilhoDaTabela[] = [];
+  for (const linha of linhas) {
+    const lido = linha.sql === null ? null : lerGatilho(linha.sql);
+    if (lido === null) {
+      return {
+        naoSei:
+          `A IDE não conseguiu interpretar o texto do gatilho "${linha.name}". ` +
+          'Veja o DDL para o texto exato.',
+      };
+    }
+    itens.push({
+      nome: lido.nome,
+      momento: lido.momento,
+      evento: lido.evento,
+      orientacao: lido.orientacao,
+      corpo: lido.corpo,
+    });
+  }
+  return { itens };
 }

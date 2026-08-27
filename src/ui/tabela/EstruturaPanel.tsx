@@ -100,6 +100,13 @@ export function EstruturaPanel({
           <TabelaDeColunas colunas={estrutura.colunas} pode={pode} onAlterar={onAlterar} />
         )}
         {sessao === 'fks' && (
+          <>
+            {pode('criar-chave-estrangeira') && (
+              <Acao
+                rotulo="+ chave estrangeira"
+                onClick={() => onAlterar?.('criar-chave-estrangeira', { colunas: estrutura.colunas })}
+              />
+            )}
           <Lista
             lista={estrutura.chavesEstrangeiras}
             desenhar={desenharFk}
@@ -110,6 +117,7 @@ export function EstruturaPanel({
             }
             onAlterar={onAlterar}
           />
+          </>
         )}
         {sessao === 'indices' && (
           <>
@@ -128,9 +136,39 @@ export function EstruturaPanel({
             />
           </>
         )}
-        {sessao === 'gatilhos' && <Lista lista={estrutura.gatilhos} desenhar={desenharGatilho} />}
+        {sessao === 'gatilhos' && (
+          <>
+            {pode('criar-gatilho') && (
+              <Acao rotulo="+ gatilho" onClick={() => onAlterar?.('criar-gatilho')} />
+            )}
+            <Lista
+              lista={estrutura.gatilhos}
+              desenhar={desenharGatilho}
+              acao={
+                pode('apagar-gatilho')
+                  ? { rotulo: 'Apagar', tipo: 'apagar-gatilho', chave: 'nome' }
+                  : undefined
+              }
+              onAlterar={onAlterar}
+            />
+          </>
+        )}
         {sessao === 'checagens' && (
-          <Lista lista={estrutura.checagens} desenhar={desenharChecagem} />
+          <>
+            {pode('criar-checagem') && (
+              <Acao rotulo="+ checagem" onClick={() => onAlterar?.('criar-checagem')} />
+            )}
+            <Lista
+              lista={estrutura.checagens}
+              desenhar={desenharChecagem}
+              acao={
+                pode('apagar-checagem')
+                  ? { rotulo: 'Apagar', tipo: 'apagar-checagem', chave: 'nome' }
+                  : undefined
+              }
+              onAlterar={onAlterar}
+            />
+          </>
         )}
       </Box>
     </Box>
@@ -184,6 +222,20 @@ function Cabecalho({
         <Acao
           rotulo="Comentário"
           onClick={() => onAlterar?.('comentario-tabela', { comentario: estrutura.comentario })}
+        />
+      )}
+      {/* T067. No MySQL a colação é da TABELA; no PostgreSQL é da COLUNA, e por
+          isso o rótulo muda junto com a operação que o dialeto declara. */}
+      {pode('colacao-tabela') && (
+        <Acao
+          rotulo="Colação"
+          onClick={() => onAlterar?.('colacao-tabela', { colacao: estrutura.colacao })}
+        />
+      )}
+      {pode('colacao-coluna') && (
+        <Acao
+          rotulo="Colação de coluna"
+          onClick={() => onAlterar?.('colacao-coluna', { colunas: estrutura.colunas })}
         />
       )}
       <Box

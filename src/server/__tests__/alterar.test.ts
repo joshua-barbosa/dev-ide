@@ -227,3 +227,140 @@ test('operação desconhecida é recusada', () => {
   // barreira que impede pedir ao SQLite algo que ele não faz.
   assert.throws(() => sql(mysql, { tipo: 'inventada' }), /não faz|desconhecid/i);
 });
+
+// ---------------------------------------------------------------------------
+// Restrições, gatilhos e colação (T065, T066, T067 — spec 069)
+// ---------------------------------------------------------------------------
+
+test('a chave estrangeira avisa que VALIDA a tabela inteira', () => {
+  const sql = montarAlteracao(
+    { alvo: '`escola`.`alunos`', dialeto: DIALETOS.mysql },
+    {
+      tipo: 'criar-chave-estrangeira',
+      nome: 'fk_turma',
+      coluna: 'turma_id',
+      tabelaRef: 'turmas',
+      colunaRef: 'id',
+      aoAtualizar: 'cascade',
+      aoApagar: 'set null',
+    }
+  );
+  assert.match(sql, /ADD CONSTRAINT `fk_turma` FOREIGN KEY \(`turma_id`\)/);
+  assert.match(sql, /REFERENCES `turmas` \(`id`\)/);
+  // Maiúsculas, e vindas de lista fechada: a regra entra no comando SEM aspas.
+  assert.match(sql, /ON UPDATE CASCADE/);
+  assert.match(sql, /ON DELETE SET NULL/);
+  assert.match(sql, /VALIDA as linhas existentes/);
+  assert.match(sql, /NÃO rodou/);
+});
+
+test('regra de integridade inventada é recusada', () => {
+  assert.throws(
+    () =>
+      montarAlteracao(
+        { alvo: 't', dialeto: DIALETOS.postgres },
+        {
+          tipo: 'criar-chave-estrangeira',
+          nome: 'fk', coluna: 'a', tabelaRef: 'b', colunaRef: 'id',
+          aoAtualizar: 'DROP TABLE alunos', aoApagar: 'CASCADE',
+        }
+      ),
+    /Regra inválida/
+  );
+});
+
+test('apagar checagem usa o verbo de CADA banco', () => {
+  const mysql = montarAlteracao(
+    { alvo: '`t`', dialeto: DIALETOS.mysql },
+    { tipo: 'apagar-checagem', nome: 'ck_idade' }
+  );
+  const pg = montarAlteracao(
+    { alvo: '"t"', dialeto: DIALETOS.postgres },
+    { tipo: 'apagar-checagem', nome: 'ck_idade' }
+  );
+  assert.match(mysql, /DROP CHECK `ck_idade`/);
+  assert.match(pg, /DROP CONSTRAINT "ck_idade"/);
+});
+
+test('o gatilho do PostgreSQL chama uma FUNÇÃO, e o esqueleto dela vai junto', () => {
+  const sql = montarAlteracao(
+    { alvo: '"public"."alunos"', dialeto: DIALETOS.postgres },
+    {
+      tipo: 'criar-gatilho', nome: 'tg_audita',
+      momento: 'after', evento: 'insert', corpo: 'fn_audita',
+    }
+  );
+  assert.match(sql, /AFTER INSERT ON "public"\."alunos"/);
+  assert.match(sql, /EXECUTE FUNCTION "fn_audita"\(\)/);
+  // A função precisa EXISTIR: o esqueleto dela vai comentado acima.
+  assert.match(sql, /-- CREATE FUNCTION fn_audita\(\) RETURNS trigger/);
+});
+
+test('o gatilho do MySQL traz o CORPO, e o ponto-e-vírgula dele é legítimo', () => {
+  const sql = montarAlteracao(
+    { alvo: '`escola`.`alunos`', dialeto: DIALETOS.mysql },
+    {
+      tipo: 'criar-gatilho', nome: 'tg_normaliza',
+      momento: 'BEFORE', evento: 'UPDATE', corpo: 'SET NEW.nome = TRIM(NEW.nome);',
+    }
+  );
+  assert.match(sql, /BEFORE UPDATE ON `escola`\.`alunos`/);
+  assert.match(sql, /SET NEW\.nome = TRIM\(NEW\.nome\);/);
+});
+
+test('apagar gatilho: o PostgreSQL precisa dizer de QUAL tabela', () => {
+  const pg = montarAlteracao(
+    { alvo: '"public"."alunos"', dialeto: DIALETOS.postgres },
+    { tipo: 'apagar-gatilho', nome: 'tg' }
+  );
+  const mysql = montarAlteracao(
+    { alvo: '`escola`.`alunos`', dialeto: DIALETOS.mysql },
+    { tipo: 'apagar-gatilho', nome: 'tg' }
+  );
+  assert.match(pg, /DROP TRIGGER "tg" ON "public"\."alunos";/);
+  assert.match(mysql, /DROP TRIGGER `tg`;/);
+});
+
+test('a colação avisa que REESCREVE a tabela — foi o que ele pediu', () => {
+  const sql = montarAlteracao(
+    { alvo: '`escola`.`alunos`', dialeto: DIALETOS.mysql },
+    { tipo: 'colacao-tabela', conjunto: 'utf8mb4', colacao: 'utf8mb4_unicode_ci' }
+  );
+  assert.match(sql, /REESCREVE a tabela/);
+  assert.match(sql, /CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;/);
+});
+
+test('colação com caractere estranho é recusada: ela entra SEM aspas', () => {
+  assert.throws(
+    () =>
+      montarAlteracao(
+        { alvo: '`t`', dialeto: DIALETOS.mysql },
+        { tipo: 'colacao-tabela', conjunto: 'utf8mb4', colacao: 'x; DROP TABLE alunos' }
+      ),
+    /Nome inválido/
+  );
+});
+
+test('o PostgreSQL muda a colação da COLUNA, e o MySQL a da TABELA', () => {
+  assert.equal(DIALETOS.mysql.faz.includes('colacao-tabela'), true);
+  assert.equal(DIALETOS.mysql.faz.includes('colacao-coluna'), false);
+  assert.equal(DIALETOS.postgres.faz.includes('colacao-coluna'), true);
+  assert.equal(DIALETOS.postgres.faz.includes('colacao-tabela'), false);
+});
+
+test('o SQLite faz gatilho, e NÃO faz chave estrangeira nem checagem', () => {
+  // `CREATE TRIGGER` existe no SQLite desde sempre. Acrescentar restrição a uma
+  // tabela pronta, não: exige recriar a tabela e copiar os dados.
+  assert.equal(DIALETOS.sqlite.faz.includes('criar-gatilho'), true);
+  assert.equal(DIALETOS.sqlite.faz.includes('apagar-gatilho'), true);
+  assert.equal(DIALETOS.sqlite.faz.includes('criar-chave-estrangeira'), false);
+  assert.equal(DIALETOS.sqlite.faz.includes('criar-checagem'), false);
+  assert.throws(
+    () =>
+      montarAlteracao(
+        { alvo: '"t"', dialeto: DIALETOS.sqlite },
+        { tipo: 'criar-checagem', nome: 'ck', expressao: 'idade > 0' }
+      ),
+    /não faz esta operação/
+  );
+});

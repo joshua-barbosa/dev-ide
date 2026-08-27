@@ -52,6 +52,25 @@ export function useAlteracoes(deps: DepsDeAlteracao): AcoesDeAlteracao {
     return valor === null || valor.trim() === '' ? null : valor.trim();
   };
 
+  /** Uma entre N opções fechadas. Digitar livre aqui viraria erro no banco. */
+  const pedirEntre = async (titulo: string, opcoes: readonly string[]): Promise<string | null> => {
+    const valor = await qi.pedir({
+      titulo,
+      placeholder: opcoes.join(' · '),
+      opcoes: opcoes.map((o) => ({ valor: o, rotulo: o })),
+    });
+    return valor === null || valor === '' ? null : valor;
+  };
+
+  /**
+   * As regras de integridade referencial.
+   *
+   * Lista fechada por dois motivos: o servidor recusa o que não estiver nela, e
+   * essa é a parte da FK que entra no comando SEM aspas.
+   */
+  const pedirRegra = (titulo: string): Promise<string | null> =>
+    pedirEntre(titulo, ['NO ACTION', 'RESTRICT', 'CASCADE', 'SET NULL', 'SET DEFAULT']);
+
   const pedirSimNao = async (titulo: string): Promise<boolean | null> => {
     const r = await qi.pedir({
       titulo,
@@ -119,6 +138,65 @@ export function useAlteracoes(deps: DepsDeAlteracao): AcoesDeAlteracao {
         obrigatoria,
         padrao: padrao.trim() === '' ? null : padrao,
       };
+    }
+    // ---- Spec 069: chave estrangeira, checagem, gatilho e colação ----
+    if (tipo === 'criar-chave-estrangeira') {
+      const nome = await pedir('Nome da chave estrangeira', 'ex.: fk_turma');
+      if (nome === null) return null;
+      const coluna = await pedir('Coluna desta tabela', 'ex.: turma_id');
+      if (coluna === null) return null;
+      const tabelaRef = await pedir('Tabela referenciada', 'ex.: turmas');
+      if (tabelaRef === null) return null;
+      const colunaRef = await pedir('Coluna referenciada', 'ex.: id');
+      if (colunaRef === null) return null;
+      const aoAtualizar = await pedirRegra('Ao ATUALIZAR o pai');
+      if (aoAtualizar === null) return null;
+      const aoApagar = await pedirRegra('Ao APAGAR o pai');
+      if (aoApagar === null) return null;
+      return { tipo, nome, coluna, tabelaRef, colunaRef, aoAtualizar, aoApagar };
+    }
+    if (tipo === 'criar-checagem') {
+      const nome = await pedir('Nome da checagem', 'ex.: ck_idade');
+      if (nome === null) return null;
+      const expressao = await pedir('Expressão', 'ex.: idade >= 0');
+      if (expressao === null) return null;
+      return { tipo, nome, expressao };
+    }
+    if (tipo === 'criar-gatilho') {
+      const nome = await pedir('Nome do gatilho', 'ex.: tg_audita');
+      if (nome === null) return null;
+      const momento = await pedirEntre('Quando', ['BEFORE', 'AFTER']);
+      if (momento === null) return null;
+      const evento = await pedirEntre('Em qual escrita', ['INSERT', 'UPDATE', 'DELETE']);
+      if (evento === null) return null;
+      // No PostgreSQL o gatilho CHAMA uma função; nos outros ele traz o corpo.
+      // A pergunta muda com o dialeto porque a resposta é outra coisa.
+      const corpo =
+        dialeto === 'PostgreSQL'
+          ? await pedir('Função que o gatilho chama', 'ex.: fn_audita')
+          : await pedir('Corpo (um comando)', 'ex.: SET NEW.nome = TRIM(NEW.nome);');
+      if (corpo === null) return null;
+      return { tipo, nome, momento, evento, corpo };
+    }
+    if (tipo === 'colacao-tabela') {
+      const conjunto = await pedir('Conjunto de caracteres', 'ex.: utf8mb4');
+      if (conjunto === null) return null;
+      const colacao = await pedir(
+        'Colação',
+        'ex.: utf8mb4_unicode_ci',
+        String(ctx.colacao ?? '')
+      );
+      if (colacao === null) return null;
+      return { tipo, conjunto, colacao };
+    }
+    if (tipo === 'colacao-coluna') {
+      const coluna = await pedir('Coluna', 'a coluna de texto a converter');
+      if (coluna === null) return null;
+      const tipoSql = await pedir('Tipo da coluna', 'ex.: text, varchar(255)');
+      if (tipoSql === null) return null;
+      const colacao = await pedir('Colação', 'ex.: pt_BR.utf8, C');
+      if (colacao === null) return null;
+      return { tipo, coluna, tipoSql, colacao };
     }
     if (tipo === 'criar-indice') {
       const nome = await pedir('Nome do índice', 'ex.: idx_nome');

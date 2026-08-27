@@ -57,6 +57,7 @@ export type {
   ColunaDetalhada,
   GatilhoDaTabela,
   IndiceDaTabela,
+  ListaOuNaoSei,
   TableStructure,
 } from '../../shared/contracts';
 import type { NodeIcon } from '../../shared/icons';

@@ -57,17 +57,42 @@ test('o DDL aparece inteiro', async ({ page }) => {
   await expect(page.locator('[data-ddl]')).toContainText('CREATE TABLE');
 });
 
-test('"não sei responder" é diferente de "nenhum"', async ({ page }) => {
-  // Confundir os dois diria que a tabela não tem gatilho, quando o que
-  // acontece é que a IDE não sabe perguntar ao SQLite.
+test('o SQLite agora RESPONDE gatilho e checagem (T063)', async ({ page }) => {
+  // Até a spec 069 estas duas sub-abas diziam "não sei", e a desculpa era que
+  // exigiriam interpretar o texto do `CREATE TRIGGER`. Exigem — e é o que a
+  // varredura de `shared/sql/sqlite-ddl.ts` passou a fazer.
+  //
+  // "Nenhum" é resposta legítima AGORA: a tabela `alunos` da suíte não tem
+  // gatilho nem checagem, e dizer "não sei" onde se sabe seria o erro
+  // espelhado do que esta spec veio consertar.
   await abrirTabela(page);
   await estrutura(page).click();
 
   await page.getByRole('tab', { name: 'Gatilhos' }).click();
-  await expect(page.locator('[data-aviso-estrutura]')).toContainText('SQLite');
+  await expect(page.locator('[data-aviso-estrutura]')).toHaveText('Nenhum.');
+
+  await page.getByRole('tab', { name: 'Checagens' }).click();
+  await expect(page.locator('[data-aviso-estrutura]')).toHaveText('Nenhum.');
 
   await page.getByRole('tab', { name: 'Chaves estrangeiras' }).click();
   await expect(page.locator('[data-aviso-estrutura]')).toHaveText('Nenhum.');
+});
+
+test('o SQLite oferece gatilho e NÃO oferece chave estrangeira nem checagem', async ({ page }) => {
+  // `CREATE TRIGGER` o SQLite faz. Acrescentar restrição a uma tabela pronta,
+  // não: exige recriar a tabela e copiar os dados. Declarar que faz e gerar um
+  // ALTER que o banco recusa seria pior que não oferecer (spec 069).
+  await abrirTabela(page);
+  await estrutura(page).click();
+
+  await page.getByRole('tab', { name: 'Gatilhos' }).click();
+  await expect(page.getByRole('button', { name: '+ gatilho' })).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Checagens' }).click();
+  await expect(page.getByRole('button', { name: '+ checagem' })).toHaveCount(0);
+
+  await page.getByRole('tab', { name: 'Chaves estrangeiras' }).click();
+  await expect(page.getByRole('button', { name: '+ chave estrangeira' })).toHaveCount(0);
 });
 
 test('trocar de sub-aba NÃO perde o que estava nos dados', async ({ page }) => {
@@ -125,6 +150,31 @@ test('acrescentar coluna GERA o comando, e não o executa', async ({ page }) => 
   await page.getByRole('tab', { name: 'estrutura' }).click();
   await page.getByLabel('Recarregar a estrutura').click();
   await expect(page.locator('[data-coluna-estrutura="criado_em"]')).toHaveCount(0);
+});
+
+test('criar gatilho GERA o comando, com o aviso de que ele roda em toda escrita', async ({ page }) => {
+  // T066. Mesma regra da spec 046: gerado e ABERTO. Um gatilho novo passa a
+  // rodar em TODA escrita da tabela — não sai de um clique.
+  await abrirTabela(page);
+  await estrutura(page).click();
+  await page.getByRole('tab', { name: 'Gatilhos' }).click();
+
+  await page.getByRole('button', { name: '+ gatilho' }).click();
+  await entradaRapida(page).fill('tg_teste');
+  await page.keyboard.press('Enter');
+  await page.getByRole('option', { name: 'AFTER' }).click();
+  await page.getByRole('option', { name: 'INSERT' }).click();
+  await entradaRapida(page).fill("INSERT INTO notas(aluno_id) VALUES (NEW.id);");
+  await page.keyboard.press('Enter');
+
+  await expect.poll(() => textoDoEditor(page)).toContain('CREATE TRIGGER');
+  const texto = await textoDoEditor(page);
+  expect(texto).toContain('"tg_teste"');
+  expect(texto).toContain('AFTER INSERT ON');
+  expect(texto).toContain('TODA escrita');
+  // A nota do DELIMITER é do MySQL: no SQLite ela seria ruído.
+  expect(texto).not.toContain('DELIMITER');
+  expect(texto).toContain('ainda NÃO rodou');
 });
 
 test('apagar coluna vem com o aviso de que reescreve a tabela', async ({ page }) => {

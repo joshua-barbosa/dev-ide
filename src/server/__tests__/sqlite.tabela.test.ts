@@ -337,15 +337,47 @@ test('a view é reconhecida como view', async () => {
   }
 });
 
-test('o que o SQLite não sabe responder vem como "não sei", não como lista vazia', async () => {
-  // Confundir "este banco não tem o conceito" com "não há nenhum" é o mesmo
-  // erro do total estimado da spec 041.
+test('gatilho e checagem do SQLite são LIDOS do texto (T063)', async () => {
+  // Até a spec 069 estes dois vinham como "não sei", com a desculpa de que
+  // exigiriam interpretar o texto do `CREATE TRIGGER`. Exigem, e é o que a
+  // varredura de `shared/sql/sqlite-ddl.ts` faz.
+  const { session, file } = await abrir();
+  try {
+    const db = new DatabaseSync(file);
+    db.exec(`
+      CREATE TABLE contas (
+        id INTEGER PRIMARY KEY,
+        saldo REAL CHECK (saldo >= 0),
+        CONSTRAINT ck_id CHECK (id > 0)
+      );
+      CREATE TRIGGER tg_conta AFTER INSERT ON contas
+      FOR EACH ROW BEGIN INSERT INTO alunos(nome) VALUES ('nova'); END;
+    `);
+    db.close();
+
+    const e = await session.tableStructure!(['main', 'tables', 'contas']);
+    assert.equal('itens' in e.gatilhos, true);
+    assert.deepEqual(
+      'itens' in e.gatilhos ? e.gatilhos.itens.map((g) => [g.nome, g.momento, g.evento]) : [],
+      [['tg_conta', 'AFTER', 'INSERT']]
+    );
+    assert.deepEqual(
+      'itens' in e.checagens ? e.checagens.itens.map((c) => c.expressao) : [],
+      ['saldo >= 0', 'id > 0']
+    );
+  } finally {
+    await session.close();
+  }
+});
+
+test('tabela sem gatilho e sem checagem devolve LISTA VAZIA, e não "não sei"', async () => {
+  // Agora que a IDE sabe ler, "não tem nenhum" é uma resposta que ela pode
+  // dar — e dizer "não sei" onde se sabe seria o erro espelhado.
   const { session } = await abrir();
   try {
     const e = await session.tableStructure!(['main', 'tables', 'alunos']);
-    assert.equal('naoSei' in e.gatilhos, true);
-    assert.equal('naoSei' in e.checagens, true);
-    // Índice e chave estrangeira ELE sabe: aí é lista, mesmo que vazia.
+    assert.deepEqual(e.gatilhos, { itens: [] });
+    assert.deepEqual(e.checagens, { itens: [] });
     assert.equal('itens' in e.indices, true);
     assert.equal('itens' in e.chavesEstrangeiras, true);
   } finally {
