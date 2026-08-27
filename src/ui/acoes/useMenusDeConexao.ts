@@ -42,6 +42,10 @@ export interface DepsDosMenus {
   readonly acoesRemotas: { menu(id: string, caminho: readonly string[], no: TreeNode): readonly unknown[] };
   /** Cria um arquivo na pasta `Query`, do tipo escolhido (spec 049). */
   novaQuery(connectionId: string, no: TreeNode, tipo: 'sql' | 'sqlbook'): Promise<void>;
+  /** Desenha o diagrama ER daquele schema (T064). */
+  diagramaEr(id: string, caminho: readonly string[], rotulo: string): Promise<void>;
+  /** A sessão declarou que sabe desenhar o ER. Sem isso o item nem aparece. */
+  sabeDesenharEr(id: string): boolean;
   estaAberta(id: string): boolean;
   desconectar(id: string): Promise<void>;
   abrirConexao(conexao: PublicConnection): Promise<void>;
@@ -66,6 +70,20 @@ export function useMenusDeConexao(deps: DepsDosMenus): MenusDeConexao {
           }
           menuAbrir(e, [
             { label: 'Copiar nome', onClick: () => copiar(no.label) },
+
+            // T064: o diagrama é do SCHEMA (ou do banco, no MySQL). O item só
+            // aparece onde a SESSÃO declarou que sabe desenhar, e num nó que é
+            // schema ou database — numa tabela ele não faria sentido.
+            ...(deps.sabeDesenharEr(id) &&
+            no.meta?.categoria !== true &&
+            (typeof no.meta?.schema === 'string' || typeof no.meta?.database === 'string')
+              ? [
+                  {
+                    label: 'Diagrama ER',
+                    onClick: () => deps.diagramaEr(id, caminho, no.label),
+                  },
+                ]
+              : []),
 
             // A categoria `Query` (spec 038) cria ARQUIVO, não objeto de banco.
             // As duas opções aparecem por extenso porque o `+` sozinho não diz

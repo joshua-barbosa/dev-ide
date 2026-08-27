@@ -28,6 +28,10 @@ import {
 } from './postgres-objetos';
 import { listarSeguranca, segurancaDisponivel } from './postgres-seguranca';
 import { SECURITY_ID, noDeSeguranca } from './seguranca';
+import {
+  PG_COLUNAS_DO_ER, PG_FKS_DO_ER, montarDiagrama,
+  type LinhaDeColuna, type LinhaDeFk,
+} from './er';
 import { estruturaDaTabela } from './postgres-estrutura';
 import { escrever, lerCelula, lerTabela } from './postgres-tabela';
 import { comandoDeCancelamento } from './cancelar';
@@ -578,6 +582,17 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       // `pg_terminate_backend` aceita parâmetro — ao contrário do `KILL` do
       // MySQL —, então aqui o id vai parametrizado de verdade.
       await client.query('SELECT pg_terminate_backend($1)', [Number(id)]);
+    },
+    /** nodePath de um schema é [server, banco, schema]. */
+    erDiagram: async (nodePath) => {
+      const [, banco, schema] = nodePath;
+      if (schema === undefined) throw new Error('O diagrama ER exige um schema selecionado.');
+      const client = await clienteDe(banco ?? exibicao.main);
+      const [colunas, fks] = await Promise.all([
+        client.query<LinhaDeColuna>(PG_COLUNAS_DO_ER, [schema]),
+        client.query<LinhaDeFk>(PG_FKS_DO_ER, [schema]),
+      ]);
+      return montarDiagrama(`${banco}.${schema}`, colunas.rows, fks.rows);
     },
     alterCapabilities: () => ({
       dialeto: DIALETOS.postgres.nome,

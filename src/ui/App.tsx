@@ -40,6 +40,7 @@ const VAZIA: AparenciaDoTerminal = {};
 import { useContextMenu } from './ContextMenu';
 import { useDialogs } from './useDialogs';
 import { Api } from './api';
+import { documentoDoDiagrama } from '../shared/sql/diagrama-er';
 import { MenuBar } from './MenuBar';
 import { StatusBar } from './StatusBar';
 import { QuickInput } from './QuickInput';
@@ -342,6 +343,14 @@ export function App() {
     abrir: menu.abrir,
     acoesRemotas,
     copiar,
+    // T064: o diagrama sai como markdown com um bloco Mermaid, aberto JÁ em
+    // preview. O texto continua atrás do switch, para ele poder gravar o
+    // diagrama no repositório como documentação.
+    sabeDesenharEr: (id) => conexoes.capacidadesDe(id)?.diagramaEr === true,
+    diagramaEr: async (id, caminho, rotulo) => {
+      const diagrama = await Api.erDiagram(id, caminho);
+      ws.abrirRenderizado(`er:${id}:${caminho.join('/')}`, `${rotulo}.er.md`, documentoDoDiagrama(diagrama));
+    },
     abrirQuery: ws.abrirQuery,
     abrirFormulario: (conexao) => conexoesAcoes.abrirFormulario(conexao),
     excluir: conexoes.excluir,
@@ -632,7 +641,9 @@ export function App() {
                   emPreview={ws.emPreview}
                   conteudoDaAba={ws.conteudoDaAba}
                   onPreview={
-                    ws.grupoFocado === g && temPreview(linguagem) ? ws.alternarPreview : undefined
+                    ws.grupoFocado === g && temPreview(ws.linguagemAtiva)
+                      ? ws.alternarPreview
+                      : undefined
                   }
                   registrarEditor={ws.registrarEditor(g)}
                   onFocar={() => ws.focarGrupo(g)}

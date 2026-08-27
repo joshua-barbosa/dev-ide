@@ -43,6 +43,8 @@ function capabilities(session: Session) {
     // objeto já é o lugar onde a sessão DECLARA e a interface OBEDECE, e uma
     // segunda fonte para a mesma pergunta é o defeito, não a feature.
     cancelaQuery: typeof session.cancelQuery === 'function',
+    // Desenhar o ER (T064). O item de menu só existe onde isto for verdadeiro.
+    diagramaEr: typeof session.erDiagram === 'function',
     // Onde a tabela SFTP abre (spec 055). `/` para quem não disser nada.
     rootPath: session.rootPath ?? '/',
     // O que a tela digita quando o prompt aparecer (spec 061).
@@ -325,6 +327,15 @@ export function createConnectionsRouter(
       minBytes: Number.isFinite(bytes) && bytes > 0 ? bytes : null,
       desde: textoDaQuery(req.query.since),
     })));
+  }));
+
+  /** O diagrama ER de um schema (T064). */
+  router.get('/:id/er', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (typeof session.erDiagram !== 'function') {
+      throw new Error('Esta conexão não desenha diagrama ER.');
+    }
+    res.json(ok(await session.erDiagram(queryList(req.query.path))));
   }));
 
   /**

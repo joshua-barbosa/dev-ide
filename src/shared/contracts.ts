@@ -504,6 +504,8 @@ export interface SessionCapabilities {
    * `KILL`. A interface não desenha o botão onde isto é `false`.
    */
   readonly cancelaQuery: boolean;
+  /** Sabe desenhar o diagrama ER de um schema (T064). */
+  readonly diagramaEr: boolean;
 }
 
 export interface ConnectionsState {

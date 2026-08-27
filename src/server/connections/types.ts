@@ -61,6 +61,9 @@ export type {
   TableStructure,
 } from '../../shared/contracts';
 import type { NodeIcon } from '../../shared/icons';
+import type { DiagramaER } from '../../shared/sql/diagrama-er';
+
+export type { DiagramaER };
 import type { ClienteDeLinhaDeComando } from '../../shared/terminal/comando';
 
 export type { ClienteDeLinhaDeComando };
@@ -307,6 +310,13 @@ export interface Session {
   readonly alterStructure?: (request: AlterRequest) => Promise<AlterResult>;
   /** O que este banco sabe alterar. A interface só oferece o que está aqui. */
   readonly alterCapabilities?: () => AlterCapabilities;
+  /**
+   * O diagrama ER de um schema (T064, spec 069).
+   *
+   * Duas idas ao servidor, não uma por tabela. `undefined` onde o banco não tem
+   * o conceito — e aí a ação nem aparece na árvore.
+   */
+  readonly erDiagram?: (nodePath: readonly string[]) => Promise<DiagramaER>;
   /**
    * Os processos rodando no servidor (spec 047).
    *

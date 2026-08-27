@@ -448,3 +448,19 @@ test('o esqueleto com DELIMITER não oferece Executar, e diz por quê', async ({
   await expect(page.getByRole('dialog')).toContainText('DROP');
   await page.getByRole('button', { name: 'Cancelar' }).click();
 });
+
+test('o diagrama ER abre como markdown JÁ renderizado (T064)', async ({ page }) => {
+  await destrancarPeloBotao(page);
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+
+  // O diagrama é do SCHEMA — no SQLite, o arquivo inteiro.
+  await linhaArvore(page, 'escola.db').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Diagrama ER' }).click();
+
+  // Abre em PREVIEW: o desenho, e não o texto do Mermaid. O switch da spec 068
+  // continua ali para quem quiser a fonte.
+  await expect(aba(page, 'escola.db.er.md')).toBeVisible();
+  await expect(page.locator('[data-markdown-preview] svg').first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('radio', { name: 'Preview' })).toBeChecked();
+});

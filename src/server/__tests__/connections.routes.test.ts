@@ -186,6 +186,9 @@ test('rotas de conexão', async (t) => {
       // deste teste não declara `cancelQuery` — que é exatamente a mecânica: a
       // sessão declara, a interface obedece.
       cancelaQuery: false,
+      // Mesma mecânica para o diagrama ER (T064): o driver falso não o
+      // implementa, então o item de menu nem existe na tela.
+      diagramaEr: false,
     });
   });
 

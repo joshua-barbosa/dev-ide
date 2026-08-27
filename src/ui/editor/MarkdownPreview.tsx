@@ -29,12 +29,18 @@ export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
   useEffect(() => {
     const alvo = caixa.current;
     if (alvo === null) return;
-    let vigente = true;
-
-    const diagramas = [...alvo.querySelectorAll<HTMLElement>(`.${CLASSE_DO_MERMAID}`)];
-    if (diagramas.length > 0) {
+    // A LISTA é relida depois do `import()`, e não capturada antes.
+    //
+    // O mermaid leva mais de um segundo para carregar na primeira vez, e nesse
+    // intervalo o React pode ter trocado o HTML do preview — os nós capturados
+    // antes já não estão na tela, e escrever neles não desenha nada. O sintoma
+    // era um diagrama VAZIO, sem erro nenhum: o desenho ia para um nó órfão.
+    //
+    // Achado com o diagrama ER (T064), que abre a aba JÁ em preview e portanto
+    // cai na corrida toda vez. O preview comum tinha o mesmo defeito desde a
+    // spec 068 — só precisava de azar.
+    if (alvo.querySelector(`.${CLASSE_DO_MERMAID}`) !== null) {
       void import('mermaid').then(async ({ default: mermaid }) => {
-        if (!vigente) return;
         mermaid.initialize({
           startOnLoad: false,
           // `strict` escapa o HTML dentro dos rótulos do diagrama. É a mesma
@@ -43,15 +49,19 @@ export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
           securityLevel: 'strict',
           theme: 'dark',
         });
-        for (const [i, no] of diagramas.entries()) {
+        const atuais = [...alvo.querySelectorAll<HTMLElement>(`.${CLASSE_DO_MERMAID}`)];
+        for (const [i, no] of atuais.entries()) {
+          // Já desenhado por uma passagem anterior: não redesenha.
+          if (no.querySelector('svg') !== null) continue;
           const codigo = no.dataset.fonte ?? '';
           try {
             const { svg } = await mermaid.render(`mermaid-${Date.now()}-${i}`, codigo);
-            if (!vigente) return;
+            if (!no.isConnected) continue;
             no.innerHTML = svg;
           } catch (e) {
             // Diagrama com erro de sintaxe mostra a MENSAGEM, e não some. Um
             // bloco em branco pareceria a IDE quebrada.
+            if (!no.isConnected) continue;
             no.textContent = `Diagrama inválido: ${(e as Error).message}`;
             no.setAttribute('data-mermaid-erro', 'true');
           }
@@ -62,15 +72,13 @@ export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
     if (acharFormulas(fonte).length > 0) {
       void Promise.all([import('katex'), import('katex/dist/katex.min.css')]).then(
         ([{ default: katex }]) => {
-          if (!vigente) return;
+          // Mesma razão do mermaid: o que decide é o nó ainda estar na tela.
+          if (!alvo.isConnected) return;
           renderizarFormulas(alvo, katex);
         }
       );
     }
 
-    return () => {
-      vigente = false;
-    };
   }, [html, fonte]);
 
   return (

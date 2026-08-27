@@ -26,6 +26,7 @@ import {
   type ColunaDeModelo,
 } from './modelos';
 import { TEMPLATES_SQLITE } from '../../../shared/tree/templates';
+import { montarDiagrama, type LinhaDeColuna, type LinhaDeFk } from './er';
 import type {
   OpcoesDeNavegacao,
   ActionRequest,
@@ -450,6 +451,44 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     // O SQLite é um arquivo, não um servidor: não há processo alheio para
     // listar nem para matar. `null` diz isso; lista vazia diria outra coisa.
     processList: async () => null,
+    /**
+     * O diagrama ER do arquivo inteiro (T064).
+     *
+     * Aqui é N+1 de propósito: o SQLite não tem `information_schema`, e o
+     * `PRAGMA` responde uma tabela por vez. O banco é um ARQUIVO LOCAL e o
+     * driver é síncrono — as N chamadas custam microssegundos, e não uma ida à
+     * rede cada. Nos outros dois isso seria inaceitável, e por isso lá são duas.
+     */
+    erDiagram: async () => {
+      const tabelas = db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        .all() as Array<{ name: string }>;
+
+      const colunas: LinhaDeColuna[] = [];
+      const fks: LinhaDeFk[] = [];
+      for (const { name } of tabelas) {
+        const alvo = quoteIdentifier(name, 'double');
+        const info = db.prepare(`PRAGMA table_info(${alvo})`).all() as Array<{
+          name: string; type: string; pk: number; notnull: number;
+        }>;
+        for (const c of info) {
+          colunas.push({ tabela: name, coluna: c.name, tipo: c.type || 'ANY', pk: c.pk > 0 });
+        }
+        const lista = db.prepare(`PRAGMA foreign_key_list(${alvo})`).all() as Array<{
+          table: string; from: string;
+        }>;
+        for (const f of lista) {
+          const coluna = info.find((c) => c.name === f.from);
+          fks.push({
+            de: name,
+            para: f.table,
+            coluna: f.from,
+            obrigatoria: (coluna?.notnull ?? 0) > 0,
+          });
+        }
+      }
+      return montarDiagrama(config.label, colunas, fks);
+    },
     alterCapabilities: () => ({
       dialeto: DIALETOS.sqlite.nome,
       operacoes: [...operacoesDisponiveis(DIALETOS.sqlite)],

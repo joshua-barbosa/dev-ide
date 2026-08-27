@@ -18,6 +18,7 @@ import {
 } from '../shared/layout-editor';
 import type { CargaDeArraste, Zona } from '../shared/arrastar';
 import { proximoSemTitulo } from '../shared/untitled';
+import { usePreview } from './editor/usePreview';
 import { ICONE_DE_ARQUIVO, iconeDeArquivo } from '../shared/editor/arquivos';
 import type { EditorHandle, ViewState } from './editor/EditorHost';
 import { EXT_TO_LANG, NOME_TO_LANG } from '../shared/editor/languages';
@@ -96,6 +97,14 @@ export interface Workspace {
   alternarPreview(): void;
   /** O conteúdo atual de uma aba, já com o que não foi salvo. */
   conteudoDaAba(id: string): string;
+  /**
+   * A linguagem que a ABA declara.
+   *
+   * Existe porque perguntar ao Monaco era uma SEGUNDA fonte da mesma verdade, e
+   * era a que chegava tarde: uma aba aberta já em preview (o diagrama ER, T064)
+   * não tinha modelo montado ainda, e o switch `Markdown | Preview` não nascia.
+   */
+  readonly linguagemAtiva: string;
   focarGrupo(grupo: number): void;
   readonly cursor: { readonly linha: number; readonly coluna: number };
   /**
@@ -128,6 +137,8 @@ export interface Workspace {
   ): void;
   /** Abre texto solto numa aba, sem arquivo em disco por trás. */
   abrirTexto(id: string, titulo: string, conteudo: string, linguagem: string): void;
+  /** Abre markdown já renderizado — o diagrama ER (T064). */
+  abrirRenderizado(id: string, titulo: string, conteudo: string): void;
   abrirFormulario(connectionId: string | null, titulo: string, grupoInicial?: string): void;
   abrirTerminal(connectionId: string | null, titulo: string): void;
   /** A lista de processos de uma conexão (spec 047). */
@@ -212,7 +223,6 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   const { store, tabs, activeId, active, grupos, grupoFocado } = useTabs();
   const [cursor, setCursor] = useState({ linha: 1, coluna: 1 });
   const [edicoes, setEdicoes] = useState(0);
-  const [emPreview, setEmPreview] = useState<ReadonlySet<string>>(new Set());
   const [layout, setLayout] = useState<NoDeLayout>(LAYOUT_INICIAL);
   /**
    * Abas cujo arquivo mudou em disco por fora da IDE.
@@ -576,17 +586,14 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
    * está na tela, inclusive o que ainda não foi gravado em disco. Sem isso, o
    * botão mostraria a versão de antes da última tecla.
    */
-  const alternarPreview = useCallback(() => {
-    const id = store.activeId();
-    if (id === null) return;
-    salvarGrupoFocado();
-    setEmPreview((atual) => {
-      const proximo = new Set(atual);
-      if (proximo.has(id)) proximo.delete(id);
-      else proximo.add(id);
-      return proximo;
-    });
-  }, [salvarGrupoFocado, store]);
+  // O preview mora em `editor/usePreview.ts` — ver a nota lá.
+  const { emPreview, alternarPreview, abrirRenderizado } = usePreview({
+    abrirTexto: dados.abrirTexto,
+    idAtivo: store.activeId,
+    salvarGrupoFocado,
+  });
+
+  const linguagemAtiva = active === null ? '' : metaDe(active).language;
 
   const conteudoDaAba = useCallback(
     (id: string): string => {
@@ -735,6 +742,8 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     abrirArquivoEm,
     abrirQuery: dados.abrirQuery,
     abrirTexto: dados.abrirTexto,
+    abrirRenderizado,
+    linguagemAtiva,
     abrirFormulario: dados.abrirFormulario,
     abrirTerminal: dados.abrirTerminal,
     abrirProcessos: dados.abrirProcessos,

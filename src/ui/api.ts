@@ -47,6 +47,7 @@ import type {
 } from '../shared/comandos-salvos';
 import type { Snippet } from '../shared/snippets';
 import type { FiltroDaArvore } from '../shared/tree/filtro-da-arvore';
+import type { DiagramaER } from '../shared/sql/diagrama-er';
 
 /**
  * O filtro da árvore como ele viaja: o nome já traduzido para padrão de `LIKE`
@@ -426,6 +427,9 @@ export const Api = {
       : `${base}${base.includes('?') ? '&' : '?'}${partes.join('&')}`;
     return request<TreeNode[]>('GET', url);
   },
+  /** O diagrama ER de um schema (T064). */
+  erDiagram: (id: string, nodePath: readonly string[]) =>
+    request<DiagramaER>('GET', comCaminho(`${conexoes}/${id}/er`, nodePath)),
   /** Os filtros de árvore guardados desta conexão, por caminho (T111). */
   treeFilters: (id: string) =>
     request<Record<string, FiltroDaArvore>>('GET', `${conexoes}/${id}/tree-filters`),
