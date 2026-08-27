@@ -66,17 +66,26 @@ export function ligarZoom(no: HTMLElement): void {
     if (caixa.width === 0 || largura === 0) return;
     // `min` com 1: um diagrama pequeno não é ESTICADO até encher a janela —
     // ampliar um desenho de duas tabelas até a tela inteira é grotesco.
+    const canto = cantoDoConteudo(svg, estado.escala);
     estado.escala = Math.min(1, (caixa.width - 24) / largura, (caixa.height - 24) / altura);
-    estado.x = Math.max(0, (caixa.width - largura * estado.escala) / 2);
-    estado.y = 12;
+    estado.x = 12 - canto.x * estado.escala;
+    estado.y = 12 - canto.y * estado.escala;
     aplicar();
   };
 
-  /** O tamanho de leitura, no canto de cima à esquerda. É como a janela abre. */
+  /**
+   * O tamanho de leitura, no canto do DESENHO — não no canto do SVG.
+   *
+   * O SVG do mermaid tem margem própria, e num diagrama largo o conteúdo começa
+   * longe da origem: abrir em 100% no ponto (0,0) mostrava uma tela VAZIA, com
+   * o desenho fora de vista. Ele viu isso e não soube dizer se estava travado,
+   * carregando ou quebrado — e tinha razão, porque a tela não dizia.
+   */
   const tamanhoReal = (): void => {
+    const canto = cantoDoConteudo(svg, estado.escala);
     estado.escala = 1;
-    estado.x = 12;
-    estado.y = 12;
+    estado.x = 12 - canto.x;
+    estado.y = 12 - canto.y;
     aplicar();
   };
 
@@ -93,12 +102,25 @@ export function ligarZoom(no: HTMLElement): void {
   janela.addEventListener(
     'wheel',
     (e) => {
-      // Roda SEM modificador rola a página, como em qualquer documento. Com
-      // Ctrl ela aproxima — é o gesto que todo mapa e todo editor já usam.
-      if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       const caixa = janela.getBoundingClientRect();
-      ampliar(e.deltaY < 0 ? PASSO : 1 / PASSO, e.clientX - caixa.left, e.clientY - caixa.top);
+      // Ctrl aproxima; sem ele a roda NAVEGA o desenho.
+      //
+      // A primeira versão deixava a roda rolar a página, e isso só funciona
+      // para um diagrama pequeno. O `banco-grande` dele tem 47 mil pixels de
+      // largura — 105 tabelas soltas, que o mermaid enfileira numa linha só —
+      // e atravessá-lo arrastando é sofrimento. Shift move na horizontal, que
+      // é a convenção de qualquer tela que rola para o lado.
+      if (e.ctrlKey || e.metaKey) {
+        ampliar(e.deltaY < 0 ? PASSO : 1 / PASSO, e.clientX - caixa.left, e.clientY - caixa.top);
+        return;
+      }
+      if (e.shiftKey) estado.x -= e.deltaY;
+      else {
+        estado.x -= e.deltaX;
+        estado.y -= e.deltaY;
+      }
+      aplicar();
     },
     { passive: false }
   );
@@ -175,4 +197,39 @@ function barra(
     caixa.append(b);
   }
   return caixa;
+}
+
+/**
+ * Onde as ENTIDADES começam dentro do SVG.
+ *
+ * **Não é `svg.getBBox()`.** Aquilo inclui os `<defs>` — os marcadores de
+ * cardinalidade, que o mermaid põe perto da origem e que não se desenham em
+ * lugar nenhum. Num diagrama de 105 tabelas o `getBBox` dizia que o conteúdo
+ * começava em (8, 8) enquanto a primeira entidade estava 870 px abaixo: a
+ * janela abria enquadrando o canto de NADA, e o que ele via era um retângulo
+ * vazio. Foi exatamente o que ele relatou.
+ *
+ * Aqui se mede o que se vê: o menor canto entre os nós de entidade. O
+ * `getBoundingClientRect` é em pixels de tela, então divide-se pela escala em
+ * vigor para voltar às unidades do desenho; a translação se cancela porque a
+ * medida é RELATIVA ao próprio SVG.
+ */
+function cantoDoConteudo(svg: SVGSVGElement, escala: number): { x: number; y: number } {
+  const entidades = svg.querySelectorAll<SVGGraphicsElement>('g.node, .er.entityBox');
+  const base = svg.getBoundingClientRect();
+  let canto: { x: number; y: number } | null = null;
+
+  // O canto da MESMA entidade, e não o menor `x` com o menor `y`.
+  //
+  // Componente a componente, o `x` vinha da entidade mais à esquerda e o `y` da
+  // mais alta — que num diagrama de 47 mil pixels estão a quarenta mil pixels
+  // uma da outra. O ponto resultante não tem nada, e a janela abria vazia.
+  for (const entidade of entidades) {
+    const caixa = entidade.getBoundingClientRect();
+    const x = (caixa.left - base.left) / escala;
+    if (canto === null || x < canto.x) canto = { x, y: (caixa.top - base.top) / escala };
+  }
+  // Sem entidade reconhecível, a origem serve — é o comportamento antigo, e não
+  // um erro: um diagrama que não seja ER tem outra estrutura.
+  return canto ?? { x: 0, y: 0 };
 }

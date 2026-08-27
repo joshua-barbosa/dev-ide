@@ -54,10 +54,20 @@ export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
         for (const [i, no] of atuais.entries()) {
           // Já desenhado por uma passagem anterior: não redesenha.
           if (no.querySelector('svg') !== null) continue;
+          // A TELA DIZ O QUE ESTÁ FAZENDO.
+          //
+          // Um diagrama de 105 tabelas leva segundos, e antes disto o bloco
+          // ficava vazio e mudo. Ele olhou e escreveu: "não sei se está
+          // rodando, se está travado, se não está fazendo nada". Um retângulo
+          // em branco não distingue as três coisas — e essa é a informação que
+          // mais importa enquanto se espera.
+          no.textContent = 'desenhando o diagrama…';
+          no.setAttribute('data-mermaid-desenhando', 'true');
           const codigo = no.dataset.fonte ?? '';
           try {
             const { svg } = await mermaid.render(`mermaid-${Date.now()}-${i}`, codigo);
             if (!no.isConnected) continue;
+            no.removeAttribute('data-mermaid-desenhando');
             no.innerHTML = svg;
             // Sem zoom, um diagrama de 40 tabelas vira uma fileira de tarjas
             // ilegíveis — foi exatamente a reclamação dele, com print.
@@ -66,6 +76,7 @@ export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
             // Diagrama com erro de sintaxe mostra a MENSAGEM, e não some. Um
             // bloco em branco pareceria a IDE quebrada.
             if (!no.isConnected) continue;
+            no.removeAttribute('data-mermaid-desenhando');
             no.textContent = `Diagrama inválido: ${(e as Error).message}`;
             no.setAttribute('data-mermaid-erro', 'true');
           }
@@ -111,6 +122,13 @@ export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
         // tornou ilegível.
         '& > *': { maxWidth: 900 },
         '& > .mermaid-por-desenhar': { maxWidth: 'none' },
+        // Enquanto desenha, o bloco diz que está desenhando.
+        '& .mermaid-por-desenhar[data-mermaid-desenhando]': {
+          color: 'text.secondary',
+          fontSize: 12,
+          fontStyle: 'italic',
+          py: 2,
+        },
 
         '& h1, & h2, & h3, & h4': { mt: 3, mb: 1.5, lineHeight: 1.3, fontWeight: 600 },
         '& h1': { fontSize: 28, borderBottom: 1, borderColor: 'divider', pb: 1 },

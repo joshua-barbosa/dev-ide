@@ -125,8 +125,9 @@ export function documentoDoDiagrama(diagrama: DiagramaER): string {
     return partes.join('\n');
   }
   partes.push(
-    '> Para ler: **Ctrl + roda** aproxima, **arrastar** move, `100%` volta ao ' +
-      'tamanho de leitura e `ajustar` mostra o diagrama inteiro.',
+    '> Para ler: **roda** navega, **Shift + roda** vai para os lados, ' +
+      '**Ctrl + roda** aproxima. Arrastar também move; `100%` volta ao tamanho ' +
+      'de leitura e `ajustar` mostra o diagrama inteiro.',
     ''
   );
   if (diagrama.relacoes.length === 0) {

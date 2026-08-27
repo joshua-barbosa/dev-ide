@@ -69,6 +69,7 @@ test('o documento ensina a ler o diagrama', () => {
   // Sem isto ele perguntou "como que eu iria dar zoom na tela?" — e a resposta
   // não pode estar só na cabeça de quem escreveu.
   assert.match(documentoDoDiagrama(BASE), /Ctrl \+ roda/);
+  assert.match(documentoDoDiagrama(BASE), /roda\*\* navega/);
 });
 
 test('schema vazio diz que está vazio, em vez de um bloco em branco', () => {
