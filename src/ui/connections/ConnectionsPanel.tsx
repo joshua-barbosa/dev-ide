@@ -46,6 +46,8 @@ export interface ConnectionsPanelProps {
   readonly onNovaConexao: (grupo?: string) => void;
   readonly onRenomearGrupo: (caminho: string) => void;
   readonly onAbrirTerminal: (conexao: PublicConnection) => void;
+  /** Desenha o diagrama ER daquele schema (T064). */
+  readonly onDiagramaEr: (id: string, caminho: readonly string[], rotulo: string) => Promise<void>;
   readonly onNovoObjeto: (
     id: string,
     caminho: readonly string[],
@@ -175,6 +177,7 @@ export function ConnectionsPanel({
   onNovaConexao,
   onRenomearGrupo,
   onAbrirTerminal,
+  onDiagramaEr,
   onNovoObjeto,
   onAbrirQueryDoDatabase,
   onAbrirTabela,
@@ -356,10 +359,29 @@ export function ConnectionsPanel({
                 // ferramenta de referência. Aparece porque o DRIVER declarou que
                 // este nó é um database; quem decide que isso vira botão é a
                 // interface (Artigo III).
+                <>
+                  <AcaoDaLinha
+                    icone="lucide:file-plus-2"
+                    rotulo={`Abrir Query em ${no.label}`}
+                    onClick={comErro(() => onAbrirQueryDoDatabase(id, no))}
+                  />
+                  {no.meta?.diagramaEr === true && (
+                    <AcaoDaLinha
+                      icone="diagrama"
+                      rotulo={`Diagrama ER de ${no.label}`}
+                      onClick={comErro(() => onDiagramaEr(id, filho, no.label))}
+                    />
+                  )}
+                </>
+              ) : no.meta?.diagramaEr === true ? (
+                // O nó de SCHEMA do PostgreSQL: não abre query (o database é o
+                // pai), mas é dele que sai o diagrama. Ele perguntou onde
+                // estava o botão — estava só no menu de contexto, e menu de
+                // contexto não se descobre passando o mouse.
                 <AcaoDaLinha
-                  icone="lucide:file-plus-2"
-                  rotulo={`Abrir Query em ${no.label}`}
-                  onClick={comErro(() => onAbrirQueryDoDatabase(id, no))}
+                  icone="diagrama"
+                  rotulo={`Diagrama ER de ${no.label}`}
+                  onClick={comErro(() => onDiagramaEr(id, filho, no.label))}
                 />
               ) : no.meta?.categoria === true ? (
                 <>

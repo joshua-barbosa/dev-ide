@@ -71,12 +71,14 @@ export function useMenusDeConexao(deps: DepsDosMenus): MenusDeConexao {
           menuAbrir(e, [
             { label: 'Copiar nome', onClick: () => copiar(no.label) },
 
-            // T064: o diagrama é do SCHEMA (ou do banco, no MySQL). O item só
-            // aparece onde a SESSÃO declarou que sabe desenhar, e num nó que é
-            // schema ou database — numa tabela ele não faria sentido.
-            ...(deps.sabeDesenharEr(id) &&
-            no.meta?.categoria !== true &&
-            (typeof no.meta?.schema === 'string' || typeof no.meta?.database === 'string')
+            // T064. Duas perguntas diferentes, e as duas precisam de resposta:
+            // a SESSÃO diz se sabe desenhar, e o NÓ diz se é aqui. A primeira
+            // versão desta condição adivinhava pela forma do `meta`, e errava
+            // nos dois sentidos: aparecia em toda TABELA (elas também têm
+            // `meta.schema`) e no database do PostgreSQL, onde não há um schema
+            // só e o pedido falhava. Ele perguntou onde ficava o botão, e foi
+            // assim que apareceu.
+            ...(deps.sabeDesenharEr(id) && no.meta?.diagramaEr === true
               ? [
                   {
                     label: 'Diagrama ER',

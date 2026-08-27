@@ -61,6 +61,14 @@ test('tabela SEM relação aparece assim mesmo', () => {
 test('o corte é DITO, e não silencioso', () => {
   const doc = documentoDoDiagrama({ ...BASE, cortadas: 158 });
   assert.match(doc, /158 tabela\(s\) ficaram de fora/);
+  // E diz que o teto é do NAVEGADOR, não de leitura: quem lê usa o zoom.
+  assert.match(doc, /navegador não travar/);
+});
+
+test('o documento ensina a ler o diagrama', () => {
+  // Sem isto ele perguntou "como que eu iria dar zoom na tela?" — e a resposta
+  // não pode estar só na cabeça de quem escreveu.
+  assert.match(documentoDoDiagrama(BASE), /Ctrl \+ roda/);
 });
 
 test('schema vazio diz que está vazio, em vez de um bloco em branco', () => {

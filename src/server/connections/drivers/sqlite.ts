@@ -162,7 +162,8 @@ function navegar(
         hasChildren: true,
         // O arquivo É o banco: um database só, e ele se chama `main` no próprio
         // SQLite. Declarado para a interface poder abrir query aqui também.
-        meta: { file, database: 'main' },
+        // O arquivo inteiro é o schema: o diagrama sai daqui (T064).
+        meta: { file, database: 'main', diagramaEr: true },
       },
     ];
   }

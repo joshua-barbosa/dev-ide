@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import Box from '@mui/material/Box';
 import { CLASSE_DO_MERMAID, renderizarMarkdown } from '../../shared/markdown';
 import { acharFormulas } from '../../shared/matematica';
+import { ligarZoom } from './zoomDeDiagrama';
 import { tokens } from '../theme';
 
 export interface MarkdownPreviewProps {
@@ -58,6 +59,9 @@ export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
             const { svg } = await mermaid.render(`mermaid-${Date.now()}-${i}`, codigo);
             if (!no.isConnected) continue;
             no.innerHTML = svg;
+            // Sem zoom, um diagrama de 40 tabelas vira uma fileira de tarjas
+            // ilegíveis — foi exatamente a reclamação dele, com print.
+            ligarZoom(no);
           } catch (e) {
             // Diagrama com erro de sintaxe mostra a MENSAGEM, e não some. Um
             // bloco em branco pareceria a IDE quebrada.
@@ -102,7 +106,11 @@ export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
         lineHeight: 1.65,
         // Largura de leitura: linha cheia de monitor largo cansa a vista, e é o
         // que todo visualizador de markdown limita.
+        // Largura de leitura para TEXTO. O diagrama é exceção: ele tem janela
+        // própria, com zoom e arrasto, e espremê-lo em 900 px foi o que o
+        // tornou ilegível.
         '& > *': { maxWidth: 900 },
+        '& > .mermaid-por-desenhar': { maxWidth: 'none' },
 
         '& h1, & h2, & h3, & h4': { mt: 3, mb: 1.5, lineHeight: 1.3, fontWeight: 600 },
         '& h1': { fontSize: 28, borderBottom: 1, borderColor: 'divider', pb: 1 },

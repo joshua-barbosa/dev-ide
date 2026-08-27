@@ -5,9 +5,17 @@
 // biblioteca nova: o servidor devolve tabelas e chaves, esta função pura vira
 // `erDiagram`, e o renderizador que já existe desenha.
 //
-// O teto não é enfeite: um diagrama de 200 tabelas não é diagrama, é parede. E
-// **quantas ficaram de fora aparece escrito** — cortar em silêncio é o erro do
-// total estimado da spec 041 outra vez.
+// **Sobre o teto.** A primeira versão cortava em 40 porque, sem zoom, um
+// diagrama grande virava uma fileira de tarjas ilegíveis. Ele perguntou as duas
+// coisas juntas — *"porque ficou de fora e como que eu iria dar zoom?"* — e as
+// duas têm a mesma resposta: o problema era a falta de zoom, não o tamanho do
+// schema. Com a janela de zoom e arrasto, o teto deixou de ser questão de gosto
+// e virou proteção do navegador: o mermaid desenha tudo de uma vez, e um
+// diagrama de mil tabelas trava a aba.
+//
+// O número continua sendo escolha minha, e ele pode mudá-lo. Quantas ficaram de
+// fora aparece ESCRITO — cortar em silêncio é o erro do total estimado da spec
+// 041 outra vez.
 
 export interface ColunaDoDiagrama {
   readonly nome: string;
@@ -36,8 +44,12 @@ export interface DiagramaER {
   readonly cortadas: number;
 }
 
-/** Teto de tabelas por diagrama. Acima disto o desenho deixa de informar. */
-export const MAX_TABELAS_NO_DIAGRAMA = 40;
+/**
+ * Teto de tabelas por diagrama — proteção do navegador, não critério de gosto.
+ *
+ * O `banco-grande` dele tem 105 tabelas e agora entra inteiro.
+ */
+export const MAX_TABELAS_NO_DIAGRAMA = 150;
 
 /**
  * O Mermaid só aceita `[A-Za-z0-9_]` em nome de entidade.
@@ -102,8 +114,9 @@ export function documentoDoDiagrama(diagrama: DiagramaER): string {
   if (diagrama.cortadas > 0) {
     partes.push(
       `> **${diagrama.cortadas} tabela(s) ficaram de fora**: o diagrama mostra as ` +
-        `${diagrama.tabelas.length} primeiras, em ordem alfabética. Acima de ` +
-        `${MAX_TABELAS_NO_DIAGRAMA} o desenho deixa de informar.`,
+        `${diagrama.tabelas.length} primeiras, em ordem alfabética. O teto de ` +
+        `${MAX_TABELAS_NO_DIAGRAMA} existe para o navegador não travar desenhando ` +
+        'tudo de uma vez — não é limite de leitura: use o zoom e o arrasto.',
       ''
     );
   }
@@ -111,6 +124,11 @@ export function documentoDoDiagrama(diagrama: DiagramaER): string {
     partes.push('Não há tabela neste schema.', '');
     return partes.join('\n');
   }
+  partes.push(
+    '> Para ler: **Ctrl + roda** aproxima, **arrastar** move, `100%` volta ao ' +
+      'tamanho de leitura e `ajustar` mostra o diagrama inteiro.',
+    ''
+  );
   if (diagrama.relacoes.length === 0) {
     partes.push(
       '> Nenhuma chave estrangeira declarada aqui — as tabelas aparecem soltas ' +

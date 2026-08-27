@@ -463,4 +463,36 @@ test('o diagrama ER abre como markdown JÁ renderizado (T064)', async ({ page })
   await expect(aba(page, 'escola.db.er.md')).toBeVisible();
   await expect(page.locator('[data-markdown-preview] svg').first()).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole('radio', { name: 'Preview' })).toBeChecked();
+
+  // O diagrama abre numa JANELA com zoom e arrasto. Sem isso ele virava uma
+  // fileira de tarjas ilegíveis — foi a reclamação dele, com print:
+  // "como que eu iria dar zoom na tela para enxergar isso?!".
+  const janela = page.locator('[data-janela-do-diagrama]');
+  await expect(janela).toBeVisible();
+  await expect(janela.getByRole('button', { name: 'Aproximar o diagrama' })).toBeVisible();
+  await expect(janela.getByRole('button', { name: 'Tamanho real do diagrama' })).toBeVisible();
+  await expect(janela.getByRole('button', { name: 'Enquadrar o diagrama inteiro' })).toBeVisible();
+
+  // E abre em TAMANHO DE LEITURA, não enquadrado: enquadrar um diagrama largo
+  // dá 2% de escala, que é o mesmo que não desenhar.
+  const antes = await janela.locator('svg').boundingBox();
+  await janela.getByRole('button', { name: 'Aproximar o diagrama' }).click();
+  const depois = await janela.locator('svg').boundingBox();
+  expect((depois?.width ?? 0)).toBeGreaterThan(antes?.width ?? 0);
+});
+
+test('o botão do diagrama NÃO aparece numa tabela (T064)', async ({ page }) => {
+  // A primeira condição adivinhava pela forma do `meta`, e a tabela também tem
+  // `meta.schema`: o item nascia em toda linha. Agora quem declara é o NÓ.
+  await destrancarPeloBotao(page);
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+  await expandir(page, 'escola.db', 'Tables');
+
+  const tabela = linhaArvore(page, TABELA);
+  await tabela.hover();
+  await expect(tabela.getByRole('button', { name: /Diagrama ER/ })).toHaveCount(0);
+
+  await tabela.click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Diagrama ER' })).toHaveCount(0);
 });

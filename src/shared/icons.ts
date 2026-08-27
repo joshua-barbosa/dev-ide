@@ -18,7 +18,7 @@ export const NODE_ICONS = [
   'folder', 'file', 'link', 'query',
   // Spec 069: os objetos que faltavam na árvore, e o `Security`.
   'matview', 'sequence', 'type', 'foreign', 'event',
-  'security', 'user', 'role', 'trigger', 'check',
+  'security', 'user', 'role', 'trigger', 'check', 'diagrama',
 ] as const;
 
 /** Ícones de aba, por tipo de conteúdo. */
@@ -56,6 +56,7 @@ const MAPA: Record<Icone, string> = {
   role: 'lucide:users',
   trigger: 'lucide:zap',
   check: 'lucide:circle-check',
+  diagrama: 'lucide:workflow',
   collection: 'lucide:package',
   key: 'lucide:key',
   // Favorito é ESTRELA, e não chave — chave é o que a árvore de banco usa para

@@ -40,7 +40,6 @@ const VAZIA: AparenciaDoTerminal = {};
 import { useContextMenu } from './ContextMenu';
 import { useDialogs } from './useDialogs';
 import { Api } from './api';
-import { documentoDoDiagrama } from '../shared/sql/diagrama-er';
 import { MenuBar } from './MenuBar';
 import { StatusBar } from './StatusBar';
 import { QuickInput } from './QuickInput';
@@ -347,10 +346,7 @@ export function App() {
     // preview. O texto continua atrás do switch, para ele poder gravar o
     // diagrama no repositório como documentação.
     sabeDesenharEr: (id) => conexoes.capacidadesDe(id)?.diagramaEr === true,
-    diagramaEr: async (id, caminho, rotulo) => {
-      const diagrama = await Api.erDiagram(id, caminho);
-      ws.abrirRenderizado(`er:${id}:${caminho.join('/')}`, `${rotulo}.er.md`, documentoDoDiagrama(diagrama));
-    },
+    diagramaEr: conexoesAcoes.diagramaEr,
     abrirQuery: ws.abrirQuery,
     abrirFormulario: (conexao) => conexoesAcoes.abrirFormulario(conexao),
     excluir: conexoes.excluir,
@@ -603,6 +599,7 @@ export function App() {
             onNovaConexao: (grupo?: string) => conexoesAcoes.abrirFormulario(null, grupo),
             onRenomearGrupo: (caminho: string) => avisar(conexoesAcoes.renomearGrupo(caminho)),
             onAbrirTerminal: (conexao: PublicConnection) => avisar(conexoesAcoes.abrirTerminalDaConexao(conexao)),
+            onDiagramaEr: conexoesAcoes.diagramaEr,
             onNovoObjeto: conexoesAcoes.novoObjeto,
             // Arquivos de query (spec 038) — ver `query/useAcoesDeQuery`.
             ...acoesDeQuery,

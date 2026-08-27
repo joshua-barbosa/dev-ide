@@ -198,7 +198,9 @@ async function listarSchemas(client: Client, exibicao: Exibicao): Promise<TreeNo
     icon: 'schema' as const,
     detail: linha.tamanho === '0 bytes' ? undefined : linha.tamanho,
     hasChildren: true,
-    meta: { schema: linha.schema },
+    // T064: o diagrama é do SCHEMA. Quem diz ONDE ele cabe é o nó — a interface
+    // não conhece a forma do caminho de cada driver, e não deve conhecer.
+    meta: { schema: linha.schema, diagramaEr: true },
   }));
 }
 

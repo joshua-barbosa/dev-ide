@@ -92,6 +92,8 @@ export async function listarBancos(conn: Connection, exibicao: Exibicao): Promis
       // (spec 038). Quem declara é o driver; quem decide que isso merece um
       // botão é a interface — Artigo III.
       database: linha.SCHEMA_NAME,
+      // No MySQL schema e database são a mesma coisa: o diagrama é daqui (T064).
+      diagramaEr: true,
       main: linha.SCHEMA_NAME.toLowerCase() === exibicao.main.trim().toLowerCase(),
     },
   }));

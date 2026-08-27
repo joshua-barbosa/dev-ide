@@ -3,6 +3,7 @@
 // Mesmo corte dos outros arquivos daqui, pelo mesmo motivo: o `App` passou de
 // mil linhas, e o teto do Artigo IV é 800.
 import { Api } from '../api';
+import { documentoDoDiagrama } from '../../shared/sql/diagrama-er';
 import { pedirComRetentativa } from '../useQuickInput';
 import type { Vinculo } from '../../shared/sql/vinculo';
 import type { PublicConnection, TreeNode } from '../../shared/contracts';
@@ -37,6 +38,14 @@ export interface ConexoesAcoes {
     sql: string,
     database?: string | null
   ): void;
+  /**
+   * Abre o diagrama ER daquele schema (T064).
+   *
+   * Vive aqui porque tem DOIS gatilhos — o botão da linha e o item de menu — e
+   * duas cópias divergiriam. Sai como markdown já renderizado: o texto do
+   * Mermaid continua atrás do switch, para ele gravar no repositório se quiser.
+   */
+  diagramaEr(id: string, caminho: readonly string[], rotulo: string): Promise<void>;
   renomearGrupo(caminho: string): Promise<void>;
   abrirQueryDoNo(
     id: string,
@@ -219,8 +228,22 @@ export function useConexoesAcoes(deps: ConexoesAcoesDeps): ConexoesAcoes {
     await conexoes.recarregar();
   };
 
+  const diagramaEr = async (
+    id: string,
+    caminho: readonly string[],
+    rotulo: string
+  ): Promise<void> => {
+    const diagrama = await Api.erDiagram(id, caminho);
+    ws.abrirRenderizado(
+      `er:${id}:${caminho.join('/')}`,
+      `${rotulo}.er.md`,
+      documentoDoDiagrama(diagrama)
+    );
+  };
+
   return {
     abrirFormulario,
+    diagramaEr,
     abrirQueryDoDatabase,
     novaQuery,
     renomearQuery,
