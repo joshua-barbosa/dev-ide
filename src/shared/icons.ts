@@ -16,6 +16,9 @@ export const NODE_ICONS = [
   'server', 'database', 'schema', 'table', 'view', 'column',
   'function', 'procedure', 'index', 'collection', 'key', 'star',
   'folder', 'file', 'link', 'query',
+  // Spec 069: os objetos que faltavam na árvore, e o `Security`.
+  'matview', 'sequence', 'type', 'foreign', 'event',
+  'security', 'user', 'role', 'trigger', 'check',
 ] as const;
 
 /** Ícones de aba, por tipo de conteúdo. */
@@ -41,6 +44,18 @@ const MAPA: Record<Icone, string> = {
   function: 'lucide:square-function',
   procedure: 'lucide:cog',
   index: 'lucide:key-round',
+  // A view materializada NÃO usa o olho da view: ela ocupa disco e precisa de
+  // REFRESH. Desenhá-las iguais esconderia justamente o que as separa.
+  matview: 'lucide:layers',
+  sequence: 'lucide:list-ordered',
+  type: 'lucide:shapes',
+  foreign: 'lucide:external-link',
+  event: 'lucide:calendar-clock',
+  security: 'lucide:shield',
+  user: 'lucide:user',
+  role: 'lucide:users',
+  trigger: 'lucide:zap',
+  check: 'lucide:circle-check',
   collection: 'lucide:package',
   key: 'lucide:key',
   // Favorito é ESTRELA, e não chave — chave é o que a árvore de banco usa para

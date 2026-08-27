@@ -40,13 +40,69 @@ export const SCHEMAS_SQL = `
    ORDER BY n.nspname
 `;
 
+/**
+ * O que é tipo DO USUÁRIO.
+ *
+ * Toda tabela cria um tipo composto com o mesmo nome, e todo tipo cria o tipo
+ * array dele. Sem estes dois cortes a categoria `Types` listaria cada tabela do
+ * schema duas vezes — que é o erro clássico de quem consulta `pg_type` cru.
+ */
+const TIPOS_DO_USUARIO = `
+  (t.typrelid = 0 OR (SELECT c2.relkind FROM pg_class c2 WHERE c2.oid = t.typrelid) = 'c')
+  AND NOT EXISTS (SELECT 1 FROM pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
+`;
+
+/**
+ * Uma ida ao servidor com a contagem de TODAS as categorias (spec 069).
+ *
+ * Tudo sai de `pg_class`, e não mais de `information_schema`: a view
+ * materializada e a tabela estrangeira simplesmente NÃO aparecem lá —
+ * `information_schema` só descreve o que é padrão SQL, e as duas não são.
+ * Contar por `relkind` é o que faz as sete categorias baterem com o que a
+ * árvore lista.
+ */
 export const CONTAGENS_SQL = `
   SELECT
-    (SELECT COUNT(*) FROM information_schema.tables
-      WHERE table_schema = $1 AND table_type = 'BASE TABLE') AS tables,
-    (SELECT COUNT(*) FROM information_schema.views  WHERE table_schema = $1) AS views,
-    (SELECT COUNT(*) FROM information_schema.routines
-      WHERE routine_schema = $1 AND routine_type = 'FUNCTION') AS functions
+    COUNT(*) FILTER (WHERE c.relkind IN ('r', 'p')) AS tables,
+    COUNT(*) FILTER (WHERE c.relkind = 'v') AS views,
+    COUNT(*) FILTER (WHERE c.relkind = 'm') AS matviews,
+    COUNT(*) FILTER (WHERE c.relkind = 'f') AS foreign,
+    COUNT(*) FILTER (WHERE c.relkind = 'S') AS sequences,
+    (SELECT COUNT(*) FROM pg_proc p
+       JOIN pg_namespace pn ON pn.oid = p.pronamespace
+      WHERE pn.nspname = $1 AND p.prokind = 'f') AS functions,
+    (SELECT COUNT(*) FROM pg_type t
+       JOIN pg_namespace tn ON tn.oid = t.typnamespace
+      WHERE tn.nspname = $1 AND ${TIPOS_DO_USUARIO}) AS types
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname = $1
+`;
+
+export const TIPOS_SQL = `
+  SELECT t.typname AS nome,
+         CASE t.typtype
+           WHEN 'c' THEN 'composite' WHEN 'e' THEN 'enum'
+           WHEN 'd' THEN 'domain'    WHEN 'r' THEN 'range'
+           WHEN 'm' THEN 'multirange'
+           ELSE 'base'
+         END AS especie
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+   WHERE n.nspname = $1 AND ${TIPOS_DO_USUARIO}{FILTRO}
+   ORDER BY t.typname
+`;
+
+/**
+ * `pg_sequence_last_value` devolve NULL quando falta permissão de leitura, em
+ * vez de erro: a sequência aparece na árvore sem o valor, e não some.
+ */
+export const SEQUENCIAS_SQL = `
+  SELECT c.relname AS nome, pg_sequence_last_value(c.oid)::text AS valor
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname = $1 AND c.relkind = 'S'{FILTRO}
+   ORDER BY c.relname
 `;
 
 /** Estimativa de linhas do planner (reltuples): barata, ao contrário de count(*). */

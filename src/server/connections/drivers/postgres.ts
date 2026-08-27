@@ -15,26 +15,24 @@ import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import {
   BANCOS_SQL,
   COLUNAS_MODELO_SQL,
-  COLUNAS_SQL,
-  CONTAGENS_SQL,
   DDL_COLUNAS_SQL,
   DDL_PK_SQL,
-  FUNCOES_SQL,
   PROCESSOS_SQL,
   SCHEMAS_SQL,
-  TABELAS_SQL,
 } from './postgres-sql';
+import {
+  expandeEmColunas,
+  listarCategorias,
+  listarColunas,
+  listarObjetos,
+} from './postgres-objetos';
+import { listarSeguranca, segurancaDisponivel } from './postgres-seguranca';
+import { SECURITY_ID, noDeSeguranca } from './seguranca';
 import { estruturaDaTabela } from './postgres-estrutura';
 import { escrever, lerCelula, lerTabela } from './postgres-tabela';
 import { comandoDeCancelamento } from './cancelar';
 import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
-import {
-  ACOES_DE_TABELA,
-  ACOES_DE_VIEW,
-  modeloSql,
-  type ColunaDeModelo,
-} from './modelos';
-import { TEMPLATES_POSTGRES } from '../../../shared/tree/templates';
+import { modeloSql, type ColunaDeModelo } from './modelos';
 import { CLI_POSTGRES } from '../../../shared/terminal/clientes/postgres';
 import type {
   OpcoesDeNavegacao,
@@ -64,18 +62,6 @@ const SERVER_ID = 'server';
 /** Schemas mantidos pelo próprio Postgres; escondidos por padrão. */
 const SCHEMAS_SISTEMA = ['pg_catalog', 'information_schema'];
 
-interface Categoria {
-  readonly id: string;
-  readonly label: string;
-  readonly icon: TreeNode['icon'];
-}
-
-const CATEGORIAS: readonly Categoria[] = [
-  { id: 'tables', label: 'Tables', icon: 'table' },
-  { id: 'views', label: 'Views', icon: 'view' },
-  { id: 'functions', label: 'Functions', icon: 'function' },
-];
-
 interface Exibicao {
   readonly main: string;
   readonly bancos: VisibilityOptions;
@@ -88,11 +74,6 @@ interface Exibicao {
 
 
 
-
-function contagem(valor: unknown): string | undefined {
-  const n = Number(valor);
-  return Number.isFinite(n) ? String(n) : undefined;
-}
 
 // ---------------------------------------------------------------------------
 // Clientes por banco
@@ -217,105 +198,6 @@ async function listarSchemas(client: Client, exibicao: Exibicao): Promise<TreeNo
   }));
 }
 
-async function listarCategorias(client: Client, schema: string): Promise<TreeNode[]> {
-  const { rows } = await client.query<Record<string, unknown>>(CONTAGENS_SQL, [schema]);
-  const contagens = rows[0] ?? {};
-  return CATEGORIAS.map((categoria) => ({
-    id: categoria.id,
-    label: categoria.label,
-    icon: categoria.icon,
-    detail: contagem(contagens[categoria.id]),
-    hasChildren: true,
-    // `categoria: true` liga as ações na interface; o esqueleto já vem com o
-    // schema aplicado, para o `CREATE` nascer no lugar certo.
-    meta: {
-      schema,
-      categoria: true,
-      template: TEMPLATES_POSTGRES[categoria.id]?.replaceAll('{schema}', schema),
-    },
-  }));
-}
-
-/**
- * Cláusula opcional de filtro, com o padrão LIGADO.
- *
- * Recebe a posição do parâmetro porque o PostgreSQL numera (`$1`, `$2`) — o
- * pedaço de SQL e o valor saem juntos, para não haver como pôr um sem o outro.
- */
-function clausulaDeFiltro(
-  coluna: string,
-  posicao: number,
-  filtro?: string | null
-): { sql: string; params: unknown[] } {
-  return filtro === null || filtro === undefined
-    ? { sql: '', params: [] }
-    : { sql: ` AND ${coluna} LIKE $${posicao}`, params: [filtro] };
-}
-
-async function listarObjetos(
-  client: Client,
-  schema: string,
-  categoria: string,
-  filtro?: string | null
-): Promise<TreeNode[]> {
-  if (categoria === 'functions') {
-    const f = clausulaDeFiltro('p.proname', 2, filtro);
-    const { rows } = await client.query<{ nome: string; retorno: string }>(
-      FUNCOES_SQL.replace('{FILTRO}', f.sql),
-      [schema, ...f.params]
-    );
-    return rows.map((linha) => ({
-      id: linha.nome,
-      label: linha.nome,
-      icon: 'function' as const,
-      detail: linha.retorno,
-      hasChildren: false,
-      meta: { schema, object: linha.nome, category: categoria },
-    }));
-  }
-
-  // 'r' tabela, 'p' particionada, 'v' view, 'm' view materializada.
-  const kinds = categoria === 'tables' ? ['r', 'p'] : ['v', 'm'];
-  const f = clausulaDeFiltro('c.relname', 3, filtro);
-  const { rows } = await client.query<{ nome: string; linhas: string | null }>(
-    TABELAS_SQL.replace('{FILTRO}', f.sql),
-    [schema, kinds, ...f.params]
-  );
-  return rows.map((linha) => ({
-    id: linha.nome,
-    label: linha.nome,
-    icon: (categoria === 'tables' ? 'table' : 'view') as TreeNode['icon'],
-    detail: linha.linhas === null ? undefined : contagem(linha.linhas),
-    hasChildren: true,
-    // Spec 040: numa view não há o que inserir nem o que esvaziar (AC-7).
-    actions: categoria === 'tables' ? ACOES_DE_TABELA : ACOES_DE_VIEW,
-    meta: { schema, object: linha.nome, category: categoria },
-  }));
-}
-
-async function listarColunas(client: Client, schema: string, objeto: string): Promise<TreeNode[]> {
-  const { rows } = await client.query<{
-    nome: string;
-    tipo: string;
-    obrigatorio: boolean;
-    pk: boolean;
-  }>(COLUNAS_SQL, [schema, objeto]);
-
-  return rows.map((linha) => {
-    const marcas = [linha.tipo];
-    if (linha.pk) marcas.push('PK');
-    if (linha.obrigatorio) marcas.push('NOT NULL');
-    return {
-      id: linha.nome,
-      label: linha.nome,
-      icon: 'column' as const,
-      detail: marcas.join(' · '),
-      hasChildren: false,
-      meta: { schema, object: objeto, column: linha.nome },
-    };
-  });
-}
-
 async function navegar(
   clienteDe: ClienteDe,
   rotulo: string,
@@ -330,7 +212,17 @@ async function navegar(
   if (nodePath[0] !== SERVER_ID) return [];
 
   if (nodePath.length === 1) {
-    return listarBancos(await clienteDe(exibicao.main), exibicao);
+    const client = await clienteDe(exibicao.main);
+    const bancos = await listarBancos(client, exibicao);
+    // N003: o nó só nasce quando a listagem responde. Sem permissão ele não
+    // aparece — em vez de aparecer e dar DENIED no clique, que foi a reclamação.
+    return (await segurancaDisponivel(client)) ? [...bancos, noDeSeguranca()] : bancos;
+  }
+
+  // `Security` é irmão dos bancos e NÃO é um banco: precisa ser desviado antes
+  // do `clienteDe` abaixo, que tentaria conectar a um banco com esse nome.
+  if (nodePath[1] === SECURITY_ID) {
+    return listarSeguranca(await clienteDe(exibicao.main), nodePath.slice(2), opcoes?.filtro);
   }
 
   // Do segundo nível em diante, tudo passa pelo cliente daquele banco.
@@ -338,7 +230,7 @@ async function navegar(
   if (nodePath.length === 2) return listarSchemas(client, exibicao);
   if (nodePath.length === 3) return listarCategorias(client, nodePath[2]);
   if (nodePath.length === 4) return listarObjetos(client, nodePath[2], nodePath[3], opcoes?.filtro);
-  if (nodePath.length === 5 && nodePath[3] !== 'functions') {
+  if (nodePath.length === 5 && expandeEmColunas(nodePath[3])) {
     return listarColunas(client, nodePath[2], nodePath[4]);
   }
   return [];
@@ -528,8 +420,31 @@ async function acao(clienteDe: ClienteDe, principal: string, request: ActionRequ
       };
     }
 
+    case 'refresh-matview':
+      return {
+        kind: 'statement',
+        title: objeto,
+        content: `REFRESH MATERIALIZED VIEW ${alvo};\n`,
+      };
+
+    case 'drop-matview':
+    case 'drop-sequence': {
+      // Destrutivo: gerado e ABERTO, como manda a spec 046. O `DROP VIEW` do
+      // menu comum é recusado pelo banco nos dois casos — o objeto tem nome
+      // próprio no comando, e errá-lo dá erro só na hora de rodar.
+      const oQue = request.actionId === 'drop-matview' ? 'MATERIALIZED VIEW' : 'SEQUENCE';
+      return {
+        kind: 'statement',
+        title: objeto,
+        content:
+          `-- Apaga ${oQue.toLowerCase()} ${alvo}.\n` +
+          '-- Isto ainda NÃO rodou: aperte o ▷ Run acima do comando quando tiver certeza.\n' +
+          `DROP ${oQue} ${alvo};\n`,
+      };
+    }
+
     case 'ddl':
-      return { kind: 'text', title: `${objeto} (DDL)`, content: await ddlDe(client, schema, objeto, categoria === 'views') };
+      return { kind: 'text', title: `${objeto} (DDL)`, content: await ddlDe(client, schema, objeto, categoria === 'views' || categoria === 'matviews') };
 
     case 'count': {
       const { rows } = await client.query<{ n: string }>(`SELECT count(*) AS n FROM ${alvo}`);

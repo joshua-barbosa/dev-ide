@@ -35,6 +35,16 @@ export const TEMPLATES_MYSQL: Readonly<Record<string, string>> = {
     'END$$',
     'DELIMITER ;',
   ].join('\n'),
+  // Spec 069. O agendador precisa estar ligado (`event_scheduler = ON`), e por
+  // isso o lembrete vai no próprio esqueleto: um evento criado com ele
+  // desligado nasce válido e nunca roda.
+  events: [
+    '-- Exige event_scheduler = ON no servidor.',
+    'CREATE EVENT `novo_evento`',
+    'ON SCHEDULE EVERY 1 DAY',
+    'DO',
+    '  DELETE FROM `tabela` WHERE `criado_em` < NOW() - INTERVAL 30 DAY;',
+  ].join('\n'),
 };
 
 export const TEMPLATES_POSTGRES: Readonly<Record<string, string>> = {
@@ -54,6 +64,27 @@ export const TEMPLATES_POSTGRES: Readonly<Record<string, string>> = {
     'RETURNS integer',
     'LANGUAGE sql',
     'AS $$ SELECT p_valor $$;',
+  ].join('\n'),
+  // Spec 069 (T110): as quatro categorias novas do PostgreSQL.
+  matviews: [
+    'CREATE MATERIALIZED VIEW {schema}.nova_matview AS',
+    'SELECT 1 AS exemplo',
+    'WITH NO DATA;',
+    '-- REFRESH MATERIALIZED VIEW {schema}.nova_matview;',
+  ].join('\n'),
+  sequences: [
+    'CREATE SEQUENCE {schema}.nova_sequencia',
+    '  START WITH 1 INCREMENT BY 1;',
+  ].join('\n'),
+  types: [
+    "CREATE TYPE {schema}.novo_tipo AS ENUM ('um', 'outro');",
+  ].join('\n'),
+  foreign: [
+    '-- Exige um servidor externo já criado (CREATE SERVER) e a extensão do FDW.',
+    'CREATE FOREIGN TABLE {schema}.nova_tabela_externa (',
+    '  id bigint,',
+    '  nome text',
+    ") SERVER servidor_externo OPTIONS (schema_name 'public', table_name 'origem');",
   ].join('\n'),
 };
 

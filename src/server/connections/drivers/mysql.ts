@@ -28,6 +28,8 @@ import {
 } from './modelos';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import { TEMPLATES_MYSQL } from '../../../shared/tree/templates';
+import { SECURITY_ID, noDeSeguranca } from './seguranca';
+import { listarSeguranca, segurancaDisponivel } from './mysql-seguranca';
 import { CLI_MYSQL } from '../../../shared/terminal/clientes/mysql';
 import type {
   OpcoesDeNavegacao,
@@ -73,6 +75,9 @@ const CATEGORIAS: readonly Categoria[] = [
   { id: 'views', label: 'Views', icon: 'view' },
   { id: 'functions', label: 'Functions', icon: 'function' },
   { id: 'procedures', label: 'Procedures', icon: 'procedure' },
+  // Spec 069 (T110). Sequence, type, foreign table e matview NÃO entram aqui:
+  // o MySQL não tem nenhum dos quatro, e categoria sempre vazia é ruído.
+  { id: 'events', label: 'Events', icon: 'event' },
 ];
 
 
@@ -136,6 +141,7 @@ async function listarCategorias(conn: Connection, schema: string): Promise<TreeN
     schema,
     schema,
     schema,
+    schema,
   ]);
   return CATEGORIAS.map((categoria) => ({
     id: categoria.id,
@@ -189,6 +195,37 @@ async function listarObjetos(
       // inserir nem o que esvaziar (spec 040, AC-7).
       actions: categoria === 'tables' ? ACOES_DE_TABELA : ACOES_DE_VIEW,
       meta: { schema, object: linha.TABLE_NAME, category: categoria },
+    }));
+  }
+
+  if (categoria === 'events') {
+    const f = clausulaDeFiltro('EVENT_NAME', filtro);
+    const linhas = await query<{ EVENT_NAME: string; STATUS: string; QUANDO: string | null }>(
+      conn,
+      `SELECT EVENT_NAME, STATUS,
+              CASE WHEN EVENT_TYPE = 'RECURRING'
+                   THEN CONCAT('a cada ', INTERVAL_VALUE, ' ', INTERVAL_FIELD)
+                   ELSE CAST(EXECUTE_AT AS CHAR) END AS QUANDO
+         FROM information_schema.EVENTS
+        WHERE EVENT_SCHEMA = ?${f.sql}
+        ORDER BY EVENT_NAME`,
+      [schema, ...f.params]
+    );
+    return linhas.map((linha) => ({
+      id: linha.EVENT_NAME,
+      label: linha.EVENT_NAME,
+      icon: 'event' as const,
+      // O estado importa: um evento DISABLED existe e não roda, e a árvore que
+      // mostra os dois iguais faz procurar defeito no lugar errado.
+      detail: [linha.QUANDO, linha.STATUS === 'ENABLED' ? null : linha.STATUS]
+        .filter((p) => p !== null && p !== '')
+        .join(' · ') || undefined,
+      hasChildren: false,
+      actions: [
+        { id: 'ddl', label: 'Ver DDL' },
+        { id: 'drop-event', label: 'Apagar (DROP)', danger: true },
+      ],
+      meta: { schema, object: linha.EVENT_NAME, category: categoria },
     }));
   }
 
@@ -252,7 +289,19 @@ async function navegar(
     ];
   }
   if (nodePath[0] !== SERVER_ID) return [];
-  if (nodePath.length === 1) return listarBancos(conn, exibicao);
+  if (nodePath.length === 1) {
+    const bancos = await listarBancos(conn, exibicao);
+    const consulta = <T,>(sql: string, params?: readonly unknown[]): Promise<T[]> =>
+      query<T>(conn, sql, params === undefined ? [] : [...params]);
+    // N003: sem permissão de ler `mysql.user`, o nó nem nasce.
+    return (await segurancaDisponivel(consulta)) ? [...bancos, noDeSeguranca()] : bancos;
+  }
+  // `Security` é irmão dos bancos e não é um schema: desviado antes de tudo.
+  if (nodePath[1] === SECURITY_ID) {
+    const consulta = <T,>(sql: string, params?: readonly unknown[]): Promise<T[]> =>
+      query<T>(conn, sql, params === undefined ? [] : [...params]);
+    return listarSeguranca(consulta, nodePath.slice(2), opcoes?.filtro);
+  }
   if (nodePath.length === 2) return listarCategorias(conn, nodePath[1]);
   if (nodePath.length === 3) return listarObjetos(conn, nodePath[1], nodePath[2], opcoes?.filtro);
   if (nodePath.length === 4 && (nodePath[2] === 'tables' || nodePath[2] === 'views')) {
@@ -335,8 +384,23 @@ async function acao(conn: Connection, request: ActionRequest): Promise<ActionRes
         content: `SELECT * FROM ${alvo} LIMIT 100;`,
       };
 
+    case 'drop-event':
+      return {
+        kind: 'statement',
+        title: objeto,
+        content:
+          `-- Apaga o evento ${alvo}.\n` +
+          '-- Isto ainda NÃO rodou: aperte o ▷ Run acima do comando quando tiver certeza.\n' +
+          `DROP EVENT ${alvo};\n`,
+      };
+
     case 'ddl': {
-      const comando = categoria === 'views' ? 'SHOW CREATE VIEW' : 'SHOW CREATE TABLE';
+      const comando =
+        categoria === 'views'
+          ? 'SHOW CREATE VIEW'
+          : categoria === 'events'
+            ? 'SHOW CREATE EVENT'
+            : 'SHOW CREATE TABLE';
       const [linha] = await query<Record<string, string>>(conn, `${comando} ${alvo}`);
       if (linha === undefined) throw new Error(`Não foi possível ler o DDL de ${objeto}.`);
       // A coluna do DDL muda de nome conforme o objeto ("Create Table",
