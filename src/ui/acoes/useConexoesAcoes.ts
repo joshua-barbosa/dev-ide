@@ -33,7 +33,8 @@ export interface ConexoesAcoes {
   novoObjeto(
     id: string,
     caminho: readonly string[],
-    no: TreeNode,
+    nomeBase: string,
+    sql: string,
     database?: string | null
   ): void;
   renomearGrupo(caminho: string): Promise<void>;
@@ -76,17 +77,23 @@ export function useConexoesAcoes(deps: ConexoesAcoesDeps): ConexoesAcoes {
     ws.abrirTerminal(conexao.id, conexao.label);
   };
 
-  /** Abre o esqueleto de criação numa aba de query, sem executar nada. */
+  /**
+   * Abre o esqueleto de criação numa aba de query, sem executar nada.
+   *
+   * Continua existindo depois do T113: executar pela janela é o caminho curto,
+   * e este é o longo — para quem quer revisar, versionar ou rodar por partes.
+   * O SQL vem de fora porque ele pode tê-lo EDITADO na janela antes de decidir.
+   */
   const novoObjeto = (
     id: string,
     caminho: readonly string[],
-    no: TreeNode,
+    nomeBase: string,
+    sql: string,
     database: string | null = null
   ): void => {
-    const template = typeof no.meta?.template === 'string' ? no.meta.template : '';
-    if (template === '') return;
+    if (sql.trim() === '') return;
     exec.definirConexaoAtiva(id);
-    ws.abrirQuery(`novo:${id}:${caminho.join('/')}`, `novo_${no.id}.sql`, template, id, database);
+    ws.abrirQuery(`novo:${id}:${caminho.join('/')}`, `novo_${nomeBase}.sql`, sql, id, database);
   };
 
   /**

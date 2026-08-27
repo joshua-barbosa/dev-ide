@@ -382,7 +382,7 @@ test('o SQLite só oferece o filtro por NOME (T112)', async ({ page }) => {
   await page.getByRole('button', { name: 'Cancelar' }).click();
 });
 
-test('criar abre o esqueleto numa aba, sem executar', async ({ page }) => {
+test('criar abre o esqueleto e ABRIR NO EDITOR não executa nada', async ({ page }) => {
   await destrancarPeloBotao(page);
   await expandir(page, 'ACME', 'Bancos');
   await linhaArvore(page, CONEXAO).click();
@@ -392,8 +392,59 @@ test('criar abre o esqueleto numa aba, sem executar', async ({ page }) => {
   await categoria.hover();
   await categoria.getByRole('button', { name: /Criar em Tables/ }).click();
 
+  // T113: o `+` abre a janela com o esqueleto. O caminho longo continua ali.
+  await expect(page.getByRole('dialog')).toContainText('CREATE TABLE nova_tabela');
+  await page.getByRole('button', { name: 'Abrir no editor' }).click();
+
   await expect(aba(page, 'novo_tables.sql')).toBeVisible();
   await expect.poll(() => textoDoEditor(page)).toMatch(/CREATE TABLE nova_tabela/);
   // Nada foi executado: não há grade de resultado.
   await expect(page.getByText(/linha\(s\)/)).toHaveCount(0);
+});
+
+test('criar EXECUTA e a tabela nova aparece na árvore (T113)', async ({ page }) => {
+  await destrancarPeloBotao(page);
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+  await expandir(page, 'escola.db', 'Tables');
+
+  const categoria = linhaArvore(page, 'Tables');
+  await categoria.hover();
+  await categoria.getByRole('button', { name: /Criar em Tables/ }).click();
+
+  // O esqueleto é EDITÁVEL: o nome que ele digitar é o que vai ao banco.
+  const campo = page.getByLabel('Comando a executar');
+  await campo.fill('CREATE TABLE criada_pela_arvore (id INTEGER PRIMARY KEY);');
+  await page.getByRole('button', { name: 'Executar' }).click();
+
+  // Recarrega a categoria sozinha: sem isso o objeto só apareceria no F5.
+  await expect(linhaArvore(page, 'criada_pela_arvore')).toBeVisible();
+
+  // Não se limpa aqui de propósito: o `DROP` do menu é GERADO e aberto, não
+  // executado (spec 046), e a janela de criar recusa destrutivo. A tabela fica
+  // até o fim da execução — o `escola.db` da suíte é recriado a cada rodada.
+});
+
+test('o esqueleto com DELIMITER não oferece Executar, e diz por quê', async ({ page }) => {
+  await destrancarPeloBotao(page);
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+  await expandir(page, 'escola.db');
+
+  const categoria = linhaArvore(page, 'Tables');
+  await categoria.hover();
+  await categoria.getByRole('button', { name: /Criar em Tables/ }).click();
+
+  // `DELIMITER` é comando do cliente mysql, não do servidor: mandá-lo pela
+  // conexão dá erro de sintaxe. O botão fica desligado ANTES do clique.
+  await page.getByLabel('Comando a executar').fill('DELIMITER $$\nCREATE PROCEDURE p() BEGIN SELECT 1; END$$');
+  await expect(page.getByRole('button', { name: 'Executar' })).toBeDisabled();
+  await expect(page.getByRole('dialog')).toContainText('DELIMITER');
+
+  // E o que APAGA também não sai daqui: a janela cria, e a regra da spec 046
+  // manda o destrutivo pelo editor, sob o ▷ Run.
+  await page.getByLabel('Comando a executar').fill('DROP TABLE escola;');
+  await expect(page.getByRole('button', { name: 'Executar' })).toBeDisabled();
+  await expect(page.getByRole('dialog')).toContainText('DROP');
+  await page.getByRole('button', { name: 'Cancelar' }).click();
 });

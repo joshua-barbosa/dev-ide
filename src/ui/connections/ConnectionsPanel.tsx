@@ -15,6 +15,7 @@ import type { Vinculo } from '../../shared/sql/vinculo';
 import { Icon } from '../Icon';
 import { TreeRow } from '../tree/TreeRow';
 import { DialogoDeFiltro, type PedidoDeFiltro } from './DialogoDeFiltro';
+import { DialogoDeCriacao, type PedidoDeCriacao } from './DialogoDeCriacao';
 import type { Criterio } from '../../shared/tree/filtro-da-arvore';
 import type { ConnectionsController } from './useConnections';
 
@@ -48,7 +49,8 @@ export interface ConnectionsPanelProps {
   readonly onNovoObjeto: (
     id: string,
     caminho: readonly string[],
-    no: TreeNode,
+    nomeBase: string,
+    sql: string,
     database: string | null
   ) => void;
   // ---- Arquivos de query (spec 038) ----
@@ -190,6 +192,7 @@ export function ConnectionsPanel({
   // ao trocar de painel (a emenda do `display: none`), então ele sobrevive ao
   // mesmo gesto que o diálogo do cofre precisou sair de dentro para sobreviver.
   const [pedidoDeFiltro, setPedidoDeFiltro] = useState<PedidoDeFiltro | null>(null);
+  const [pedidoDeCriacao, setPedidoDeCriacao] = useState<PedidoDeCriacao | null>(null);
 
   const aceita = (tipo: string): boolean => {
     const driver = ctrl.drivers.get(tipo);
@@ -385,7 +388,19 @@ export function ConnectionsPanel({
                     <AcaoDaLinha
                       icone="lucide:plus"
                       rotulo={`Criar em ${no.label}`}
-                      onClick={() => onNovoObjeto(id, filho, no, bancoAqui)}
+                      // T113: o `+` abre a janela com o esqueleto, e de lá
+                      // saem os DOIS caminhos — executar ou abrir no editor.
+                      onClick={() =>
+                        setPedidoDeCriacao({
+                          id,
+                          caminho: filho,
+                          rotulo: no.label,
+                          nomeBase: no.id,
+                          esqueleto: typeof no.meta?.template === 'string' ? no.meta.template : '',
+                          database: bancoAqui,
+                          somenteLeitura: somenteLeitura(id),
+                        })
+                      }
                     />
                   )}
                 </>
@@ -622,6 +637,29 @@ export function ConnectionsPanel({
           renderGrupo(tree, 0)
         )}
       </Box>
+
+      <DialogoDeCriacao
+        pedido={pedidoDeCriacao}
+        onCancelar={() => setPedidoDeCriacao(null)}
+        onAbrirNoEditor={(sql) => {
+          const pedido = pedidoDeCriacao;
+          if (pedido === null) return;
+          setPedidoDeCriacao(null);
+          onNovoObjeto(pedido.id, pedido.caminho, pedido.nomeBase, sql, pedido.database);
+        }}
+        onExecutar={async (sql) => {
+          const pedido = pedidoDeCriacao;
+          if (pedido === null) return;
+          await Api.execute(pedido.id, {
+            statement: sql,
+            database: pedido.database ?? undefined,
+          });
+          // Sem isto o objeto criado só apareceria no F5 seguinte — o mesmo
+          // defeito que a spec 038 teve com arquivo de query.
+          await ctrl.recarregarNo(pedido.id, pedido.caminho);
+          setPedidoDeCriacao(null);
+        }}
+      />
 
       <DialogoDeFiltro
         pedido={pedidoDeFiltro}
