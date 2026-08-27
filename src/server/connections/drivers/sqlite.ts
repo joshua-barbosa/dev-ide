@@ -175,7 +175,9 @@ function navegar(
         (db.prepare(OBJETOS_SQL).all(categoria.sqliteType) as unknown[]).length
       ),
       hasChildren: true,
-      meta: { categoria: true, template: TEMPLATES_SQLITE[categoria.id] },
+      // O SQLite não tem dono, não guarda tamanho por objeto e não guarda
+      // data: o único critério que ele sabe responder é o nome (T112).
+      meta: { categoria: true, criterios: ['nome'], template: TEMPLATES_SQLITE[categoria.id] },
     }));
   }
 

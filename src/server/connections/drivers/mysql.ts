@@ -29,6 +29,7 @@ import {
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import { TEMPLATES_MYSQL } from '../../../shared/tree/templates';
 import { SECURITY_ID, noDeSeguranca } from './seguranca';
+import type { Criterio } from '../../../shared/tree/filtro-da-arvore';
 import { listarSeguranca, segurancaDisponivel } from './mysql-seguranca';
 import { CLI_MYSQL } from '../../../shared/terminal/clientes/mysql';
 import type {
@@ -68,16 +69,24 @@ interface Categoria {
   readonly id: string;
   readonly label: string;
   readonly icon: TreeNode['icon'];
+  /**
+   * Por que se pode filtrar AQUI (T112, spec 069).
+   *
+   * O MySQL não tem dono POR TABELA — quem tem dono é a rotina e o evento, pelo
+   * `DEFINER`. E uma view não ocupa disco nem guarda data de escrita: declarar
+   * `tamanho` nela devolveria a lista inteira, calado.
+   */
+  readonly criterios: readonly Criterio[];
 }
 
 const CATEGORIAS: readonly Categoria[] = [
-  { id: 'tables', label: 'Tables', icon: 'table' },
-  { id: 'views', label: 'Views', icon: 'view' },
-  { id: 'functions', label: 'Functions', icon: 'function' },
-  { id: 'procedures', label: 'Procedures', icon: 'procedure' },
+  { id: 'tables', label: 'Tables', icon: 'table', criterios: ['nome', 'tamanho', 'data'] },
+  { id: 'views', label: 'Views', icon: 'view', criterios: ['nome'] },
+  { id: 'functions', label: 'Functions', icon: 'function', criterios: ['nome', 'dono'] },
+  { id: 'procedures', label: 'Procedures', icon: 'procedure', criterios: ['nome', 'dono'] },
   // Spec 069 (T110). Sequence, type, foreign table e matview NÃO entram aqui:
   // o MySQL não tem nenhum dos quatro, e categoria sempre vazia é ruído.
-  { id: 'events', label: 'Events', icon: 'event' },
+  { id: 'events', label: 'Events', icon: 'event', criterios: ['nome', 'dono'] },
 ];
 
 
@@ -151,7 +160,12 @@ async function listarCategorias(conn: Connection, schema: string): Promise<TreeN
     hasChildren: true,
     // `categoria: true` é o que liga as ações de recarregar/filtrar/criar na
     // interface, sem que ela precise saber quais nomes são categorias.
-    meta: { schema, categoria: true, template: TEMPLATES_MYSQL[categoria.id] },
+    meta: {
+      schema,
+      categoria: true,
+      criterios: categoria.criterios,
+      template: TEMPLATES_MYSQL[categoria.id],
+    },
   }));
 }
 
@@ -167,22 +181,61 @@ function clausulaDeFiltro(coluna: string, filtro?: string | null): { sql: string
     : { sql: ` AND ${coluna} LIKE ?`, params: [filtro] };
 }
 
+/**
+ * As condições dos critérios da spec 069.
+ *
+ * A EXPRESSÃO vem do código e o valor vai ligado como `?`, sempre — a mesma
+ * separação de `clausulaDeFiltro`, com mais de um critério.
+ *
+ * `COALESCE(UPDATE_TIME, CREATE_TIME)`: o InnoDB deixa `UPDATE_TIME` nulo em
+ * tabela que ninguém escreveu desde o último restart. Sem o `COALESCE`, essas
+ * tabelas sumiriam de qualquer filtro por data.
+ */
+function condicoesDe(
+  categoria: Categoria,
+  opcoes: OpcoesDeNavegacao | undefined,
+  colunaDoDono: string | null
+): { sql: string; params: unknown[] } {
+  const partes: string[] = [];
+  const params: unknown[] = [];
+  const pode = (c: Criterio): boolean => categoria.criterios.includes(c);
+
+  if (pode('dono') && colunaDoDono !== null && opcoes?.dono !== null && opcoes?.dono !== undefined) {
+    partes.push(` AND ${colunaDoDono} = ?`);
+    params.push(opcoes.dono);
+  }
+  if (pode('tamanho') && opcoes?.minBytes !== null && opcoes?.minBytes !== undefined) {
+    partes.push(' AND (COALESCE(DATA_LENGTH, 0) + COALESCE(INDEX_LENGTH, 0)) >= ?');
+    params.push(opcoes.minBytes);
+  }
+  if (pode('data') && opcoes?.desde !== null && opcoes?.desde !== undefined) {
+    partes.push(' AND COALESCE(UPDATE_TIME, CREATE_TIME) >= ?');
+    params.push(opcoes.desde);
+  }
+  return { sql: partes.join(''), params };
+}
+
 async function listarObjetos(
   conn: Connection,
   schema: string,
   categoria: string,
-  filtro?: string | null
+  opcoes?: OpcoesDeNavegacao
 ): Promise<TreeNode[]> {
+  const alvo = CATEGORIAS.find((c) => c.id === categoria);
+  if (alvo === undefined) return [];
+  const filtro = opcoes?.filtro;
+
   if (categoria === 'tables' || categoria === 'views') {
     const tipo = categoria === 'tables' ? 'BASE TABLE' : 'VIEW';
     const f = clausulaDeFiltro('TABLE_NAME', filtro);
+    const c = condicoesDe(alvo, opcoes, null);
     const linhas = await query<{ TABLE_NAME: string; TABLE_ROWS: number | null }>(
       conn,
       `SELECT TABLE_NAME, TABLE_ROWS
          FROM information_schema.TABLES
-        WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = ?${f.sql}
+        WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = ?${f.sql}${c.sql}
         ORDER BY TABLE_NAME`,
-      [schema, tipo, ...f.params]
+      [schema, tipo, ...f.params, ...c.params]
     );
     return linhas.map((linha) => ({
       id: linha.TABLE_NAME,
@@ -200,6 +253,7 @@ async function listarObjetos(
 
   if (categoria === 'events') {
     const f = clausulaDeFiltro('EVENT_NAME', filtro);
+    const c = condicoesDe(alvo, opcoes, "SUBSTRING_INDEX(DEFINER, '@', 1)");
     const linhas = await query<{ EVENT_NAME: string; STATUS: string; QUANDO: string | null }>(
       conn,
       `SELECT EVENT_NAME, STATUS,
@@ -207,9 +261,9 @@ async function listarObjetos(
                    THEN CONCAT('a cada ', INTERVAL_VALUE, ' ', INTERVAL_FIELD)
                    ELSE CAST(EXECUTE_AT AS CHAR) END AS QUANDO
          FROM information_schema.EVENTS
-        WHERE EVENT_SCHEMA = ?${f.sql}
+        WHERE EVENT_SCHEMA = ?${f.sql}${c.sql}
         ORDER BY EVENT_NAME`,
-      [schema, ...f.params]
+      [schema, ...f.params, ...c.params]
     );
     return linhas.map((linha) => ({
       id: linha.EVENT_NAME,
@@ -231,13 +285,14 @@ async function listarObjetos(
 
   const tipo = categoria === 'functions' ? 'FUNCTION' : 'PROCEDURE';
   const f = clausulaDeFiltro('ROUTINE_NAME', filtro);
+  const c = condicoesDe(alvo, opcoes, "SUBSTRING_INDEX(DEFINER, '@', 1)");
   const linhas = await query<{ ROUTINE_NAME: string; DTD_IDENTIFIER: string | null }>(
     conn,
     `SELECT ROUTINE_NAME, DTD_IDENTIFIER
        FROM information_schema.ROUTINES
-      WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = ?${f.sql}
+      WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = ?${f.sql}${c.sql}
       ORDER BY ROUTINE_NAME`,
-    [schema, tipo, ...f.params]
+    [schema, tipo, ...f.params, ...c.params]
   );
   return linhas.map((linha) => ({
     id: linha.ROUTINE_NAME,
@@ -303,7 +358,7 @@ async function navegar(
     return listarSeguranca(consulta, nodePath.slice(2), opcoes?.filtro);
   }
   if (nodePath.length === 2) return listarCategorias(conn, nodePath[1]);
-  if (nodePath.length === 3) return listarObjetos(conn, nodePath[1], nodePath[2], opcoes?.filtro);
+  if (nodePath.length === 3) return listarObjetos(conn, nodePath[1], nodePath[2], opcoes);
   if (nodePath.length === 4 && (nodePath[2] === 'tables' || nodePath[2] === 'views')) {
     return listarColunas(conn, nodePath[1], nodePath[3]);
   }

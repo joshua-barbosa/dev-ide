@@ -25,15 +25,21 @@ interface LinhaDePapel {
 }
 
 /**
- * O nó `Security`, ou `null` quando este usuário não pode nem LISTAR.
+ * O nó `Security`, ou `false` quando este usuário não pode nem LISTAR.
  *
  * A sonda é a própria consulta, com `LIMIT 1`: perguntar "eu poderia?" por
  * outro caminho seria uma segunda fonte de verdade, e as duas divergiriam no
  * dia em que o servidor tivesse uma política que o catálogo não descreve.
+ *
+ * **Nenhum erro daqui sobe** — mesma razão do MySQL: é pergunta lateral feita
+ * enquanto se lista os bancos, e não pode derrubar a lista.
  */
 export async function segurancaDisponivel(client: Client): Promise<boolean> {
-  const r = await sondar(() => client.query('SELECT 1 FROM pg_roles LIMIT 1'));
-  return r !== null;
+  try {
+    return (await sondar(() => client.query('SELECT 1 FROM pg_roles LIMIT 1'))) !== null;
+  } catch {
+    return false;
+  }
 }
 
 /** As marcas de um papel, na coluna cinza da árvore. */

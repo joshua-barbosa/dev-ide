@@ -324,6 +324,64 @@ test('filtrar reduz a lista e some quando o filtro é apagado', async ({ page })
   await expect(linhaArvore(page, TABELA)).toBeVisible();
 });
 
+test('o filtro sobrevive ao F5 (T111)', async ({ page }) => {
+  await destrancarPeloBotao(page);
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+  await expandir(page, 'escola.db', 'Tables');
+  await expect(linhaArvore(page, TABELA)).toBeVisible();
+
+  const categoria = linhaArvore(page, 'Tables');
+  await categoria.hover();
+  await categoria.getByRole('button', { name: /Filtrar Tables/ }).click();
+  await page.getByRole('dialog').getByLabel('Nome').fill('zzz-nao-existe');
+  await page.getByRole('button', { name: 'Aplicar' }).click();
+  await expect(linhaArvore(page, TABELA)).toHaveCount(0);
+
+  // O F5 é o teste inteiro: antes desta spec o filtro morria com a aba.
+  // O cofre NÃO é redestrancado: a chave vive no processo do servidor, e
+  // recarregar a página não a apaga.
+  await page.reload();
+  await esperarIdePronta(page);
+  await painelLateral(page, 'Database').click();
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+  await expandir(page, 'escola.db', 'Tables');
+  await expect(linhaArvore(page, TABELA)).toHaveCount(0);
+
+  const depois = linhaArvore(page, 'Tables');
+  await depois.hover();
+  await expect(depois.getByRole('button', { name: /Filtrar Tables/ })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+
+  // Limpar no fim: o arquivo é compartilhado pelos testes desta suíte, e um
+  // filtro esquecido esconderia a tabela do teste seguinte.
+  await depois.getByRole('button', { name: /Filtrar Tables/ }).click();
+  await page.getByRole('button', { name: 'Limpar' }).click();
+  await expect(linhaArvore(page, TABELA)).toBeVisible();
+});
+
+test('o SQLite só oferece o filtro por NOME (T112)', async ({ page }) => {
+  await destrancarPeloBotao(page);
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+  await expandir(page, 'escola.db');
+
+  const categoria = linhaArvore(page, 'Tables');
+  await categoria.hover();
+  await categoria.getByRole('button', { name: /Filtrar Tables/ }).click();
+
+  const dialogo = page.getByRole('dialog');
+  await expect(dialogo.getByLabel('Nome')).toBeVisible();
+  // O SQLite não tem dono, tamanho por objeto nem data: os campos NÃO existem.
+  await expect(dialogo.getByLabel('Dono')).toHaveCount(0);
+  await expect(dialogo.getByLabel('Maior que')).toHaveCount(0);
+  await expect(dialogo.getByLabel('Mexida desde')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Cancelar' }).click();
+});
+
 test('criar abre o esqueleto numa aba, sem executar', async ({ page }) => {
   await destrancarPeloBotao(page);
   await expandir(page, 'ACME', 'Bancos');

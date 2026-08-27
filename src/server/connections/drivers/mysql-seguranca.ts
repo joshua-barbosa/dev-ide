@@ -18,10 +18,25 @@ import type { TreeNode } from '../types';
 
 type Consulta = <T>(sql: string, params?: readonly unknown[]) => Promise<T[]>;
 
-/** O nó `Security` só nasce se `mysql.user` responder. */
+/**
+ * O nó `Security` só nasce se `mysql.user` responder.
+ *
+ * **Nenhum erro daqui sobe.** Esta é uma pergunta LATERAL, feita enquanto se
+ * responde outra: "quais são os bancos?". Deixar a sonda derrubar a listagem
+ * dos bancos foi exatamente o que aconteceu no servidor dele — a conexão nem
+ * abria, e o que ele via era o `SELECT command denied` de uma tabela que ele
+ * nunca pediu para ver.
+ *
+ * Não conseguir perguntar vale como "não posso": o nó não aparece. Se o
+ * servidor estiver mesmo quebrado, a listagem dos bancos falha por conta
+ * própria, com o erro de verdade — este aqui não tem nada a acrescentar.
+ */
 export async function segurancaDisponivel(consulta: Consulta): Promise<boolean> {
-  const r = await sondar(() => consulta('SELECT 1 FROM mysql.user LIMIT 1'));
-  return r !== null;
+  try {
+    return (await sondar(() => consulta('SELECT 1 FROM mysql.user LIMIT 1'))) !== null;
+  } catch {
+    return false;
+  }
 }
 
 /**

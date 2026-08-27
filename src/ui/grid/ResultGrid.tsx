@@ -1,24 +1,27 @@
-// Grade de resultados.
+// A aba `Result`: a barra de cima, e a MESMA grade da aba de tabela.
 //
 // Um só componente para todos os drivers: como `QueryResult` é o mesmo formato
 // para SQL, chave-valor e documento, a grade não sabe de qual banco vieram as
 // linhas.
 //
-// Paridade apenas nesta servidor-1 — paginação, ordenação, busca e edição de célula
-// têm spec própria, e misturá-las aqui confundiria regressão com feature.
-import { useMemo } from 'react';
+// **Aqui morava uma segunda grade**, e ele reclamou com razão: *"todo Resultado
+// deveria ser igual ao que tem do 'abrir tabela'"*. A daqui não tinha lupa nem
+// painel de aparência, e o pior é que eu tinha escrito na spec 068 que o CSV
+// ganhava as duas coisas "de graça" — não ganhava, porque elas moravam só na
+// outra. Duas telas para a mesma coisa divergem; é só questão de quando.
+//
+// O que sobrou nesta aba é o que é DELA: a barra com contagem, exportação,
+// parada e paginação do resultado. O desenho das células é da `Grade`.
+import { useState } from 'react';
 import Box from '@mui/material/Box';
-import type { CellValue, QueryResult } from '../../shared/contracts';
+import type { QueryResult, TableColumn } from '../../shared/contracts';
 import { tokens } from '../theme';
 import { Icon } from '../Icon';
 import { paraCsv, paraJson } from '../../shared/exportar';
-import { useLarguras } from '../tabela/useLarguras';
-import { larguraDoConteudo } from '../../shared/grade/larguras';
-
-/** Ver a nota da aba de tabela: estas duas não se arrastam. */
-const LARGURA_DO_NUMERO = 44;
-const POR_CARACTERE = 12 * 0.6;
-const POR_CARACTERE_DO_TIPO = 10 * 0.6;
+import { Grade } from '../tabela/GradeDaTabela';
+import { PainelDeAparencia } from '../tabela/PainelDeAparencia';
+import { APARENCIA_PADRAO, type Aparencia } from '../../shared/grade/aparencia';
+import { LINHAS_POR_PAGINA } from '../useExecution';
 
 export interface ResultGridProps {
   readonly resultado: QueryResult | null;
@@ -36,23 +39,24 @@ export function ResultGrid({
   resultado, erro = null, carregando = false, rotulo, parar, irPara, pagina = 1,
 }: ResultGridProps) {
   // Antes de qualquer `return`: gancho não pode viver depois de saída
-  // condicional, e as três abaixo são exatamente isso.
-  const larguras = useLarguras();
-  const automaticas = useMemo(() => {
-    const cols = resultado?.columns ?? [];
-    const rs = resultado?.rows ?? [];
-    return Object.fromEntries(
-      cols.map((c, j) => [
-        c.name,
-        Math.max(
-          larguraDoConteudo([c.name, ...rs.map((l) => String(l[j] ?? ''))], POR_CARACTERE),
-          larguraDoConteudo([c.type ?? ''], POR_CARACTERE_DO_TIPO)
-        ),
-      ])
-    );
-  }, [resultado]);
-  const larguraDe = (coluna: string): number =>
-    larguras.larguraDe(coluna) ?? automaticas[coluna] ?? 120;
+  // condicional, e os dois abaixo são exatamente isso.
+  const [aparencia, setAparencia] = useState<Aparencia>(APARENCIA_PADRAO);
+  const [olho, setOlho] = useState<HTMLElement | null>(null);
+
+  /**
+   * As colunas do resultado no formato da grade.
+   *
+   * Um resultado de query não tem chave primária nem `NOT NULL` — a IDE não
+   * sabe de que tabela cada coluna veio, e pode nem ser de uma. Declarar `false`
+   * nas duas é o que faz a grade não desenhar o ⚿ nem o `*`, e não é chute: é o
+   * que se sabe.
+   */
+  const colunas: readonly TableColumn[] = (resultado?.columns ?? []).map((c) => ({
+    name: c.name,
+    type: c.type,
+    chave: false,
+    obrigatoria: false,
+  }));
 
   if (carregando) {
     return (
@@ -149,6 +153,18 @@ export function ResultGrid({
         >
           <Icon name="lucide:braces" size={11} /> JSON
         </Box>
+        {/* O mesmo `👁` da aba de tabela (spec 070): fonte, altura da linha,
+            número da linha, zebra e alinhamento valem para TODO resultado. */}
+        <Box
+          component="button"
+          type="button"
+          aria-label="Aparência da grade"
+          onClick={(e: React.MouseEvent<HTMLButtonElement>) => setOlho(e.currentTarget)}
+          sx={BOTAO_DE_EXPORTAR}
+        >
+          <Icon name="lucide:eye" size={11} />
+        </Box>
+
         {/* Paginação do resultado (T056).
             O TOTAL não aparece, e é de propósito: envolver um `SELECT` qualquer
             num `COUNT(*)` mente quando ele tem `GROUP BY` ou `LIMIT` próprio.
@@ -192,131 +208,29 @@ export function ResultGrid({
       {columns.length === 0 ? (
         <Mensagem texto={message ?? 'Comando executado.'} />
       ) : (
-        <Box data-grade sx={{ flex: 1, overflow: 'auto', minHeight: 0, minWidth: 0 }}>
-          <Box
-            component="table"
-            sx={{
-              // A mesma decisão da aba de tabela (spec 062, fase C): arranjo
-              // fixo com largura somada, porque `fixed` com largura automática
-              // não vale nada. E o teto de 420 virou largura INICIAL.
-              borderCollapse: 'collapse',
-              tableLayout: 'fixed',
-              width:
-                LARGURA_DO_NUMERO +
-                columns.reduce((soma, c) => soma + larguraDe(c.name), 0),
-              fontFamily: tokens.fontMono,
-              fontSize: 12,
-              '& th, & td': {
-                borderRight: 1,
-                borderBottom: 1,
-                borderColor: 'divider',
-                px: 1,
-                py: '3px',
-                textAlign: 'left',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              },
-              '& thead th': {
-                position: 'sticky',
-                top: 0,
-                bgcolor: 'background.paper',
-                zIndex: 1,
-              },
-            }}
-          >
-            <colgroup>
-              <col style={{ width: LARGURA_DO_NUMERO }} />
-              {columns.map((coluna, i) => (
-                <col key={`${coluna.name}-${i}`} style={{ width: larguraDe(coluna.name) }} />
-              ))}
-            </colgroup>
-            <thead>
-              <tr>
-                <Box component="th" sx={{ bgcolor: 'background.paper' }} />
-                {columns.map((coluna, i) => (
-                  <Box
-                    component="th"
-                    key={`${coluna.name}-${i}`}
-                    data-coluna={coluna.name}
-                    sx={{ position: 'relative' }}
-                  >
-                    <Box>{coluna.name}</Box>
-                    {coluna.type !== undefined && (
-                      <Box sx={{ color: 'text.secondary', fontSize: 10, fontWeight: 400 }}>
-                        {coluna.type}
-                      </Box>
-                    )}
-                    <Box
-                      aria-hidden
-                      data-alca={coluna.name}
-                      onMouseDown={(e: React.MouseEvent) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        larguras.comecar(coluna.name, e.clientX, larguraDe(coluna.name));
-                      }}
-                      onDoubleClick={(e: React.MouseEvent) => {
-                        e.stopPropagation();
-                        larguras.ajustar(
-                          coluna.name,
-                          [coluna.name, ...rows.map((l) => String(l[i] ?? ''))],
-                          POR_CARACTERE
-                        );
-                      }}
-                      sx={{
-                        position: 'absolute', top: 0, right: 0, width: 8, height: '100%',
-                        cursor: 'col-resize', zIndex: 2,
-                        '&:hover': { bgcolor: 'primary.main' },
-                      }}
-                    />
-                  </Box>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((linha, i) => (
-                <tr key={i}>
-                  <Box
-                    component="td"
-                    sx={{
-                      color: 'text.secondary',
-                      bgcolor: 'background.paper',
-                      textAlign: 'right',
-                      userSelect: 'none',
-                    }}
-                  >
-                    {i + 1}
-                  </Box>
-                  {linha.map((valor, j) => (
-                    <Celula key={j} valor={valor} />
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </Box>
-        </Box>
+        // A MESMA grade da aba de tabela (spec 070). O que esta aba não tem —
+        // ordenar, filtrar por coluna e editar — não é passado, e por isso não
+        // é desenhado: são capacidades, não modos.
+        <Grade
+          colunas={colunas}
+          linhas={rows}
+          aparencia={aparencia}
+          // O tamanho da PÁGINA, e não quantas linhas vieram: a última página
+          // costuma vir curta, e numerar por ela faria a página 2 começar em 4.
+          primeiraLinha={(pagina - 1) * LINHAS_POR_PAGINA + 1}
+          motivoSemEdicao={
+            'Este resultado não está preso a uma tabela: a IDE não sabe qual linha atualizar.'
+          }
+        />
       )}
-    </Box>
-  );
-}
 
-function Celula({ valor }: { readonly valor: CellValue }) {
-  const nulo = valor === null;
-  return (
-    <Box
-      component="td"
-      title={nulo ? 'NULL' : String(valor)}
-      // Clicar copia: o caso mais comum é levar um id para a próxima consulta.
-      onClick={() => void navigator.clipboard?.writeText(nulo ? '' : String(valor))}
-      sx={{
-        cursor: 'pointer',
-        color: nulo ? 'text.secondary' : 'text.primary',
-        fontStyle: nulo ? 'italic' : 'normal',
-        '&:hover': { bgcolor: 'action.hover' },
-        '&:active': { bgcolor: 'primary.main', color: 'background.default' },
-      }}
-    >
-      {nulo ? 'NULL' : String(valor)}
+      <PainelDeAparencia
+        ancora={olho}
+        aparencia={aparencia}
+        onMudar={setAparencia}
+        onFechar={() => setOlho(null)}
+        onPadrao={() => setAparencia(APARENCIA_PADRAO)}
+      />
     </Box>
   );
 }

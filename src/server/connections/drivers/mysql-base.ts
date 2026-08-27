@@ -24,11 +24,19 @@ export function colunasDe(fields: FieldPacket[] | undefined): ColumnInfo[] {
   }));
 }
 
-/** Promessa em cima da API de callback do `mysql2`. */
+/**
+ * Promessa em cima da API de callback do `mysql2`.
+ *
+ * O `errno` e o `code` do MySQL viajam junto com o erro. Antes da spec 069 só a
+ * mensagem sobrevivia, e isso quebrou uma feature de verdade: a sonda do
+ * `Security` classifica "sem permissão" pelo CÓDIGO — nunca pelo texto, porque
+ * "denied" aparece em erro de proxy e de firewall também. Sem o código, a
+ * recusa esperada de `mysql.user` virou erro fatal e derrubou a árvore inteira.
+ */
 export function query<T>(conn: Connection, sql: string, params: unknown[] = []): Promise<T[]> {
   return new Promise((resolve, reject) => {
     conn.query(sql, params, (err, rows) => {
-      if (err) reject(new Error(err.message));
+      if (err) reject(Object.assign(new Error(err.message), { errno: err.errno, code: err.code }));
       else resolve(rows as T[]);
     });
   });

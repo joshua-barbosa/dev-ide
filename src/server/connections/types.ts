@@ -386,6 +386,17 @@ export interface OpcoesDeNavegacao {
    * que separa um filtro de uma injeção.
    */
   readonly filtro?: string | null;
+  /**
+   * Os critérios da spec 069 (T112).
+   *
+   * Quem declara que um nó aceita cada um é o PRÓPRIO NÓ, em `meta.criterios`:
+   * `Tables` filtra por tamanho e `Types` não, e os dois vivem na mesma sessão.
+   * Uma capacidade por sessão teria de mentir para um dos dois.
+   */
+  readonly dono?: string | null;
+  readonly minBytes?: number | null;
+  /** Data-limite, já resolvida para `AAAA-MM-DD`. */
+  readonly desde?: string | null;
 }
 
 export interface Driver {

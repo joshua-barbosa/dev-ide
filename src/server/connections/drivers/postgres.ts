@@ -229,7 +229,7 @@ async function navegar(
   const client = await clienteDe(nodePath[1]);
   if (nodePath.length === 2) return listarSchemas(client, exibicao);
   if (nodePath.length === 3) return listarCategorias(client, nodePath[2]);
-  if (nodePath.length === 4) return listarObjetos(client, nodePath[2], nodePath[3], opcoes?.filtro);
+  if (nodePath.length === 4) return listarObjetos(client, nodePath[2], nodePath[3], opcoes);
   if (nodePath.length === 5 && expandeEmColunas(nodePath[3])) {
     return listarColunas(client, nodePath[2], nodePath[4]);
   }

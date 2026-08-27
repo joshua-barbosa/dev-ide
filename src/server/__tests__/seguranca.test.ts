@@ -68,3 +68,25 @@ test('o PostgreSQL tem Users e Roles; o MySQL, só Users', () => {
     ['users']
   );
 });
+
+test('a sonda nunca derruba quem a chamou', async () => {
+  const { segurancaDisponivel } = await import('../connections/drivers/mysql-seguranca');
+
+  // O caso dele, com o código preservado: some, sem erro.
+  const negado = async <T,>(): Promise<T[]> => {
+    throw Object.assign(new Error('SELECT command denied'), { errno: 1142 });
+  };
+  assert.equal(await segurancaDisponivel(negado), false);
+
+  // E o caso que quebrou de verdade: o driver do MySQL jogava fora o `errno`,
+  // então nem isto era reconhecido — o erro subia e a árvore não abria. A
+  // sonda é pergunta LATERAL, feita enquanto se lista os bancos: qualquer
+  // falha dela vale como "não posso", nunca como falha da listagem.
+  const quebrado = async <T,>(): Promise<T[]> => {
+    throw new Error("SELECT command denied to user ... for table 'user'");
+  };
+  assert.equal(await segurancaDisponivel(quebrado), false);
+
+  const respondeu = async <T,>(): Promise<T[]> => [{ um: 1 } as T];
+  assert.equal(await segurancaDisponivel(respondeu), true);
+});

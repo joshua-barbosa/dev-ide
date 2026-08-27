@@ -21,7 +21,7 @@ import { tokens } from '../theme';
 import { paraCsv, paraJson } from '../../shared/exportar';
 import { TAMANHOS_DE_PAGINA, type EstadoDaTabela } from './useTabela';
 import { BarraDeRascunho } from './BarraDeRascunho';
-import type { Rascunho } from './useRascunho';
+import { chaveDoId, type Rascunho } from './useRascunho';
 
 // `minWidth: 0` NÃO é enfeite (spec 062).
 //
@@ -217,14 +217,32 @@ export function TablePanel({
         <Aviso texto={`Sem colunas em ${titulo}.`} />
       ) : (
         <Grade
-          estado={estado}
           colunas={colunas}
           linhas={visiveis}
           rascunho={rascunho}
           motivoSemEdicao={motivoSemEdicao}
-          connectionId={connectionId}
-          nodePath={nodePath}
           aparencia={aparencia}
+          primeiraLinha={(estado.numero - 1) * estado.porPagina + 1}
+          // No modo livre a IDE não montou o SQL e não vai reescrevê-lo: sem
+          // ordenação nem filtro por coluna, e o cabeçalho nasce sem os dois.
+          ordenacao={
+            estado.modoLivre
+              ? undefined
+              : { atual: estado.ordenar, alternar: estado.alternarOrdem }
+          }
+          filtroPorColuna={
+            estado.modoLivre
+              ? undefined
+              : { valores: estado.filtros, definir: estado.definirFiltro }
+          }
+          // No livre EDITÁVEL (T060) a IDE já sabe a tabela e a chave, então a
+          // lupa também busca o valor inteiro ali.
+          buscarCelula={
+            estado.modoLivre && estado.motivoDoLivre !== null
+              ? undefined
+              : (id, coluna) =>
+                  Api.readCell(connectionId, { nodePath, chave: chaveDoId(id), coluna })
+          }
         />
       )}
       <PainelDeAparencia

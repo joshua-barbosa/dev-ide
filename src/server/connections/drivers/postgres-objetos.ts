@@ -19,7 +19,8 @@ import {
   TABELAS_SQL,
   TIPOS_SQL,
 } from './postgres-sql';
-import type { TreeNode } from '../types';
+import type { OpcoesDeNavegacao, TreeNode } from '../types';
+import type { Criterio } from '../../../shared/tree/filtro-da-arvore';
 
 interface Categoria {
   readonly id: string;
@@ -29,6 +30,14 @@ interface Categoria {
   readonly kinds?: readonly string[];
   /** O objeto tem colunas para expandir. */
   readonly expande: boolean;
+  /**
+   * Por que se pode filtrar AQUI (T112).
+   *
+   * O PostgreSQL não guarda data de criação de tabela — nenhuma categoria
+   * declara `data`. Oferecer o campo e devolver tudo seria pior que não
+   * oferecer.
+   */
+  readonly criterios: readonly Criterio[];
   readonly acoes?: readonly { id: string; label: string; danger?: boolean }[];
 }
 
@@ -53,28 +62,33 @@ const ACOES_DE_SEQUENCIA: readonly { id: string; label: string; danger?: boolean
   { id: 'drop-sequence', label: 'Apagar (DROP)', danger: true },
 ];
 
+/** O que TEM tamanho no disco; uma view é uma consulta guardada, e não ocupa. */
+const COM_TAMANHO: readonly Criterio[] = ['nome', 'dono', 'tamanho'];
+const SEM_TAMANHO: readonly Criterio[] = ['nome', 'dono'];
+
 export const CATEGORIAS: readonly Categoria[] = [
-  { id: 'tables', label: 'Tables', icon: 'table', kinds: ['r', 'p'], expande: true, acoes: ACOES_DE_TABELA },
-  { id: 'views', label: 'Views', icon: 'view', kinds: ['v'], expande: true, acoes: ACOES_DE_VIEW },
   {
-    id: 'matviews',
-    label: 'Materialized Views',
-    icon: 'matview',
-    kinds: ['m'],
-    expande: true,
-    acoes: ACOES_DE_MATVIEW,
+    id: 'tables', label: 'Tables', icon: 'table', kinds: ['r', 'p'],
+    expande: true, acoes: ACOES_DE_TABELA, criterios: COM_TAMANHO,
   },
   {
-    id: 'foreign',
-    label: 'Foreign Tables',
-    icon: 'foreign',
-    kinds: ['f'],
-    expande: true,
-    acoes: ACOES_DE_ESTRANGEIRA,
+    id: 'views', label: 'Views', icon: 'view', kinds: ['v'],
+    expande: true, acoes: ACOES_DE_VIEW, criterios: SEM_TAMANHO,
   },
-  { id: 'functions', label: 'Functions', icon: 'function', expande: false },
-  { id: 'sequences', label: 'Sequences', icon: 'sequence', kinds: ['S'], expande: false, acoes: ACOES_DE_SEQUENCIA },
-  { id: 'types', label: 'Types', icon: 'type', expande: false },
+  {
+    id: 'matviews', label: 'Materialized Views', icon: 'matview', kinds: ['m'],
+    expande: true, acoes: ACOES_DE_MATVIEW, criterios: COM_TAMANHO,
+  },
+  {
+    id: 'foreign', label: 'Foreign Tables', icon: 'foreign', kinds: ['f'],
+    expande: true, acoes: ACOES_DE_ESTRANGEIRA, criterios: SEM_TAMANHO,
+  },
+  { id: 'functions', label: 'Functions', icon: 'function', expande: false, criterios: SEM_TAMANHO },
+  {
+    id: 'sequences', label: 'Sequences', icon: 'sequence', kinds: ['S'],
+    expande: false, acoes: ACOES_DE_SEQUENCIA, criterios: SEM_TAMANHO,
+  },
+  { id: 'types', label: 'Types', icon: 'type', expande: false, criterios: SEM_TAMANHO },
 ];
 
 /** A categoria expande em colunas? Quem responde é a tabela acima. */
@@ -101,6 +115,7 @@ export async function listarCategorias(client: Client, schema: string): Promise<
     meta: {
       schema,
       categoria: true,
+      criterios: categoria.criterios,
       template: TEMPLATES_POSTGRES[categoria.id]?.replaceAll('{schema}', schema),
     },
   }));
@@ -122,15 +137,63 @@ export function clausulaDeFiltro(
     : { sql: ` AND ${coluna} LIKE $${posicao}`, params: [filtro] };
 }
 
+/** Uma condição a mais: a EXPRESSÃO de um lado, o valor do outro, ligado. */
+interface Condicao {
+  readonly expressao: string;
+  readonly operador: string;
+  readonly valor: unknown;
+}
+
+/**
+ * Monta `AND …` para as condições que existirem, numerando os parâmetros a
+ * partir de quantos já foram usados.
+ *
+ * A expressão vem do CÓDIGO (`pg_get_userbyid(c.relowner)`) e o valor vem do
+ * usuário, sempre como `$n`. É a mesma separação de `clausulaDeFiltro`, agora
+ * com mais de um critério — e é ela que faz um filtro por dono continuar sendo
+ * um filtro, e não uma injeção.
+ */
+function condicoes(jaUsados: number, itens: readonly (Condicao | null)[]): {
+  sql: string;
+  params: unknown[];
+} {
+  const validos = itens.filter((c): c is Condicao => c !== null);
+  const params = validos.map((c) => c.valor);
+  const sql = validos
+    .map((c, i) => ` AND ${c.expressao} ${c.operador} $${jaUsados + i + 1}`)
+    .join('');
+  return { sql, params };
+}
+
+/** As condições dos critérios da spec 069, na ordem em que os SQL as esperam. */
+function criteriosDe(
+  categoria: Categoria,
+  opcoes: OpcoesDeNavegacao | undefined,
+  colunaDoDono: string
+): readonly (Condicao | null)[] {
+  const podeDono = categoria.criterios.includes('dono');
+  const podeTamanho = categoria.criterios.includes('tamanho');
+  return [
+    podeDono && opcoes?.dono !== null && opcoes?.dono !== undefined
+      ? { expressao: colunaDoDono, operador: '=', valor: opcoes.dono }
+      : null,
+    podeTamanho && opcoes?.minBytes !== null && opcoes?.minBytes !== undefined
+      ? { expressao: 'pg_total_relation_size(c.oid)', operador: '>=', valor: opcoes.minBytes }
+      : null,
+  ];
+}
+
 async function listarFuncoes(
   client: Client,
   schema: string,
-  filtro?: string | null
+  categoria: Categoria,
+  opcoes?: OpcoesDeNavegacao
 ): Promise<TreeNode[]> {
-  const f = clausulaDeFiltro('p.proname', 2, filtro);
+  const f = clausulaDeFiltro('p.proname', 2, opcoes?.filtro);
+  const c = condicoes(1 + f.params.length, criteriosDe(categoria, opcoes, 'pg_get_userbyid(p.proowner)'));
   const { rows } = await client.query<{ nome: string; retorno: string }>(
-    FUNCOES_SQL.replace('{FILTRO}', f.sql),
-    [schema, ...f.params]
+    FUNCOES_SQL.replace('{FILTRO}', f.sql + c.sql),
+    [schema, ...f.params, ...c.params]
   );
   return rows.map((linha) => ({
     id: linha.nome,
@@ -145,12 +208,14 @@ async function listarFuncoes(
 async function listarTipos(
   client: Client,
   schema: string,
-  filtro?: string | null
+  categoria: Categoria,
+  opcoes?: OpcoesDeNavegacao
 ): Promise<TreeNode[]> {
-  const f = clausulaDeFiltro('t.typname', 2, filtro);
+  const f = clausulaDeFiltro('t.typname', 2, opcoes?.filtro);
+  const c = condicoes(1 + f.params.length, criteriosDe(categoria, opcoes, 'pg_get_userbyid(t.typowner)'));
   const { rows } = await client.query<{ nome: string; especie: string }>(
-    TIPOS_SQL.replace('{FILTRO}', f.sql),
-    [schema, ...f.params]
+    TIPOS_SQL.replace('{FILTRO}', f.sql + c.sql),
+    [schema, ...f.params, ...c.params]
   );
   return rows.map((linha) => ({
     id: linha.nome,
@@ -165,12 +230,14 @@ async function listarTipos(
 async function listarSequencias(
   client: Client,
   schema: string,
-  filtro?: string | null
+  categoria: Categoria,
+  opcoes?: OpcoesDeNavegacao
 ): Promise<TreeNode[]> {
-  const f = clausulaDeFiltro('c.relname', 2, filtro);
+  const f = clausulaDeFiltro('c.relname', 2, opcoes?.filtro);
+  const c = condicoes(1 + f.params.length, criteriosDe(categoria, opcoes, 'pg_get_userbyid(c.relowner)'));
   const { rows } = await client.query<{ nome: string; valor: string | null }>(
-    SEQUENCIAS_SQL.replace('{FILTRO}', f.sql),
-    [schema, ...f.params]
+    SEQUENCIAS_SQL.replace('{FILTRO}', f.sql + c.sql),
+    [schema, ...f.params, ...c.params]
   );
   return rows.map((linha) => ({
     id: linha.nome,
@@ -189,19 +256,20 @@ export async function listarObjetos(
   client: Client,
   schema: string,
   categoria: string,
-  filtro?: string | null
+  opcoes?: OpcoesDeNavegacao
 ): Promise<TreeNode[]> {
-  if (categoria === 'functions') return listarFuncoes(client, schema, filtro);
-  if (categoria === 'types') return listarTipos(client, schema, filtro);
-  if (categoria === 'sequences') return listarSequencias(client, schema, filtro);
-
   const alvo = CATEGORIAS.find((c) => c.id === categoria);
-  if (alvo?.kinds === undefined) return [];
+  if (alvo === undefined) return [];
+  if (categoria === 'functions') return listarFuncoes(client, schema, alvo, opcoes);
+  if (categoria === 'types') return listarTipos(client, schema, alvo, opcoes);
+  if (categoria === 'sequences') return listarSequencias(client, schema, alvo, opcoes);
+  if (alvo.kinds === undefined) return [];
 
-  const f = clausulaDeFiltro('c.relname', 3, filtro);
+  const f = clausulaDeFiltro('c.relname', 3, opcoes?.filtro);
+  const c = condicoes(2 + f.params.length, criteriosDe(alvo, opcoes, 'pg_get_userbyid(c.relowner)'));
   const { rows } = await client.query<{ nome: string; linhas: string | null }>(
-    TABELAS_SQL.replace('{FILTRO}', f.sql),
-    [schema, alvo.kinds, ...f.params]
+    TABELAS_SQL.replace('{FILTRO}', f.sql + c.sql),
+    [schema, alvo.kinds, ...f.params, ...c.params]
   );
   return rows.map((linha) => ({
     id: linha.nome,

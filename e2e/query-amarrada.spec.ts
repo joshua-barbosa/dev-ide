@@ -162,3 +162,33 @@ test('aba de query nascida da árvore NÃO pergunta a conexão', async ({ page }
   await expect(page.getByText('Executar contra qual conexão?')).toHaveCount(0);
   await expect(page.locator('table')).toContainText('joshua');
 });
+
+test('a aba de Resultado é a MESMA grade da aba de tabela (spec 070)', async ({ page }) => {
+  // Ele: "todo Resultado deveria ser igual ao que tem do 'abrir tabela'".
+  // Havia duas grades, e a desta aba não tinha lupa nem painel de aparência —
+  // e a spec 068 chegou a afirmar que o CSV ganhava as duas "de graça".
+  await abrirQueryDoBanco(page);
+  await esperarEditorPronto(page);
+  await page.keyboard.insertText("SELECT 'epsilon' AS qual, 42 AS n;\n");
+  await lenteDoBloco(page, 0, 'Run').click();
+  await expect(aba(page, 'Resultado')).toBeVisible();
+  await expect(page.getByText('epsilon', { exact: true })).toBeVisible();
+
+  const resultado = page.locator('[data-grade-de-resultado]');
+
+  // A alça de arrastar, uma por coluna — é o "não consigo aumentar o campo".
+  await expect(resultado.locator('[data-alca]')).toHaveCount(2);
+
+  // O painel de aparência, que só existia na aba de tabela.
+  await expect(resultado.getByRole('button', { name: 'Aparência da grade' })).toBeVisible();
+
+  // A lupa, que é o que ele pediu de verdade: abre o visor da célula.
+  const celula = resultado.getByText('epsilon', { exact: true });
+  await celula.hover();
+  await resultado.locator('[data-lupa]').first().click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+
+  // Sem tabela conhecida não há chave primária: o visor NÃO promete o valor
+  // inteiro — ele diz o que tem, que é a regra da spec 062.
+  await expect(page.getByRole('dialog')).toContainText('epsilon');
+});

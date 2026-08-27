@@ -4,6 +4,7 @@
 // onde cada serviço aparece é o driver, pelo campo `panel` — não dá para
 // derivar do protocolo, já que Redis é chave-valor e Pinecone é vetorial, mas
 // os dois são armazenamento e vão para Database.
+import { useState } from 'react';
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
@@ -13,6 +14,8 @@ import { noRemotoDe, type NoRemoto as NoRemotoDaLinha } from '../acoes/useAcoesR
 import type { Vinculo } from '../../shared/sql/vinculo';
 import { Icon } from '../Icon';
 import { TreeRow } from '../tree/TreeRow';
+import { DialogoDeFiltro, type PedidoDeFiltro } from './DialogoDeFiltro';
+import type { Criterio } from '../../shared/tree/filtro-da-arvore';
 import type { ConnectionsController } from './useConnections';
 
 export interface ConnectionsPanelProps {
@@ -42,7 +45,6 @@ export interface ConnectionsPanelProps {
   readonly onNovaConexao: (grupo?: string) => void;
   readonly onRenomearGrupo: (caminho: string) => void;
   readonly onAbrirTerminal: (conexao: PublicConnection) => void;
-  readonly onFiltrar: (id: string, caminho: readonly string[], atual: string | null) => void;
   readonly onNovoObjeto: (
     id: string,
     caminho: readonly string[],
@@ -147,6 +149,21 @@ function formatarData(iso: string): string {
   });
 }
 
+/**
+ * O que este nó declara que sabe filtrar.
+ *
+ * Nó sem declaração cai em "só nome", que é o que a árvore sempre soube fazer —
+ * um driver antigo continua funcionando sem ganhar campos que ele ignoraria.
+ */
+function criteriosDoNo(no: TreeNode): readonly Criterio[] {
+  const bruto = no.meta?.criterios;
+  if (!Array.isArray(bruto)) return ['nome'];
+  const validos = bruto.filter((c): c is Criterio =>
+    c === 'nome' || c === 'dono' || c === 'tamanho' || c === 'data'
+  );
+  return validos.length === 0 ? ['nome'] : validos;
+}
+
 export function ConnectionsPanel({
   painel,
   ctrl,
@@ -156,7 +173,6 @@ export function ConnectionsPanel({
   onNovaConexao,
   onRenomearGrupo,
   onAbrirTerminal,
-  onFiltrar,
   onNovoObjeto,
   onAbrirQueryDoDatabase,
   onAbrirTabela,
@@ -170,6 +186,11 @@ export function ConnectionsPanel({
   onApagarQuery,
   onErro,
 }: ConnectionsPanelProps) {
+  // O diálogo do filtro mora AQUI, e não no `App`: a lateral não é desmontada
+  // ao trocar de painel (a emenda do `display: none`), então ele sobrevive ao
+  // mesmo gesto que o diálogo do cofre precisou sair de dentro para sobreviver.
+  const [pedidoDeFiltro, setPedidoDeFiltro] = useState<PedidoDeFiltro | null>(null);
+
   const aceita = (tipo: string): boolean => {
     const driver = ctrl.drivers.get(tipo);
     // Tipo desconhecido (driver removido, conexão antiga) cai em Service, para
@@ -348,7 +369,17 @@ export function ConnectionsPanel({
                     icone="lucide:list-filter"
                     rotulo={`Filtrar ${no.label}`}
                     ativa={ctrl.filtroDe(id, filho) !== null}
-                    onClick={() => onFiltrar(id, filho, ctrl.filtroDe(id, filho))}
+                    // Os critérios vêm do NÓ: `Tables` filtra por tamanho e
+                    // `Types` não, e a interface não precisa saber por quê.
+                    onClick={() =>
+                      setPedidoDeFiltro({
+                        id,
+                        caminho: filho,
+                        rotulo: no.label,
+                        criterios: criteriosDoNo(no),
+                        atual: ctrl.filtroDe(id, filho),
+                      })
+                    }
                   />
                   {typeof no.meta?.template === 'string' && (
                     <AcaoDaLinha
@@ -591,6 +622,23 @@ export function ConnectionsPanel({
           renderGrupo(tree, 0)
         )}
       </Box>
+
+      <DialogoDeFiltro
+        pedido={pedidoDeFiltro}
+        onCancelar={() => setPedidoDeFiltro(null)}
+        onAplicar={async (filtro) => {
+          const pedido = pedidoDeFiltro;
+          if (pedido === null) return;
+          // Fecha ANTES de listar: com muitas tabelas a consulta demora, e um
+          // diálogo que fica de pé esperando parece travado.
+          setPedidoDeFiltro(null);
+          try {
+            await ctrl.definirFiltro(pedido.id, pedido.caminho, filtro);
+          } catch (e) {
+            onErro(e as Error);
+          }
+        }}
+      />
     </Box>
   );
 }

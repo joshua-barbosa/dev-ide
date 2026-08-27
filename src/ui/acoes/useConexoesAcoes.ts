@@ -30,7 +30,6 @@ export interface ConexoesAcoesDeps {
 export interface ConexoesAcoes {
   abrirFormulario(conexao: PublicConnection | null, grupo?: string): void;
   abrirTerminalDaConexao(conexao: PublicConnection): Promise<void>;
-  filtrarCategoria(id: string, caminho: readonly string[], atual: string | null): Promise<void>;
   novoObjeto(
     id: string,
     caminho: readonly string[],
@@ -75,24 +74,6 @@ export function useConexoesAcoes(deps: ConexoesAcoesDeps): ConexoesAcoes {
     // existem — o terminal abriria no home.
     if (conexoes.capacidadesDe(conexao.id) === null) await conexoes.abrirConexao(conexao);
     ws.abrirTerminal(conexao.id, conexao.label);
-  };
-
-  /** Pede o padrão e aplica o filtro naquela categoria. */
-  const filtrarCategoria = async (
-    id: string,
-    caminho: readonly string[],
-    atual: string | null
-  ): Promise<void> => {
-    const padrao = await qi.pedir({
-      titulo: 'Filtrar por nome',
-      placeholder: 'ex.: alunos, tiraduvidas_%, %_2024',
-      valorInicial: atual ?? '',
-      // Vazio aqui é resposta, não desistência: é como se limpa o filtro.
-      permiteVazio: true,
-    });
-    // Cancelar não mexe no filtro; apagar o texto é o que limpa (AC-9).
-    if (padrao === null) return;
-    await conexoes.definirFiltro(id, caminho, padrao);
   };
 
   /** Abre o esqueleto de criação numa aba de query, sem executar nada. */
@@ -238,7 +219,6 @@ export function useConexoesAcoes(deps: ConexoesAcoesDeps): ConexoesAcoes {
     renomearQuery,
     apagarQuery,
     abrirTerminalDaConexao,
-    filtrarCategoria,
     novoObjeto,
     renomearGrupo,
     abrirQueryDoNo,

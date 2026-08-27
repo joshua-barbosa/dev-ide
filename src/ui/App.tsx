@@ -594,7 +594,6 @@ export function App() {
             onNovaConexao: (grupo?: string) => conexoesAcoes.abrirFormulario(null, grupo),
             onRenomearGrupo: (caminho: string) => avisar(conexoesAcoes.renomearGrupo(caminho)),
             onAbrirTerminal: (conexao: PublicConnection) => avisar(conexoesAcoes.abrirTerminalDaConexao(conexao)),
-            onFiltrar: (id, caminho, atual) => avisar(conexoesAcoes.filtrarCategoria(id, caminho, atual)),
             onNovoObjeto: conexoesAcoes.novoObjeto,
             // Arquivos de query (spec 038) — ver `query/useAcoesDeQuery`.
             ...acoesDeQuery,

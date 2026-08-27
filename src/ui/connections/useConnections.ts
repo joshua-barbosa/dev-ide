@@ -11,7 +11,13 @@ import type {
 } from '../../shared/contracts';
 import { gruposExistentes } from '../../shared/connections/form';
 import { padraoDeFiltro } from '../../shared/tree/filtro';
-import { Api, type DriverInfo } from '../api';
+import {
+  estaVazio,
+  interpretarData,
+  interpretarTamanho,
+  type FiltroDaArvore,
+} from '../../shared/tree/filtro-da-arvore';
+import { Api, type CriteriosDeArvore, type DriverInfo } from '../api';
 import type { ArquivoDeQuery, Vinculo } from '../../shared/sql/vinculo';
 
 /**
@@ -56,6 +62,23 @@ function vinculoDoCaminho(connectionId: string, caminho: readonly string[]): Vin
   return database === undefined ? null : { connectionId, database };
 }
 
+/**
+ * O filtro da tela traduzido para o que viaja na rede.
+ *
+ * O nome vira padrão de `LIKE` e o tamanho vira bytes AQUI, uma vez só. Mandar
+ * o texto cru e interpretar no servidor daria duas interpretações da mesma
+ * frase, e elas divergiriam.
+ */
+function criteriosDe(filtro: FiltroDaArvore | undefined): CriteriosDeArvore | undefined {
+  if (filtro === undefined) return undefined;
+  return {
+    filtro: padraoDeFiltro(filtro.nome),
+    dono: filtro.dono === '' ? null : filtro.dono,
+    minBytes: filtro.tamanho === '' ? null : interpretarTamanho(filtro.tamanho),
+    desde: filtro.desde === '' ? null : interpretarData(filtro.desde, new Date()),
+  };
+}
+
 /** Chave de cache: id da conexão mais o caminho do nó. */
 const chaveDe = (id: string, caminho: readonly string[]): string =>
   [id, ...caminho].join('\u0000');
@@ -95,8 +118,8 @@ export interface ConnectionsController {
   /** Todas as conexões, achatadas — a árvore é aninhada, a escolha não é. */
   todasAsConexoes(): readonly PublicConnection[];
   /** Filtro em vigor num nó de categoria, ou `null`. */
-  filtroDe(id: string, caminho: readonly string[]): string | null;
-  definirFiltro(id: string, caminho: readonly string[], bruto: string): Promise<void>;
+  filtroDe(id: string, caminho: readonly string[]): FiltroDaArvore | null;
+  definirFiltro(id: string, caminho: readonly string[], filtro: FiltroDaArvore): Promise<void>;
   /** Recarrega só este nó, preservando o resto da árvore. */
   recarregarNo(id: string, caminho: readonly string[]): Promise<void>;
   /** Garante o cofre aberto, pedindo a senha se preciso. Falso = cancelado. */
@@ -242,9 +265,29 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
 
   // Filtros por `conexão + caminho`: filtrar as tabelas de um schema não pode
   // mexer noutro (AC-10).
-  const [filtros, setFiltros] = useState<ReadonlyMap<string, string>>(new Map());
+  const [filtros, setFiltros] = useState<ReadonlyMap<string, FiltroDaArvore>>(new Map());
   const filtrosRef = useRef(filtros);
   filtrosRef.current = filtros;
+
+  /**
+   * Os filtros guardados de uma conexão, do disco para a memória (T111).
+   *
+   * As chaves vêm do servidor no mesmo formato de `chaveDe` sem o id — juntar
+   * os dois aqui é o que faz o filtro reencontrar o nó a que pertence.
+   */
+  const carregarFiltros = useCallback(async (id: string) => {
+    try {
+      const guardados = await Api.treeFilters(id);
+      const proximo = new Map(filtrosRef.current);
+      for (const [caminho, filtro] of Object.entries(guardados)) {
+        proximo.set([id, caminho].join('\u0000'), filtro);
+      }
+      filtrosRef.current = proximo;
+      setFiltros(proximo);
+    } catch {
+      // Sem filtro guardado a árvore abre inteira — nunca deixa de abrir.
+    }
+  }, []);
 
   const buscarFilhos = useCallback(
     async (id: string, caminho: readonly string[], noPai?: TreeNode) => {
@@ -268,7 +311,7 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
 
         // Lido por ref: `buscarFilhos` é chamado de dentro de outros callbacks,
         // e depender do valor capturado buscaria com o filtro de um render atrás.
-        const nos = await Api.children(id, caminho, padraoDeFiltro(filtrosRef.current.get(chave) ?? ''));
+        const nos = await Api.children(id, caminho, criteriosDe(filtrosRef.current.get(chave)));
         const database = typeof noPai?.meta?.database === 'string' ? noPai.meta.database : null;
         setFilhos((atual) =>
           new Map(atual).set(chave, database === null ? nos : [noDeQueries(database), ...nos])
@@ -298,6 +341,10 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
       try {
         const caps = await Api.connect(conexao.id);
         setCapacidades((atual) => new Map(atual).set(conexao.id, caps));
+        // Os filtros guardados entram ANTES da primeira listagem (T111): depois
+        // seria uma árvore montada sem filtro e remontada com ele — piscando, e
+        // com uma ida ao servidor a mais por categoria.
+        await carregarFiltros(conexao.id);
         await buscarFilhos(conexao.id, []);
         await recarregar(); // atualiza openIds, que marca a conexão como viva
         // A descrição vem DEPOIS e sem travar a árvore: ela é enfeite útil, e
@@ -318,7 +365,7 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
         );
       }
     },
-    [buscarFilhos, expandidos, garantirDestrancado, marcar, recarregar]
+    [buscarFilhos, carregarFiltros, expandidos, garantirDestrancado, marcar, recarregar]
   );
 
   const desconectar = useCallback(
@@ -352,7 +399,7 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
   );
 
   const filtroDe = useCallback(
-    (id: string, caminho: readonly string[]): string | null =>
+    (id: string, caminho: readonly string[]): FiltroDaArvore | null =>
       filtros.get(chaveDe(id, caminho)) ?? null,
     [filtros]
   );
@@ -366,16 +413,21 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
   );
 
   const definirFiltro = useCallback(
-    async (id: string, caminho: readonly string[], bruto: string) => {
+    async (id: string, caminho: readonly string[], filtro: FiltroDaArvore) => {
       const chave = chaveDe(id, caminho);
       const proximo = new Map(filtrosRef.current);
-      if (bruto.trim() === '') proximo.delete(chave);
-      else proximo.set(chave, bruto.trim());
+      if (estaVazio(filtro)) proximo.delete(chave);
+      else proximo.set(chave, filtro);
 
       // Atualiza a ref antes de buscar: `buscarFilhos` lê dela, e o `setState`
       // ainda não teria surtido efeito.
       filtrosRef.current = proximo;
       setFiltros(proximo);
+      // Guardar não pode segurar a lista: o filtro já está em vigor na tela, e
+      // esperar o disco só adiaria o que ele pediu (T111).
+      Api.saveTreeFilter(id, caminho, filtro).catch(() => {
+        // Não conseguir guardar não desfaz o filtro desta sessão.
+      });
       await buscarFilhos(id, caminho);
     },
     [buscarFilhos]

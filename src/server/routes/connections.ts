@@ -19,6 +19,8 @@ import {
 } from '../snippets-de-terminal';
 import { queryList, requireString, wrap } from '../http/handlers';
 import type { LeitorDePreferencias } from '../prefs';
+import { guardarFiltro, lerFiltros } from '../filtros-da-arvore';
+import { normalizarFiltro } from '../../shared/tree/filtro-da-arvore';
 
 export interface ConnectionsDeps {
   readonly registry: DriverRegistry;
@@ -306,13 +308,41 @@ export function createConnectionsRouter(
     res.json(ok({ id: req.params.id, connected: false }));
   }));
 
+  /** Um parâmetro de texto da query, ou `null` quando ausente ou vazio. */
+  const textoDaQuery = (bruto: unknown): string | null =>
+    typeof bruto === 'string' && bruto !== '' ? bruto : null;
+
   router.get('/:id/children', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
     // O padrão vem do usuário e desce até a consulta LIGADO — ver os drivers.
-    const filtro = typeof req.query.filter === 'string' && req.query.filter !== ''
-      ? req.query.filter
-      : null;
-    res.json(ok(await session.children(queryList(req.query.path), { filtro })));
+    const filtro = textoDaQuery(req.query.filter);
+    // O tamanho chega já em BYTES: interpretar "10 MB" é lógica pura, e ela
+    // mora no `shared`, testada. O servidor recebe número ou nada.
+    const bytes = Number(req.query.minBytes);
+    res.json(ok(await session.children(queryList(req.query.path), {
+      filtro,
+      dono: textoDaQuery(req.query.owner),
+      minBytes: Number.isFinite(bytes) && bytes > 0 ? bytes : null,
+      desde: textoDaQuery(req.query.since),
+    })));
+  }));
+
+  /**
+   * Os filtros guardados desta conexão (T111).
+   *
+   * Vêm todos de uma vez, e não um por nó: a árvore precisa deles ANTES de
+   * pedir os filhos, e um pedido por categoria expandida seria uma ida ao disco
+   * por clique.
+   */
+  router.get('/:id/tree-filters', wrap(async (req, res) => {
+    res.json(ok(lerFiltros(req.params.id)));
+  }));
+
+  router.put('/:id/tree-filters', wrap(async (req, res) => {
+    const corpo = req.body as { path?: unknown; filtro?: unknown };
+    if (!Array.isArray(corpo.path)) throw new Error('Falta o caminho do nó.');
+    const caminho = corpo.path.filter((p): p is string => typeof p === 'string').join('\u0000');
+    res.json(ok(guardarFiltro(req.params.id, caminho, normalizarFiltro(corpo.filtro))));
   }));
 
   /**

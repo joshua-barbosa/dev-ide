@@ -46,6 +46,22 @@ import type {
   ComandoDescoberto, ComandoSalvo, DestinoDeComando,
 } from '../shared/comandos-salvos';
 import type { Snippet } from '../shared/snippets';
+import type { FiltroDaArvore } from '../shared/tree/filtro-da-arvore';
+
+/**
+ * O filtro da árvore como ele viaja: o nome já traduzido para padrão de `LIKE`
+ * e o tamanho já em bytes.
+ *
+ * Interpretar "10 MB" é lógica pura e mora no `shared`, testada. O que
+ * atravessa a rede é o resultado, não o texto — assim o servidor não precisa
+ * repetir a interpretação, e não há duas versões dela para divergirem.
+ */
+export interface CriteriosDeArvore {
+  readonly filtro?: string | null;
+  readonly dono?: string | null;
+  readonly minBytes?: number | null;
+  readonly desde?: string | null;
+}
 import type { ArquivoComOcorrencias, OpcoesDeBusca } from '../shared/busca';
 
 export interface ResultadoDaBusca {
@@ -392,13 +408,32 @@ export const Api = {
       `${conexoes}/${id}/files/execute`,
       { path: caminho }
     ),
-  children: (id: string, nodePath: readonly string[], filtro?: string | null) => {
+  children: (id: string, nodePath: readonly string[], criterios?: CriteriosDeArvore) => {
     const base = comCaminho(`${conexoes}/${id}/children`, nodePath);
-    const url = filtro === null || filtro === undefined || filtro === ''
+    // Só entra na URL o que existe: um `filter=` vazio e um `filter` ausente
+    // significariam a mesma coisa para o servidor, mas o histórico de rede fica
+    // ilegível — e a spec 069 acrescentou mais três destes.
+    const partes = Object.entries({
+      filter: criterios?.filtro,
+      owner: criterios?.dono,
+      minBytes: criterios?.minBytes,
+      since: criterios?.desde,
+    })
+      .filter(([, v]) => v !== null && v !== undefined && v !== '')
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`);
+    const url = partes.length === 0
       ? base
-      : `${base}${base.includes('?') ? '&' : '?'}filter=${encodeURIComponent(filtro)}`;
+      : `${base}${base.includes('?') ? '&' : '?'}${partes.join('&')}`;
     return request<TreeNode[]>('GET', url);
   },
+  /** Os filtros de árvore guardados desta conexão, por caminho (T111). */
+  treeFilters: (id: string) =>
+    request<Record<string, FiltroDaArvore>>('GET', `${conexoes}/${id}/tree-filters`),
+  saveTreeFilter: (id: string, nodePath: readonly string[], filtro: FiltroDaArvore) =>
+    request<Record<string, FiltroDaArvore>>('PUT', `${conexoes}/${id}/tree-filters`, {
+      path: [...nodePath],
+      filtro,
+    }),
   execute: (id: string, payload: ExecuteRequest) =>
     request<QueryResult>('POST', `${conexoes}/${id}/execute`, payload),
   readTable: (id: string, payload: TableRequest) =>

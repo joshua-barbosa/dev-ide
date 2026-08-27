@@ -1,9 +1,20 @@
-// A grade da aba de tabela: o desenho das linhas e colunas (spec 062).
+// A grade: o desenho das linhas e colunas (spec 062, generalizada na 070).
 //
 // Saiu do `TablePanel` quando ele passou do teto de 800 linhas do Artigo IV — e
 // o corte é o natural: aqui está tudo que sabe o que é uma CÉLULA (largura,
 // arrasto, lupa, edição), e lá ficou o que sabe o que é a ABA (o SQL, a barra
 // de comando, a paginação).
+//
+// **É a ÚNICA grade da IDE.** A aba `Result` desenhava uma segunda, sem lupa e
+// sem painel de aparência, e ele reclamou com razão: *"todo Resultado deveria
+// ser igual ao que tem do 'abrir tabela'"*. Duas grades é o mesmo erro do CSV
+// da spec 068 — eu escrevi que a lupa vinha "de graça" e não vinha, porque ela
+// morava só aqui.
+//
+// O que separa os dois usos não é o componente: são CAPACIDADES declaradas por
+// quem chama. Ordenar e filtrar por coluna exigem reescrever o SQL, e só a aba
+// de tabela sabe fazê-lo; quem não passa a capacidade não ganha o controle — e
+// não ganha um botão que não faz nada, que é pior que botão ausente.
 import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import InputBase from '@mui/material/InputBase';
@@ -16,10 +27,10 @@ import {
 } from '../../shared/grade/aparencia';
 import { useLarguras } from './useLarguras';
 import { VisorDeCelula } from './VisorDeCelula';
-import { chaveDoId, idDaLinha, type Rascunho } from './useRascunho';
-import { Api } from '../api';
-import type { EstadoDaTabela } from './useTabela';
-import type { CellValue, TableColumn } from '../../shared/contracts';
+import { idDaLinha, type Rascunho } from './useRascunho';
+import type {
+  CellResult, CellValue, OrdenacaoDeTabela, TableColumn,
+} from '../../shared/contracts';
 
 /**
  * Quanto um caractere ocupa na fonte da grade, para o ajuste automático.
@@ -41,18 +52,47 @@ const POR_CARACTERE_DO_TIPO = 10 * 0.6;
 const LARGURA_DO_NUMERO = 44;
 const LARGURA_DA_MARCA = 30;
 
-export function Grade({
-  estado, colunas, linhas, rascunho, motivoSemEdicao, connectionId, nodePath, aparencia,
-}: {
-  readonly estado: EstadoDaTabela;
+/** Ordenar pelo cabeçalho. Ausente: o cabeçalho não vira botão. */
+export interface OrdenacaoDaGrade {
+  readonly atual: OrdenacaoDeTabela | null;
+  alternar(coluna: string): void;
+}
+
+/** A faixa `contém…` de cada coluna. Ausente: a faixa não existe. */
+export interface FiltroDaGrade {
+  readonly valores: Readonly<Record<string, string>>;
+  definir(coluna: string, valor: string): void;
+}
+
+export interface GradeProps {
   readonly colunas: readonly TableColumn[];
   readonly linhas: readonly (readonly CellValue[])[];
+  readonly aparencia: Aparencia;
+  /**
+   * O número da primeira linha desta página, para a coluna cinza.
+   *
+   * Vem de fora porque só quem pagina sabe: a aba de tabela conta pelo tamanho
+   * de página, e a de `Result` pela página do próprio resultado.
+   */
+  readonly primeiraLinha: number;
+  readonly ordenacao?: OrdenacaoDaGrade;
+  readonly filtroPorColuna?: FiltroDaGrade;
   readonly rascunho?: Rascunho;
   readonly motivoSemEdicao: string | null;
-  readonly connectionId: string;
-  readonly nodePath: readonly string[];
-  readonly aparencia: Aparencia;
-}) {
+  /**
+   * De onde a lupa busca o valor INTEIRO, quando dá.
+   *
+   * Ausente é resposta legítima: sem tabela conhecida ou sem chave primária não
+   * há como pedir a célula de volta, e aí o visor mostra o que a grade tem e
+   * **diz que está cortado** — melhor que uma promessa quebrada em silêncio.
+   */
+  readonly buscarCelula?: (id: string, coluna: string) => Promise<CellResult>;
+}
+
+export function Grade({
+  colunas, linhas, rascunho, motivoSemEdicao, aparencia, primeiraLinha,
+  ordenacao, filtroPorColuna, buscarCelula,
+}: GradeProps) {
   const editavel = rascunho !== undefined && motivoSemEdicao === null;
   // Esconder a coluna de controle esconde as caixas de apagar, e é escolha
   // dele. Editar célula continua funcionando: são coisas diferentes.
@@ -148,7 +188,8 @@ export function Grade({
               <Cabecalho
                 key={coluna.name}
                 coluna={coluna}
-                estado={estado}
+                ordenacao={ordenacao}
+                filtroPorColuna={filtroPorColuna}
                 largura={larguraDe(coluna.name)}
                 onArrastar={(x) => larguras.comecar(coluna.name, x, larguraDe(coluna.name))}
                 onAjustar={() =>
@@ -178,7 +219,7 @@ export function Grade({
                       textAlign: 'right', userSelect: 'none',
                     }}
                   >
-                    {(estado.numero - 1) * estado.porPagina + i + 1}
+                    {primeiraLinha + i}
                   </Box>
                 )}
                 {marcas && (
@@ -250,17 +291,9 @@ export function Grade({
           // o que a grade tem e diz que está cortado — que é honesto, e melhor
           // que uma promessa quebrada em silêncio.
           buscarInteiro={
-            // No livre EDITÁVEL (T060) a IDE já sabe a tabela e a chave, então
-            // a lupa também passa a buscar o valor inteiro ali.
-            (estado.modoLivre && estado.motivoDoLivre !== null) ||
-            !colunas.some((c) => c.chave)
+            buscarCelula === undefined || !colunas.some((c) => c.chave)
               ? undefined
-              : () =>
-                  Api.readCell(connectionId, {
-                    nodePath,
-                    chave: chaveDoId(naLupa.id),
-                    coluna: naLupa.coluna,
-                  })
+              : () => buscarCelula(naLupa.id, naLupa.coluna)
           }
           onFechar={() => setNaLupa(null)}
           onSalvar={
@@ -296,19 +329,23 @@ function motivoDaCelula(
 }
 
 function Cabecalho({
-  coluna, estado, largura, onArrastar, onAjustar,
+  coluna, ordenacao, filtroPorColuna, largura, onArrastar, onAjustar,
 }: {
   readonly coluna: TableColumn;
-  readonly estado: EstadoDaTabela;
+  readonly ordenacao?: OrdenacaoDaGrade;
+  readonly filtroPorColuna?: FiltroDaGrade;
   readonly largura: number;
   readonly onArrastar: (xInicial: number) => void;
   readonly onAjustar: () => void;
 }) {
-  const ordem = estado.ordenar?.coluna === coluna.name ? estado.ordenar : null;
-  const seta = ordem === null ? '' : ordem.desc ? ' ▼' : ' ▲';
-  // No modo livre não há o que ordenar nem filtrar: a IDE não montou este SQL e
-  // não vai reescrevê-lo. Botão que não faz nada é pior que botão ausente.
-  const estruturado = !estado.modoLivre;
+  const ordem = ordenacao?.atual?.coluna === coluna.name ? ordenacao.atual : null;
+  const seta = ordem === null || ordem === undefined ? '' : ordem.desc ? ' ▼' : ' ▲';
+  // Ordenar e filtrar exigem REESCREVER o SQL, e só quem o montou sabe fazê-lo:
+  // no SQL livre e na aba de `Result` a IDE não montou nada. Quem não passa a
+  // capacidade não ganha o controle — botão que não faz nada é pior que ausente.
+  const ordena = ordenacao !== undefined;
+  const filtra = filtroPorColuna !== undefined;
+  const filtroDaColuna = filtroPorColuna?.valores[coluna.name] ?? '';
 
   return (
     <Box
@@ -323,12 +360,12 @@ function Cabecalho({
       <Box
         component="button"
         type="button"
-        disabled={!estruturado}
+        disabled={!ordena}
         aria-label={`Ordenar por ${coluna.name}`}
-        onClick={() => estado.alternarOrdem(coluna.name)}
+        onClick={() => ordenacao?.alternar(coluna.name)}
         sx={{
           border: 0, bgcolor: 'transparent', color: 'inherit', font: 'inherit',
-          p: 0, cursor: estruturado ? 'pointer' : 'default',
+          p: 0, cursor: ordena ? 'pointer' : 'default',
           display: 'flex', alignItems: 'center', gap: 0.4,
         }}
       >
@@ -356,17 +393,17 @@ function Cabecalho({
         onAjustar={onAjustar}
       />
 
-      {estruturado && (
+      {filtra && (
       <InputBase
-        value={estado.filtros[coluna.name] ?? ''}
+        value={filtroDaColuna}
         placeholder="contém…"
-        onChange={(e) => estado.definirFiltro(coluna.name, e.target.value)}
+        onChange={(e) => filtroPorColuna?.definir(coluna.name, e.target.value)}
         inputProps={{ 'aria-label': `Filtrar ${coluna.name}` }}
         // A dica sai da MESMA função que o servidor usa para montar o `WHERE`
         // (T057). Duas implementações da mesma gramática divergiriam, e a
         // divergência apareceria como "filtrei e veio coisa errada".
         title={
-          explicarFiltro(estado.filtros[coluna.name] ?? '') ??
+          explicarFiltro(filtroDaColuna) ??
           'contém… · use >, <, >=, <=, =, != · null · 1..5'
         }
         sx={{
@@ -380,12 +417,12 @@ function Cabecalho({
       )}
       {/* O que a IDE ENTENDEU do que foi digitado. Só aparece quando não é o
           padrão: escrever "contém joshua" embaixo de toda caixa seria ruído. */}
-      {estruturado && explicarFiltro(estado.filtros[coluna.name] ?? '') !== null && (
+      {filtra && explicarFiltro(filtroDaColuna) !== null && (
         <Box
           data-leitura-do-filtro
           sx={{ fontSize: 9.5, color: 'primary.main', fontWeight: 400, mt: 0.25 }}
         >
-          {explicarFiltro(estado.filtros[coluna.name] ?? '')}
+          {explicarFiltro(filtroDaColuna)}
         </Box>
       )}
     </Box>
