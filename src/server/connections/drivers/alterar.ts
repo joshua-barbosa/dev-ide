@@ -395,14 +395,12 @@ export function montarAlteracao(ctx: ContextoDeAlteracao, op: Operacao): string 
           `  EXECUTE FUNCTION ${q(funcao)}();\n`
         );
       }
-      // A nota do DELIMITER é do MySQL, e só dele: o SQLite aceita
-      // `BEGIN…END` direto. Repeti-la lá seria explicar um problema que
-      // aquele banco não tem.
+      // Desde o T052 o quebrador entende `BEGIN…END`, então o corpo composto
+      // roda por aqui sem `DELIMITER` — que é comando do cliente `mysql`, e o
+      // servidor recusa. A nota deixou de falar de limitação e passou a dizer
+      // como se escreve o corpo com mais de um comando.
       const notaDoCorpo =
-        dialeto.nome === 'MySQL'
-          ? '-- Corpo de um comando só. Para vários, use BEGIN…END — e aí o cliente\n' +
-            '-- mysql exige DELIMITER, que esta IDE ainda não interpreta (T052).\n'
-          : '';
+        '-- Para mais de um comando, embrulhe o corpo em BEGIN … END.\n';
       return aviso1 + notaDoCorpo + cabeca + `  ${corpoValido(op.corpo)}\n`;
     }
 

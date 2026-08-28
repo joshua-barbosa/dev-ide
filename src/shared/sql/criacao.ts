@@ -11,10 +11,12 @@
 /**
  * `DELIMITER` é comando do CLIENTE `mysql`, não do servidor.
  *
- * Mandá-lo pela conexão dá erro de sintaxe, e o quebrador de statements ainda
- * parte DENTRO do `BEGIN…END` — que é o T052, do lote B, ainda aberto. Só conta
- * quando ABRE a linha: uma coluna chamada `delimiter` ou um comentário que
- * mencione a palavra não podem tirar o botão.
+ * Mandá-lo pela conexão dá erro de sintaxe. Desde o T052 os esqueletos desta
+ * IDE não o usam mais — o quebrador entende `BEGIN…END` —, mas código COLADO de
+ * um dump ainda o traz, e aí a recusa continua valendo.
+ *
+ * Só conta quando ABRE a linha: uma coluna chamada `delimiter` ou um comentário
+ * que mencione a palavra não podem tirar o botão.
  */
 const DELIMITER_NA_LINHA = /^[ \t]*DELIMITER\b/im;
 
@@ -47,8 +49,8 @@ export function motivoParaNaoExecutar(sql: string, somenteLeitura: boolean): str
   if (!TEM_COMANDO.test(sql)) return 'Não há comando para executar.';
   if (DELIMITER_NA_LINHA.test(sql)) {
     return (
-      'Este esqueleto usa DELIMITER, que é comando do cliente mysql e não do servidor. ' +
-      'Abra no editor e rode por lá.'
+      'Este comando usa DELIMITER, que é do cliente mysql e não do servidor. ' +
+      'Tire as linhas de DELIMITER: o corpo em BEGIN … END já basta.'
     );
   }
   const destrutivo = DESTRUTIVOS.exec(sql);

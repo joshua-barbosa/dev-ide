@@ -19,21 +19,20 @@ export const TEMPLATES_MYSQL: Readonly<Record<string, string>> = {
     'CREATE VIEW `nova_view` AS',
     'SELECT 1 AS exemplo;',
   ].join('\n'),
+  // Sem `DELIMITER` desde o T052: o quebrador entende `BEGIN…END`, e o
+  // `DELIMITER` é comando do CLIENTE `mysql` — o servidor o recusa. Enquanto
+  // ele estava aqui, estes dois esqueletos não podiam ser executados pelo `+`.
   procedures: [
-    'DELIMITER $$',
     'CREATE PROCEDURE `novo_procedimento`(IN p_id INT)',
     'BEGIN',
     '  SELECT p_id;',
-    'END$$',
-    'DELIMITER ;',
+    'END;',
   ].join('\n'),
   functions: [
-    'DELIMITER $$',
     'CREATE FUNCTION `nova_funcao`(p_valor INT) RETURNS INT DETERMINISTIC',
     'BEGIN',
     '  RETURN p_valor;',
-    'END$$',
-    'DELIMITER ;',
+    'END;',
   ].join('\n'),
   // Spec 069. O agendador precisa estar ligado (`event_scheduler = ON`), e por
   // isso o lembrete vai no próprio esqueleto: um evento criado com ele

@@ -192,3 +192,26 @@ test('a aba de Resultado é a MESMA grade da aba de tabela (spec 070)', async ({
   // inteiro — ele diz o que tem, que é a regra da spec 062.
   await expect(page.getByRole('dialog')).toContainText('epsilon');
 });
+
+test('um CREATE PROCEDURE é UM statement, e não quatro (T052)', async ({ page }) => {
+  // A nota dele na triagem: "hoje o quebrador parte DENTRO do corpo e manda
+  // meia query, calado". O CodeLens é onde isso aparece: um `▷ Run` por
+  // statement, e um corpo partido virava vários.
+  await abrirQueryDoBanco(page);
+  await esperarEditorPronto(page);
+  await page.keyboard.insertText(
+    'CREATE TRIGGER tg AFTER INSERT ON alunos\n' +
+      'BEGIN\n' +
+      "  SELECT 1;\n" +
+      "  SELECT 2;\n" +
+      'END;\n' +
+      "SELECT 'depois' AS qual;\n"
+  );
+
+  // Dois statements, três lentes cada: Run, +Tab e JSON.
+  await expect(lentes(page)).toHaveCount(6);
+
+  // E o segundo é o SELECT de fora — prova de que o corpo não vazou.
+  await lenteDoBloco(page, 1, 'Run').click();
+  await expect(page.getByText('depois', { exact: true })).toBeVisible();
+});

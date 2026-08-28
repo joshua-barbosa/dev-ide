@@ -8,6 +8,12 @@
 // Varredor de um caractere por vez, com um estado só. Sem regex: expressão
 // regular não sabe contar aninhamento nem lembrar o rótulo de um `$corpo$`, e é
 // exatamente assim que implementações ingênuas disto se quebram.
+//
+// **Corpo de rotina (T052, spec 071).** Num `CREATE PROCEDURE … BEGIN … END`, o
+// `;` de dentro NÃO termina o comando. O cliente `mysql` resolve isso com
+// `DELIMITER`, que é comando DELE e não do servidor; aqui se resolve contando
+// `BEGIN`/`END`, que é o que o texto já diz. A nota dele na triagem: *"hoje o
+// quebrador parte DENTRO do corpo e manda meia query, calado"*.
 
 /** Teto de statements por arquivo. Acima disto a quebra para e avisa. */
 export const MAX_STATEMENTS = 500;
@@ -52,6 +58,52 @@ function marcaDeDolar(texto: string, i: number): string | null {
   while (j < texto.length && /[A-Za-z0-9_]/.test(texto[j] ?? '')) j += 1;
   return texto[j] === '$' ? texto.slice(i, j + 1) : null;
 }
+
+/** A palavra que começa exatamente em `i`, em maiúsculas, ou `null`. */
+function palavraEm(texto: string, i: number): string | null {
+  const anterior = i === 0 ? '' : (texto[i - 1] ?? '');
+  // Meio de palavra não conta: `beginner` não abre bloco, e `x.end` não fecha.
+  if (/[A-Za-z0-9_$]/.test(anterior)) return null;
+  if (!/[A-Za-z]/.test(texto[i] ?? '')) return null;
+  let j = i;
+  while (j < texto.length && /[A-Za-z0-9_]/.test(texto[j] ?? '')) j += 1;
+  return texto.slice(i, j).toUpperCase();
+}
+
+/**
+ * A próxima palavra depois de `i`, com onde ela TERMINA.
+ *
+ * O fim importa: quem lê `END CASE` precisa consumir o `CASE` junto, senão ele
+ * é lido de novo no laço seguinte e conta como um `CASE` novo — o corpo nunca
+ * fecha, e o arquivo inteiro vira um statement só. Custou um teste vermelho.
+ */
+function proximaPalavra(texto: string, i: number): { palavra: string; fim: number } | null {
+  let j = i;
+  while (j < texto.length && /\s/.test(texto[j] ?? '')) j += 1;
+  const palavra = palavraEm(texto, j);
+  return palavra === null ? null : { palavra, fim: j + palavra.length };
+}
+
+/**
+ * O statement que começou aqui é uma DEFINIÇÃO de rotina?
+ *
+ * Só nelas o `BEGIN` abre corpo. Sem esta pergunta, um `BEGIN;` de transação
+ * abriria um bloco que nunca fecha — e o arquivo inteiro viraria um statement
+ * só, calado, que é o mesmo defeito com o sinal trocado.
+ */
+const ABRE_CORPO = /\bCREATE\b[\s\S]*?\b(?:PROCEDURE|FUNCTION|TRIGGER|EVENT)\b/i;
+
+/**
+ * Fechamentos que pertencem a OUTRA construção.
+ *
+ * `END IF`, `END LOOP`, `END WHILE` e `END REPEAT` fecham o que os abriu — e os
+ * abridores não são contados. Só o `END` sozinho (e o `END CASE`, que fecha o
+ * `CASE` contado) desce um nível.
+ */
+const FECHAM_OUTRA_COISA = new Set(['IF', 'LOOP', 'WHILE', 'REPEAT']);
+
+/** Palavras que pertencem ao `END` que as precede, e são consumidas com ele. */
+const GRUDAM_NO_END = new Set([...FECHAM_OUTRA_COISA, 'CASE']);
 
 /**
  * O trecho tem algo para executar?
@@ -130,6 +182,8 @@ export function quebrarEmStatements(fonte: string): Quebra {
   let inicio = 0;
   let linhaDoInicio = 1;
   let truncado = false;
+  /** Quantos `BEGIN`/`CASE` estão abertos no statement em curso (T052). */
+  let profundidade = 0;
 
   const fechar = (fimBruto: number, proximoInicio: number): boolean => {
     const s = montar(fonte, inicio, fimBruto, linhaDoInicio);
@@ -145,6 +199,9 @@ export function quebrarEmStatements(fonte: string): Quebra {
       if (fonte[i] === '\n') linhaDoInicio += 1;
     }
     inicio = proximoInicio;
+    // O statement acabou: a conta de blocos recomeça do zero. Sem isto, um
+    // corpo mal formado contaminaria todo o resto do arquivo.
+    profundidade = 0;
     return true;
   };
 
@@ -206,8 +263,34 @@ export function quebrarEmStatements(fonte: string): Quebra {
             i += marca.length - 1;
           }
         } else if (c === ';') {
-          // O `;` fica de fora do texto e de fora do próximo trecho.
-          if (!fechar(i, i + 1)) return { statements, truncado };
+          // Dentro de um corpo, o `;` separa comandos do corpo — não termina o
+          // `CREATE`. É toda a correção do T052.
+          if (profundidade === 0 && !fechar(i, i + 1)) return { statements, truncado };
+        } else {
+          const palavra = palavraEm(fonte, i);
+          if (palavra !== null) {
+            if (palavra === 'BEGIN') {
+              // Fora de rotina, `BEGIN` é transação: não abre corpo nenhum.
+              if (profundidade > 0 || ABRE_CORPO.test(fonte.slice(inicio, i))) profundidade += 1;
+            } else if (palavra === 'CASE' && profundidade > 0) {
+              // Contado porque o `CASE` de EXPRESSÃO fecha com `END` pelado —
+              // o mesmo `END` do bloco. Sem contá-lo, o corpo fecharia cedo.
+              profundidade += 1;
+            } else if (palavra === 'END' && profundidade > 0) {
+              const seguinte = proximaPalavra(fonte, i + palavra.length);
+              const nome = seguinte?.palavra ?? null;
+              if (nome === null || !FECHAM_OUTRA_COISA.has(nome)) profundidade -= 1;
+              if (seguinte !== null && GRUDAM_NO_END.has(seguinte.palavra)) {
+                // O `CASE` de `END CASE` é DAQUELE `END`: consumido junto, para
+                // não ser contado como abertura no giro seguinte.
+                i = seguinte.fim - 1;
+                break;
+              }
+            }
+            // Pular a palavra inteira: assim o `-1` do laço não a relê pelo
+            // meio, e `END` dentro de `APPEND` nunca é visto.
+            i += palavra.length - 1;
+          }
         }
         break;
       }

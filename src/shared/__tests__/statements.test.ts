@@ -171,3 +171,97 @@ test('aspa que não fecha vira um statement só, até o fim', () => {
 test('comentário de bloco que não fecha engole o resto', () => {
   assert.deepEqual(textos('SELECT 1 /* sem fim; SELECT 2'), ['SELECT 1 /* sem fim; SELECT 2']);
 });
+
+// ---------------------------------------------------------------------------
+// Corpo de rotina: BEGIN…END (T052, spec 071)
+// ---------------------------------------------------------------------------
+//
+// A nota dele na triagem: *"Só entender BEGIN…END, sem DELIMITER. Não é
+// conveniência: hoje o quebrador parte DENTRO do corpo e manda meia query,
+// calado."* É o pior tipo de defeito desta peça — partir no `;` errado não dá
+// erro de sintaxe, dá meia query.
+
+test('o `;` DENTRO de um corpo de procedure não parte o statement', () => {
+  const { statements } = quebrarEmStatements(
+    'CREATE PROCEDURE p(IN n INT)\nBEGIN\n  SELECT 1;\n  SELECT 2;\nEND;\nSELECT 3;\n'
+  );
+  assert.equal(statements.length, 2);
+  assert.match(statements[0]?.texto ?? '', /^CREATE PROCEDURE/);
+  assert.match(statements[0]?.texto ?? '', /SELECT 2;\s*END$/);
+  assert.equal(statements[1]?.texto, 'SELECT 3');
+});
+
+test('`BEGIN` de TRANSAÇÃO continua sendo statement solto', () => {
+  // Se `BEGIN` abrisse bloco sempre, um `BEGIN;` engoliria o arquivo inteiro.
+  const { statements } = quebrarEmStatements('BEGIN;\nUPDATE t SET a = 1;\nCOMMIT;\n');
+  assert.deepEqual(
+    statements.map((s) => s.texto),
+    ['BEGIN', 'UPDATE t SET a = 1', 'COMMIT']
+  );
+});
+
+test('blocos aninhados: só o END de fora fecha', () => {
+  const { statements } = quebrarEmStatements(
+    'CREATE FUNCTION f() RETURNS INT\nBEGIN\n  BEGIN\n    SELECT 1;\n  END;\n  RETURN 2;\nEND;\nSELECT 9;\n'
+  );
+  assert.equal(statements.length, 2);
+  assert.equal(statements[1]?.texto, 'SELECT 9');
+});
+
+test('`END IF` e `END LOOP` NÃO fecham o corpo', () => {
+  const { statements } = quebrarEmStatements(
+    'CREATE PROCEDURE p()\nBEGIN\n  IF 1 = 1 THEN\n    SELECT 1;\n  END IF;\n' +
+      '  loop1: LOOP\n    SELECT 2;\n    LEAVE loop1;\n  END LOOP;\nEND;\nSELECT 9;\n'
+  );
+  assert.equal(statements.length, 2);
+  assert.equal(statements[1]?.texto, 'SELECT 9');
+});
+
+test('`CASE … END` como EXPRESSÃO não desequilibra a conta', () => {
+  // O `END` da expressão é o mesmo do bloco; sem contar o `CASE` que o abriu, o
+  // corpo fecharia cedo demais e o `;` seguinte partiria no meio.
+  const { statements } = quebrarEmStatements(
+    'CREATE PROCEDURE p()\nBEGIN\n  SELECT CASE WHEN 1 THEN 2 ELSE 3 END;\n  SELECT 4;\nEND;\nSELECT 9;\n'
+  );
+  assert.equal(statements.length, 2);
+  assert.equal(statements[1]?.texto, 'SELECT 9');
+});
+
+test('`CASE … END CASE` como COMANDO também fecha certo', () => {
+  const { statements } = quebrarEmStatements(
+    'CREATE PROCEDURE p()\nBEGIN\n  CASE 1 WHEN 1 THEN SELECT 1; ELSE SELECT 2; END CASE;\nEND;\nSELECT 9;\n'
+  );
+  assert.equal(statements.length, 2);
+  assert.equal(statements[1]?.texto, 'SELECT 9');
+});
+
+test('gatilho SEM corpo composto continua partindo no `;`', () => {
+  const { statements } = quebrarEmStatements(
+    "CREATE TRIGGER tg BEFORE INSERT ON t FOR EACH ROW SET NEW.n = TRIM(NEW.n);\nSELECT 9;\n"
+  );
+  assert.equal(statements.length, 2);
+  assert.equal(statements[1]?.texto, 'SELECT 9');
+});
+
+test('a palavra `begin` dentro de literal ou nome não abre bloco', () => {
+  const { statements } = quebrarEmStatements(
+    "SELECT 'begin';\nSELECT `end`;\nSELECT beginner FROM t;\n"
+  );
+  assert.equal(statements.length, 3);
+});
+
+test('`DEFINER` antes do tipo da rotina não atrapalha', () => {
+  const { statements } = quebrarEmStatements(
+    "CREATE DEFINER=`app`@`%` PROCEDURE p()\nBEGIN\n  SELECT 1;\nEND;\nSELECT 9;\n"
+  );
+  assert.equal(statements.length, 2);
+  assert.equal(statements[1]?.texto, 'SELECT 9');
+});
+
+test('corpo aberto e nunca fechado vira UM statement, e não some', () => {
+  // Arquivo em edição: melhor um statement grande que o usuário vê do que
+  // pedaços que ele não escreveu.
+  const { statements } = quebrarEmStatements('CREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\n');
+  assert.equal(statements.length, 1);
+  assert.match(statements[0]?.texto ?? '', /^CREATE PROCEDURE/);
+});
