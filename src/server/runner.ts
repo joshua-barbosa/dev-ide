@@ -6,7 +6,7 @@ import ts from 'typescript';
 import type { RegistroDeExecucoes } from './execucoes';
 
 export type RunMode = 'file' | 'block' | 'function';
-export type RunLanguage = 'javascript' | 'typescript' | 'php' | 'c' | 'csharp';
+export type RunLanguage = 'javascript' | 'typescript' | 'php' | 'c' | 'csharp' | 'python';
 
 export interface RunRequest {
   mode: RunMode;
@@ -52,6 +52,7 @@ const EXT_LANG: Record<string, RunLanguage> = {
   '.js': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript', '.jsx': 'javascript',
   '.ts': 'typescript', '.tsx': 'typescript',
   '.php': 'php',
+  '.py': 'python',
   '.c': 'c', '.h': 'c',
   '.cs': 'csharp',
 };
@@ -84,9 +85,21 @@ interface Controle {
   readonly id: string;
 }
 
+/**
+ * As linguagens que o runner executa.
+ *
+ * Lista única, e derivada do TIPO: quando o `python` entrou (T077), esta lista
+ * ficou para trás por um instante e um bloco de Python rodou como JavaScript —
+ * sem erro de tipo, porque a lista era de literais soltos. `satisfies` fecha
+ * essa porta: acrescentar à união sem acrescentar aqui não compila.
+ */
+const EXECUTAVEIS = [
+  'javascript', 'typescript', 'php', 'c', 'csharp', 'python',
+] as const satisfies readonly RunLanguage[];
+
 function resolveLanguage(req: RunRequest): RunLanguage {
   const explicit = req.language as RunLanguage | undefined;
-  if (explicit && ['javascript', 'typescript', 'php', 'c', 'csharp'].includes(explicit)) {
+  if (explicit && (EXECUTAVEIS as readonly string[]).includes(explicit)) {
     return explicit;
   }
   const ext = req.filePath ? path.extname(req.filePath).toLowerCase() : '';
@@ -124,7 +137,9 @@ function buildSource(req: RunRequest, lang: RunLanguage): { source: string; cwd:
   const invocation =
     lang === 'php'
       ? phpInvocation(fileSource, req.functionName, req.args ?? [])
-      : jsInvocation(req.functionName, req.args ?? []);
+      : lang === 'python'
+        ? pythonInvocation(req.functionName, req.args ?? [])
+        : jsInvocation(req.functionName, req.args ?? []);
   return { source: fileSource + invocation, cwd };
 }
 
@@ -169,6 +184,30 @@ function jsInvocation(functionName: string, args: unknown[]): string {
 `;
 }
 
+/**
+ * Chama UMA função de um arquivo Python (T077).
+ *
+ * Os argumentos vão em JSON dentro de uma string, e o `json.loads` os lê — a
+ * alternativa seria interpolar valores no código, que quebra no primeiro
+ * apóstrofo. O mesmo cuidado do PHP, com a ferramenta que cada um tem.
+ *
+ * A indentação importa aqui como em nenhuma outra linguagem desta lista: o
+ * trecho é colado NO FIM do arquivo, e por isso tudo nasce na coluna zero.
+ */
+function pythonInvocation(functionName: string, args: unknown[]): string {
+  const argsJson = JSON.stringify(JSON.stringify(args));
+  return (
+    '\n\nimport json as __json, sys as __sys\n' +
+    `__fn = globals().get(${JSON.stringify(functionName)})\n` +
+    'if not callable(__fn):\n' +
+    `    __sys.stderr.write(${JSON.stringify(`"${functionName}" não é uma função neste arquivo.`)} + "\\n")\n` +
+    '    __sys.exit(1)\n' +
+    `__resultado = __fn(*__json.loads(${argsJson}))\n` +
+    'if __resultado is not None:\n' +
+    '    print("[retorno]", __resultado)\n'
+  );
+}
+
 function phpInvocation(fileSource: string, functionName: string, args: unknown[]): string {
   // args em base64 para não depender de escaping dentro da string PHP
   const argsB64 = Buffer.from(JSON.stringify(args), 'utf8').toString('base64');
@@ -204,6 +243,18 @@ async function execute(
       const file = path.join(runDir, 'main.php');
       fs.writeFileSync(file, source, 'utf8');
       return execProcess('php', [file], cwd, RUN_TIMEOUT_MS, { controle });
+    }
+    case 'python': {
+      const file = path.join(runDir, 'main.py');
+      fs.writeFileSync(file, source, 'utf8');
+      // `-u` desliga o buffer da saída: sem ele, um script que imprime e depois
+      // demora entrega tudo junto no fim, e o painel fica mudo enquanto roda.
+      return execProcess('python3', ['-u', file], cwd, RUN_TIMEOUT_MS, {
+        controle,
+        missingHint:
+          'Runtime "python3" não encontrado. Instale o Python 3 para executar ' +
+          'blocos e arquivos .py.',
+      });
     }
     case 'c': {
       const src = path.join(runDir, 'main.c');

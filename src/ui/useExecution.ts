@@ -446,10 +446,6 @@ export function useExecution(
   const executarTexto = useCallback(
     async (linguagem: string, codigo: string) => {
       if (codigo.trim() === '') return;
-      if (linguagem === 'python') {
-        escrever('Execução de Python ainda não é suportada — o runner usa Node.js.\n', true);
-        return;
-      }
       await despachar({ mode: 'block', language: linguagem, code: codigo });
     },
     [despachar, escrever]
@@ -462,13 +458,9 @@ export function useExecution(
         await executarSql();
         return;
       }
-      if (linguagem === 'python') {
-        escrever('Execução de Python ainda não é suportada — o runner usa Node.js.\n', true);
-        return;
-      }
       await executarCodigo(modo, linguagem);
     },
-    [escrever, executarCodigo, executarSql, ws]
+    [executarCodigo, executarSql, ws]
   );
 
   return {

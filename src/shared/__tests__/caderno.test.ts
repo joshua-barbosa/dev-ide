@@ -257,12 +257,15 @@ test('qualquer linguagem é aceita no arquivo — quem julga é a tela', () => {
 test('comoRoda: cada linguagem tem UM destino', () => {
   assert.equal(comoRoda('sql'), 'sql');
   assert.equal(comoRoda('markdown'), 'markdown');
-  for (const l of ['javascript', 'typescript', 'php', 'c', 'csharp']) {
+  // Python entrou no T077: o runner já chamava `php`, `gcc` e `dotnet`, e passou
+  // a chamar `python3`. A desculpa antiga — "o runner é Node" — descrevia o
+  // runner, e não um impedimento.
+  for (const l of ['javascript', 'typescript', 'php', 'c', 'csharp', 'python']) {
     assert.equal(comoRoda(l), 'runner', l);
   }
-  // Python está de fora de propósito: o runner é Node. Prometer e não cumprir é
-  // pior que não oferecer.
-  for (const l of ['python', 'json', 'yaml', 'html', 'rust', '']) {
+  // Estas continuam sem destino, e é resposta legítima: o seletor oferece todas
+  // as linguagens do editor, e prometer um `▷ Run` que não roda é pior.
+  for (const l of ['json', 'yaml', 'html', 'rust', '']) {
     assert.equal(comoRoda(l), 'nada', l);
   }
 });

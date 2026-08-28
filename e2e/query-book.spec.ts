@@ -552,3 +552,21 @@ test('só o bloco EM FOCO paga um Monaco — os outros não', async ({ page }) =
   await bloco(page, 1).click();
   await expect(page.locator('[data-editor-do-bloco]')).toHaveCount(1);
 });
+
+test('bloco de Python roda, e a saída cai no Output (T077)', async ({ page }) => {
+  // A desculpa que eu tinha escrito era "o caderno é de SQL" — e ela não era
+  // verdade nem quando escrevi: o caderno já rodava JavaScript, PHP, C e C#.
+  await novoCaderno(page, `py-${Date.now()}`);
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+
+  await bloco(page, 0).getByRole('button', { name: /Linguagem do bloco/ }).click();
+  await page.getByRole('option', { name: 'Python', exact: true }).click();
+
+  await escreverNoBloco(page, 0, 'print("veio do python")');
+  await bloco(page, 0).getByRole('button', { name: '▷ Run' }).click();
+
+  await expect(page.locator('[data-output]')).toBeVisible();
+  await expect(page.locator('[data-output]')).toContainText('veio do python', {
+    timeout: 30_000,
+  });
+});

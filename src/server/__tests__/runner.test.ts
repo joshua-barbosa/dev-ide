@@ -214,3 +214,53 @@ test('parar mata os FILHOS também, não só o processo lançado', async () => {
   fs.rmSync(marcador, { force: true });
   fs.rmSync(lancou, { force: true });
 });
+
+// ---------------------------------------------------------------------------
+// Python (T077, spec 071)
+// ---------------------------------------------------------------------------
+//
+// A desculpa que eu tinha escrito era "o caderno é de SQL", e ela nem era
+// verdade quando escrevi: o caderno já rodava JavaScript, PHP, C e C#. Python
+// ficou de fora porque o runner é Node — e o runner só precisava saber chamar
+// `python3`, como já chama `php` e `gcc`.
+
+test('executa um bloco de Python', async () => {
+  const result = await runCode({ mode: 'block', code: 'print(2 + 3)', language: 'python' });
+  assert.equal(result.stdout.trim(), '5');
+  assert.equal(result.exitCode, 0);
+});
+
+test('executa um arquivo .py pela extensão, sem dizer a linguagem', async () => {
+  const file = tempFile('soma.py', 'print("do arquivo")\n');
+  const result = await runCode({ mode: 'file', filePath: file });
+  assert.equal(result.stdout.trim(), 'do arquivo');
+});
+
+test('erro de Python vai para o stderr, com a linha', async () => {
+  const result = await runCode({ mode: 'block', code: 'raise ValueError("quebrou")', language: 'python' });
+  assert.notEqual(result.exitCode, 0);
+  assert.match(result.stderr, /ValueError: quebrou/);
+});
+
+test('executa UMA função do arquivo Python, com argumentos e retorno', async () => {
+  const file = tempFile('fn.py', 'def soma(a, b):\n    return a + b\n');
+  const result = await runCode({
+    mode: 'function',
+    filePath: file,
+    functionName: 'soma',
+    args: [2, 40],
+  });
+  assert.match(result.stdout, /\[retorno\] 42/);
+});
+
+test('função que não existe no arquivo Python diz isso, e não estoura', async () => {
+  const file = tempFile('vazio.py', 'x = 1\n');
+  const result = await runCode({
+    mode: 'function',
+    filePath: file,
+    functionName: 'nao_existe',
+    args: [],
+  });
+  assert.notEqual(result.exitCode, 0);
+  assert.match(result.stderr, /não é uma função/);
+});

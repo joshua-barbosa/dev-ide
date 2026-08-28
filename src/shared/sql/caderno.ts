@@ -85,8 +85,14 @@ export interface Celula {
  */
 export type Destino = 'sql' | 'runner' | 'markdown' | 'nada';
 
-/** As que o runner da spec 006 executa. Python não está: o runner é Node. */
-const DO_RUNNER = ['javascript', 'typescript', 'php', 'c', 'csharp'];
+/**
+ * As que o runner da spec 006 executa.
+ *
+ * Python entrou no T077. A desculpa antiga — "o runner é Node" — descrevia o
+ * runner, não um impedimento: ele já chamava `php`, `gcc` e `dotnet`, e passou
+ * a chamar `python3` do mesmo jeito.
+ */
+const DO_RUNNER = ['javascript', 'typescript', 'php', 'c', 'csharp', 'python'];
 
 export function comoRoda(linguagem: string): Destino {
   if (linguagem === 'sql') return 'sql';

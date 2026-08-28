@@ -125,7 +125,9 @@ test('clicar no botão roda o SQL editado', async ({ page }) => {
   await page.getByRole('button', { name: 'Executar este SQL (Ctrl+Enter)' }).click();
 
   await expect(page.locator('[data-modo-livre]')).toBeVisible();
-  await expect(page.getByText('42', { exact: true })).toBeVisible();
+  // Dentro da GRADE: desde o T059 o campo de SQL é colorido, e o `42` que ele
+  // mostra também casa com o texto. É a mesma armadilha do `Ex-porta-r`.
+  await expect(page.locator('[data-grade]').getByText('42', { exact: true })).toBeVisible();
 });
 
 test('o campo de SQL não tem mais botão pendurado no canto', async ({ page }) => {
