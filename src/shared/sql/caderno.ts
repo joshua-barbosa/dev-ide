@@ -10,14 +10,48 @@
 // é descartado, arquivo ilegível vira caderno vazio. Falhar aqui trocaria um
 // caderno com um erro por nenhum caderno.
 
-/** A versão do formato. Sobe quando a forma mudar de um jeito incompatível. */
-export const VERSAO_DO_CADERNO = 2;
+/**
+ * A versão do formato. Sobe quando a forma mudar de um jeito incompatível.
+ *
+ * **3 (T072):** o bloco passou a poder guardar RESULTADOS. É compatível para
+ * ler — uma versão antiga abre o arquivo e ignora o campo —, mas não para
+ * gravar: aquela versão regravaria o caderno sem os resultados. O número existe
+ * para essa perda ficar registrada em vez de acontecer calada.
+ */
+export const VERSAO_DO_CADERNO = 3;
 
 /** O que uma linguagem de bloco pode ser. NÃO é lista fechada — ver `lerCaderno`. */
 export type TipoDeCelula = string;
 
 /** As duas únicas que a versão 1 do formato sabia escrever. */
 const TIPOS_DA_VERSAO_1 = ['sql', 'markdown'];
+
+/**
+ * Um resultado guardado dentro do caderno (T072).
+ *
+ * A nota dele na triagem: *"não salvar automático, ele dar a opção de salvar
+ * atrelado ao sqlbook, ao code block e com um nome que eu der"*. As três coisas
+ * estão aqui: mora no arquivo, mora na CÉLULA, e tem nome dele.
+ */
+export interface ResultadoSalvo {
+  /** O nome que ELE deu. É a chave dentro da célula. */
+  readonly nome: string;
+  /** Quando foi salvo, em ISO. A tela mostra: um resultado velho engana. */
+  readonly salvoEm: string;
+  readonly colunas: readonly string[];
+  readonly linhas: readonly (readonly (string | null)[])[];
+  /** Passou do teto e foi cortado — a tela precisa dizer. */
+  readonly cortado: boolean;
+}
+
+/**
+ * Teto de linhas por resultado guardado.
+ *
+ * O caderno é um arquivo que ele versiona no git. Um `SELECT` de 500 linhas com
+ * cinquenta colunas viraria um JSON de megabytes por bloco, e o diff deixaria
+ * de ser legível — que é metade da razão de o caderno existir.
+ */
+export const MAX_LINHAS_SALVAS = 200;
 
 export interface Celula {
   /** Estável por bloco: é o que o React usa como chave, e o que o foco segue. */
@@ -32,6 +66,14 @@ export interface Celula {
    */
   readonly linguagem: TipoDeCelula;
   readonly conteudo: string;
+  /**
+   * Resultados guardados NESTE bloco (T072).
+   *
+   * Nunca automático: só entra aqui o que ele mandou salvar, com o nome que
+   * ele deu. Guardar toda execução encheria o arquivo de lixo que ninguém
+   * pediu — e foi exatamente o que ele recusou na triagem.
+   */
+  readonly resultados: readonly ResultadoSalvo[];
 }
 
 /**
@@ -60,7 +102,7 @@ export const CADERNO_VAZIO: Caderno = { celulas: [] };
 
 /** Um bloco novo, vazio. O id não precisa ser único no mundo — só no caderno. */
 export function novaCelula(linguagem: TipoDeCelula, sufixo: number): Celula {
-  return { id: `c${sufixo}`, linguagem, conteudo: '' };
+  return { id: `c${sufixo}`, linguagem, conteudo: '', resultados: [] };
 }
 
 /**
@@ -104,18 +146,87 @@ export function lerCaderno(texto: string): Caderno {
     // O id do arquivo é ignorado de propósito: dois blocos com o mesmo id
     // fariam o React confundir um com o outro, e nada garante que o arquivo
     // que veio de fora respeite isso.
-    celulas.push({ id: `c${i}`, linguagem, conteudo: c.conteudo });
+    celulas.push({ id: `c${i}`, linguagem, conteudo: c.conteudo, resultados: lerResultados(c.resultados) });
   });
   return { celulas };
+}
+
+/**
+ * Lê os resultados guardados de um bloco, tolerando lixo.
+ *
+ * Mesma regra do resto do arquivo: um resultado estragado é descartado e os
+ * vizinhos sobrevivem. Um caderno com um resultado corrompido continua sendo
+ * um caderno.
+ */
+function lerResultados(bruto: unknown): readonly ResultadoSalvo[] {
+  if (!Array.isArray(bruto)) return [];
+  const lidos: ResultadoSalvo[] = [];
+  for (const item of bruto) {
+    const r = (item ?? {}) as Record<string, unknown>;
+    if (typeof r.nome !== 'string' || r.nome === '') continue;
+    if (!Array.isArray(r.colunas) || !Array.isArray(r.linhas)) continue;
+    lidos.push({
+      nome: r.nome,
+      salvoEm: typeof r.salvoEm === 'string' ? r.salvoEm : '',
+      colunas: r.colunas.map((c) => String(c)),
+      linhas: r.linhas
+        .filter((l): l is unknown[] => Array.isArray(l))
+        .map((l) => l.map((v) => (v === null || v === undefined ? null : String(v)))),
+      cortado: r.cortado === true,
+    });
+  }
+  return lidos;
 }
 
 /** Grava o caderno. O `id` NÃO vai para o arquivo: ele é de tela, não de dado. */
 export function escreverCaderno(caderno: Caderno): string {
   const dados = {
     versao: VERSAO_DO_CADERNO,
-    celulas: caderno.celulas.map((c) => ({ linguagem: c.linguagem, conteudo: c.conteudo })),
+    celulas: caderno.celulas.map((c) => ({
+      linguagem: c.linguagem,
+      conteudo: c.conteudo,
+      // Ausente quando não há: um `"resultados": []` em cada bloco encheria o
+      // diff de linha que não diz nada.
+      ...(c.resultados.length === 0 ? {} : { resultados: c.resultados }),
+    })),
   };
   return `${JSON.stringify(dados, null, 2)}\n`;
+}
+
+/**
+ * Guarda um resultado no bloco, com o nome dele.
+ *
+ * Nome repetido SUBSTITUI, e é de propósito: rodar de novo e salvar com o mesmo
+ * nome é atualizar aquele resultado. Acumular dois `vendas de junho` diferentes
+ * seria pior que trocar.
+ */
+export function salvarResultado(
+  caderno: Caderno,
+  id: string,
+  resultado: ResultadoSalvo
+): Caderno {
+  const cortado = resultado.linhas.length > MAX_LINHAS_SALVAS;
+  const guardado: ResultadoSalvo = cortado
+    ? { ...resultado, linhas: resultado.linhas.slice(0, MAX_LINHAS_SALVAS), cortado: true }
+    : resultado;
+  return {
+    celulas: caderno.celulas.map((c) =>
+      c.id === id
+        ? {
+            ...c,
+            resultados: [...c.resultados.filter((r) => r.nome !== guardado.nome), guardado],
+          }
+        : c
+    ),
+  };
+}
+
+export function removerResultado(caderno: Caderno, id: string, nome: string): Caderno {
+  return {
+    celulas: caderno.celulas.map((c) =>
+      c.id === id ? { ...c, resultados: c.resultados.filter((r) => r.nome !== nome) } : c
+    ),
+  };
 }
 
 /**

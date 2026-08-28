@@ -9,6 +9,7 @@
 // faria um comando rodar com o estado de ontem, que é o defeito que a spec 038
 // já pagou uma vez.
 import type { Tab } from '../../shared/tabs';
+import type { ResultadoSalvo } from '../../shared/sql/caderno';
 import type { ConnectionsController } from '../connections/useConnections';
 import type { Execution } from '../useExecution';
 import type { QuickInputController } from '../useQuickInput';
@@ -68,6 +69,33 @@ return {
     mostrarSaida();
     return exec.executarTexto(linguagem, codigo);
   },
+  /**
+   * O nome do resultado a guardar no caderno (T072).
+   *
+   * Pergunta sempre, e não aceita vazio: o pedido dele foi "com um nome que eu
+   * der". Um `resultado 1` automático seria eu decidindo de novo.
+   */
+  onPedirNomeDoResultado: () =>
+    qi.pedir({
+      titulo: 'Nome deste resultado',
+      placeholder: 'ex.: vendas de junho, antes da migração',
+    }),
+  /**
+   * Abre um resultado GUARDADO na mesma grade dos outros (spec 070).
+   *
+   * Sem `durationMs` nem `truncated` de verdade: isto não acabou de rodar. O
+   * `message` diz de onde veio, para ninguém confundir um resultado guardado
+   * com o do banco agora.
+   */
+  onAbrirResultadoSalvo: (titulo: string, r: ResultadoSalvo) =>
+    exec.mostrarResultado(`salvo:${titulo}`, titulo, {
+      columns: r.colunas.map((name) => ({ name })),
+      rows: r.linhas.map((l) => [...l]),
+      rowCount: r.linhas.length,
+      durationMs: 0,
+      truncated: r.cortado,
+      message: `Resultado guardado no caderno em ${r.salvoEm || 'data desconhecida'}.`,
+    }),
   // A MESMA lista do seletor do rodapé — é o "Select Language Mode" dele.
   onPedirLinguagem: (atual: string) =>
     qi.pedir({

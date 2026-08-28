@@ -52,6 +52,8 @@ export interface LinhaSaida {
 
 export interface Execution {
   readonly grades: ReadonlyMap<string, EstadoGrade>;
+  /** Abre um resultado que a IDE já tem, sem ir ao banco (T072). */
+  mostrarResultado(id: string, rotulo: string, resultado: QueryResult): void;
   readonly saida: readonly LinhaSaida[];
   readonly status: { readonly texto: string; readonly erro: boolean };
   /** Conexão contra a qual uma aba SQL sem vínculo será executada. */
@@ -96,14 +98,18 @@ export interface Execution {
      */
     daAba?: Vinculo | null
     /**
-     * Devolve se deu certo.
+     * Devolve o RESULTADO, ou `null` quando falhou.
      *
      * O erro continua sendo tratado aqui — vira aba de resultado e entra na aba
      * `Problems` —, mas quem chama precisa PODER saber. O `Run All` do caderno
      * (spec 048) para no primeiro erro, e sem este retorno ele seguia em frente
      * produzindo resultados que não queriam dizer nada.
+     *
+     * Era um booleano até o T072: o bloco do caderno precisa do resultado EM
+     * MÃOS para poder oferecer "salvar no caderno". Devolver a coisa em vez de
+     * um sim/não não custa nada a quem só queria o sim/não.
      */
-  ): Promise<boolean>;
+  ): Promise<QueryResult | null>;
   /** Encerra a execução em andamento, se houver. */
   parar(): Promise<void>;
   limparSaida(): void;
@@ -169,6 +175,21 @@ export function useExecution(
     setGrades((atual) => new Map(atual).set(id, estado));
   }, []);
 
+  /**
+   * Abre um resultado que a IDE já tem em mãos, sem ir ao banco (T072).
+   *
+   * É por aqui que um resultado GUARDADO no caderno volta à tela. Vai para a
+   * mesma grade dos outros — largura, lupa e aparência vêm de graça desde a
+   * spec 070 — e sem `irPara`: um resultado guardado não tem próxima página.
+   */
+  const mostrarResultado = useCallback(
+    (id: string, rotulo: string, resultado: QueryResult) => {
+      ws.store.open({ id, type: 'grid', title: 'Resultado', meta: {} });
+      atualizarGrade(id, { resultado, erro: null, carregando: false, rotulo, pagina: 1 });
+    },
+    [atualizarGrade, ws]
+  );
+
 
 
   /**
@@ -188,9 +209,13 @@ export function useExecution(
       caminho: string | null,
       titulo: string,
       daAba: Vinculo | null = null
-    ): Promise<boolean> => {
+    ): Promise<QueryResult | null> => {
       const texto = statement.trim();
-      if (texto === '') return true;
+      // Nada para rodar e falha devolvem o mesmo `null`, e por isso quem
+      // precisa distinguir — o `Run All` do caderno — pula o bloco vazio ANTES
+      // de chamar. Inventar um resultado de zero linhas aqui seria pior: o
+      // bloco passaria a oferecer "salvar" um resultado que nunca existiu.
+      if (texto === '') return null;
 
       // Perguntar ANTES de abrir a aba: desistir da escolha não pode deixar uma
       // aba de resultado vazia para trás (AC-18).
@@ -203,9 +228,9 @@ export function useExecution(
         const msg = (e as Error).message;
         setStatus({ texto: 'erro', erro: true });
         aoFalhar(msg);
-        return false;
+        return null;
       }
-      if (vinculo === null) return false;
+      if (vinculo === null) return null;
 
       const base = `grid:${caminho ?? titulo}`;
       const gridId = modo === 'tab' ? `${base}#${(proximaAba.current += 1)}` : base;
@@ -281,7 +306,7 @@ export function useExecution(
           texto: `${resultado.rowCount} linha(s) · ${resultado.durationMs}ms`,
           erro: false,
         });
-        return true;
+        return resultado;
       } catch (e) {
         const msg = (e as Error).message;
         if (modo !== 'json') {
@@ -289,7 +314,7 @@ export function useExecution(
         }
         setStatus({ texto: 'erro', erro: true });
         aoFalhar(msg);
-        return false;
+        return null;
       }
     },
     [aoFalhar, atualizarGrade, vinculos, ws]
@@ -448,6 +473,7 @@ export function useExecution(
 
   return {
     grades,
+    mostrarResultado,
     saida,
     status,
     conexaoAtiva: conexaoVisivel,

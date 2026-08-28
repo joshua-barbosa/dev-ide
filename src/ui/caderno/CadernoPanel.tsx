@@ -33,6 +33,13 @@ import type { Vinculo } from '../../shared/sql/vinculo';
  */
 const MIME_DO_BLOCO = 'application/x-dev-ide-bloco';
 
+/** A data de um resultado salvo, curta. Vazia quando o arquivo não trouxe. */
+function quando(iso: string): string {
+  if (iso === '') return 'data desconhecida';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? 'data desconhecida' : d.toLocaleString('pt-BR');
+}
+
 export interface CadernoPanelProps {
   readonly caderno: Caderno;
   /** O que o `Run All` está fazendo agora, ou `null`. */
@@ -45,6 +52,11 @@ export interface CadernoPanelProps {
   /** `fresta` conta as posições ENTRE blocos: `0` antes do primeiro. */
   onAcrescentar(tipo: TipoDeCelula, fresta: number): void;
   onRemover(id: string): void;
+  /** Este bloco já rodou nesta sessão — só então o `⤓ Salvar` aparece (T072). */
+  temUltimoResultado(id: string): boolean;
+  onSalvarResultado(celula: Celula): void;
+  onAbrirResultado(celula: Celula, nome: string): void;
+  onRemoverResultado(celula: Celula, nome: string): void;
   onMover(id: string, direcao: -1 | 1): void;
   onReordenar(id: string, fresta: number): void;
   onRodar(celula: Celula, modo: 'run' | 'tab' | 'json'): void;
@@ -60,6 +72,7 @@ export function CadernoPanel({
   caderno, rodando, erro, fontSize, tabSize, tema, vinculo,
   onAlterar, onAcrescentar, onRemover, onMover, onReordenar, onRodar, onRodarTudo,
   onEscolherLinguagem, onTrocarVinculo,
+  temUltimoResultado, onSalvarResultado, onAbrirResultado, onRemoverResultado,
 }: CadernoPanelProps) {
   const [atual, setAtual] = useState(0);
   // Quem está sendo arrastado e onde cairia. Os dois juntos porque é o par que
@@ -195,6 +208,10 @@ export function CadernoPanel({
                 onRemover={onRemover}
                 onMover={onMover}
                 onRodar={onRodar}
+                temResultado={temUltimoResultado(celula.id)}
+                onSalvarResultado={onSalvarResultado}
+                onAbrirResultado={onAbrirResultado}
+                onRemoverResultado={onRemoverResultado}
               />
             </Box>
           ))
@@ -209,6 +226,7 @@ function Bloco({
   celula, indice, total, rodando, arrastado, fontSize, tabSize, tema,
   onFocar, onEscolherLinguagem, onComecarArraste, onTerminarArraste,
   onAlterar, onRemover, onMover, onRodar,
+  temResultado, onSalvarResultado, onAbrirResultado, onRemoverResultado,
 }: {
   readonly celula: Celula;
   readonly indice: number;
@@ -226,6 +244,11 @@ function Bloco({
   onRemover(id: string): void;
   onMover(id: string, direcao: -1 | 1): void;
   onRodar(celula: Celula, modo: 'run' | 'tab' | 'json'): void;
+  /** Este bloco já rodou nesta sessão — só então o `⤓ Salvar` aparece (T072). */
+  readonly temResultado: boolean;
+  onSalvarResultado(celula: Celula): void;
+  onAbrirResultado(celula: Celula, nome: string): void;
+  onRemoverResultado(celula: Celula, nome: string): void;
 }) {
   // Markdown nasce mostrando o texto quando está vazio, e renderizado quando
   // tem conteúdo: um bloco novo é para escrever, um antigo é para ler.
@@ -269,6 +292,12 @@ function Bloco({
             <Acao rotulo="▷ Run" onClick={() => onRodar(celula, 'run')} />
             <Acao rotulo="＋Tab" onClick={() => onRodar(celula, 'tab')} />
             <Acao rotulo="JSON" onClick={() => onRodar(celula, 'json')} />
+            {/* T072: só aparece quando ESTE bloco já rodou. Salvar sem
+                resultado seria um botão que não faz nada, e salvar sozinho é
+                exatamente o que ele recusou na triagem. */}
+            {temResultado && (
+              <Acao rotulo="⤓ Salvar resultado" onClick={() => onSalvarResultado(celula)} />
+            )}
           </>
         )}
         {destino === 'runner' && <Acao rotulo="▷ Run" onClick={() => onRodar(celula, 'run')} />}
@@ -363,6 +392,63 @@ function Bloco({
             fontFamily: tokens.fontMono, fontSize: `${fontSize}px`, lineHeight: 1.5,
           }}
         />
+      )}
+
+      {/* Os resultados GUARDADOS neste bloco (T072). Ficam sob o código, que é
+          onde eles pertencem: o bloco é a pergunta, e estes são respostas que
+          ele decidiu manter. Cada um traz o nome que ele deu e QUANDO foi
+          salvo — um resultado velho sem data engana. */}
+      {celula.resultados.length > 0 && (
+        <Box
+          data-resultados-salvos={celula.id}
+          sx={{
+            display: 'flex', flexWrap: 'wrap', gap: 0.5, px: 0.75, pb: 0.5,
+            alignItems: 'center',
+          }}
+        >
+          {celula.resultados.map((r) => (
+            <Box
+              key={r.nome}
+              sx={{
+                display: 'flex', alignItems: 'center', gap: 0.5,
+                border: 1, borderColor: 'divider', borderRadius: 0.5,
+                px: 0.6, py: 0.1, fontSize: 10.5,
+              }}
+            >
+              <Box
+                component="button"
+                type="button"
+                aria-label={`Abrir o resultado "${r.nome}"`}
+                title={`${r.linhas.length} linha(s) · salvo em ${quando(r.salvoEm)}${
+                  r.cortado ? ' · CORTADO no teto' : ''
+                }`}
+                onClick={() => onAbrirResultado(celula, r.nome)}
+                sx={{
+                  border: 0, bgcolor: 'transparent', color: 'inherit', font: 'inherit',
+                  p: 0, cursor: 'pointer',
+                }}
+              >
+                ⤓ {r.nome}
+              </Box>
+              <Box component="span" sx={{ color: 'text.secondary' }}>
+                {r.linhas.length}
+                {r.cortado ? '+' : ''}
+              </Box>
+              <Box
+                component="button"
+                type="button"
+                aria-label={`Apagar o resultado "${r.nome}"`}
+                onClick={() => onRemoverResultado(celula, r.nome)}
+                sx={{
+                  border: 0, bgcolor: 'transparent', color: 'text.secondary', font: 'inherit',
+                  p: 0, cursor: 'pointer',
+                }}
+              >
+                ×
+              </Box>
+            </Box>
+          ))}
+        </Box>
       )}
 
       {/* No canto de baixo à direita, como no `MySQL ⌄` da ferramenta dele. */}

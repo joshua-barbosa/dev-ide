@@ -27,8 +27,9 @@ import type { Visualizador } from '../shared/editor/visualizadores';
 import { tokens } from './theme';
 import type { Tab } from '../shared/tabs';
 import type { NomeDoTema } from '../shared/temas';
-import type { SessionCapabilities } from '../shared/contracts';
+import type { QueryResult, SessionCapabilities } from '../shared/contracts';
 import type { Vinculo } from '../shared/sql/vinculo';
+import type { ResultadoSalvo } from '../shared/sql/caderno';
 import type { Snippet } from '../shared/snippets';
 import type { EstadoGrade } from './useExecution';
 import {
@@ -68,6 +69,10 @@ export interface EditorGroupProps {
   }) => Promise<boolean>;
   /** Pergunta a linguagem de um bloco (spec 051). */
   readonly onPedirLinguagem: (atual: string) => Promise<string | null>;
+  /** Pergunta o nome do resultado a guardar no caderno (T072). */
+  readonly onPedirNomeDoResultado: (sqlDoBloco: string) => Promise<string | null>;
+  /** Abre um resultado guardado numa aba de grade (T072). */
+  readonly onAbrirResultadoSalvo: (titulo: string, resultado: ResultadoSalvo) => void;
   /** Contra quem um caderno roda, e como trocar (spec 051). */
   readonly vinculoDoCaderno: (aba: Tab) => Vinculo | null;
   readonly onTrocarVinculoDoCaderno: (aba: Tab) => void;
@@ -76,7 +81,7 @@ export interface EditorGroupProps {
     sql: string,
     caminho: string | null,
     titulo: string
-  ) => Promise<boolean>;
+  ) => Promise<QueryResult | null>;
   /** Verdadeiro no grupo que recebe os comandos e dita a barra de status. */
   readonly focado: boolean;
   /** Verdadeiro quando há mais de um grupo — muda o que a tela vazia diz. */
@@ -122,6 +127,7 @@ export function EditorGroup({
   capacidadesDe, onAbrirArquivoRemoto, onAbrirTerminalDoServidor,
   onDuplicarTerminal, onConfirmarSnippet,
   onRodarCodigoDoBloco, onPedirLinguagem, vinculoDoCaderno, onTrocarVinculoDoCaderno,
+  onPedirNomeDoResultado, onAbrirResultadoSalvo,
 }: EditorGroupProps) {
   const caixa = useRef<HTMLDivElement>(null);
   // A zona vive num `ref` E num estado: o `ref` é a verdade que a soltura lê, o
@@ -281,6 +287,8 @@ export function EditorGroup({
               tema={tema}
               onMudar={onMudarCaderno}
               onRodar={onRodarBloco}
+              onPedirNome={onPedirNomeDoResultado}
+              onAbrirResultadoSalvo={onAbrirResultadoSalvo}
               onRodarCodigo={onRodarCodigoDoBloco}
               onPedirLinguagem={onPedirLinguagem}
               vinculo={vinculoDoCaderno(t)}

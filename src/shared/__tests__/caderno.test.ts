@@ -11,6 +11,9 @@ import {
   remover,
   reordenar,
   VERSAO_DO_CADERNO,
+  salvarResultado,
+  removerResultado,
+  MAX_LINHAS_SALVAS,
 } from '../sql/caderno';
 
 const doJson = (obj: unknown): string => JSON.stringify(obj);
@@ -22,8 +25,8 @@ const doJson = (obj: unknown): string => JSON.stringify(obj);
 test('grava e lê de volta, preservando ordem e tipo', () => {
   const caderno = {
     celulas: [
-      { id: 'c0', linguagem: 'markdown' as const, conteudo: '# Chamado 64158' },
-      { id: 'c1', linguagem: 'sql' as const, conteudo: 'SELECT 1' },
+      { id: 'c0', linguagem: 'markdown' as const, conteudo: '# Chamado 64158', resultados: [] },
+      { id: 'c1', linguagem: 'sql' as const, conteudo: 'SELECT 1', resultados: [] },
     ],
   };
   const lido = lerCaderno(escreverCaderno(caderno));
@@ -39,7 +42,7 @@ test('o arquivo gravado declara a versão do formato', () => {
 });
 
 test('o id NÃO vai para o arquivo — ele é de tela, não de dado', () => {
-  const texto = escreverCaderno({ celulas: [{ id: 'c0', linguagem: 'sql', conteudo: 'x' }] });
+  const texto = escreverCaderno({ celulas: [{ id: 'c0', linguagem: 'sql', conteudo: 'x', resultados: [] }] });
   assert.equal(texto.includes('"id"'), false);
 });
 
@@ -47,7 +50,7 @@ test('SQL com qualquer coisa dentro sobrevive à ida e à volta', () => {
   // É a razão de o formato ser JSON: um caderno de SQL contém SQL arbitrário,
   // e qualquer separador escolhido poderia aparecer dentro de um bloco.
   const hostil = "SELECT '---', '```', '\\n-- celula', \"}\";";
-  const lido = lerCaderno(escreverCaderno({ celulas: [{ id: 'c0', linguagem: 'sql', conteudo: hostil }] }));
+  const lido = lerCaderno(escreverCaderno({ celulas: [{ id: 'c0', linguagem: 'sql', conteudo: hostil, resultados: [] }] }));
   assert.equal(lido.celulas[0]?.conteudo, hostil);
 });
 
@@ -101,9 +104,9 @@ test('bloco vazio é preservado — vazio não é estragado', () => {
 
 const tres = {
   celulas: [
-    { id: 'a', linguagem: 'sql' as const, conteudo: '1' },
-    { id: 'b', linguagem: 'sql' as const, conteudo: '2' },
-    { id: 'c', linguagem: 'sql' as const, conteudo: '3' },
+    { id: 'a', linguagem: 'sql' as const, conteudo: '1', resultados: [] },
+    { id: 'b', linguagem: 'sql' as const, conteudo: '2', resultados: [] },
+    { id: 'c', linguagem: 'sql' as const, conteudo: '3', resultados: [] },
   ],
 };
 
@@ -155,10 +158,10 @@ test('mexer num id que não existe devolve o caderno como estava', () => {
 test('o Run All pula markdown e blocos vazios', () => {
   const misto = {
     celulas: [
-      { id: 'a', linguagem: 'markdown' as const, conteudo: '# título' },
-      { id: 'b', linguagem: 'sql' as const, conteudo: 'SELECT 1' },
-      { id: 'c', linguagem: 'sql' as const, conteudo: '   ' },
-      { id: 'd', linguagem: 'sql' as const, conteudo: 'SELECT 2' },
+      { id: 'a', linguagem: 'markdown' as const, conteudo: '# título', resultados: [] },
+      { id: 'b', linguagem: 'sql' as const, conteudo: 'SELECT 1', resultados: [] },
+      { id: 'c', linguagem: 'sql' as const, conteudo: '   ', resultados: [] },
+      { id: 'd', linguagem: 'sql' as const, conteudo: 'SELECT 2', resultados: [] },
     ],
   };
   assert.deepEqual(blocosExecutaveis(misto).map((c) => c.id), ['b', 'd']);
@@ -207,10 +210,12 @@ test('reordenar com id inexistente ou fresta fora da faixa não estraga nada', (
 // Linguagem por bloco (spec 051)
 // ---------------------------------------------------------------------------
 
-test('o arquivo gravado é versão 2 e traz `linguagem`, não `tipo`', () => {
-  const texto = escreverCaderno({ celulas: [{ id: 'c0', linguagem: 'php', conteudo: 'x' }] });
+test('o arquivo gravado traz `linguagem`, não `tipo`, na versão corrente', () => {
+  const texto = escreverCaderno({ celulas: [{ id: 'c0', linguagem: 'php', conteudo: 'x', resultados: [] }] });
   const dados = JSON.parse(texto) as { versao: number; celulas: { linguagem: string }[] };
-  assert.equal(dados.versao, 2);
+  // A versão sobe quando a forma muda (foi para 3 no T072); o que este teste
+  // guarda é o NOME do campo, que é onde a versão 1 divergia.
+  assert.equal(dados.versao, VERSAO_DO_CADERNO);
   assert.equal(dados.celulas[0]?.linguagem, 'php');
   assert.equal(texto.includes('"tipo"'), false);
 });
@@ -265,12 +270,93 @@ test('comoRoda: cada linguagem tem UM destino', () => {
 test('o Run All roda só os blocos de SQL, e na ordem', () => {
   const misto = {
     celulas: [
-      { id: 'a', linguagem: 'markdown', conteudo: '# título' },
-      { id: 'b', linguagem: 'sql', conteudo: 'SELECT 1' },
-      { id: 'c', linguagem: 'javascript', conteudo: 'console.log(1)' },
-      { id: 'd', linguagem: 'sql', conteudo: '   ' },
-      { id: 'e', linguagem: 'sql', conteudo: 'SELECT 2' },
+      { id: 'a', linguagem: 'markdown', conteudo: '# título', resultados: [] },
+      { id: 'b', linguagem: 'sql', conteudo: 'SELECT 1', resultados: [] },
+      { id: 'c', linguagem: 'javascript', conteudo: 'console.log(1)', resultados: [] },
+      { id: 'd', linguagem: 'sql', conteudo: '   ', resultados: [] },
+      { id: 'e', linguagem: 'sql', conteudo: 'SELECT 2', resultados: [] },
     ],
   };
   assert.deepEqual(blocosExecutaveis(misto).map((c) => c.id), ['b', 'e']);
+});
+
+// ---------------------------------------------------------------------------
+// Resultado guardado no bloco (T072, spec 071)
+// ---------------------------------------------------------------------------
+
+const RESULTADO = {
+  nome: 'vendas de junho',
+  salvoEm: '2026-08-28T12:00:00.000Z',
+  colunas: ['id', 'total'],
+  linhas: [['1', '10'], ['2', null]] as readonly (readonly (string | null)[])[],
+  cortado: false,
+};
+
+test('o resultado salvo sobrevive à ida e volta do arquivo', () => {
+  const caderno = { celulas: [{ id: 'c0', linguagem: 'sql', conteudo: 'SELECT 1', resultados: [] }] };
+  const comResultado = salvarResultado(caderno, 'c0', RESULTADO);
+  const lido = lerCaderno(escreverCaderno(comResultado));
+  assert.deepEqual(lido.celulas[0]?.resultados, [RESULTADO]);
+});
+
+test('bloco SEM resultado não escreve o campo — o diff fica legível', () => {
+  const texto = escreverCaderno({
+    celulas: [{ id: 'c0', linguagem: 'sql', conteudo: 'x', resultados: [] }],
+  });
+  assert.equal(texto.includes('resultados'), false);
+});
+
+test('salvar com o MESMO nome substitui, e não acumula', () => {
+  // Rodar de novo e salvar com o mesmo nome é ATUALIZAR aquele resultado.
+  const caderno = { celulas: [{ id: 'c0', linguagem: 'sql', conteudo: 'x', resultados: [] }] };
+  const um = salvarResultado(caderno, 'c0', RESULTADO);
+  const dois = salvarResultado(um, 'c0', { ...RESULTADO, linhas: [['9', '99']] });
+  assert.equal(dois.celulas[0]?.resultados.length, 1);
+  assert.deepEqual(dois.celulas[0]?.resultados[0]?.linhas, [['9', '99']]);
+});
+
+test('resultado grande é CORTADO, e o corte é marcado', () => {
+  // O caderno é um arquivo versionado: um JSON de megabytes por bloco tornaria
+  // o diff ilegível, que é metade da razão de ele existir.
+  const linhas = Array.from({ length: MAX_LINHAS_SALVAS + 50 }, (_, i) => [String(i)]);
+  const caderno = { celulas: [{ id: 'c0', linguagem: 'sql', conteudo: 'x', resultados: [] }] };
+  const salvo = salvarResultado(caderno, 'c0', { ...RESULTADO, colunas: ['i'], linhas });
+  const r = salvo.celulas[0]?.resultados[0];
+  assert.equal(r?.linhas.length, MAX_LINHAS_SALVAS);
+  assert.equal(r?.cortado, true);
+});
+
+test('remover tira só aquele, e deixa os vizinhos', () => {
+  const caderno = { celulas: [{ id: 'c0', linguagem: 'sql', conteudo: 'x', resultados: [] }] };
+  const dois = salvarResultado(
+    salvarResultado(caderno, 'c0', RESULTADO),
+    'c0',
+    { ...RESULTADO, nome: 'outro' }
+  );
+  const um = removerResultado(dois, 'c0', 'vendas de junho');
+  assert.deepEqual(um.celulas[0]?.resultados.map((r) => r.nome), ['outro']);
+});
+
+test('resultado estragado no arquivo é descartado, e o bloco sobrevive', () => {
+  const texto = JSON.stringify({
+    versao: 3,
+    celulas: [
+      {
+        linguagem: 'sql',
+        conteudo: 'SELECT 1',
+        resultados: [{ nome: '' }, { colunas: [] }, RESULTADO],
+      },
+    ],
+  });
+  const lido = lerCaderno(texto);
+  assert.equal(lido.celulas.length, 1);
+  assert.deepEqual(lido.celulas[0]?.resultados.map((r) => r.nome), ['vendas de junho']);
+});
+
+test('caderno da versão 2 abre sem resultados, e não quebra', () => {
+  const texto = JSON.stringify({
+    versao: 2,
+    celulas: [{ linguagem: 'sql', conteudo: 'SELECT 1' }],
+  });
+  assert.deepEqual(lerCaderno(texto).celulas[0]?.resultados, []);
 });

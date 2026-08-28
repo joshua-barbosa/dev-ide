@@ -4,6 +4,7 @@
 // Aqui se prova a superfície: blocos, markdown renderizado, rodar um e rodar
 // todos, e — o que mais importa num caderno — que `Ctrl+S` grava.
 import { expect, test, type Page } from '@playwright/test';
+import { VERSAO_DO_CADERNO } from '../src/shared/sql/caderno';
 import { CONEXAO, SENHA_MESTRA } from './global-setup';
 import {
   aba, destrancarCofre, entradaRapida, esperarIdePronta, expandir, linhaArvore, painelLateral,
@@ -356,7 +357,7 @@ test('a barra do caderno diz contra quem ele roda', async ({ page }) => {
   );
 });
 
-test('um .sqlbook da VERSÃO 1 abre, e é gravado de volta na 2', async ({ page }) => {
+test('um .sqlbook da VERSÃO 1 abre, e é gravado de volta na versão corrente', async ({ page }) => {
   // Não é hipótese: os cadernos que ele criou nos últimos dias estão em disco
   // com `tipo`, e não `linguagem`.
   const raiz = await page.evaluate(async () => {
@@ -394,7 +395,7 @@ test('um .sqlbook da VERSÃO 1 abre, e é gravado de volta na 2', async ({ page 
   await expect(bloco(page, 0)).toHaveAttribute('data-tipo', 'markdown');
   await expect(bloco(page, 1)).toHaveAttribute('data-tipo', 'sql');
 
-  // E ao salvar, o arquivo passa a ser versão 2.
+  // E ao salvar, o arquivo passa a ser a versão CORRENTE (3 desde o T072).
   await barra(page).getByRole('button', { name: 'Add Code' }).click();
   await page.keyboard.press('Control+s');
   await expect(aba(page, 'v1.sqlbook')).not.toContainText('\u25cf');
@@ -404,6 +405,47 @@ test('um .sqlbook da VERSÃO 1 abre, e é gravado de volta na 2', async ({ page 
     return (r.data as { content: string }).content;
   }, caminho);
   const dados = JSON.parse(gravado) as { versao: number; celulas: { linguagem: string }[] };
-  expect(dados.versao).toBe(2);
+  expect(dados.versao).toBe(VERSAO_DO_CADERNO);
   expect(dados.celulas.map((c) => c.linguagem)).toEqual(['markdown', 'sql', 'sql']);
+});
+
+test('salvar o resultado NO caderno, com o nome que ele dá (T072)', async ({ page }) => {
+  // A nota dele na triagem: "não salvar automático, ele dar a opção de salvar
+  // atrelado ao sqlbook, ao code block e com um nome que eu der".
+  const nome = `guardar-${Date.now()}`;
+  await novoCaderno(page, nome);
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await bloco(page, 0).locator('textarea').fill("SELECT 'guardado' AS qual");
+
+  // Antes de rodar não há o que salvar: o botão nem existe.
+  await expect(page.getByRole('button', { name: '⤓ Salvar resultado' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: '▷ Run' }).first().click();
+  await expect(page.getByText('guardado', { exact: true })).toBeVisible();
+
+  // O resultado abriu numa aba própria e roubou o foco: voltar ao caderno é
+  // parte do fluxo, e o botão de salvar mora no BLOCO.
+  await aba(page, `${nome}.sqlbook`).click();
+  await page.getByRole('button', { name: '⤓ Salvar resultado' }).first().click();
+  await entradaRapida(page).fill('vendas de junho');
+  await page.keyboard.press('Enter');
+
+  // Fica preso ao BLOCO, com o nome dele.
+  const salvos = page.locator('[data-resultados-salvos]');
+  await expect(salvos.getByRole('button', { name: /Abrir o resultado "vendas de junho"/ }))
+    .toBeVisible();
+
+  // E sobrevive ao arquivo: o caderno é gravado com o resultado dentro.
+  await page.keyboard.press('Control+s');
+  await page.reload();
+  await esperarIdePronta(page);
+  await painelLateral(page, 'Database').click();
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, CONEXAO).click();
+  await expandir(page, 'escola.db', 'Query');
+  await linhaArvore(page, `${nome}.sqlbook`).dblclick();
+  await expect(
+    page.locator('[data-resultados-salvos]')
+      .getByRole('button', { name: /Abrir o resultado "vendas de junho"/ })
+  ).toBeVisible();
 });
