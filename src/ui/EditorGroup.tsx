@@ -319,6 +319,9 @@ export function EditorGroup({
           >
             <TabelaHost
               aba={t}
+              tema={tema}
+              fontSize={fontSize}
+              tabSize={tabSize}
               onExportar={onExportar}
               onConfirmar={onConfirmarEscrita}
               somenteLeitura={conexaoSomenteLeitura(t)}

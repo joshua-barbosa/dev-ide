@@ -180,3 +180,24 @@ test('a aba de tabela NÃO mostra o ▷ da barra de abas', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Executar consulta' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Executar este SQL' })).toBeVisible();
 });
+
+test('o SQL da aba de tabela sai COLORIDO (T059)', async ({ page }) => {
+  // A desculpa que eu tinha escrito era "é textarea, não Monaco" — e o bloco do
+  // caderno já provava que a cor não precisa de Monaco montado, só do
+  // `editor.colorize()`. Aqui são as mesmas duas camadas.
+  await abrirTabela(page);
+
+  const campo = page.locator('[data-sql-da-tabela]');
+  await expect(campo).toBeVisible();
+
+  // A camada de cor fica ATRÁS, e traz mais de uma classe do Monaco: uma só
+  // significa que o tokenizador não respondeu e o texto saiu sem cor.
+  await expect
+    .poll(async () => {
+      const html = await page.locator('[data-sql-da-tabela]').evaluate(
+        (el) => el.parentElement?.querySelector('pre')?.innerHTML ?? ''
+      );
+      return new Set(html.match(/mtk\d+/g) ?? []).size;
+    }, { timeout: 15_000 })
+    .toBeGreaterThan(1);
+});

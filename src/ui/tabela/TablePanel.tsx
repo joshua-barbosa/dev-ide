@@ -15,6 +15,8 @@ import Tooltip from '@mui/material/Tooltip';
 import { Icon } from '../Icon';
 import { Api } from '../api';
 import { Grade } from './GradeDaTabela';
+import { CampoColorido } from '../editor/CampoColorido';
+import type { NomeDoTema } from '../../shared/temas';
 import { PainelDeAparencia } from './PainelDeAparencia';
 import { APARENCIA_PADRAO, type Aparencia } from '../../shared/grade/aparencia';
 import { tokens } from '../theme';
@@ -45,7 +47,14 @@ import { chaveDoId, type Rascunho } from './useRascunho';
  * pixels do olho de quem acabou de editar o SQL na esquerda. Ele foi para a
  * barra de comando, que é onde o olho já está.
  */
-function CampoDeSql({ estado }: { readonly estado: EstadoDaTabela }) {
+function CampoDeSql({
+  estado, tema, fontSize, tabSize,
+}: {
+  readonly estado: EstadoDaTabela;
+  readonly tema: NomeDoTema;
+  readonly fontSize: number;
+  readonly tabSize: number;
+}) {
   return (
     <Box
       sx={{
@@ -53,14 +62,21 @@ function CampoDeSql({ estado }: { readonly estado: EstadoDaTabela }) {
         borderBottom: 1, borderColor: 'divider',
       }}
     >
-      <Box
-        component="textarea"
-        data-sql-da-tabela
-        aria-label="SQL desta aba"
-        spellCheck={false}
-        value={estado.sql}
-        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => estado.definirSql(e.target.value)}
-        onKeyDown={(e: React.KeyboardEvent) => {
+      {/* T059: a MESMA técnica do bloco do caderno — `<pre>` colorido embaixo,
+          `textarea` transparente em cima. A desculpa que eu tinha escrito era
+          "é textarea, não Monaco", e o caderno já provava que a cor não precisa
+          de Monaco montado, só de `editor.colorize()`. */}
+      <CampoColorido
+        valor={estado.sql}
+        linguagem="sql"
+        tema={tema}
+        fontSize={fontSize}
+        tabSize={tabSize}
+        rotulo="SQL desta aba"
+        linhas={3}
+        marcaDoTexto={{ 'data-sql-da-tabela': true }}
+        onAlterar={estado.definirSql}
+        onTeclar={(e) => {
           // `Ctrl+Enter` é o mesmo gesto do editor de query. Um `Enter` sozinho
           // precisa continuar quebrando linha: o SQL tem mais de uma.
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -68,12 +84,7 @@ function CampoDeSql({ estado }: { readonly estado: EstadoDaTabela }) {
             estado.executarSql();
           }
         }}
-        rows={3}
-        sx={{
-          flex: 1, resize: 'vertical', border: 0, outline: 'none',
-          bgcolor: 'transparent', color: 'text.secondary',
-          fontFamily: tokens.fontMono, fontSize: 11, lineHeight: 1.5,
-        }}
+        sx={{ fontSize: 11 }}
       />
     </Box>
   );
@@ -81,6 +92,10 @@ function CampoDeSql({ estado }: { readonly estado: EstadoDaTabela }) {
 
 export interface TablePanelProps {
   readonly estado: EstadoDaTabela;
+  /** O realce do campo de SQL usa o tema e a métrica do editor (T059). */
+  readonly tema: NomeDoTema;
+  readonly fontSize: number;
+  readonly tabSize: number;
   readonly titulo: string;
   /** Abre o texto exportado numa aba sem título — o mesmo caminho do JSON da 038. */
   readonly onExportar: (conteudo: string, linguagem: string) => void;
@@ -103,7 +118,7 @@ export interface TablePanelProps {
 
 export function TablePanel({
   estado, titulo, onExportar, rascunho, gravando = false, onGravar, motivoSemEdicao = null,
-  connectionId, nodePath,
+  connectionId, nodePath, tema, fontSize, tabSize,
 }: TablePanelProps) {
   const { pagina, carregando, erro } = estado;
   const [busca, setBusca] = useState('');
@@ -177,7 +192,7 @@ export function TablePanel({
         minHeight: 0, minWidth: 0, bgcolor: tokens.bgEditor,
       }}
     >
-      <CampoDeSql estado={estado} />
+      <CampoDeSql estado={estado} tema={tema} fontSize={fontSize} tabSize={tabSize} />
 
       <BarraDeComando
         estado={estado}

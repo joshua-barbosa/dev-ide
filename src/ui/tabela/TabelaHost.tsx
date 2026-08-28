@@ -11,6 +11,7 @@ import { Api } from '../api';
 import { EstruturaPanel } from './EstruturaPanel';
 import { useEstrutura } from './useEstrutura';
 import { useAlteracoes } from './useAlteracoes';
+import type { NomeDoTema } from '../../shared/temas';
 import type { QuickInputController } from '../useQuickInput';
 import { TablePanel } from './TablePanel';
 import { useTabela } from './useTabela';
@@ -30,10 +31,15 @@ export interface TabelaHostProps {
   /** Abre o comando gerado numa aba de query, amarrada à conexão. */
   readonly abrirComando: (id: string, titulo: string, sql: string) => void;
   readonly onErro: (erro: unknown) => void;
+  /** O realce do campo de SQL usa o tema e a métrica do editor (T059). */
+  readonly tema: NomeDoTema;
+  readonly fontSize: number;
+  readonly tabSize: number;
 }
 
 export function TabelaHost({
   aba, onExportar, onConfirmar, somenteLeitura, qi, abrirComando, onErro,
+  tema, fontSize, tabSize,
 }: TabelaHostProps) {
   const meta = aba.meta as {
     connectionId?: string;
@@ -134,6 +140,9 @@ export function TabelaHost({
         <TablePanel
       estado={estado}
       titulo={aba.title}
+      tema={tema}
+      fontSize={fontSize}
+      tabSize={tabSize}
       onExportar={onExportar}
       rascunho={somenteLeitura ? undefined : rascunho}
       gravando={gravando}
