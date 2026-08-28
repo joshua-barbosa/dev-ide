@@ -1,20 +1,21 @@
-// O bloco de código do caderno: colorido, e ainda assim uma `textarea`.
+// O bloco de código do caderno: duas camadas quando parado, Monaco quando em foco.
 //
-// São duas camadas ocupando o MESMO espaço (spec 050, D17):
+// **Parado** são duas camadas ocupando o mesmo espaço (spec 050, D17): embaixo
+// um `<pre>` colorido, em cima uma `textarea` de texto transparente. É barato —
+// um caderno de trinta blocos não paga trinta editores.
 //
-//   - embaixo, um `<pre>` com o HTML que o Monaco colore — só para ver;
-//   - em cima, a `textarea` de sempre, com o texto **transparente** — só para
-//     escrever.
+// **Em foco** entra o Monaco de verdade (T073, spec 071). A desculpa que eu
+// tinha escrito para não ter multi-cursor era *"o bloco é pequeno"*, e ele
+// respondeu na triagem com o desenho certo: *"Monaco só no bloco em foco"*.
+// Assim o bloco que está sendo escrito tem multi-cursor, busca e dobradura, e
+// os outros vinte e nove continuam custando um `<pre>`.
 //
-// O usuário digita na de cima e enxerga a de baixo. É a técnica que o editor
-// principal usou até a spec 010, e o que a aposentou lá foi multi-cursor, que
-// uma `textarea` não tem por definição do HTML — não desalinhamento.
-//
-// **Tudo que decide a posição de um caractere vive em `estiloDoTexto` e é usado
-// pelas duas camadas.** Fonte, tamanho, entrelinha, recuo, quebra e tabulação:
-// se uma delas divergir da outra em um pixel, o cursor passa a mentir. Esse é o
-// risco da técnica, e concentrá-lo num objeto só é como ele se paga.
+// A posição do cursor ATRAVESSA a troca. Sem isso, clicar no meio de uma linha
+// levaria o cursor para o começo do bloco — o gesto mais comum de todos ficaria
+// irritante.
+import { useState } from 'react';
 import { CampoColorido } from '../editor/CampoColorido';
+import { EditorDoBloco } from './EditorDoBloco';
 import type { NomeDoTema } from '../../shared/temas';
 
 export interface BlocoDeCodigoProps {
@@ -38,6 +39,26 @@ function alturaEmLinhas(conteudo: string): number {
 export function BlocoDeCodigo({
   id, conteudo, linguagem, rotulo, fontSize, tabSize, tema, onAlterar, onAtalhoDeRodar, onFocar,
 }: BlocoDeCodigoProps) {
+  /** Onde o cursor estava quando o Monaco entrou. `null` = camada de texto. */
+  const [editando, setEditando] = useState<number | null>(null);
+
+  if (editando !== null) {
+    return (
+      <EditorDoBloco
+        conteudo={conteudo}
+        linguagem={linguagem}
+        rotulo={rotulo}
+        fontSize={fontSize}
+        tabSize={tabSize}
+        tema={tema}
+        cursorEm={editando}
+        onAlterar={onAlterar}
+        onAtalhoDeRodar={onAtalhoDeRodar}
+        onSair={() => setEditando(null)}
+      />
+    );
+  }
+
   return (
     <CampoColorido
       valor={conteudo}
@@ -50,7 +71,12 @@ export function BlocoDeCodigo({
       marcaDoTexto={{ 'data-conteudo': id }}
       marcaDaCor={{ 'data-colorido': id }}
       onAlterar={onAlterar}
-      onFocar={onFocar}
+      onFocar={(cursor) => {
+        onFocar();
+        // O Monaco entra AQUI, levando junto onde o cursor estava. `?? 0` para
+        // o foco por teclado, que não tem posição de clique.
+        setEditando(cursor ?? 0);
+      }}
       onTeclar={(e) => {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();

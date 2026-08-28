@@ -29,7 +29,14 @@ export interface CampoColoridoProps {
   readonly linhas: number;
   onAlterar(valor: string): void;
   onTeclar?(e: React.KeyboardEvent): void;
-  onFocar?(): void;
+  /**
+   * O campo ganhou foco, e ONDE o cursor caiu — em caracteres desde o começo.
+   *
+   * A posição existe por causa do T073: o bloco do caderno troca esta camada
+   * pelo Monaco ao receber foco, e sem ela o cursor voltaria para o começo do
+   * bloco a cada clique no meio de uma linha.
+   */
+  onFocar?(cursorEm: number): void;
   /**
    * Atributos de teste das duas camadas — cada tela tem os seus.
    *
@@ -99,7 +106,9 @@ export function CampoColorido({
         aria-label={rotulo}
         spellCheck={false}
         value={valor}
-        onFocus={onFocar}
+        onFocus={(e: React.FocusEvent<HTMLTextAreaElement>) =>
+          onFocar?.(e.currentTarget.selectionStart ?? 0)
+        }
         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onAlterar(e.target.value)}
         onScroll={(e: React.UIEvent<HTMLTextAreaElement>) => {
           // Rolagem à mão: são dois elementos, e só um deles rola sozinho.

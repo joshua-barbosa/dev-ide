@@ -21,6 +21,45 @@ const bloco = (page: Page, i: number) => page.locator('[data-bloco]').nth(i);
  */
 const barra = (page: Page) => page.locator('[data-barra-do-caderno]');
 
+/**
+ * Escreve num bloco.
+ *
+ * Desde o T073 o bloco troca a camada de texto pelo MONACO ao ganhar foco — é o
+ * desenho que ele pediu: "Monaco só no bloco em foco". Escrever passou a ser
+ * clicar e digitar, e não `fill` numa `textarea` que deixa de existir no clique.
+ */
+async function escreverNoBloco(page: Page, indice: number, texto: string): Promise<void> {
+  await bloco(page, indice).click();
+  // O markdown em edição continua sendo `textarea` pura: o T073 trocou só o
+  // bloco de CÓDIGO, porque é lá que multi-cursor faz falta.
+  if ((await bloco(page, indice).getAttribute('data-tipo')) !== 'markdown') {
+    // ESPERAR a troca: o Monaco entra num efeito do React, depois que o clique
+    // já voltou. Digitar antes disso manda as teclas para uma `textarea` que já
+    // está sendo desmontada, e o texto chega pela metade.
+    await bloco(page, indice).locator('[data-editor-do-bloco]').waitFor();
+  }
+  await page.keyboard.press('Control+a');
+  // Linha a linha, com `Enter` de verdade: o `\n` de `type()` não quebra linha
+  // no Monaco — ele o engole, e o texto chega todo numa linha só.
+  const linhas = texto.split('\n');
+  for (const [i, linha] of linhas.entries()) {
+    if (i > 0) {
+      // `Escape` ANTES do `Enter`: com o autocomplete do T053 no ar, o `Enter`
+      // ACEITA a sugestão em vez de quebrar a linha — que é o comportamento
+      // certo do Monaco, e uma armadilha para quem escreve teste.
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Enter');
+    }
+    if (linha !== '') await page.keyboard.type(linha);
+  }
+  await page.keyboard.press('Escape');
+}
+
+/** Tira o foco do bloco, para a camada de cor voltar. */
+async function sairDoBloco(page: Page): Promise<void> {
+  await barra(page).click({ position: { x: 5, y: 5 } });
+}
+
 async function novoCaderno(page: Page, nome: string): Promise<void> {
   await painelLateral(page, 'Database').click();
   await expandir(page, 'ACME', 'Bancos');
@@ -62,7 +101,7 @@ test('acrescentar blocos e contar', async ({ page }) => {
 test('o bloco de markdown alterna entre editar e renderizado', async ({ page }) => {
   await novoCaderno(page, 'texto');
   await barra(page).getByRole('button', { name: 'Add Markdown' }).click();
-  await page.getByRole('textbox', { name: /Bloco 1/ }).fill('# Chamado 64158');
+  await escreverNoBloco(page, 0, '# Chamado 64158');
 
   await page.getByRole('button', { name: 'Ver renderizado' }).click();
   await expect(page.locator('[data-markdown-preview] h1')).toHaveText('Chamado 64158');
@@ -71,7 +110,7 @@ test('o bloco de markdown alterna entre editar e renderizado', async ({ page }) 
 test('rodar um bloco de SQL abre o resultado', async ({ page }) => {
   await novoCaderno(page, 'rodar');
   await barra(page).getByRole('button', { name: 'Add Code' }).click();
-  await page.getByRole('textbox', { name: /Bloco 1/ }).fill("SELECT 'do-caderno' AS marca");
+  await escreverNoBloco(page, 0, "SELECT 'do-caderno' AS marca");
   await page.getByRole('button', { name: '▷ Run' }).click();
 
   await expect(page.getByRole('cell', { name: 'do-caderno' })).toBeVisible();
@@ -80,11 +119,11 @@ test('rodar um bloco de SQL abre o resultado', async ({ page }) => {
 test('Run All roda os blocos de SQL e PULA o markdown', async ({ page }) => {
   await novoCaderno(page, 'tudo');
   await barra(page).getByRole('button', { name: 'Add Markdown' }).click();
-  await page.getByRole('textbox', { name: /Bloco 1/ }).fill('## explicação');
+  await escreverNoBloco(page, 0, '## explicação');
   await barra(page).getByRole('button', { name: 'Add Code' }).click();
-  await page.getByRole('textbox', { name: /Bloco 2/ }).fill("SELECT 'um' AS q");
+  await escreverNoBloco(page, 1, "SELECT 'um' AS q");
   await barra(page).getByRole('button', { name: 'Add Code' }).click();
-  await page.getByRole('textbox', { name: /Bloco 3/ }).fill("SELECT 'dois' AS q");
+  await escreverNoBloco(page, 2, "SELECT 'dois' AS q");
 
   await page.getByRole('button', { name: 'Run All' }).click();
   // `+Tab` por bloco: os dois resultados convivem, e o markdown não virou aba.
@@ -96,9 +135,9 @@ test('Run All PARA no primeiro erro', async ({ page }) => {
   // não querem dizer nada.
   await novoCaderno(page, 'erro');
   await barra(page).getByRole('button', { name: 'Add Code' }).click();
-  await page.getByRole('textbox', { name: /Bloco 1/ }).fill('SELECT * FROM nao_existe_mesmo');
+  await escreverNoBloco(page, 0, 'SELECT * FROM nao_existe_mesmo');
   await barra(page).getByRole('button', { name: 'Add Code' }).click();
-  await page.getByRole('textbox', { name: /Bloco 2/ }).fill("SELECT 'nao-devia-rodar' AS q");
+  await escreverNoBloco(page, 1, "SELECT 'nao-devia-rodar' AS q");
 
   await page.getByRole('button', { name: 'Run All' }).click();
   await expect(page.locator('[data-erro-caderno]')).toContainText('Parou no bloco');
@@ -108,8 +147,13 @@ test('Run All PARA no primeiro erro', async ({ page }) => {
 test('Ctrl+S grava o caderno, e ele volta igual depois do F5', async ({ page }) => {
   await novoCaderno(page, 'salvo');
   await barra(page).getByRole('button', { name: 'Add Code' }).click();
-  await page.getByRole('textbox', { name: /Bloco 1/ }).fill('SELECT 42');
+  await escreverNoBloco(page, 0, 'SELECT 42');
   await expect(aba(page, 'salvo.sqlbook')).toContainText('●');
+  // Conferir que a ÚLTIMA tecla chegou ao caderno antes de gravar. Sem isto o
+  // teste corria com o `Ctrl+S`: o `●` aparece na primeira alteração, e não na
+  // última.
+  await sairDoBloco(page);
+  await expect(page.locator('[data-colorido]').first()).toHaveText('SELECT 42');
 
   await page.keyboard.press('Control+s');
   await expect(aba(page, 'salvo.sqlbook')).not.toContainText('●');
@@ -174,15 +218,18 @@ test('escolher Query SQL cria .sql; escolher Query Book cria .sqlbook', async ({
 async function doisBlocos(page: Page, nome: string): Promise<void> {
   await novoCaderno(page, nome);
   await barra(page).getByRole('button', { name: 'Add Code' }).click();
-  await page.getByRole('textbox', { name: /Bloco 1/ }).fill('SELECT 1 AS primeiro');
+  await escreverNoBloco(page, 0, 'SELECT 1 AS primeiro');
   await barra(page).getByRole('button', { name: 'Add Code' }).click();
-  await page.getByRole('textbox', { name: /Bloco 2/ }).fill('SELECT 2 AS segundo');
+  await escreverNoBloco(page, 1, 'SELECT 2 AS segundo');
 }
 
 test('o bloco de SQL aparece COLORIDO, com as cores do editor', async ({ page }) => {
   await novoCaderno(page, 'cor');
   await barra(page).getByRole('button', { name: 'Add Code' }).click();
-  await page.getByRole('textbox', { name: /Bloco 1/ }).fill("SELECT 'x' FROM alunos");
+  await escreverNoBloco(page, 0, "SELECT 'x' FROM alunos");
+  // A camada de cor só existe com o bloco PARADO: em foco quem está ali é o
+  // Monaco (T073). Sair do bloco é parte do que se está testando.
+  await sairDoBloco(page);
 
   const camada = page.locator('[data-colorido]').first();
   // O texto da camada de baixo é o mesmo da de cima — é o que garante que o
@@ -207,9 +254,10 @@ test('as duas camadas do bloco ocupam EXATAMENTE o mesmo espaço', async ({ page
   // vira medida, e não impressão.
   await novoCaderno(page, 'alinhado');
   await barra(page).getByRole('button', { name: 'Add Code' }).click();
-  await page
-    .getByRole('textbox', { name: /Bloco 1/ })
-    .fill("SELECT nome, 'x' AS marca\n  FROM alunos\n WHERE id > 10;");
+  await escreverNoBloco(page, 0, "SELECT nome, 'x' AS marca\n  FROM alunos\n WHERE id > 10;");
+  // A camada de cor só existe com o bloco PARADO: em foco quem está ali é o
+  // Monaco (T073). Sair do bloco é parte do que se está testando.
+  await sairDoBloco(page);
 
   const medida = await page.locator('[data-bloco]').first().evaluate((no) => {
     const ta = no.querySelector('textarea') as HTMLTextAreaElement;
@@ -329,9 +377,7 @@ test('bloco de JavaScript roda no runner, e a saída cai no Output', async ({ pa
   await barra(page).getByRole('button', { name: 'Add Code' }).click();
   await bloco(page, 0).getByRole('button', { name: /Linguagem do bloco/ }).click();
   await page.getByRole('option', { name: 'JavaScript' }).click();
-  await page
-    .getByRole('textbox', { name: /Bloco 1/ })
-    .fill("console.log('veio-do-bloco')");
+  await escreverNoBloco(page, 0, "console.log('veio-do-bloco')");
 
   await bloco(page, 0).getByRole('button', { name: '▷ Run' }).click();
   // O painel vem À FRENTE. Sem isto o bloco rodava, a saída era escrita e a
@@ -415,7 +461,7 @@ test('salvar o resultado NO caderno, com o nome que ele dá (T072)', async ({ pa
   const nome = `guardar-${Date.now()}`;
   await novoCaderno(page, nome);
   await barra(page).getByRole('button', { name: 'Add Code' }).click();
-  await bloco(page, 0).locator('textarea').fill("SELECT 'guardado' AS qual");
+  await escreverNoBloco(page, 0, "SELECT 'guardado' AS qual");
 
   // Antes de rodar não há o que salvar: o botão nem existe.
   await expect(page.getByRole('button', { name: '⤓ Salvar resultado' })).toHaveCount(0);
@@ -448,4 +494,61 @@ test('salvar o resultado NO caderno, com o nome que ele dá (T072)', async ({ pa
     page.locator('[data-resultados-salvos]')
       .getByRole('button', { name: /Abrir o resultado "vendas de junho"/ })
   ).toBeVisible();
+});
+
+test('o Enter do bloco quebra linha de verdade', async ({ page }) => {
+  // Guarda simples e barata: se o `Enter` parar de quebrar linha dentro do
+  // bloco, tudo o mais continua parecendo funcionar.
+  await novoCaderno(page, `enter-${Date.now()}`);
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await escreverNoBloco(page, 0, 'aaa\nbbb');
+  await sairDoBloco(page);
+
+  // Conta `<br>`, e NÃO `\n`: o colorizador do Monaco emite quebra como
+  // elemento, e `textContent` não traz nenhuma. Foi assim que este teste
+  // acusou um defeito que não existia.
+  const quebras = await page.locator('[data-colorido]').first().evaluate(
+    (no) => no.querySelectorAll('br').length
+  );
+  // `>= 1`, e não um número exato: o colorizador fecha cada linha com um
+  // `<br/>`, inclusive a última. O que este teste guarda é que HÁ quebra —
+  // fixar a contagem seria testar o detalhe interno dele.
+  expect(quebras).toBeGreaterThanOrEqual(1);
+  await expect(page.locator('[data-colorido]').first()).toContainText('aaa');
+  await expect(page.locator('[data-colorido]').first()).toContainText('bbb');
+});
+
+test('o bloco em FOCO vira Monaco, e tem multi-cursor (T073)', async ({ page }) => {
+  // A desculpa que eu tinha escrito na spec 050 era "o bloco é pequeno". Ele
+  // respondeu com o desenho: "Monaco só no bloco em foco".
+  await novoCaderno(page, `multi-${Date.now()}`);
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await escreverNoBloco(page, 0, 'xx xx xx');
+
+  // `Ctrl+D` acrescenta um cursor na próxima ocorrência — o gesto que uma
+  // `textarea` não tem por definição do HTML, e a razão de o Monaco entrar.
+  await page.keyboard.press('Home');
+  await page.keyboard.press('Control+d');
+  await page.keyboard.press('Control+d');
+  await page.keyboard.press('Control+d');
+  await page.keyboard.type('y');
+
+  await sairDoBloco(page);
+  // Três cursores, três trocas: com um só, sobraria `xx` no texto.
+  await expect(page.locator('[data-colorido]').first()).toHaveText('y y y');
+});
+
+test('só o bloco EM FOCO paga um Monaco — os outros não', async ({ page }) => {
+  // É a razão de o desenho ser esse: um caderno de trinta blocos não pode
+  // montar trinta editores.
+  await novoCaderno(page, `um-so-${Date.now()}`);
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await expect(page.locator('[data-bloco]')).toHaveCount(2);
+
+  await expect(page.locator('[data-editor-do-bloco]')).toHaveCount(0);
+  await bloco(page, 0).click();
+  await expect(page.locator('[data-editor-do-bloco]')).toHaveCount(1);
+  await bloco(page, 1).click();
+  await expect(page.locator('[data-editor-do-bloco]')).toHaveCount(1);
 });
