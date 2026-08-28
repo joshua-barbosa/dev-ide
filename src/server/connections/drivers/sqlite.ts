@@ -27,6 +27,8 @@ import {
 } from './modelos';
 import { TEMPLATES_SQLITE } from '../../../shared/tree/templates';
 import { montarDiagrama, type LinhaDeColuna, type LinhaDeFk } from './er';
+import { montarCodebase, type LinhaDeColunaDoCodebase } from './codebase';
+import type { Codebase } from '../types';
 import type {
   OpcoesDeNavegacao,
   ActionRequest,
@@ -434,6 +436,8 @@ function acao(db: DatabaseSync, request: ActionRequest): ActionResult {
 }
 
 async function connect(config: ResolvedConfig): Promise<Session> {
+  /** O catálogo (T053). Vive na SESSÃO; fechar o arquivo o descarta. */
+  const catalogos = new Map<string, Codebase>();
   const file = String(config.fields.file ?? '');
   if (!fs.existsSync(file)) {
     throw new Error(`Arquivo SQLite não encontrado: ${file}`);
@@ -452,6 +456,53 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     // O SQLite é um arquivo, não um servidor: não há processo alheio para
     // listar nem para matar. `null` diz isso; lista vazia diria outra coisa.
     processList: async () => null,
+    /**
+     * O catálogo, para o autocomplete (T053).
+     *
+     * As funções internas vêm do PRÓPRIO SQLite: `PRAGMA function_list` existe
+     * desde a 3.30, e é a verdade do motor — não uma lista escrita à mão como a
+     * do MySQL. Se o pragma não responder, a lista fica vazia: sugerir função
+     * que aquele build não tem seria pior que não sugerir.
+     */
+    codebase: async () => {
+      const guardado = catalogos.get('main');
+      if (guardado !== undefined) return guardado;
+
+      const objetos = db
+        .prepare(
+          "SELECT name, type FROM sqlite_master WHERE type IN ('table','view')" +
+            " AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        )
+        .all() as Array<{ name: string; type: string }>;
+
+      const colunas: LinhaDeColunaDoCodebase[] = [];
+      for (const o of objetos) {
+        const info = db
+          .prepare(`PRAGMA table_info(${quoteIdentifier(o.name, 'double')})`)
+          .all() as Array<{ name: string; type: string }>;
+        for (const c of info) {
+          colunas.push({
+            objeto: o.name,
+            schema: '',
+            especie: o.type === 'view' ? 'view' : 'tabela',
+            coluna: c.name,
+            tipo: c.type || 'ANY',
+          });
+        }
+      }
+
+      let funcoes: string[] = [];
+      try {
+        funcoes = (db.prepare('PRAGMA function_list').all() as Array<{ name: string }>)
+          .map((f) => f.name);
+      } catch {
+        // Build sem o pragma: fica sem função, e não com uma lista inventada.
+      }
+
+      const catalogo = montarCodebase(config.label, colunas, [], funcoes);
+      catalogos.set('main', catalogo);
+      return catalogo;
+    },
     /**
      * O diagrama ER do arquivo inteiro (T064).
      *

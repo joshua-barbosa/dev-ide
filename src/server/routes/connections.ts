@@ -45,6 +45,8 @@ function capabilities(session: Session) {
     cancelaQuery: typeof session.cancelQuery === 'function',
     // Desenhar o ER (T064). O item de menu só existe onde isto for verdadeiro.
     diagramaEr: typeof session.erDiagram === 'function',
+    // O catálogo para o autocomplete (T053). Sem isto o editor não pergunta.
+    codebase: typeof session.codebase === 'function',
     // Onde a tabela SFTP abre (spec 055). `/` para quem não disser nada.
     rootPath: session.rootPath ?? '/',
     // O que a tela digita quando o prompt aparecer (spec 061).
@@ -327,6 +329,20 @@ export function createConnectionsRouter(
       minBytes: Number.isFinite(bytes) && bytes > 0 ? bytes : null,
       desde: textoDaQuery(req.query.since),
     })));
+  }));
+
+  /**
+   * O catálogo do banco, para o autocomplete (T053).
+   *
+   * Uma rota, e o cache mora na SESSÃO — não aqui. Guardar no roteador daria
+   * um cache por processo que não sabe quando a conexão caiu.
+   */
+  router.get('/:id/codebase', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (typeof session.codebase !== 'function') {
+      throw new Error('Esta conexão não tem catálogo para completar.');
+    }
+    res.json(ok(await session.codebase(requireString(req.query.database, 'database'))));
   }));
 
   /** O diagrama ER de um schema (T064). */

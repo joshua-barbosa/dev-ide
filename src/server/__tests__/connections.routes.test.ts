@@ -189,6 +189,8 @@ test('rotas de conexão', async (t) => {
       // Mesma mecânica para o diagrama ER (T064): o driver falso não o
       // implementa, então o item de menu nem existe na tela.
       diagramaEr: false,
+      // E o catálogo do autocomplete (T053): mesma mecânica.
+      codebase: false,
     });
   });
 

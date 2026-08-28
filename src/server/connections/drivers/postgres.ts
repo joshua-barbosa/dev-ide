@@ -32,6 +32,10 @@ import {
   PG_COLUNAS_DO_ER, PG_FKS_DO_ER, montarDiagrama,
   type LinhaDeColuna, type LinhaDeFk,
 } from './er';
+import {
+  PG_COLUNAS_DO_CODEBASE, PG_FUNCOES_INTERNAS, PG_ROTINAS_DO_CODEBASE, montarCodebase,
+  type LinhaDeColunaDoCodebase, type LinhaDeRotina,
+} from './codebase';
 import { estruturaDaTabela } from './postgres-estrutura';
 import { escrever, lerCelula, lerTabela } from './postgres-tabela';
 import { comandoDeCancelamento } from './cancelar';
@@ -48,6 +52,7 @@ import type {
   ExecuteRequest,
   QueryResult,
   ResolvedConfig,
+  Codebase,
   Session,
   TreeNode,
 } from '../types';
@@ -518,6 +523,14 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     statement_timeout: resolveTimeout(undefined),
   };
 
+  /**
+   * O catálogo por banco (T053).
+   *
+   * Vive na SESSÃO, e não num cache global: fechar a conexão o descarta, que é
+   * quando ele pode ter envelhecido sem a IDE ver. Reconectar relê.
+   */
+  const catalogos = new Map<string, Codebase>();
+
   const { clienteDe, fecharTudo, aoMorrer, marcando, pidEmUso } =
     criarPool(base, config, String(f.startup_sql ?? '').trim());
   const principalClient = await clienteDe(principal);
@@ -584,6 +597,30 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       // `pg_terminate_backend` aceita parâmetro — ao contrário do `KILL` do
       // MySQL —, então aqui o id vai parametrizado de verdade.
       await client.query('SELECT pg_terminate_backend($1)', [Number(id)]);
+    },
+    /**
+     * O catálogo, lido uma vez por banco e guardado (T053).
+     *
+     * O cache é da SESSÃO: fechar a conexão o leva junto, que é exatamente
+     * quando ele pode ter envelhecido sem ninguém ver.
+     */
+    codebase: async (database) => {
+      const guardado = catalogos.get(database);
+      if (guardado !== undefined) return guardado;
+      const client = await clienteDe(database === '' ? exibicao.main : database);
+      const [colunas, rotinas, funcoes] = await Promise.all([
+        client.query<LinhaDeColunaDoCodebase>(PG_COLUNAS_DO_CODEBASE),
+        client.query<LinhaDeRotina>(PG_ROTINAS_DO_CODEBASE),
+        client.query<{ nome: string }>(PG_FUNCOES_INTERNAS),
+      ]);
+      const catalogo = montarCodebase(
+        database,
+        colunas.rows,
+        rotinas.rows,
+        funcoes.rows.map((f) => f.nome)
+      );
+      catalogos.set(database, catalogo);
+      return catalogo;
     },
     /** nodePath de um schema é [server, banco, schema]. */
     erDiagram: async (nodePath) => {

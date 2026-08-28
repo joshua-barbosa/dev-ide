@@ -32,6 +32,11 @@ import {
   MYSQL_COLUNAS_DO_ER, MYSQL_FKS_DO_ER, montarDiagrama,
   type LinhaDeColuna, type LinhaDeFk,
 } from './er';
+import {
+  MYSQL_COLUNAS_DO_CODEBASE, MYSQL_ROTINAS_DO_CODEBASE, montarCodebase,
+  type LinhaDeColunaDoCodebase, type LinhaDeRotina,
+} from './codebase';
+import { FUNCOES_DO_MYSQL } from '../../../shared/sql/funcoes-do-banco';
 import { CLI_MYSQL } from '../../../shared/terminal/clientes/mysql';
 import type {
   OpcoesDeNavegacao,
@@ -39,6 +44,7 @@ import type {
   ActionResult,
   Driver,
   ResolvedConfig,
+  Codebase,
   Session,
   TreeNode,
 } from '../types';
@@ -245,6 +251,8 @@ function opcaoSsl(modo: string, ca: string): mysql.ConnectionOptions['ssl'] {
 async function connect(config: ResolvedConfig): Promise<Session> {
   const f = config.fields;
   const principal = String(f.main_database ?? '');
+  /** O catálogo por banco (T053). Vive na SESSÃO; fechar a conexão o descarta. */
+  const catalogos = new Map<string, Codebase>();
 
   const exibicao: Exibicao = {
     main: principal,
@@ -376,6 +384,25 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       // não for um número, não vira SQL. `KILL` não aceita parâmetro.
       if (!/^\d+$/.test(id)) throw new Error(`Id de processo inválido: ${id}.`);
       await query(conn, `KILL ${id}`);
+    },
+    /**
+     * O catálogo, lido uma vez por banco e guardado (T053).
+     *
+     * As funções internas vêm de uma lista ESCRITA À MÃO: o MySQL não as expõe
+     * em catálogo nenhum — `information_schema.ROUTINES` só traz as do usuário.
+     * Está declarado em `shared/sql/funcoes-do-banco.ts`, com o porquê.
+     */
+    codebase: async (database) => {
+      const alvo = database === '' ? exibicao.main : database;
+      const guardado = catalogos.get(alvo);
+      if (guardado !== undefined) return guardado;
+      const [colunas, rotinas] = await Promise.all([
+        query<LinhaDeColunaDoCodebase>(conn, MYSQL_COLUNAS_DO_CODEBASE, [alvo]),
+        query<LinhaDeRotina>(conn, MYSQL_ROTINAS_DO_CODEBASE, [alvo]),
+      ]);
+      const catalogo = montarCodebase(alvo, colunas, rotinas, FUNCOES_DO_MYSQL);
+      catalogos.set(alvo, catalogo);
+      return catalogo;
     },
     /** nodePath de um schema é [server, schema] — no MySQL os dois são um só. */
     erDiagram: async (nodePath) => {

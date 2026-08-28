@@ -40,6 +40,7 @@ const VAZIA: AparenciaDoTerminal = {};
 import { useContextMenu } from './ContextMenu';
 import { useDialogs } from './useDialogs';
 import { Api } from './api';
+import { useCodebase } from './sql/useCodebase';
 import { MenuBar } from './MenuBar';
 import { StatusBar } from './StatusBar';
 import { QuickInput } from './QuickInput';
@@ -234,6 +235,8 @@ export function App() {
   /** O caminho do arquivo em foco — a chave do vínculo e do painel de símbolos. */
   const caminhoAtivo =
     (ws.active?.meta as { path?: string | null } | undefined)?.path ?? null;
+
+  useCodebase(vinculos.vinculoDe(caminhoAtivo)); // autocomplete de SQL (T053)
 
   const conexoesAcoes = useConexoesAcoes({
     qi,

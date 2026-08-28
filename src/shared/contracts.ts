@@ -506,6 +506,8 @@ export interface SessionCapabilities {
   readonly cancelaQuery: boolean;
   /** Sabe desenhar o diagrama ER de um schema (T064). */
   readonly diagramaEr: boolean;
+  /** Sabe entregar o catálogo para o autocomplete (T053). */
+  readonly codebase: boolean;
 }
 
 export interface ConnectionsState {

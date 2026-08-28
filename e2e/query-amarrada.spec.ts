@@ -215,3 +215,29 @@ test('um CREATE PROCEDURE é UM statement, e não quatro (T052)', async ({ page 
   await lenteDoBloco(page, 1, 'Run').click();
   await expect(page.getByText('depois', { exact: true })).toBeVisible();
 });
+
+test('o autocomplete conhece as TABELAS do banco da aba (T053)', async ({ page }) => {
+  // O catálogo é lido uma vez por conexão+banco e guardado. A prova é a lista
+  // do Monaco trazendo nome que só existe NAQUELE banco.
+  await abrirQueryDoBanco(page);
+  await esperarEditorPronto(page);
+  await page.keyboard.insertText('select * from al');
+  await page.keyboard.press('Control+Space');
+
+  const sugestoes = page.locator('.suggest-widget .monaco-list-row');
+  await expect(sugestoes.filter({ hasText: 'alunos' }).first()).toBeVisible({ timeout: 15_000 });
+});
+
+test('o autocomplete conhece as COLUNAS, inclusive pelo apelido (T053)', async ({ page }) => {
+  // `SELECT a.| FROM alunos a`: o apelido está DEPOIS do cursor, e ler só o
+  // prefixo faria isto não sugerir nada — que é o caso mais comum de todos.
+  await abrirQueryDoBanco(page);
+  await esperarEditorPronto(page);
+  await page.keyboard.insertText('select * from alunos a where a.');
+  await page.keyboard.press('Control+Space');
+
+  const sugestoes = page.locator('.suggest-widget .monaco-list-row');
+  await expect(sugestoes.filter({ hasText: 'nome' }).first()).toBeVisible({ timeout: 15_000 });
+  // Coluna, e não tabela: depois do ponto só cabe coluna.
+  await expect(sugestoes.filter({ hasText: 'alunos_view' })).toHaveCount(0);
+});

@@ -62,8 +62,9 @@ export type {
 } from '../../shared/contracts';
 import type { NodeIcon } from '../../shared/icons';
 import type { DiagramaER } from '../../shared/sql/diagrama-er';
+import type { Codebase } from '../../shared/sql/codebase';
 
-export type { DiagramaER };
+export type { DiagramaER, Codebase };
 import type { ClienteDeLinhaDeComando } from '../../shared/terminal/comando';
 
 export type { ClienteDeLinhaDeComando };
@@ -317,6 +318,14 @@ export interface Session {
    * o conceito — e aí a ação nem aparece na árvore.
    */
   readonly erDiagram?: (nodePath: readonly string[]) => Promise<DiagramaER>;
+  /**
+   * O catálogo do banco para o autocomplete (T053).
+   *
+   * Lido de uma vez e GUARDADO na sessão: o editor sugere sem ir ao servidor a
+   * cada tecla. Reconectar joga o cache fora, que é quando o catálogo pode ter
+   * mudado sem a IDE ver.
+   */
+  readonly codebase?: (database: string) => Promise<Codebase>;
   /**
    * Os processos rodando no servidor (spec 047).
    *

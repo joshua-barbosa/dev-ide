@@ -48,6 +48,7 @@ import type {
 import type { Snippet } from '../shared/snippets';
 import type { FiltroDaArvore } from '../shared/tree/filtro-da-arvore';
 import type { DiagramaER } from '../shared/sql/diagrama-er';
+import type { Codebase } from '../shared/sql/codebase';
 
 /**
  * O filtro da árvore como ele viaja: o nome já traduzido para padrão de `LIKE`
@@ -427,6 +428,12 @@ export const Api = {
       : `${base}${base.includes('?') ? '&' : '?'}${partes.join('&')}`;
     return request<TreeNode[]>('GET', url);
   },
+  /** O catálogo do banco, para o autocomplete (T053). */
+  codebase: (id: string, database: string) =>
+    request<Codebase>(
+      'GET',
+      `${conexoes}/${id}/codebase?database=${encodeURIComponent(database)}`
+    ),
   /** O diagrama ER de um schema (T064). */
   erDiagram: (id: string, nodePath: readonly string[]) =>
     request<DiagramaER>('GET', comCaminho(`${conexoes}/${id}/er`, nodePath)),
