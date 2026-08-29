@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  abrirTerminal, ativarTerminal, dividirTerminal, fecharTerminal, normalizarTerminais,
-  paneisVisiveis, paresDe, podeDividirTerminal, proximoTitulo, SEM_TERMINAIS,
+  abrirTerminal, alternarOrientacao, ativarTerminal, dividirTerminal, fecharTerminal,
+  normalizarTerminais, orientacaoDoPar, paneisVisiveis, paresDe, podeDividirTerminal,
+  proximoTitulo, SEM_TERMINAIS,
 } from '../terminais';
 
 function comIds(...ids: string[]) {
@@ -209,4 +210,53 @@ test('o teto é por PAR, e não no total de terminais', () => {
   estado = abrirTerminal(estado, 'novo');
   assert.equal(podeDividirTerminal(estado), true, 'um par cheio não trava o próximo');
   assert.equal(paneisVisiveis(estado).length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Divisão vertical no terminal (T020, spec 072)
+// ---------------------------------------------------------------------------
+//
+// A nota dele: "Nos dois: editor e terminal". O editor já dividia para baixo
+// pelo arrastar-e-soltar; o terminal só sabia lado a lado.
+
+test('o par nasce horizontal, como sempre foi', () => {
+  const um = abrirTerminal(SEM_TERMINAIS, 't1');
+  const dois = dividirTerminal(um, 't2');
+  assert.equal(orientacaoDoPar(dois, 't1'), 'horizontal');
+});
+
+test('dividir para BAIXO deixa o par vertical', () => {
+  const um = abrirTerminal(SEM_TERMINAIS, 't1');
+  const dois = dividirTerminal(um, 't2', 'vertical');
+  assert.equal(orientacaoDoPar(dois, 't1'), 'vertical');
+  assert.equal(paneisVisiveis(dois).length, 2);
+});
+
+test('a orientação é DO PAR: dividir de novo não a troca sozinha', () => {
+  // Misturar as duas dentro de um par exigiria uma árvore, e o painel de baixo
+  // não tem altura para isso. Uma orientação por par é o que cabe.
+  const tres = dividirTerminal(dividirTerminal(abrirTerminal(SEM_TERMINAIS, 't1'), 't2', 'vertical'), 't3');
+  assert.equal(orientacaoDoPar(tres, 't1'), 'vertical');
+  assert.equal(paneisVisiveis(tres).length, 3);
+});
+
+test('alternar a orientação vira o par inteiro', () => {
+  const dois = dividirTerminal(abrirTerminal(SEM_TERMINAIS, 't1'), 't2');
+  const virado = alternarOrientacao(dois, 't1');
+  assert.equal(orientacaoDoPar(virado, 't1'), 'vertical');
+  assert.equal(orientacaoDoPar(alternarOrientacao(virado, 't1'), 't1'), 'horizontal');
+});
+
+test('par sem orientação guardada é horizontal — sessão antiga não quebra', () => {
+  const antigo = normalizarTerminais({
+    lista: [{ id: 't1', titulo: 'bash', par: 't1' }, { id: 't2', titulo: 'bash 2', par: 't1' }],
+    ativo: 't1',
+  });
+  assert.equal(orientacaoDoPar(antigo, 't1'), 'horizontal');
+});
+
+test('fechar o par leva a orientação junto, e não deixa lixo', () => {
+  const dois = dividirTerminal(abrirTerminal(SEM_TERMINAIS, 't1'), 't2', 'vertical');
+  const vazio = fecharTerminal(fecharTerminal(dois, 't1'), 't2');
+  assert.deepEqual(vazio.orientacoes, {});
 });

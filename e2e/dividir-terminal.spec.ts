@@ -14,9 +14,20 @@ async function novoTerminal(page: Page): Promise<void> {
   await page.getByRole('menuitem', { name: 'New Terminal' }).click();
 }
 
+/**
+ * O item `Split Terminal`, e não o `Split Terminal Down`.
+ *
+ * Desde o T020 há dois itens que começam igual. Nenhum dos dois tem atalho, e
+ * por isso a âncora é no FIM (`$`) — a primeira versão deste seletor procurava
+ * um `Ctrl` que não existe, e cada clique esperava trinta segundos até desistir.
+ * É a mesma armadilha do `Ex·porta·r`, com o agravante de ser silenciosa.
+ */
+const itemDividir = (page: Page, baixo = false) =>
+  page.getByRole('menuitem', { name: baixo ? /^Split Terminal Down$/ : /^Split Terminal$/ });
+
 async function dividir(page: Page): Promise<void> {
   await menu(page, 'Terminal');
-  await page.getByRole('menuitem', { name: 'Split Terminal' }).click();
+  await itemDividir(page).click();
 }
 
 test.beforeEach(async ({ page }) => {
@@ -26,7 +37,7 @@ test.beforeEach(async ({ page }) => {
 
 test('Split Terminal deixou de ser promessa', async ({ page }) => {
   await menu(page, 'Terminal');
-  await expect(page.getByRole('menuitem', { name: 'Split Terminal' })).toBeEnabled();
+  await expect(itemDividir(page)).toBeEnabled();
 });
 
 test('dividir mostra dois terminais lado a lado', async ({ page }) => {
@@ -102,7 +113,10 @@ test('dá para dividir mais de uma vez, até o teto de quatro', async ({ page })
 
   // No teto, o item do menu fica cinza, como o Split Editor já faz.
   await menu(page, 'Terminal');
-  await expect(page.getByRole('menuitem', { name: 'Split Terminal' })).toBeDisabled();
+  await expect(itemDividir(page)).toBeDisabled();
+  // E o `Down` também: o teto é o mesmo, e item aceso que não faz nada é
+  // promessa quebrada.
+  await expect(itemDividir(page, true)).toBeDisabled();
   await page.keyboard.press('Escape');
   await expect(paneis(page)).toHaveCount(4);
 });
@@ -115,6 +129,30 @@ test('o teto é por par: um novo terminal volta a poder dividir', async ({ page 
   await novoTerminal(page);
   await expect(paneis(page)).toHaveCount(1);
   await menu(page, 'Terminal');
-  await expect(page.getByRole('menuitem', { name: 'Split Terminal' })).toBeEnabled();
+  await expect(itemDividir(page)).toBeEnabled();
   await page.keyboard.press('Escape');
+});
+
+test('Split Terminal Down empilha os panes (T020)', async ({ page }) => {
+  // A nota dele foi "nos dois: editor e terminal". O terminal só sabia lado a
+  // lado desde a spec 021.
+  await novoTerminal(page);
+  await menu(page, 'Terminal');
+  await itemDividir(page, true).click();
+
+  await expect(paneis(page)).toHaveCount(2);
+  await expect(page.locator('[data-panes-terminal="vertical"]')).toBeVisible();
+});
+
+test('a orientação é DO PAR: dividir de novo não vira a tela (T020)', async ({ page }) => {
+  await novoTerminal(page);
+  await menu(page, 'Terminal');
+  await itemDividir(page, true).click();
+  await expect(page.locator('[data-panes-terminal="vertical"]')).toBeVisible();
+
+  // Um terceiro pane pelo caminho horizontal NÃO desfaz o empilhamento: quem
+  // pediu mais um pane não pediu para virar a tela.
+  await dividir(page);
+  await expect(paneis(page)).toHaveCount(3);
+  await expect(page.locator('[data-panes-terminal="vertical"]')).toBeVisible();
 });

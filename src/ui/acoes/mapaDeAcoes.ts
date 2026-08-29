@@ -47,7 +47,8 @@ export interface DepsDoMapa {
   readonly snippetsAcoes: SnippetsAcoes;
   readonly novoArquivo: () => void;
   readonly novoTerminalNoPainel: () => void;
-  readonly dividirTerminalNoPainel: () => void;
+  /** Divide o terminal ativo. `horizontal` (lado a lado) é o padrão (T020). */
+  readonly dividirTerminalNoPainel: (orientacao?: 'horizontal' | 'vertical') => void;
   readonly abrirPorCaminho: () => Promise<void>;
   readonly abrirPreferencias: () => Promise<void>;
   readonly abrirPaleta: () => void | Promise<void>;
@@ -145,7 +146,8 @@ return {
   },
 
   'terminal.new': () => novoTerminalNoPainel(),
-  'terminal.split': dividirTerminalNoPainel,
+  'terminal.splitDown': () => dividirTerminalNoPainel('vertical'),
+  'terminal.split': () => dividirTerminalNoPainel('horizontal'),
   'terminal.runTask': () => avisar(comandosAcoes.abrir()),
   'terminal.connection': () => {
     const conexao = conexoes.acharConexao(exec.conexaoAtiva);

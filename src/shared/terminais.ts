@@ -23,12 +23,41 @@ export interface TerminalAberto {
   readonly par: string;
 }
 
+/** `horizontal` = lado a lado; `vertical` = um sobre o outro. */
+export type OrientacaoDoPar = 'horizontal' | 'vertical';
+
 export interface EstadoDeTerminais {
   readonly lista: readonly TerminalAberto[];
   readonly ativo: string | null;
+  /**
+   * Como os panes de cada par se arrumam (T020).
+   *
+   * Uma orientação POR PAR, e não por pane: misturar as duas dentro de um par
+   * exigiria uma árvore, e o painel de baixo não tem altura para isso. Par sem
+   * entrada aqui é horizontal — que é como sempre foi, e é o que faz uma sessão
+   * gravada antes desta spec abrir igual.
+   */
+  readonly orientacoes: Readonly<Record<string, OrientacaoDoPar>>;
 }
 
-export const SEM_TERMINAIS: EstadoDeTerminais = { lista: [], ativo: null };
+export const SEM_TERMINAIS: EstadoDeTerminais = { lista: [], ativo: null, orientacoes: {} };
+
+/** Como o par daquele terminal se arruma. Sem entrada, horizontal. */
+export function orientacaoDoPar(estado: EstadoDeTerminais, id: string): OrientacaoDoPar {
+  const par = estado.lista.find((t) => t.id === id)?.par ?? id;
+  return estado.orientacoes[par] ?? 'horizontal';
+}
+
+/** Vira o par inteiro de lado a lado para um sobre o outro, e de volta. */
+export function alternarOrientacao(estado: EstadoDeTerminais, id: string): EstadoDeTerminais {
+  const par = estado.lista.find((t) => t.id === id)?.par;
+  if (par === undefined) return estado;
+  const atual = estado.orientacoes[par] ?? 'horizontal';
+  return {
+    ...estado,
+    orientacoes: { ...estado.orientacoes, [par]: atual === 'horizontal' ? 'vertical' : 'horizontal' },
+  };
+}
 
 /**
  * Lê o estado guardado no navegador, tolerando lixo.
@@ -59,7 +88,20 @@ export function normalizarTerminais(bruto: unknown): EstadoDeTerminais {
     typeof lido.ativo === 'string' && lista.some((t) => t.id === lido.ativo)
       ? lido.ativo
       : (lista[0]?.id ?? null);
-  return { lista, ativo };
+
+  // As orientações guardadas, só as de par que ainda existe: sessão antiga não
+  // tem o campo, e par fechado não pode deixar entrada órfã crescendo.
+  const pares = new Set(lista.map((t) => t.par));
+  const orientacoes: Record<string, OrientacaoDoPar> = {};
+  const brutas = lido.orientacoes;
+  if (brutas !== null && typeof brutas === 'object' && !Array.isArray(brutas)) {
+    for (const [par, valor] of Object.entries(brutas as Record<string, unknown>)) {
+      if (pares.has(par) && (valor === 'horizontal' || valor === 'vertical')) {
+        orientacoes[par] = valor;
+      }
+    }
+  }
+  return { lista, ativo, orientacoes };
 }
 
 /** Nome na sequência em que foram abertos: "Terminal 1", "Terminal 2"… */
@@ -76,6 +118,7 @@ export function proximoTitulo(lista: readonly TerminalAberto[]): string {
 export function abrirTerminal(estado: EstadoDeTerminais, id: string): EstadoDeTerminais {
   if (estado.lista.some((t) => t.id === id)) return { ...estado, ativo: id };
   return {
+    ...estado,
     lista: [...estado.lista, { id, titulo: proximoTitulo(estado.lista), par: id }],
     ativo: id,
   };
@@ -106,15 +149,26 @@ export function podeDividirTerminal(estado: EstadoDeTerminais): boolean {
  * Sem ativo, é o mesmo que abrir um normal: dividir o nada não significa coisa
  * alguma, e recusar seria atrito por preciosismo.
  */
-export function dividirTerminal(estado: EstadoDeTerminais, id: string): EstadoDeTerminais {
+export function dividirTerminal(
+  estado: EstadoDeTerminais,
+  id: string,
+  orientacao: OrientacaoDoPar = 'horizontal'
+): EstadoDeTerminais {
   const ativo = estado.lista.find((t) => t.id === estado.ativo);
   if (ativo === undefined) return abrirTerminal(estado, id);
   // No teto, dividir não faz nada: o comando já aparece cinza, e o clique que
   // escapar por atalho não pode criar uma tira ilegível.
   if (!podeDividirTerminal(estado)) return estado;
   return {
+    ...estado,
     lista: [...estado.lista, { id, titulo: proximoTitulo(estado.lista), par: ativo.par }],
     ativo: id,
+    // A orientação é do PAR e se fixa na PRIMEIRA divisão: dividir de novo não
+    // vira a tela sob os dedos de quem só queria mais um pane.
+    orientacoes:
+      estado.orientacoes[ativo.par] === undefined
+        ? { ...estado.orientacoes, [ativo.par]: orientacao }
+        : estado.orientacoes,
   };
 }
 
@@ -153,10 +207,16 @@ export function fecharTerminal(estado: EstadoDeTerminais, id: string): EstadoDeT
   if (indice === -1) return estado;
 
   const lista = estado.lista.filter((t) => t.id !== id);
-  if (estado.ativo !== id) return { lista, ativo: estado.ativo };
+  // A orientação de um par que não tem mais pane nenhum sai junto: entrada
+  // órfã cresceria para sempre na sessão, sem nada apontando para ela.
+  const vivos = new Set(lista.map((t) => t.par));
+  const orientacoes = Object.fromEntries(
+    Object.entries(estado.orientacoes).filter(([par]) => vivos.has(par))
+  );
+  if (estado.ativo !== id) return { lista, ativo: estado.ativo, orientacoes };
 
   const proximo = lista[indice] ?? lista[indice - 1] ?? null;
-  return { lista, ativo: proximo === null ? null : proximo.id };
+  return { lista, ativo: proximo === null ? null : proximo.id, orientacoes };
 }
 
 export function ativarTerminal(estado: EstadoDeTerminais, id: string): EstadoDeTerminais {

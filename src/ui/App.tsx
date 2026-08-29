@@ -57,7 +57,7 @@ import { useProblemas } from './useProblemas';
 import {
   abrirTerminal as abrirNoPainel, ativarTerminal, dividirTerminal, fecharTerminal,
   podeDividirTerminal,
-  normalizarTerminais, paneisVisiveis, SEM_TERMINAIS,
+  normalizarTerminais, orientacaoDoPar, paneisVisiveis, SEM_TERMINAIS,
 } from '../shared/terminais';
 import { useExecution } from './useExecution';
 import { propsDaAbaDeTabela } from './tabela/propsDaAbaDeTabela';
@@ -382,8 +382,8 @@ export function App() {
   };
 
   /** Abre um terminal AO LADO do ativo, no mesmo par. */
-  const dividirTerminalNoPainel = (): void => {
-    setTerminais((atual) => dividirTerminal(atual, `term-${crypto.randomUUID()}`));
+  const dividirTerminalNoPainel = (orientacao: 'horizontal' | 'vertical' = 'horizontal') => {
+    setTerminais((a) => dividirTerminal(a, `term-${crypto.randomUUID()}`, orientacao));
     layout.mostrarPainel('terminal');
   };
 
@@ -695,12 +695,9 @@ export function App() {
                 onFecharTerminal={(id) => setTerminais((a) => fecharTerminal(a, id))}
                 onEsconder={layout.alternarPainel}
               >
-                {/* Todos montados, só o ativo à vista — mesma regra do editor e
-                    das abas de terminal. Renderizar só o ativo desmontaria o
-                    componente ao alternar, matando o processo e apagando o
-                    buffer. */}
-                {/* Todos montados; à vista, os do PAR do ativo — é o lado a
-                    lado do "split terminal". Esconder continua sendo
+                {/* Todos montados; à vista, os do PAR do ativo — é o "split
+                    terminal". Renderizar só o ativo desmontaria o componente ao
+                    alternar, matando o processo e apagando o buffer: esconder é
                     `display: none`, nunca desmontar. */}
                 {terminais.lista.map((t) => (
                   <Box
@@ -709,9 +706,11 @@ export function App() {
                     sx={{
                       flex: 1, minHeight: 0, minWidth: 0,
                       display: visiveisNoPainel.has(t.id) ? 'flex' : 'none',
-                      borderLeft: 1,
+                      // A divisa acompanha a direção do par (T020).
+                      ...(orientacaoDoPar(terminais, terminais.ativo ?? '') === 'vertical'
+                        ? { borderTop: 1, '&:first-of-type': { borderTop: 0 } }
+                        : { borderLeft: 1, '&:first-of-type': { borderLeft: 0 } }),
                       borderColor: 'divider',
-                      '&:first-of-type': { borderLeft: 0 },
                     }}
                   >
                     <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>

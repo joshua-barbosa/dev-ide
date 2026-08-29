@@ -183,6 +183,18 @@ const DECLARADOS = [
   // chega como `%` — a declaração casaria com um evento que nunca acontece. Ler
   // `e.code` resolveria, mas isso é mudança no modelo de atalhos inteiro, não
   // numa linha. O item de menu e o botão do painel dão conta.
+  // T020: dividir o terminal de cima para baixo, além do lado a lado.
+  //
+  // SEM atalho, de propósito. O do VS Code é `Ctrl+Shift+5`, e o formatador
+  // desta IDE não escreve dígito — a lista de teclas válidas é a que
+  // `formatarAtalho` sabe PRODUZIR, e inventar um acorde ruim só para ter
+  // atalho seria pior que não ter.
+  {
+    id: 'terminal.splitDown', label: 'Split Terminal Down', menu: 'terminal', group: 1,
+    // O MESMO teto do `Split Terminal`: sem isto o item ficava aceso no limite
+    // de quatro panes e não fazia nada — o modelo devolve o estado igual.
+    when: 'podeDividirTerminal',
+  },
   { id: 'terminal.split', label: 'Split Terminal', menu: 'terminal', group: 1,
     when: 'podeDividirTerminal' },
   { id: 'terminal.runTask', label: 'Run Task…', menu: 'terminal', group: 2, keybinding: 'Ctrl+Shift+R' },

@@ -12,6 +12,7 @@ import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
 import { Icon } from './Icon';
 import { tokens } from './theme';
+import { orientacaoDoPar } from '../shared/terminais';
 import type { LinhaSaida } from './useExecution';
 import { ABAS_DO_PAINEL, type AbaDoPainel, type Problema } from '../shared/painel';
 import { paresDe, type EstadoDeTerminais } from '../shared/terminais';
@@ -185,7 +186,18 @@ export function BottomPanel({
 
         {aba === 'terminal' && (
           <>
-            <Box sx={{ flex: 1, minWidth: 0, display: 'flex', bgcolor: tokens.bgEditor }}>
+            {/* A direção vem do PAR ativo (T020): lado a lado ou um sobre o
+                outro. A nota dele foi "nos dois: editor e terminal". */}
+            <Box
+              data-panes-terminal={orientacaoDoPar(terminais, terminais.ativo ?? '')}
+              sx={{
+                flex: 1, minWidth: 0, display: 'flex', bgcolor: tokens.bgEditor,
+                flexDirection:
+                  orientacaoDoPar(terminais, terminais.ativo ?? '') === 'vertical'
+                    ? 'column'
+                    : 'row',
+              }}
+            >
               {terminais.lista.length === 0 ? (
                 <Box sx={{ p: 1.25, color: 'text.secondary', fontSize: 11 }}>
                   Nenhum terminal aberto — use o ＋ acima.
