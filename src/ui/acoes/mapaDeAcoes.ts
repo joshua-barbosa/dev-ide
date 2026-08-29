@@ -120,7 +120,8 @@ return {
   'view.problems': () => layout.mostrarPainel('problems'),
   'view.toggleSidebar': layout.alternarLateral,
   'view.togglePanel': layout.alternarPainel,
-  'view.splitEditor': ws.dividir,
+  'view.splitEditor': () => ws.dividir('direita'),
+  'view.splitEditorDown': () => ws.dividir('baixo'),
   // Alterna e PERSISTE. A ação do Monaco alternaria e esqueceria — e o
   // usuário espera que a escolha sobreviva a recarregar a página.
   'view.wordWrap': () =>

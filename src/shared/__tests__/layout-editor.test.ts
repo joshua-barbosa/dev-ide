@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  dividir, gruposDe, LAYOUT_INICIAL, MAX_GRUPOS, normalizarLayout, podeDividir,
-  proximoGrupo, removerGrupo, type NoDeLayout,
+  dividir, gruposDe, LAYOUT_INICIAL, MINIMO_DA_DIVISAO, normalizarLayout, podeDividir,
+  proximoGrupo, redimensionar, removerGrupo, tamanhosDe, type NoDeLayout,
 } from '../layout-editor';
 
 /** Desenha a árvore numa linha, para as asserções lerem como a tela se parece. */
@@ -106,13 +106,6 @@ test('o próximo grupo reaproveita buraco', () => {
   assert.equal(proximoGrupo(removerGrupo(l, 1)), 1);
 });
 
-test('há um teto de grupos — mosaico ilegível não é feature', () => {
-  let l = LAYOUT_INICIAL;
-  for (let n = 1; n < MAX_GRUPOS; n += 1) l = dividir(l, n - 1, 'direita', n);
-  assert.equal(gruposDe(l).length, MAX_GRUPOS);
-  assert.equal(podeDividir(l), false);
-});
-
 // ---- reconciliação com o store de abas ----
 
 test('grupo sem aba nenhuma sai do arranjo', () => {
@@ -130,4 +123,83 @@ test('sem grupo vivo nenhum, volta ao inicial', () => {
 test('normalizar com todos vivos devolve o mesmo desenho', () => {
   const l = dividir(LAYOUT_INICIAL, 0, 'direita', 1);
   assert.equal(desenhar(normalizarLayout(l, new Set([0, 1]))), '(0 | 1)');
+});
+
+// ---------------------------------------------------------------------------
+// Sem teto de grupos (T019) e proporção guardada (T021) — spec 072
+// ---------------------------------------------------------------------------
+
+test('não há mais teto de grupos: ele pediu "sem teto, como o VS Code"', () => {
+  // O teto de seis era meu, com a desculpa "mantém a barra de abas legível".
+  // Quem decide quantas colunas cabem na tela dele é ele.
+  let arranjo = LAYOUT_INICIAL;
+  for (let n = 1; n <= 12; n += 1) {
+    assert.equal(podeDividir(arranjo), true, `no ${n}º`);
+    arranjo = dividir(arranjo, n - 1, 'direita', n);
+  }
+  assert.equal(gruposDe(arranjo).length, 13);
+});
+
+test('a divisão nasce meio a meio, e a soma é sempre 1', () => {
+  const dois = dividir(LAYOUT_INICIAL, 0, 'direita', 1);
+  assert.deepEqual(tamanhosDe(dois), [0.5, 0.5]);
+
+  const tres = dividir(dois, 1, 'direita', 2);
+  const t = tamanhosDe(tres);
+  assert.equal(t.length, 3);
+  assert.ok(Math.abs(t.reduce((a, b) => a + b, 0) - 1) < 1e-9);
+});
+
+test('o grupo novo nasce do espaço DO ALVO, e não do de todos', () => {
+  // Dividir a segunda coluna não pode estreitar a primeira, que ele já
+  // ajustou a mão. O espaço sai de quem foi dividido.
+  const tres = dividir(dividir(LAYOUT_INICIAL, 0, 'direita', 1), 1, 'direita', 2);
+  assert.deepEqual(tamanhosDe(tres), [0.5, 0.25, 0.25]);
+});
+
+test('redimensionar move a fronteira ENTRE dois vizinhos, e não mexe nos outros', () => {
+  const tres = dividir(dividir(LAYOUT_INICIAL, 0, 'direita', 1), 1, 'direita', 2);
+  const antes = tamanhosDe(tres);
+  const t = tamanhosDe(redimensionar(tres, [], 0, 0.6));
+
+  assert.ok(Math.abs(t[0] - 0.6) < 1e-9);
+  // O par troca espaço entre si: a soma dos dois é a mesma de antes.
+  assert.ok(Math.abs(t[0] + t[1] - (antes[0] + antes[1])) < 1e-9);
+  // E o terceiro não sente nada — é o ponto do teste.
+  assert.ok(Math.abs(t[2] - antes[2]) < 1e-9);
+});
+
+test('a fronteira não passa por cima do vizinho: há um mínimo', () => {
+  const dois = dividir(LAYOUT_INICIAL, 0, 'direita', 1);
+  // Um grupo de largura zero não é grupo: some da tela e não dá para trazer de
+  // volta com o mouse, porque não há o que agarrar.
+  const espremido = redimensionar(dois, [], 0, 0.99);
+  const t = tamanhosDe(espremido);
+  assert.ok(t[1] >= MINIMO_DA_DIVISAO - 1e-9, `sobrou ${String(t[1])}`);
+  assert.ok(t[0] <= 1 - MINIMO_DA_DIVISAO + 1e-9);
+});
+
+test('fechar um grupo redistribui o espaço dele, sem deixar buraco', () => {
+  const tres = dividir(dividir(LAYOUT_INICIAL, 0, 'direita', 1), 1, 'direita', 2);
+  const dois = removerGrupo(tres, 1);
+  const t = tamanhosDe(dois);
+  assert.equal(t.length, 2);
+  assert.ok(Math.abs(t.reduce((a, b) => a + b, 0) - 1) < 1e-9);
+});
+
+test('arranjo vindo do disco sem tamanhos abre meio a meio', () => {
+  // Sessão gravada por uma versão anterior: nunca um layout quebrado.
+  const antigo = {
+    tipo: 'divisao' as const,
+    orientacao: 'horizontal' as const,
+    filhos: [
+      { tipo: 'grupo' as const, grupo: 0 },
+      { tipo: 'grupo' as const, grupo: 1 },
+      { tipo: 'grupo' as const, grupo: 2 },
+    ],
+  };
+  assert.deepEqual(
+    tamanhosDe(antigo).map((n) => Math.round(n * 1000) / 1000),
+    [0.333, 0.333, 0.333]
+  );
 });

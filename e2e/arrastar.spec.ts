@@ -215,16 +215,69 @@ test('o indicador some ao sair do grupo sem soltar', async ({ page }) => {
   await page.mouse.up();
 });
 
+/**
+ * O item `Split Editor`, e não o `Split Editor Down`.
+ *
+ * O nome acessível traz o atalho junto, e desde o T020 há dois itens que
+ * começam igual: `getByRole('menuitem', { name: 'Split Editor' })` casa com os
+ * dois. É a mesma armadilha do `Ex·porta·r` da spec 064.
+ */
+const itemDividir = (page: Page, baixo = false) =>
+  page.getByRole('menuitem', { name: baixo ? /^Split Editor Down/ : /^Split Editor Ctrl/ });
+
 test('Split Editor pelo menu continua funcionando', async ({ page }) => {
   await linhaArvore(page, 'utils.ts').click();
   await menu(page, 'View');
-  await page.getByRole('menuitem', { name: 'Split Editor' }).click();
+  await itemDividir(page).click();
 
   await expect(grupos(page)).toHaveCount(1);
   // Com uma aba só, dividir move a única que existe: o grupo de origem fica
   // vazio e some, e sobra um. Com duas abas, sobram dois lados.
   await linhaArvore(page, 'consulta.sql').click();
   await menu(page, 'View');
-  await page.getByRole('menuitem', { name: 'Split Editor' }).click();
+  await itemDividir(page).click();
   await expect(grupos(page)).toHaveCount(2);
+});
+
+test('Split Editor Down divide de CIMA para BAIXO (T020)', async ({ page }) => {
+  await linhaArvore(page, 'utils.ts').click();
+  await linhaArvore(page, 'consulta.sql').click();
+  await menu(page, 'View');
+  await itemDividir(page, true).click();
+
+  await expect(grupos(page)).toHaveCount(2);
+  // A divisão é VERTICAL: um sobre o outro, e não lado a lado.
+  await expect(page.locator('[data-divisao="vertical"]')).toBeVisible();
+  await expect(page.locator('[data-divisao="horizontal"]')).toHaveCount(0);
+});
+
+test('a fronteira entre grupos se ARRASTA, e a proporção fica (T021)', async ({ page }) => {
+  await linhaArvore(page, 'utils.ts').click();
+  await linhaArvore(page, 'consulta.sql').click();
+  await menu(page, 'View');
+  await itemDividir(page).click();
+  await expect(grupos(page)).toHaveCount(2);
+
+  const antes = await grupos(page).first().boundingBox();
+  const divisor = page.getByRole('separator', { name: /Redimensionar a divisão/ });
+  await expect(divisor).toBeVisible();
+
+  // `hover` do próprio locator: ele garante que o ponto cai NO elemento, e não
+  // numa coordenada calculada que pode estar dois pixels ao lado.
+  await divisor.hover();
+  const caixa = await divisor.boundingBox();
+  await page.mouse.down();
+  await page.mouse.move(caixa!.x + 202, caixa!.y + caixa!.height / 2, { steps: 8 });
+  await page.mouse.up();
+
+  const depois = await grupos(page).first().boundingBox();
+  // Cresceu de verdade — a medida, e não a impressão.
+  expect(depois!.width).toBeGreaterThan(antes!.width + 100);
+
+  // E a proporção SOBREVIVE ao F5: ela mora no layout, que já vai para a sessão.
+  const largura = depois!.width;
+  await page.reload();
+  await esperarIdePronta(page);
+  const voltou = await grupos(page).first().boundingBox();
+  expect(Math.abs(voltou!.width - largura)).toBeLessThan(8);
 });

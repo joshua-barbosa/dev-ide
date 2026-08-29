@@ -144,6 +144,12 @@ const DECLARADOS = [
   { id: 'view.toggleSidebar', label: 'Toggle Primary Side Bar', menu: 'view', group: 3, keybinding: 'Ctrl+B' },
   { id: 'view.togglePanel', label: 'Toggle Panel', menu: 'view', group: 3, keybinding: 'Ctrl+J' },
   { id: 'view.splitEditor', label: 'Split Editor', menu: 'view', group: 3, keybinding: 'Ctrl+\\', when: 'temAba' },
+  // T020: a divisão de cima para baixo. O atalho é o do VS Code, com `Alt`
+  // porque `Ctrl+K Ctrl+\` seria o primeiro acorde de duas teclas desta IDE.
+  {
+    id: 'view.splitEditorDown', label: 'Split Editor Down', menu: 'view', group: 3,
+    keybinding: 'Ctrl+Alt+\\', when: 'temAba',
+  },
   { id: 'view.appearance', label: 'Appearance', menu: 'view', group: 4 },
   { id: 'view.wordWrap', label: 'Word Wrap', menu: 'view', group: 4, keybinding: 'Alt+Z' },
 

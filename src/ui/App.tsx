@@ -619,8 +619,7 @@ export function App() {
         >
           {/* O arranjo dos grupos. Com um só, é exatamente a tela de antes. */}
           <Box sx={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0 }}>
-            <EditorGrid
-              layout={ws.layout}
+            <EditorGrid layout={ws.layout} onRedimensionar={ws.redimensionarLayout}
               grupo={(g) => (
                 <EditorGroup
                   grupo={g}

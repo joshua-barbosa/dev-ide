@@ -66,7 +66,24 @@ function lerNo(bruto: unknown): NoDeLayout | null {
   // Divisão com menos de dois filhos não é divisão: vira o filho, ou nada.
   if (filhos.length === 0) return null;
   if (filhos.length === 1) return filhos[0] ?? null;
-  return { tipo: 'divisao', orientacao: no.orientacao, filhos };
+  // As proporções (T021). Só entram se a contagem bater com a de filhos que
+  // SOBREVIVERAM: um filho descartado acima deixaria as fatias fora de passo, e
+  // `tamanhosDe` cairia no meio a meio — que é o desfecho seguro, mas silencioso.
+  const tamanhos =
+    Array.isArray(no.tamanhos) &&
+    no.tamanhos.length === filhos.length &&
+    no.tamanhos.every((t) => typeof t === 'number' && Number.isFinite(t) && t > 0)
+      ? (no.tamanhos as number[])
+      : undefined;
+  // Espalhado, e não `tamanhos: undefined`: uma chave com `undefined` não é o
+  // mesmo que chave ausente para `deepEqual` nem para `JSON.stringify`, e o
+  // arranjo é comparado pelos dois lugares.
+  return {
+    tipo: 'divisao',
+    orientacao: no.orientacao,
+    filhos,
+    ...(tamanhos === undefined ? {} : { tamanhos }),
+  };
 }
 
 /**

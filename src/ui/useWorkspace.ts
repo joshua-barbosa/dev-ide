@@ -10,12 +10,10 @@
 // 2. `null` significa "nenhuma aba". Usá-lo também para "aba fechada" faz a
 //    guarda engolir o evento de fechar a última, e a barra de status fica presa
 //    no arquivo anterior.
-import { useCallback, useEffect, useState } from 'react';
-import { GRUPO_PADRAO, type Tab, type TabStore } from '../shared/tabs';
-import {
-  dividir as dividirLayout, LAYOUT_INICIAL, normalizarLayout, podeDividir,
-  proximoGrupo, type NoDeLayout,
-} from '../shared/layout-editor';
+import { useCallback, useState } from 'react';
+import type { Tab, TabStore } from '../shared/tabs';
+import type { Lado, NoDeLayout } from '../shared/layout-editor';
+import { useLayoutDeGrupos } from './editor/useLayoutDeGrupos';
 import type { CargaDeArraste, Zona } from '../shared/arrastar';
 import { proximoSemTitulo } from '../shared/untitled';
 import { usePreview } from './editor/usePreview';
@@ -84,7 +82,10 @@ export interface Workspace {
   /** Ref de callback para o `EditorHost` de um grupo se registrar. */
   registrarEditor(grupo: number): (handle: EditorHandle | null) => void;
   /** Manda a aba ativa para o outro grupo, criando-o se preciso. */
-  dividir(): void;
+  /** Divide o grupo ativo para o lado pedido. `direita` é o padrão (T020). */
+  dividir(lado?: Lado): void;
+  /** Move a fronteira entre dois irmãos do arranjo (T021). */
+  redimensionarLayout(caminho: readonly number[], indice: number, fracao: number): void;
   /**
    * Trata o que foi solto sobre um grupo.
    *
@@ -223,7 +224,6 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   const { store, tabs, activeId, active, grupos, grupoFocado } = useTabs();
   const [cursor, setCursor] = useState({ linha: 1, coluna: 1 });
   const [edicoes, setEdicoes] = useState(0);
-  const [layout, setLayout] = useState<NoDeLayout>(LAYOUT_INICIAL);
   /**
    * Abas cujo arquivo mudou em disco por fora da IDE.
    *
@@ -249,26 +249,10 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   const { grupoDaUri } = ed;
 
 
-  /**
-   * Mantém o arranjo em sincronia com quem realmente tem aba.
-   *
-   * São duas verdades — a árvore de layout e o store de abas — e elas se
-   * desencontram quando a última aba de um grupo fecha. Reconciliar aqui é o
-   * que impede uma metade de tela em branco sobrando na tela.
-   *
-   * O grupo em FOCO é preservado mesmo vazio: ele é o destino de "abrir agora",
-   * e removê-lo faria a próxima aba nascer do lado errado.
-   */
-  useEffect(() => {
-    const vivos = new Set(tabs.map((t) => t.grupo));
-    vivos.add(grupoFocado);
-    setLayout((atual) => {
-      const novo = normalizarLayout(atual, vivos);
-      // Compara pelo desenho: devolver objeto novo a cada render entraria em
-      // laço, já que `layout` é dependência de quem o consome.
-      return JSON.stringify(novo) === JSON.stringify(atual) ? atual : novo;
-    });
-  }, [tabs, grupoFocado]);
+  // O ARRANJO dos grupos mora em `editor/useLayoutDeGrupos.ts` — ver a nota lá.
+  const { layout, definirLayout, dividir, redimensionarLayout } = useLayoutDeGrupos({
+    store, tabs, grupoFocado, salvarTodosOsGrupos,
+  });
 
   const abrirArquivo = useCallback(
     async (caminho: string) => {
@@ -499,19 +483,6 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
    * limite desta spec: cobre o pedido ("dividir a tela com mais de um arquivo")
    * e mantém a barra de abas legível numa janela de tamanho normal.
    */
-  const dividir = useCallback(() => {
-    const id = store.activeId();
-    if (id === null) return;
-    salvarTodosOsGrupos();
-    const alvo = store.get(id)?.grupo ?? GRUPO_PADRAO;
-    setLayout((atual) => {
-      if (!podeDividir(atual)) return atual;
-      const novo = proximoGrupo(atual);
-      store.mover(id, novo);
-      return dividirLayout(atual, alvo, 'direita', novo);
-    });
-  }, [salvarTodosOsGrupos, store]);
-
   /**
    * Abre um arquivo num grupo específico.
    *
@@ -559,7 +530,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         const atual = store.get(`file:${aba.caminho}`);
         if (atual !== null && atual.grupo !== aba.grupo) store.mover(atual.id, aba.grupo);
       }
-      setLayout(final.layout);
+      definirLayout(final.layout);
       for (const caminho of Object.values(final.ativas)) store.activate(`file:${caminho}`);
       store.focarGrupo(final.grupoFocado);
     },
@@ -574,7 +545,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         mover: store.mover,
         abrirNoGrupo,
         salvarTodosOsGrupos,
-        setLayout,
+        setLayout: definirLayout,
       })(grupoAlvo, zona, carga),
     [abrirNoGrupo, salvarTodosOsGrupos, store]
   );
@@ -726,11 +697,12 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     grupos,
     grupoFocado,
     layout,
-    podeDividir: podeDividir(layout),
+    podeDividir: true,
     soltarNoGrupo,
     editorRef,
     registrarEditor,
     dividir,
+    redimensionarLayout,
     emPreview,
     alternarPreview,
     conteudoDaAba,
