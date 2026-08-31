@@ -83,6 +83,13 @@ const DECLARADOS = [
   { id: 'file.newProject', label: 'New Project…', menu: 'file', group: 1 },
   { id: 'file.open', label: 'Open File…', menu: 'file', group: 2, keybinding: 'Ctrl+O' },
   { id: 'file.openFolder', label: 'Open Folder…', menu: 'file', group: 2, keybinding: 'Ctrl+K' },
+  // T004: SOMAR uma pasta, sem fechar as abertas. Item próprio e não um
+  // parâmetro do `Open Folder…` — abrir e acrescentar são dois gestos, e
+  // confundi-los apagaria o espaço de trabalho de alguém por engano.
+  {
+    id: 'file.addFolder', label: 'Add Folder to Workspace…', menu: 'file', group: 2,
+    when: 'temProjeto',
+  },
   { id: 'file.openWorkspace', label: 'Open Workspace…', menu: 'file', group: 2 },
   { id: 'file.openRecent', label: 'Open Recent', menu: 'file', group: 2 },
   // `podeSalvar`, e não `temEditor`: o Query Book (spec 048) não é editor do

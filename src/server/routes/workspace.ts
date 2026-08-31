@@ -22,18 +22,41 @@ import {
 import { nomeDeCopia } from '../../shared/nome-de-copia';
 import type { EstadoStore } from '../estado';
 
+/** Uma raiz do espaço de trabalho, com a árvore dela (T004). */
+export interface RaizAberta {
+  readonly pasta: string;
+  /** Só o nome, para o cabeçalho — é o que distingue duas raízes na tela. */
+  readonly nome: string;
+  readonly arvore: readonly FileNode[];
+  /** Verdadeiro quando o teto cortou a árvore desta raiz. */
+  readonly truncated: boolean;
+}
+
 export interface RetratoDoEspaco {
+  /**
+   * As raízes abertas, na ordem em que foram acrescentadas (T004).
+   *
+   * Era uma pasta só, no campo `pasta`. Ele continua existindo, valendo a
+   * PRIMEIRA raiz: quem só sabe lidar com uma — criar arquivo pelo cabeçalho,
+   * o `cwd` do terminal — continua funcionando sem saber que há outras.
+   */
+  readonly raizes: readonly RaizAberta[];
   readonly pasta: string | null;
   readonly recentes: readonly string[];
   readonly arvore: readonly FileNode[];
   readonly simbolos: readonly SymbolInfo[];
-  /** Verdadeiro quando o teto cortou a árvore. */
+  /** Verdadeiro quando o teto cortou a árvore de alguma raiz. */
   readonly truncated: boolean;
 }
 
 const VAZIO: RetratoDoEspaco = {
-  pasta: null, recentes: [], arvore: [], simbolos: [], truncated: false,
+  raizes: [], pasta: null, recentes: [], arvore: [], simbolos: [], truncated: false,
 };
+
+/** O nome de uma pasta, sem o caminho. */
+function nomeDaPasta(caminho: string): string {
+  return caminho.split('/').filter((p) => p !== '').pop() ?? caminho;
+}
 
 export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string): Router {
   const router = Router();
@@ -46,30 +69,75 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
    * o tipo de piscar que a migração para React removeu.
    */
   const retrato = (): RetratoDoEspaco => {
-    const atual = estado.ler();
-    if (atual.pastaAtual === null) return { ...VAZIO, recentes: atual.recentes };
-
-    let pasta: string;
-    try {
-      pasta = pastaValida(atual.pastaAtual);
-    } catch {
-      // A pasta sumiu desde a última sessão. Esquecer é melhor que insistir:
-      // sem isto, a IDE tentaria abri-la de novo a cada subida.
-      const limpo = estado.esquecer(atual.pastaAtual);
-      return { ...VAZIO, recentes: limpo.recentes };
-    }
-
-    // Só o primeiro nível: o resto chega quando o usuário abrir a pasta.
-    const { nodes, truncated } = filhosDaPasta(pasta);
+    let atual = estado.ler();
+    const raizes: RaizAberta[] = [];
     const simbolos: SymbolInfo[] = [];
-    for (const arquivo of varrerArquivos(pasta, { extensoes: EXTENSOES_DE_SIMBOLO }).arquivos) {
+    let truncated = false;
+
+    for (const bruta of atual.pastas) {
+      let pasta: string;
       try {
-        simbolos.push(...extractSymbols(arquivo, fs.readFileSync(arquivo, 'utf8')));
+        pasta = pastaValida(bruta);
       } catch {
-        // Arquivo ilegível ou binário: ignora e segue com os demais.
+        // A pasta sumiu desde a última sessão. Esquecer é melhor que insistir:
+        // sem isto, a IDE tentaria abri-la de novo a cada subida. Com várias
+        // raízes, as que sobreviveram seguem abertas.
+        atual = estado.esquecer(bruta);
+        continue;
+      }
+
+      // Só o primeiro nível: o resto chega quando o usuário abrir a pasta.
+      const { nodes, truncated: cortada } = filhosDaPasta(pasta);
+      raizes.push({ pasta, nome: nomeDaPasta(pasta), arvore: nodes, truncated: cortada });
+      truncated = truncated || cortada;
+
+      for (const arquivo of varrerArquivos(pasta, { extensoes: EXTENSOES_DE_SIMBOLO }).arquivos) {
+        try {
+          simbolos.push(...extractSymbols(arquivo, fs.readFileSync(arquivo, 'utf8')));
+        } catch {
+          // Arquivo ilegível ou binário: ignora e segue com os demais.
+        }
       }
     }
-    return { pasta, recentes: atual.recentes, arvore: nodes, simbolos, truncated };
+
+    if (raizes.length === 0) return { ...VAZIO, recentes: atual.recentes };
+    const primeira = raizes[0] as RaizAberta;
+    return {
+      raizes,
+      // Os três campos antigos, valendo a PRIMEIRA raiz — ver a nota no tipo.
+      pasta: primeira.pasta,
+      arvore: primeira.arvore,
+      recentes: atual.recentes,
+      simbolos,
+      truncated,
+    };
+  };
+
+  /** As raízes abertas, validadas. Vazio quando não há nenhuma. */
+  const raizesAbertas = (): readonly string[] => {
+    const abertas: string[] = [];
+    for (const bruta of estado.ler().pastas) {
+      try {
+        abertas.push(pastaValida(bruta));
+      } catch {
+        // Sumiu do disco: o `retrato` já a esquece na próxima leitura.
+      }
+    }
+    return abertas;
+  };
+
+  /**
+   * A raiz que contém este caminho, ou erro (T004).
+   *
+   * Com uma raiz só isto era `dentroDaPasta(raiz, x)`. Com várias, a pergunta
+   * é a mesma feita a cada uma: sair de TODAS continua sendo recusado.
+   */
+  const raizDe = (caminho: string): string => {
+    const alvo = path.resolve(caminho);
+    for (const raiz of raizesAbertas()) {
+      if (alvo === raiz || alvo.startsWith(raiz + path.sep)) return raiz;
+    }
+    throw new Error('O caminho precisa ficar dentro de uma das pastas abertas.');
   };
 
   /**
@@ -80,35 +148,48 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
    * fora dela seria expor o disco inteiro por uma URL.
    */
   router.get('/files/children', wrap((req, res) => {
-    const atual = estado.ler().pastaAtual;
-    if (atual === null) throw new Error('Nenhuma pasta aberta.');
-    const raiz = pastaValida(atual);
+    const abertas = raizesAbertas();
+    const primeira = abertas[0];
+    if (primeira === undefined) throw new Error('Nenhuma pasta aberta.');
     const bruto = typeof req.query.path === 'string' ? req.query.path : '';
+    // Sem `path`, a primeira raiz; com `path`, a raiz que o contém (T004).
+    const raiz = bruto === '' ? primeira : raizDe(bruto);
     const alvo = bruto === '' ? raiz : dentroDaPasta(raiz, bruto);
     res.json({ success: true, data: filhosDaPasta(pastaValida(alvo), raiz), error: null });
   }));
 
   /**
-   * Todo arquivo da pasta aberta, para o `Ctrl+P` (T051).
+   * Todo arquivo das pastas abertas, para o `Ctrl+P` (T051, T004).
    *
-   * Caminhos RELATIVOS: é o que se lê na lista, e o cliente já sabe a raiz.
+   * **Caminho ABSOLUTO com o rótulo separado.** Era relativo, e com uma raiz só
+   * bastava — o cliente sabia colar o prefixo. Com várias, dois `index.ts` de
+   * projetos diferentes seriam a mesma linha; e devolver só o relativo obrigaria
+   * a adivinhar de qual raiz ele veio.
    *
    * Respeita o `.gitignore` pela mesma razão da busca e dos símbolos — ninguém
    * abre `node_modules/.../index.js` pelo `Ctrl+P`, e ter mil deles na lista
    * empurraria para baixo o arquivo que se procura.
    */
   router.get('/workspace/files', wrap((_req, res) => {
-    const atual = estado.ler().pastaAtual;
-    if (atual === null) {
-      res.json(ok({ files: [], truncated: false }));
-      return;
+    const abertas = raizesAbertas();
+    const files: Array<{ path: string; label: string }> = [];
+    let truncated = false;
+    // O nome da raiz entra no rótulo só quando há mais de uma: com uma só, ele
+    // seria o mesmo prefixo em toda linha, ocupando espaço e não informando.
+    const comRaiz = abertas.length > 1;
+
+    for (const raiz of abertas) {
+      const r = varrerArquivos(raiz);
+      truncated = truncated || r.truncated;
+      for (const arquivo of r.arquivos) {
+        const relativo = path.relative(raiz, arquivo);
+        files.push({
+          path: arquivo,
+          label: comRaiz ? `${nomeDaPasta(raiz)}/${relativo}` : relativo,
+        });
+      }
     }
-    const raiz = pastaValida(atual);
-    const { arquivos, truncated } = varrerArquivos(raiz);
-    res.json(ok({
-      files: arquivos.map((a) => path.relative(raiz, a)),
-      truncated,
-    }));
+    res.json(ok({ files, truncated }));
   }));
 
   /** Navegador de pastas. Sem `path`, começa na pasta pessoal do usuário. */
@@ -148,20 +229,61 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
     res.json(ok(retrato()));
   }));
 
+  /**
+   * Soma uma pasta ao espaço de trabalho, sem tirar as que já estão (T004).
+   *
+   * Rota própria e não um parâmetro do `POST /workspace`: **abrir** e
+   * **acrescentar** são dois gestos, e um sinalizador booleano numa rota que
+   * substitui tudo é a forma mais fácil de apagar o projeto de alguém por
+   * engano.
+   */
+  router.post('/workspace/add', wrap((req, res) => {
+    const pasta = pastaValida(requireString(req.body?.path, 'path'));
+    estado.acrescentar(pasta);
+    res.json(ok(retrato()));
+  }));
+
+  /** Tira UMA raiz do espaço, deixando as outras (T004). */
+  router.delete('/workspace/folder', wrap((req, res) => {
+    estado.remover(requireString(req.body?.path, 'path'));
+    res.json(ok(retrato()));
+  }));
+
   /** Tira uma pasta do histórico — usado quando ela não existe mais. */
   router.delete('/workspace/recent', wrap((req, res) => {
     estado.esquecer(requireString(req.body?.path, 'path'));
     res.json(ok(retrato()));
   }));
 
-  /** Cria um arquivo dentro da pasta aberta. */
-  router.post('/workspace/file', wrap((req, res) => {
-    const atual = estado.ler().pastaAtual;
-    if (atual === null) throw new Error('Abra uma pasta antes de criar um arquivo.');
-    const pasta = pastaValida(atual);
+  /**
+   * A raiz onde uma criação deve cair.
+   *
+   * Um nome com barra pode vir prefixado pelo nome de outra raiz (`api/x.ts`
+   * num espaço com `api` e `web`). Casar o primeiro segmento com o nome de uma
+   * raiz é o que faz `Novo arquivo aqui` funcionar em qualquer uma delas.
+   */
+  const raizParaCriar = (relativo: string): { raiz: string; dentro: string } => {
+    const abertas = raizesAbertas();
+    const primeira = abertas[0];
+    if (primeira === undefined) throw new Error('Abra uma pasta antes.');
+    if (abertas.length === 1) return { raiz: primeira, dentro: relativo };
 
-    const relativo = requireString(req.body?.name, 'name').trim();
-    if (relativo === '') throw new Error('O nome do arquivo não pode ser vazio.');
+    const corte = relativo.indexOf('/');
+    if (corte > 0) {
+      const cabeca = relativo.slice(0, corte);
+      const alvo = abertas.find((r) => nomeDaPasta(r) === cabeca);
+      if (alvo !== undefined) return { raiz: alvo, dentro: relativo.slice(corte + 1) };
+    }
+    return { raiz: primeira, dentro: relativo };
+  };
+
+  /** Cria um arquivo dentro de uma das pastas abertas. */
+  router.post('/workspace/file', wrap((req, res) => {
+    const bruto = requireString(req.body?.name, 'name').trim();
+    if (bruto === '') throw new Error('O nome do arquivo não pode ser vazio.');
+    const { raiz: pasta, dentro } = raizParaCriar(bruto);
+
+    const relativo = dentro;
     const alvo = dentroDaPasta(pasta, relativo);
     if (fs.existsSync(alvo)) throw new Error(`O arquivo "${relativo}" já existe na pasta.`);
 
@@ -180,12 +302,9 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
    * erro, e o usuário concluiria que criou uma pasta nova.
    */
   router.post('/workspace/folder', wrap((req, res) => {
-    const atual = estado.ler().pastaAtual;
-    if (atual === null) throw new Error('Abra uma pasta antes de criar outra dentro dela.');
-    const pasta = pastaValida(atual);
-
-    const relativo = requireString(req.body?.name, 'name').trim();
-    if (relativo === '') throw new Error('O nome da pasta não pode ser vazio.');
+    const bruto = requireString(req.body?.name, 'name').trim();
+    if (bruto === '') throw new Error('O nome da pasta não pode ser vazio.');
+    const { raiz: pasta, dentro: relativo } = raizParaCriar(bruto);
     const alvo = dentroDaPasta(pasta, relativo);
     if (fs.existsSync(alvo)) throw new Error(`"${relativo}" já existe na pasta.`);
 
@@ -205,23 +324,28 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
   //   3. **o que não existe dá erro** — mexer no nada é engano de quem chamou,
   //      e responder "ok" esconderia o engano.
 
-  /** A pasta aberta, validada — ou o erro que diz que não há nenhuma. */
-  const raizAberta = (): string => {
-    const atual = estado.ler().pastaAtual;
-    if (atual === null) throw new Error('Abra uma pasta antes.');
-    return pastaValida(atual);
-  };
+  /**
+   * Um item de dentro de ALGUMA pasta aberta, que precisa existir.
+   *
+   * Devolve o item e a raiz dele: renomear precisa das duas coisas, e procurar
+   * a raiz duas vezes daria a chance de as duas discordarem.
+   */
+  const itemExistente = (relativo: string): { alvo: string; raiz: string } => {
+    const limpo = relativo.trim();
+    const abertas = raizesAbertas();
+    const primeira = abertas[0];
+    if (primeira === undefined) throw new Error('Abra uma pasta antes.');
 
-  /** Um item DE DENTRO da pasta aberta, que precisa existir. */
-  const itemExistente = (raiz: string, relativo: string): string => {
-    const alvo = dentroDaPasta(raiz, relativo.trim());
+    // Caminho absoluto: a raiz é a que o contém. Relativo: o da primeira raiz,
+    // que é como a árvore sempre chamou — ela manda o caminho absoluto.
+    const raiz = limpo.startsWith('/') ? raizDe(limpo) : primeira;
+    const alvo = dentroDaPasta(raiz, limpo);
     if (!fs.existsSync(alvo)) throw new Error(`"${relativo}" não existe.`);
-    return alvo;
+    return { alvo, raiz };
   };
 
   router.post('/workspace/rename', wrap((req, res) => {
-    const raiz = raizAberta();
-    const de = itemExistente(raiz, requireString(req.body?.path, 'path'));
+    const { alvo: de, raiz } = itemExistente(requireString(req.body?.path, 'path'));
     const nome = requireString(req.body?.name, 'name').trim();
     if (nome === '') throw new Error('O nome não pode ser vazio.');
     // Relativo à PASTA DO ITEM, e não à raiz: quem renomeia digita o nome, e
@@ -240,8 +364,7 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
   }));
 
   router.post('/workspace/duplicate', wrap((req, res) => {
-    const raiz = raizAberta();
-    const de = itemExistente(raiz, requireString(req.body?.path, 'path'));
+    const { alvo: de } = itemExistente(requireString(req.body?.path, 'path'));
     const pai = path.dirname(de);
     const nome = nomeDeCopia(path.basename(de), (c) => fs.existsSync(path.join(pai, c)));
     const para = path.join(pai, nome);
@@ -252,8 +375,7 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
   }));
 
   router.delete('/workspace/entry', wrap((req, res) => {
-    const raiz = raizAberta();
-    const alvo = itemExistente(raiz, requireString(req.body?.path, 'path'));
+    const { alvo, raiz } = itemExistente(requireString(req.body?.path, 'path'));
     // A própria raiz não: o botão direito nela apagaria o projeto e deixaria a
     // IDE apontando para o nada.
     if (alvo === raiz) throw new Error('A pasta aberta não pode ser excluída por aqui.');

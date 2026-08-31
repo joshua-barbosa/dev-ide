@@ -105,8 +105,19 @@ export interface ListagemDePastas {
   readonly dirs: readonly { readonly name: string; readonly path: string }[];
 }
 
+/** Uma raiz do espaço de trabalho, com a árvore dela (T004). */
+export interface RaizAberta {
+  readonly pasta: string;
+  readonly nome: string;
+  readonly arvore: readonly FileNode[];
+  readonly truncated: boolean;
+}
+
 /** Tudo que a interface precisa para desenhar o espaço de trabalho, de uma vez. */
 export interface RetratoDoEspaco {
+  /** As raízes abertas, na ordem (T004). */
+  readonly raizes: readonly RaizAberta[];
+  /** A PRIMEIRA raiz — para quem só sabe lidar com uma. */
   readonly pasta: string | null;
   readonly recentes: readonly string[];
   readonly arvore: readonly FileNode[];
@@ -288,9 +299,22 @@ export const Api = {
       `/api/files/children?path=${encodeURIComponent(caminho)}`
     ),
   docs: () => request<{ path: string }>('GET', '/api/docs'),
-  /** Todo arquivo da pasta aberta, em caminho relativo, para o `Ctrl+P` (T051). */
+  /**
+   * Todo arquivo das pastas abertas, para o `Ctrl+P` (T051, T004).
+   *
+   * `path` é absoluto e `label` é o que se lê — com mais de uma raiz, o rótulo
+   * já vem prefixado pelo nome dela.
+   */
   workspaceFiles: () =>
-    request<{ files: string[]; truncated: boolean }>('GET', '/api/workspace/files'),
+    request<{ files: { path: string; label: string }[]; truncated: boolean }>(
+      'GET',
+      '/api/workspace/files'
+    ),
+  /** Soma uma pasta ao espaço de trabalho, sem tirar as outras (T004). */
+  addFolder: (path: string) => request<RetratoDoEspaco>('POST', '/api/workspace/add', { path }),
+  /** Tira UMA raiz do espaço, deixando as demais (T004). */
+  removeFolder: (path: string) =>
+    request<RetratoDoEspaco>('DELETE', '/api/workspace/folder', { path }),
   openFolder: (path: string) => request<RetratoDoEspaco>('POST', '/api/workspace', { path }),
   closeFolder: () => request<RetratoDoEspaco>('DELETE', '/api/workspace'),
   forgetFolder: (path: string) =>

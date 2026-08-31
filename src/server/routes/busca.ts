@@ -6,7 +6,7 @@
 import { Router } from 'express';
 import { wrap } from '../http/handlers';
 import type { OpcoesDeBusca } from '../../shared/busca';
-import { buscarNaPasta, desfazerSubstituicao, substituirNaPasta } from '../busca';
+import { buscarNasPastas, desfazerSubstituicao, substituirNaPasta } from '../busca';
 import { montarFiltro } from '../../shared/busca-filtro';
 import { HistoricoDeSubstituicoes } from '../desfazer-substituicao';
 import { pastaValida } from '../pastas';
@@ -38,11 +38,26 @@ export function createBuscaRouter(estado: EstadoStore): Router {
   const historico = new HistoricoDeSubstituicoes();
   const ok = (data: unknown) => ({ success: true, data, error: null });
 
-  /** A pasta aberta, ou erro — buscar sem pasta não significa nada. */
-  const pastaAberta = (): string => {
-    const atual = estado.ler().pastaAtual;
-    if (atual === null) throw new Error('Abra uma pasta para pesquisar nela.');
-    return pastaValida(atual);
+  /** As raízes abertas, ou erro — buscar sem pasta não significa nada (T004). */
+  const pastasAbertas = (): readonly string[] => {
+    const abertas = estado.ler().pastas;
+    if (abertas.length === 0) throw new Error('Abra uma pasta para pesquisar nela.');
+    return abertas.map((p) => pastaValida(p));
+  };
+
+  /**
+   * A raiz que contém este caminho, ou `null`.
+   *
+   * `null` e não erro: a lista de caminhos vem do CLIENTE, e um caminho de fora
+   * — obsoleto, ou mal-intencionado — não pode abortar a substituição dos
+   * outros. O que se garante é que ele **não é tocado**, que é a guarda que
+   * importa. Era assim com uma raiz só, e continua sendo com várias.
+   */
+  const raizDe = (caminho: string): string | null => {
+    for (const pasta of pastasAbertas()) {
+      if (caminho === pasta || caminho.startsWith(`${pasta}/`)) return pasta;
+    }
+    return null;
   };
 
   router.post('/', wrap((req, res) => {
@@ -59,7 +74,7 @@ export function createBuscaRouter(estado: EstadoStore): Router {
       typeof req.body?.incluir === 'string' ? req.body.incluir : '',
       typeof req.body?.excluir === 'string' ? req.body.excluir : ''
     );
-    res.json(ok(buscarNaPasta(pastaAberta(), termo, lerOpcoes(req.body), filtro)));
+    res.json(ok(buscarNasPastas(pastasAbertas(), termo, lerOpcoes(req.body), filtro)));
   }));
 
   router.post('/replace', wrap((req, res) => {
@@ -72,8 +87,23 @@ export function createBuscaRouter(estado: EstadoStore): Router {
       : [];
     if (caminhos.length === 0) throw new Error('Nenhum arquivo indicado para substituir.');
 
-    const pasta = pastaAberta();
-    const r = substituirNaPasta(pasta, caminhos, termo, lerOpcoes(req.body), substituto);
+    // Uma substituição pode atravessar raízes: agrupa por raiz e soma.
+    const porRaiz = new Map<string, string[]>();
+    for (const caminho of caminhos) {
+      const raiz = raizDe(caminho);
+      if (raiz === null) continue;
+      porRaiz.set(raiz, [...(porRaiz.get(raiz) ?? []), caminho]);
+    }
+    const antes = new Map<string, string>();
+    let arquivosAlterados = 0;
+    let trocas = 0;
+    for (const [raiz, doGrupo] of porRaiz) {
+      const parcial = substituirNaPasta(raiz, doGrupo, termo, lerOpcoes(req.body), substituto);
+      for (const [k, v] of parcial.antes) antes.set(k, v);
+      arquivosAlterados += parcial.arquivosAlterados;
+      trocas += parcial.trocas;
+    }
+    const r = { antes, arquivosAlterados, trocas };
 
     // Só guarda o que mudou alguma coisa: uma substituição sem trocas não tem
     // o que desfazer, e entrar na pilha empurraria uma que tem para fora.
@@ -104,7 +134,12 @@ export function createBuscaRouter(estado: EstadoStore): Router {
       throw new Error('Esta substituição não está mais no histórico de desfazer.');
     }
     res.json(ok({
-      ...desfazerSubstituicao(pastaAberta(), item.antes),
+      // O desfazer usa a raiz do primeiro arquivo: `desfazerSubstituicao` só
+      // precisa dela para conferir que o caminho não saiu da pasta aberta.
+      ...desfazerSubstituicao(
+        raizDe([...item.antes.keys()][0] ?? '') ?? (pastasAbertas()[0] as string),
+        item.antes
+      ),
       // Os caminhos voltam para a interface reabrir as abas afetadas — é o
       // mesmo gancho que a substituição já usa.
       restauradosCaminhos: [...item.antes.keys()],

@@ -83,6 +83,7 @@ return {
   'file.newProject': () => avisar(pastaAcoes.novoProjeto()),
   'file.open': () => avisar(abrirPorCaminho()),
   'file.openFolder': () => avisar(pastaAcoes.abrirPasta()),
+  'file.addFolder': () => avisar(pastaAcoes.acrescentarPasta()),
   'file.openWorkspace': () => avisar(pastaAcoes.escolherProjeto()),
   'file.openRecent': () => avisar(pastaAcoes.abrirRecente()),
   'file.save': () => avisar(arquivoAcoes.salvarArquivo()),

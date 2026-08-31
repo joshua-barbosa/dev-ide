@@ -4,7 +4,8 @@
 // preferência é escolha do usuário, estado é histórico gerado pela IDE. Ver a
 // decisão registrada na spec 012.
 import {
-  abrirPasta, esquecerPasta, fecharPasta, normalizarEstado, type EstadoDaSessao,
+  abrirPasta, acrescentarPasta, esquecerPasta, fecharPasta, normalizarEstado, removerPasta,
+  type EstadoDaSessao,
 } from '../shared/estado';
 import { gravarJsonAtomico, lerJsonTolerante } from './arquivo-json';
 import { arquivoDeDados } from './paths';
@@ -25,6 +26,16 @@ export class EstadoStore {
     return this.gravar(abrirPasta(this.ler(), pasta));
   }
 
+  /** Soma uma raiz ao espaço de trabalho, sem tirar as outras (T004). */
+  acrescentar(pasta: string): EstadoDaSessao {
+    return this.gravar(acrescentarPasta(this.ler(), pasta));
+  }
+
+  /** Tira UMA raiz, deixando as demais (T004). */
+  remover(pasta: string): EstadoDaSessao {
+    return this.gravar(removerPasta(this.ler(), pasta));
+  }
+
   fechar(): EstadoDaSessao {
     return this.gravar(fecharPasta(this.ler()));
   }
@@ -35,7 +46,7 @@ export class EstadoStore {
 
   private gravar(estado: EstadoDaSessao): EstadoDaSessao {
     gravarJsonAtomico(this.caminho, {
-      pastaAtual: estado.pastaAtual,
+      pastas: [...estado.pastas],
       recentes: [...estado.recentes],
     });
     return estado;

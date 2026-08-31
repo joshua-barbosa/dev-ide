@@ -38,6 +38,9 @@ export interface SidebarProps {
   readonly onNovaPasta: () => void;
   /** O menu de botão direito da árvore de arquivos e as teclas dele (T043). */
   readonly onMenuDoArquivo: (no: FileNode, e: React.MouseEvent) => void;
+  /** Menu e ação das RAÍZES do espaço de trabalho (T004). */
+  readonly onMenuDaRaiz: (pasta: string, e: React.MouseEvent) => void;
+  readonly onAcrescentarPasta: () => void;
   readonly onRenomearArquivo: (no: FileNode) => void;
   readonly onExcluirArquivo: (no: FileNode) => void;
   readonly busca: SearchPanelProps;
@@ -53,6 +56,8 @@ export function Sidebar({
   onNovoArquivo,
   onNovaPasta,
   onMenuDoArquivo,
+  onMenuDaRaiz,
+  onAcrescentarPasta,
   onRenomearArquivo,
   onExcluirArquivo,
   busca,
@@ -117,6 +122,8 @@ export function Sidebar({
             onNovoArquivo={onNovoArquivo}
             onNovaPasta={onNovaPasta}
             onMenuDoItem={onMenuDoArquivo}
+            onMenuDaRaiz={onMenuDaRaiz}
+            onAcrescentarPasta={onAcrescentarPasta}
             onRenomear={onRenomearArquivo}
             onExcluir={onExcluirArquivo}
             onErro={onErro}

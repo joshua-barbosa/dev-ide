@@ -36,6 +36,10 @@ export interface PastaAcoes {
   novaPasta(): Promise<void>;
   escolherProjeto(): Promise<void>;
   abrirPasta(): Promise<void>;
+  /** Soma outra pasta ao espaço de trabalho, sem fechar as abertas (T004). */
+  acrescentarPasta(): Promise<void>;
+  /** O menu de botão direito no cabeçalho de uma raiz (T004). */
+  menuDaRaiz(pasta: string, e: React.MouseEvent): void;
   abrirRecente(): Promise<void>;
   // ---- o menu de botão direito da árvore (T043, T045) ----
   /** Cria um arquivo DENTRO da pasta escolhida, e o abre (T045). */
@@ -85,34 +89,61 @@ export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
    * Enter e Esc. O valor carrega o verbo (`abrir:` ou `ir:`), e o laço vive
    * aqui — a mesma forma de `pedirComRetentativa`.
    */
-  const abrirPasta = async (): Promise<void> => {
+  const navegarAtePasta = async (titulo: string, verbo: string): Promise<string | null> => {
     let atual: string | undefined = pasta.pasta === '' ? undefined : pasta.pasta;
     for (;;) {
       const listagem = await Api.browseFolders(atual);
       const opcoes = [
-        { valor: `abrir:${listagem.path}`, rotulo: 'Abrir esta pasta', detalhe: listagem.path, icone: 'lucide:check' },
+        { valor: `abrir:${listagem.path}`, rotulo: verbo, detalhe: listagem.path, icone: 'lucide:check' },
         ...(listagem.parent === null
           ? []
           : [{ valor: `ir:${listagem.parent}`, rotulo: '..', detalhe: listagem.parent, icone: 'lucide:corner-left-up' }]),
         ...listagem.dirs.map((d) => ({ valor: `ir:${d.path}`, rotulo: d.name, icone: 'folder' })),
       ];
 
-      const escolhido = await qi.pedir({
-        titulo: 'Abrir pasta',
-        placeholder: listagem.path,
-        opcoes,
-      });
+      const escolhido = await qi.pedir({ titulo, placeholder: listagem.path, opcoes });
       // Cancelar mantém a pasta anterior (AC-4).
-      if (escolhido === null) return;
+      if (escolhido === null) return null;
 
-      const [verbo, ...resto] = escolhido.split(':');
+      const [acao, ...resto] = escolhido.split(':');
       const alvo = resto.join(':');
-      if (verbo === 'abrir') {
-        await pasta.abrir(alvo);
-        return;
-      }
+      if (acao === 'abrir') return alvo;
       atual = alvo;
     }
+  };
+
+  const abrirPasta = async (): Promise<void> => {
+    const escolhida = await navegarAtePasta('Abrir pasta', 'Abrir esta pasta');
+    if (escolhida !== null) await pasta.abrir(escolhida);
+  };
+
+  /**
+   * Soma outra pasta ao espaço de trabalho (T004).
+   *
+   * O mesmo navegador do `Open Folder…`, com outro verbo no fim — o gesto de
+   * descer pelas pastas é idêntico, e ter duas telas para ele seria duas telas
+   * para manter.
+   */
+  const acrescentarPasta = async (): Promise<void> => {
+    const escolhida = await navegarAtePasta('Adicionar pasta ao espaço', 'Adicionar esta pasta');
+    if (escolhida !== null) await pasta.acrescentar(escolhida);
+  };
+
+  /**
+   * O menu de uma RAIZ (T004).
+   *
+   * `Remover do espaço` e não `Excluir`: a pasta continua no disco, e usar a
+   * mesma palavra do menu de arquivo faria alguém achar que apagou o projeto.
+   */
+  const menuDaRaiz = (raiz: string, e: React.MouseEvent): void => {
+    deps.abrirMenu(e, [
+      { label: 'Novo arquivo aqui', onClick: () => novoArquivoEm(raiz) },
+      { label: 'Nova pasta aqui', onClick: () => novaPastaEm(raiz) },
+      null,
+      { label: 'Copiar caminho', onClick: () => deps.copiar(raiz) },
+      null,
+      { label: 'Remover do espaço', onClick: () => pasta.remover(raiz) },
+    ]);
   };
 
   /** Pastas recentes. A que não existe mais é informada e esquecida (AC-10). */
@@ -295,7 +326,8 @@ export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
   };
 
   return {
-    novoProjeto, escolherProjeto, abrirPasta, abrirRecente, novoArquivoNaPasta, novaPasta,
-    novoArquivoEm, novaPastaEm, menuDoItem, renomearItem, duplicarItem, excluirItem,
+    novoProjeto, escolherProjeto, abrirPasta, acrescentarPasta, abrirRecente,
+    novoArquivoNaPasta, novaPasta, novoArquivoEm, novaPastaEm, menuDoItem, menuDaRaiz,
+    renomearItem, duplicarItem, excluirItem,
   };
 }

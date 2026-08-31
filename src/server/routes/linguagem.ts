@@ -6,6 +6,7 @@
 import { Router } from 'express';
 import { wrap } from '../http/handlers';
 import { definicao, definicaoDeTipo, referencias, type Pergunta } from '../linguagem';
+import { pastaPrincipal } from '../../shared/estado';
 import { pastaValida } from '../pastas';
 import type { EstadoStore } from '../estado';
 
@@ -15,7 +16,9 @@ export function createLinguagemRouter(estado: EstadoStore): Router {
 
   const lerPergunta = (corpo: unknown): Pergunta => {
     const c = (corpo ?? {}) as Record<string, unknown>;
-    const atual = estado.ler().pastaAtual;
+    // A raiz PRINCIPAL: o serviço de linguagem indexa um projeto por vez, e
+    // misturar raízes num índice só daria definição de outro projeto.
+    const atual = pastaPrincipal(estado.ler());
     if (atual === null) throw new Error('Abra uma pasta para navegar pelo código dela.');
     if (typeof c.caminho !== 'string' || c.caminho === '') throw new Error('Informe o arquivo.');
     const linha = typeof c.linha === 'number' ? Math.trunc(c.linha) : 1;

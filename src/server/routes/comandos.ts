@@ -18,18 +18,22 @@ export function createComandosRouter(comandos: ComandosStore, estado: EstadoStor
   const router = Router();
   const ok = (data: unknown) => ({ success: true, data, error: null });
 
-  /** Lê os manifestos da pasta aberta. Ausência de pasta = nada descoberto. */
+  /**
+   * Lê os manifestos de TODAS as raízes abertas (T004).
+   *
+   * Um espaço com back e front tem um `package.json` em cada, e mostrar só os
+   * scripts do primeiro esconderia metade do que dá para rodar.
+   */
   const descobertos = (): readonly ComandoDescoberto[] => {
-    const pasta = estado.ler().pastaAtual;
-    if (pasta === null) return [];
-
     const saida: ComandoDescoberto[] = [];
-    for (const manifesto of MANIFESTOS) {
-      try {
-        const conteudo = fs.readFileSync(path.join(pasta, manifesto), 'utf8');
-        saida.push(...scriptsDoManifesto(conteudo, manifesto));
-      } catch {
-        // Não existe, não dá para ler, ou está quebrado: segue sem ele.
+    for (const pasta of estado.ler().pastas) {
+      for (const manifesto of MANIFESTOS) {
+        try {
+          const conteudo = fs.readFileSync(path.join(pasta, manifesto), 'utf8');
+          saida.push(...scriptsDoManifesto(conteudo, manifesto));
+        } catch {
+          // Não existe, não dá para ler, ou está quebrado: segue sem ele.
+        }
       }
     }
     return saida;

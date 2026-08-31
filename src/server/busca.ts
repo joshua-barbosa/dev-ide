@@ -65,11 +65,30 @@ function lerTexto(caminho: string): string | null {
   }
 }
 
+/**
+ * O que ainda dá para gastar nesta busca.
+ *
+ * Existe por causa do multi-root (T004): com três raízes, um teto POR RAIZ
+ * daria três vezes o tempo e três vezes as ocorrências. O orçamento é do
+ * gesto, não da pasta — e por isso ele atravessa as raízes.
+ */
+export interface OrcamentoDaBusca {
+  /** Instante em que a busca tem de parar, venha o que vier. */
+  readonly ate: number;
+  /** Quantas ocorrências ainda cabem. */
+  ocorrencias: number;
+}
+
+export function orcamentoNovo(): OrcamentoDaBusca {
+  return { ate: Date.now() + MAX_MS, ocorrencias: MAX_OCORRENCIAS };
+}
+
 export function buscarNaPasta(
   pasta: string,
   termo: string,
   opcoes: OpcoesDeBusca,
-  filtro: FiltroDeArquivos = SEM_FILTRO
+  filtro: FiltroDeArquivos = SEM_FILTRO,
+  orcamento: OrcamentoDaBusca = orcamentoNovo()
 ): ResultadoDaBusca {
   const regex = montarRegex(termo, opcoes);
   if (regex === null) return VAZIO;
@@ -77,7 +96,7 @@ export function buscarNaPasta(
   // Varredura com as regras de `.gitignore`: procurar dentro de `node_modules`
   // devolve milhares de acertos que ninguém quer ler.
   const { arquivos: caminhos, truncated } = varrerArquivos(pasta, { max: MAX_ARQUIVOS });
-  const limite = Date.now() + MAX_MS;
+  const limite = orcamento.ate;
 
   const arquivos: ArquivoComOcorrencias[] = [];
   let total = 0;
@@ -85,7 +104,7 @@ export function buscarNaPasta(
   let truncado = truncated;
 
   for (const caminho of caminhos) {
-    if (Date.now() > limite || total >= MAX_OCORRENCIAS) {
+    if (Date.now() > limite || orcamento.ocorrencias <= 0) {
       truncado = true;
       break;
     }
@@ -97,13 +116,43 @@ export function buscarNaPasta(
     if (conteudo === null) continue;
     visitados += 1;
 
-    const ocorrencias = buscarNoConteudo(conteudo, regex, MAX_OCORRENCIAS - total);
+    const ocorrencias = buscarNoConteudo(conteudo, regex, orcamento.ocorrencias);
     if (ocorrencias.length === 0) continue;
     arquivos.push({ caminho, ocorrencias });
     total += ocorrencias.length;
+    orcamento.ocorrencias -= ocorrencias.length;
   }
 
   return { arquivos, totalDeOcorrencias: total, truncado, arquivosVisitados: visitados };
+}
+
+/**
+ * Busca em VÁRIAS raízes, com um orçamento só (T004).
+ *
+ * Os resultados saem na ordem das raízes — a mesma da árvore, que é a ordem em
+ * que o usuário as acrescentou. Alfabetar aqui misturaria projetos e faria a
+ * lista parecer de um lugar só.
+ */
+export function buscarNasPastas(
+  pastas: readonly string[],
+  termo: string,
+  opcoes: OpcoesDeBusca,
+  filtro: FiltroDeArquivos = SEM_FILTRO
+): ResultadoDaBusca {
+  const orcamento = orcamentoNovo();
+  const arquivos: ArquivoComOcorrencias[] = [];
+  let totalDeOcorrencias = 0;
+  let arquivosVisitados = 0;
+  let truncado = false;
+
+  for (const pasta of pastas) {
+    const r = buscarNaPasta(pasta, termo, opcoes, filtro, orcamento);
+    arquivos.push(...r.arquivos);
+    totalDeOcorrencias += r.totalDeOcorrencias;
+    arquivosVisitados += r.arquivosVisitados;
+    truncado = truncado || r.truncado;
+  }
+  return { arquivos, totalDeOcorrencias, truncado, arquivosVisitados };
 }
 
 export interface ResultadoDaSubstituicao {

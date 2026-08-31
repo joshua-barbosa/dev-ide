@@ -78,22 +78,30 @@ export function useAberturas(deps: AberturasDeps): Aberturas {
       return;
     }
 
-    const absoluto = (relativo: string): string => `${deps.pasta}/${relativo}`;
-    const recentes = deps.recentes
-      .filter((c) => c.startsWith(`${deps.pasta}/`))
-      .map((c) => c.slice(deps.pasta.length + 1));
+    // A busca trabalha no RÓTULO — que com mais de uma raiz já traz o nome dela
+    // (T004) —, e o valor escolhido é o caminho absoluto. Casar por rótulo é o
+    // que faz `web/index` achar o certo entre dois `index.ts`.
+    const porRotulo = new Map(files.map((f) => [f.label, f.path]));
+    const rotulos = files.map((f) => f.label);
+    const recentes = files.filter((f) => deps.recentes.includes(f.path)).map((f) => f.label);
+    // Na ordem em que ele os abriu, e não na do disco.
+    recentes.sort((a, b) => {
+      const pa = deps.recentes.indexOf(porRotulo.get(a) ?? '');
+      const pb = deps.recentes.indexOf(porRotulo.get(b) ?? '');
+      return pa - pb;
+    });
 
     // A ordem inicial já é a dos recentes: com o campo vazio, `Enter` volta ao
     // arquivo anterior sem digitar nada.
-    const ordenados = acharArquivos(files, '', { recentes, max: files.length });
-    const opcoes: OpcaoRapida[] = ordenados.map((relativo) => ({
-      valor: relativo,
-      rotulo: nomeDe(relativo),
+    const ordenados = acharArquivos(rotulos, '', { recentes, max: rotulos.length });
+    const opcoes: OpcaoRapida[] = ordenados.map((rotulo) => ({
+      valor: rotulo,
+      rotulo: nomeDe(rotulo),
       // A pasta vai no detalhe, e não no rótulo: dois `index.ts` só se
       // distinguem por ela, e o rótulo em negrito fica legível.
-      detalhe: relativo.includes('/') ? relativo.slice(0, relativo.lastIndexOf('/')) : undefined,
-      icone: iconeDeArquivo(relativo, 'plain'),
-      ...(recentes.includes(relativo) ? { sufixo: 'recente' } : {}),
+      detalhe: rotulo.includes('/') ? rotulo.slice(0, rotulo.lastIndexOf('/')) : undefined,
+      icone: iconeDeArquivo(rotulo, 'plain'),
+      ...(recentes.includes(rotulo) ? { sufixo: 'recente' } : {}),
     }));
 
     const escolhido = await qi.pedir({
@@ -116,7 +124,8 @@ export function useAberturas(deps: AberturasDeps): Aberturas {
           .filter((o): o is OpcaoRapida => o !== undefined);
       },
     });
-    if (escolhido !== null) await abrirArquivo(absoluto(escolhido));
+    const caminho = escolhido === null ? undefined : porRotulo.get(escolhido);
+    if (caminho !== undefined) await abrirArquivo(caminho);
   };
 
   /** Escolhe o tema. Vale para moldura, editor e terminal ao mesmo tempo. */

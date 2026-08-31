@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  abrirPasta, esquecerPasta, ESTADO_VAZIO, fecharPasta, MAX_RECENTES, normalizarEstado,
+  abrirPasta, acrescentarPasta, esquecerPasta, ESTADO_VAZIO, fecharPasta, MAX_RECENTES,
+  normalizarEstado, pastaPrincipal, removerPasta,
 } from '../estado';
 
 test('estado vazio é o padrão de tudo que não dá para ler', () => {
@@ -11,25 +12,73 @@ test('estado vazio é o padrão de tudo que não dá para ler', () => {
 });
 
 test('a IDE nasce sem pasta, e não escolhendo uma por conta própria', () => {
-  assert.equal(ESTADO_VAZIO.pastaAtual, null);
+  assert.deepEqual(ESTADO_VAZIO.pastas, []);
+  assert.equal(pastaPrincipal(ESTADO_VAZIO), null);
   assert.deepEqual(ESTADO_VAZIO.recentes, []);
 });
 
 test('normalizar descarta entrada que não é texto', () => {
-  const e = normalizarEstado({ pastaAtual: 7, recentes: ['/a', 3, null, '', '/b'] });
-  assert.equal(e.pastaAtual, null);
+  const e = normalizarEstado({ pastas: [7, null, ''], recentes: ['/a', 3, null, '', '/b'] });
+  assert.deepEqual(e.pastas, []);
   assert.deepEqual(e.recentes, ['/a', '/b']);
 });
 
-test('a pasta atual sempre aparece nos recentes, mesmo se o arquivo não a listou', () => {
-  const e = normalizarEstado({ pastaAtual: '/atual', recentes: ['/outra'] });
+test('as pastas abertas sempre aparecem nos recentes, mesmo sem estarem listadas', () => {
+  const e = normalizarEstado({ pastas: ['/atual'], recentes: ['/outra'] });
   assert.deepEqual(e.recentes, ['/atual', '/outra']);
 });
 
-test('abrir põe a pasta no topo e a torna atual', () => {
+test('o formato ANTIGO (`pastaAtual`) ainda abre na pasta certa (T004)', () => {
+  // `state.json` gravado antes do multi-root. Sem esta migração, a primeira
+  // subida depois da atualização abriria sem projeto nenhum.
+  const e = normalizarEstado({ pastaAtual: '/velho', recentes: ['/velho', '/outro'] });
+  assert.deepEqual(e.pastas, ['/velho']);
+  assert.deepEqual(e.recentes, ['/velho', '/outro']);
+});
+
+test('pasta repetida entre os dois formatos entra uma vez só', () => {
+  const e = normalizarEstado({ pastas: ['/a'], pastaAtual: '/a' });
+  assert.deepEqual(e.pastas, ['/a']);
+});
+
+test('abrir SUBSTITUI: `Open Folder…` é trocar de projeto', () => {
   const e = abrirPasta(abrirPasta(ESTADO_VAZIO, '/a'), '/b');
-  assert.equal(e.pastaAtual, '/b');
+  assert.deepEqual(e.pastas, ['/b']);
   assert.deepEqual(e.recentes, ['/b', '/a']);
+});
+
+// ---- mais de uma raiz (T004) ----
+
+test('acrescentar soma sem tirar o que já estava', () => {
+  const e = acrescentarPasta(abrirPasta(ESTADO_VAZIO, '/a'), '/b');
+  assert.deepEqual(e.pastas, ['/a', '/b'], 'a ordem é a de entrada');
+  assert.deepEqual(e.recentes, ['/b', '/a']);
+});
+
+test('acrescentar a mesma pasta duas vezes não duplica', () => {
+  const e = acrescentarPasta(acrescentarPasta(abrirPasta(ESTADO_VAZIO, '/a'), '/b'), '/b');
+  assert.deepEqual(e.pastas, ['/a', '/b']);
+});
+
+test('remover tira UMA raiz e deixa as outras', () => {
+  let e = abrirPasta(ESTADO_VAZIO, '/a');
+  e = acrescentarPasta(e, '/b');
+  e = acrescentarPasta(e, '/c');
+  assert.deepEqual(removerPasta(e, '/b').pastas, ['/a', '/c']);
+  // Sai do espaço, fica no histórico: reabrir tem que continuar sendo um clique.
+  assert.ok(removerPasta(e, '/b').recentes.includes('/b'));
+});
+
+test('remover o que não está aberto não muda nada', () => {
+  const e = abrirPasta(ESTADO_VAZIO, '/a');
+  assert.equal(removerPasta(e, '/z'), e);
+});
+
+test('a principal é a primeira, e some quando ela sai', () => {
+  let e = acrescentarPasta(abrirPasta(ESTADO_VAZIO, '/a'), '/b');
+  assert.equal(pastaPrincipal(e), '/a');
+  e = removerPasta(e, '/a');
+  assert.equal(pastaPrincipal(e), '/b');
 });
 
 test('reabrir uma pasta a move para o topo em vez de duplicar', () => {
@@ -49,23 +98,23 @@ test('abrir não muta o estado anterior', () => {
   const antes = abrirPasta(ESTADO_VAZIO, '/a');
   abrirPasta(antes, '/b');
   assert.deepEqual(antes.recentes, ['/a']);
-  assert.equal(antes.pastaAtual, '/a');
+  assert.deepEqual(antes.pastas, ['/a']);
 });
 
 test('fechar preserva o histórico', () => {
-  const e = fecharPasta(abrirPasta(ESTADO_VAZIO, '/a'));
-  assert.equal(e.pastaAtual, null);
-  assert.deepEqual(e.recentes, ['/a']);
+  const e = fecharPasta(acrescentarPasta(abrirPasta(ESTADO_VAZIO, '/a'), '/b'));
+  assert.deepEqual(e.pastas, [], 'fecha TODAS');
+  assert.deepEqual(e.recentes, ['/b', '/a']);
 });
 
-test('esquecer tira dos recentes e solta a atual se for ela', () => {
+test('esquecer tira dos recentes e do espaço de trabalho', () => {
   const e = esquecerPasta(abrirPasta(abrirPasta(ESTADO_VAZIO, '/a'), '/b'), '/b');
-  assert.equal(e.pastaAtual, null);
+  assert.deepEqual(e.pastas, []);
   assert.deepEqual(e.recentes, ['/a']);
 });
 
-test('esquecer outra pasta não mexe na atual', () => {
+test('esquecer outra pasta não mexe na que está aberta', () => {
   const e = esquecerPasta(abrirPasta(abrirPasta(ESTADO_VAZIO, '/a'), '/b'), '/a');
-  assert.equal(e.pastaAtual, '/b');
+  assert.deepEqual(e.pastas, ['/b']);
   assert.deepEqual(e.recentes, ['/b']);
 });

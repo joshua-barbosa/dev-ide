@@ -23,6 +23,11 @@ interface Retrato {
   readonly truncated: boolean;
 }
 
+interface Arquivo {
+  readonly path: string;
+  readonly label: string;
+}
+
 type Chamada = (method: string, rota: string, body?: unknown) => Promise<Envelope<unknown>>;
 
 async function comServidor(
@@ -363,12 +368,18 @@ test('criar arquivo DENTRO de uma pasta escolhida (T045)', async () => {
 // A lista de arquivos do `Ctrl+P` (T051, spec 073)
 // ---------------------------------------------------------------------------
 
-test('a lista de arquivos vem relativa à pasta aberta', async () => {
+test('a lista de arquivos traz o caminho e o rótulo', async () => {
   await comPastaAberta(async (call, projeto) => {
     fs.mkdirSync(path.join(projeto, 'src'));
     fs.writeFileSync(path.join(projeto, 'src', 'a.ts'), 'x\n');
-    const r = (await call('GET', '/workspace/files')).data as { files: string[] };
-    assert.deepEqual([...r.files].sort(), ['src/a.ts', 'utils.ts']);
+    const r = (await call('GET', '/workspace/files')).data as { files: Arquivo[] };
+    // Com UMA raiz o rótulo é o relativo puro: pôr o nome da pasta em toda
+    // linha seria o mesmo prefixo repetido, ocupando espaço e não informando.
+    assert.deepEqual([...r.files].map((f) => f.label).sort(), ['src/a.ts', 'utils.ts']);
+    assert.deepEqual(
+      [...r.files].map((f) => f.path).sort(),
+      [path.join(projeto, 'src', 'a.ts'), path.join(projeto, 'utils.ts')].sort()
+    );
   });
 });
 
@@ -381,9 +392,9 @@ test('a lista respeita o .gitignore', async () => {
     fs.writeFileSync(path.join(projeto, '.gitignore'), 'segredo.txt\n');
     fs.writeFileSync(path.join(projeto, 'segredo.txt'), 'x\n');
 
-    const r = (await call('GET', '/workspace/files')).data as { files: string[] };
-    assert.ok(!r.files.some((f) => f.startsWith('node_modules')));
-    assert.ok(!r.files.includes('segredo.txt'));
+    const r = (await call('GET', '/workspace/files')).data as { files: Arquivo[] };
+    assert.ok(!r.files.some((f) => f.label.startsWith('node_modules')));
+    assert.ok(!r.files.some((f) => f.label === 'segredo.txt'));
   });
 });
 
@@ -392,6 +403,153 @@ test('sem pasta aberta a lista vem vazia, e não com erro', async () => {
   await comServidor(async (call) => {
     const r = await call('GET', '/workspace/files');
     assert.equal(r.success, true);
-    assert.deepEqual((r.data as { files: string[] }).files, []);
+    assert.deepEqual((r.data as { files: Arquivo[] }).files, []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mais de uma raiz (T004, spec 073)
+// ---------------------------------------------------------------------------
+
+interface Raiz {
+  readonly pasta: string;
+  readonly nome: string;
+  readonly arvore: readonly { name: string }[];
+}
+
+/** Um segundo projeto ao lado do primeiro, com um arquivo dentro. */
+function segundoProjeto(dados: string, nome = 'outro'): string {
+  const dir = path.join(dados, nome);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'segundo.ts'), 'export const B = 2;\n');
+  return dir;
+}
+
+test('acrescentar soma uma raiz sem tirar a primeira', async () => {
+  await comServidor(async (call, dados, projeto) => {
+    const outro = segundoProjeto(dados);
+    await call('POST', '/workspace', { path: projeto });
+    const r = (await call('POST', '/workspace/add', { path: outro })).data as {
+      raizes: Raiz[]; pasta: string;
+    };
+
+    assert.deepEqual(r.raizes.map((x) => x.pasta), [projeto, outro]);
+    assert.deepEqual(r.raizes.map((x) => x.nome), ['projeto', 'outro']);
+    // O campo antigo continua valendo a PRIMEIRA: quem só sabe lidar com uma
+    // pasta — o `cwd` do terminal, por exemplo — não precisa saber das outras.
+    assert.equal(r.pasta, projeto);
+  });
+});
+
+test('cada raiz traz a árvore dela', async () => {
+  await comServidor(async (call, dados, projeto) => {
+    const outro = segundoProjeto(dados);
+    await call('POST', '/workspace', { path: projeto });
+    const r = (await call('POST', '/workspace/add', { path: outro })).data as { raizes: Raiz[] };
+
+    assert.ok(r.raizes[0]?.arvore.some((n) => n.name === 'utils.ts'));
+    assert.ok(r.raizes[1]?.arvore.some((n) => n.name === 'segundo.ts'));
+  });
+});
+
+test('abrir SUBSTITUI as raízes — é trocar de projeto', async () => {
+  await comServidor(async (call, dados, projeto) => {
+    const outro = segundoProjeto(dados);
+    await call('POST', '/workspace', { path: projeto });
+    await call('POST', '/workspace/add', { path: outro });
+
+    const r = (await call('POST', '/workspace', { path: outro })).data as { raizes: Raiz[] };
+    assert.deepEqual(r.raizes.map((x) => x.pasta), [outro]);
+  });
+});
+
+test('remover tira UMA raiz e deixa as outras', async () => {
+  await comServidor(async (call, dados, projeto) => {
+    const outro = segundoProjeto(dados);
+    await call('POST', '/workspace', { path: projeto });
+    await call('POST', '/workspace/add', { path: outro });
+
+    const r = (await call('DELETE', '/workspace/folder', { path: projeto })).data as {
+      raizes: Raiz[];
+    };
+    assert.deepEqual(r.raizes.map((x) => x.pasta), [outro]);
+  });
+});
+
+test('acrescentar pasta que não existe é recusado', async () => {
+  await comServidor(async (call, dados, projeto) => {
+    await call('POST', '/workspace', { path: projeto });
+    const r = await call('POST', '/workspace/add', { path: path.join(dados, 'fantasma') });
+    assert.equal(r.success, false);
+  });
+});
+
+test('a mesma pasta acrescentada duas vezes entra uma vez só', async () => {
+  await comServidor(async (call, dados, projeto) => {
+    const outro = segundoProjeto(dados);
+    await call('POST', '/workspace', { path: projeto });
+    await call('POST', '/workspace/add', { path: outro });
+    const r = (await call('POST', '/workspace/add', { path: outro })).data as { raizes: Raiz[] };
+    assert.equal(r.raizes.length, 2);
+  });
+});
+
+test('o Ctrl+P cobre TODAS as raízes, com o nome de cada uma no rótulo', async () => {
+  await comServidor(async (call, dados, projeto) => {
+    const outro = segundoProjeto(dados);
+    await call('POST', '/workspace', { path: projeto });
+    await call('POST', '/workspace/add', { path: outro });
+
+    const r = (await call('GET', '/workspace/files')).data as { files: Arquivo[] };
+    const rotulos = r.files.map((f) => f.label).sort();
+    // Com DUAS raízes o nome entra: dois `index.ts` de projetos diferentes
+    // seriam a mesma linha sem ele.
+    assert.deepEqual(rotulos, ['outro/segundo.ts', 'projeto/utils.ts']);
+  });
+});
+
+test('a árvore expande pasta de QUALQUER raiz', async () => {
+  await comServidor(async (call, dados, projeto) => {
+    const outro = segundoProjeto(dados);
+    fs.mkdirSync(path.join(outro, 'dentro'));
+    fs.writeFileSync(path.join(outro, 'dentro', 'fundo.ts'), 'x\n');
+    await call('POST', '/workspace', { path: projeto });
+    await call('POST', '/workspace/add', { path: outro });
+
+    const r = await call('GET', `/files/children?path=${encodeURIComponent(path.join(outro, 'dentro'))}`);
+    assert.equal(r.success, true);
+    assert.ok((r.data as { nodes: { name: string }[] }).nodes.some((n) => n.name === 'fundo.ts'));
+  });
+});
+
+test('a árvore continua recusando caminho de FORA de todas as raízes', async () => {
+  await comServidor(async (call, dados, projeto) => {
+    await call('POST', '/workspace', { path: projeto });
+    const r = await call('GET', `/files/children?path=${encodeURIComponent(dados)}`);
+    assert.equal(r.success, false);
+  });
+});
+
+test('criar com o nome da raiz na frente cai NA raiz certa', async () => {
+  await comServidor(async (call, dados, projeto) => {
+    const outro = segundoProjeto(dados);
+    await call('POST', '/workspace', { path: projeto });
+    await call('POST', '/workspace/add', { path: outro });
+
+    const r = (await call('POST', '/workspace/file', { name: 'outro/novo.ts', content: '' }))
+      .data as { path: string };
+    assert.equal(r.path, path.join(outro, 'novo.ts'));
+  });
+});
+
+test('raiz que sumiu do disco não impede as outras de abrirem', async () => {
+  await comServidor(async (call, dados, projeto) => {
+    const outro = segundoProjeto(dados);
+    await call('POST', '/workspace', { path: projeto });
+    await call('POST', '/workspace/add', { path: outro });
+    fs.rmSync(outro, { recursive: true, force: true });
+
+    const r = (await call('GET', '/workspace')).data as { raizes: Raiz[] };
+    assert.deepEqual(r.raizes.map((x) => x.pasta), [projeto]);
   });
 });

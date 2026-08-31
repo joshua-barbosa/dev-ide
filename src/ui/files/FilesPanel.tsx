@@ -32,6 +32,10 @@ export interface FilesPanelProps {
   readonly onErro: (erro: unknown) => void;
   /** Botão direito num item da árvore (T043) — quem monta o menu é o `App`. */
   readonly onMenuDoItem: (no: FileNode, e: React.MouseEvent) => void;
+  /** Botão direito no cabeçalho de uma RAIZ (T004). */
+  readonly onMenuDaRaiz: (pasta: string, e: React.MouseEvent) => void;
+  /** Soma outra pasta ao espaço de trabalho (T004). */
+  readonly onAcrescentarPasta: () => void;
   /** `F2` e `Delete` no item selecionado — os mesmos fluxos do menu. */
   readonly onRenomear: (no: FileNode) => void;
   readonly onExcluir: (no: FileNode) => void;
@@ -39,7 +43,7 @@ export interface FilesPanelProps {
 
 export function FilesPanel({
   pasta, onAbrirArquivo, caminhoAtivo, onAbrirPasta, onNovoArquivo, onNovaPasta, onErro,
-  onMenuDoItem, onRenomear, onExcluir,
+  onMenuDoItem, onMenuDaRaiz, onAcrescentarPasta, onRenomear, onExcluir,
 }: FilesPanelProps) {
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
   /**
@@ -56,6 +60,14 @@ export function FilesPanel({
 
   /** Pedidos em voo, para o efeito não disparar dois pelo mesmo caminho. */
   const pedidos = useRef(new Set<string>());
+  /**
+   * Raízes recolhidas (T004).
+   *
+   * Guardadas como as FECHADAS, e não como as abertas: assim uma raiz nova
+   * nasce aberta, que é o que se espera de uma pasta que se acabou de
+   * acrescentar.
+   */
+  const [raizesFechadas, setRaizesFechadas] = useState<ReadonlySet<string>>(new Set());
 
   const alternar = useCallback((no: FileNode) => {
     setAbertas((atual) => {
@@ -86,7 +98,7 @@ export function FilesPanel({
         else procurar(no.children);
       }
     };
-    procurar(pasta.arvore);
+    for (const raiz of pasta.raizes) procurar(raiz.arvore);
 
     for (const caminho of faltando) {
       if (pedidos.current.has(caminho)) continue;
@@ -221,7 +233,7 @@ export function FilesPanel({
           '&:hover .acoes-da-arvore, &:focus-within .acoes-da-arvore': { opacity: 1 },
         }}
       >
-        <Tooltip title={pasta.pasta} placement="bottom-start">
+        <Tooltip title={pasta.raizes.map((r) => r.pasta).join('\n')} placement="bottom-start">
           <Box
             data-pasta-aberta={pasta.pasta}
             sx={{
@@ -230,7 +242,9 @@ export function FilesPanel({
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}
           >
-            {pasta.nome}
+            {/* Com várias raízes o cabeçalho deixa de nomear UMA pasta: o nome
+                de cada uma passa a estar na linha dela. */}
+            {pasta.raizes.length > 1 ? 'espaço de trabalho' : pasta.nome}
           </Box>
         </Tooltip>
         {/* As quatro do VS Code, na ordem dele. Abrir pasta NÃO fica aqui:
@@ -239,10 +253,14 @@ export function FilesPanel({
         <Box className="acoes-da-arvore" sx={{ display: 'flex', gap: 0.25 }}>
           {acao('Novo arquivo', 'lucide:file-plus', onNovoArquivo)}
           {acao('Nova pasta', 'lucide:folder-plus', onNovaPasta)}
+          {acao('Adicionar pasta ao espaço', 'lucide:folder-symlink', onAcrescentarPasta)}
           {acao('Recarregar', 'lucide:refresh-cw', () => {
             pasta.recarregar().catch(onErro);
           })}
-          {acao('Recolher tudo', 'lucide:list-collapse', () => setAbertas(new Set()))}
+          {acao('Recolher tudo', 'lucide:list-collapse', () => {
+            setAbertas(new Set());
+            setRaizesFechadas(new Set());
+          })}
         </Box>
       </Box>
 
@@ -274,12 +292,50 @@ export function FilesPanel({
           }
         }}
       >
-        {pasta.arvore.length === 0 ? (
-          <Box sx={{ px: 1.25, color: 'text.secondary', fontSize: 11 }}>
-            pasta vazia — crie um arquivo
-          </Box>
+        {/*
+          Com UMA raiz, a árvore é ela — exatamente a tela de antes do T004. Com
+          mais de uma, cada raiz ganha um cabeçalho que abre e fecha: sem ele
+          não haveria como saber de qual projeto é o `src/` que se está vendo.
+        */}
+        {pasta.raizes.length <= 1 ? (
+          (pasta.raizes[0]?.arvore.length ?? 0) === 0 ? (
+            <Box sx={{ px: 1.25, color: 'text.secondary', fontSize: 11 }}>
+              pasta vazia — crie um arquivo
+            </Box>
+          ) : (
+            renderizar(pasta.raizes[0]?.arvore ?? [], 0)
+          )
         ) : (
-          renderizar(pasta.arvore, 0)
+          pasta.raizes.map((raiz) => {
+            const aberta = !raizesFechadas.has(raiz.pasta);
+            return (
+              <Box key={raiz.pasta} data-raiz={raiz.pasta}>
+                <TreeRow
+                  nivel={0}
+                  rotulo={raiz.nome}
+                  icone={aberta ? ICONE_DE_PASTA_ABERTA : ICONE_DE_PASTA}
+                  expansivel
+                  aberto={aberta}
+                  titulo={raiz.pasta}
+                  onClick={() =>
+                    setRaizesFechadas((atual) => {
+                      const proximo = new Set(atual);
+                      if (proximo.has(raiz.pasta)) proximo.delete(raiz.pasta);
+                      else proximo.add(raiz.pasta);
+                      return proximo;
+                    })
+                  }
+                  onContextMenu={(e) => onMenuDaRaiz(raiz.pasta, e)}
+                />
+                {aberta && raiz.arvore.length === 0 ? (
+                  <Box sx={{ pl: 4, py: 0.2, color: 'text.secondary', fontSize: 11 }}>
+                    pasta vazia
+                  </Box>
+                ) : null}
+                {aberta ? renderizar(raiz.arvore, 1) : null}
+              </Box>
+            );
+          })
         )}
       </Box>
     </Box>

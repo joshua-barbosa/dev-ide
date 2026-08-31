@@ -21,6 +21,7 @@ import { createQueriesRouter } from './routes/queries';
 import { VinculosStore } from './vinculos';
 import { createLinguagemRouter } from './routes/linguagem';
 import { SnippetsStore } from './snippets';
+import { pastaPrincipal } from '../shared/estado';
 import { EstadoStore } from './estado';
 import { TerminalRegistry } from './terminal/registry';
 import { CanalSsh } from './terminal/canal-ssh';
@@ -77,7 +78,7 @@ const resolverAbertura = criarResolvedorDeAbertura({
   // A pasta ABERTA, e não a de projetos: desde a spec 012 o espaço de trabalho
   // é qualquer pasta, e um terminal que nasce noutro lugar faz `npm run build`
   // rodar no projeto errado — ou em nenhum.
-  cwdPadrao: () => estado.ler().pastaAtual ?? PROJECTS_DIR,
+  cwdPadrao: () => pastaPrincipal(estado.ler()) ?? PROJECTS_DIR,
 });
 
 // A interface é compilada pelo Vite de src/ui para dist/ui.

@@ -34,8 +34,8 @@ export function montarSocketDoVigia(server: Server, estado: EstadoStore): WebSoc
   });
 
   wss.on('connection', (ws: WebSocket) => {
-    const pasta = estado.ler().pastaAtual;
-    if (pasta === null) {
+    const pastas = estado.ler().pastas;
+    if (pastas.length === 0) {
       // Sem pasta aberta não há o que vigiar. Fechar é mais honesto que manter
       // um canal mudo que nunca vai falar.
       ws.close();
@@ -46,14 +46,20 @@ export function montarSocketDoVigia(server: Server, estado: EstadoStore): WebSoc
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(aviso));
     };
 
-    let vigia: Vigia | null = null;
+    // **Um vigia por RAIZ** (T004). O `inotify` observa uma árvore, e três
+    // raízes são três árvores; juntar tudo num só exigiria um caminho comum,
+    // que pode ser `/` — e vigiar o disco inteiro derruba a máquina.
+    const vigias: Vigia[] = [];
     try {
-      vigia = new Vigia(pasta, {
-        aoMudar: (mudancas) => enviar({ tipo: 'mudou', mudancas }),
-        aoLotar: () => enviar({ tipo: 'lotou' }),
-      });
+      for (const pasta of pastas) {
+        vigias.push(new Vigia(pasta, {
+          aoMudar: (mudancas) => enviar({ tipo: 'mudou', mudancas }),
+          aoLotar: () => enviar({ tipo: 'lotou' }),
+        }));
+      }
     } catch {
       // Pasta que sumiu entre abrir a página e conectar: não é motivo para erro.
+      for (const v of vigias) v.parar();
       ws.close();
       return;
     }
@@ -61,8 +67,11 @@ export function montarSocketDoVigia(server: Server, estado: EstadoStore): WebSoc
     // **Um vigia por conexão, e ele morre com ela.** Duas abas da IDE abertas
     // custam dois conjuntos de observadores; em troca, fechar uma não cega a
     // outra, e não sobra vigia órfão consumindo `inotify` até o servidor cair.
-    ws.on('close', () => vigia?.parar());
-    ws.on('error', () => vigia?.parar());
+    const pararTodos = (): void => {
+      for (const v of vigias) v.parar();
+    };
+    ws.on('close', pararTodos);
+    ws.on('error', pararTodos);
   });
 
   return wss;

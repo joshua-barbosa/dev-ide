@@ -526,6 +526,8 @@ export function App() {
           onNovoArquivo={() => avisar(pastaAcoes.novoArquivoNaPasta())}
           onNovaPasta={() => avisar(pastaAcoes.novaPasta())}
           onMenuDoArquivo={pastaAcoes.menuDoItem}
+          onMenuDaRaiz={pastaAcoes.menuDaRaiz}
+          onAcrescentarPasta={() => avisar(pastaAcoes.acrescentarPasta())}
           onRenomearArquivo={(no) => avisar(pastaAcoes.renomearItem(no.path))}
           onExcluirArquivo={(no) => avisar(pastaAcoes.excluirItem(no.path, no.type === 'dir'))}
           busca={{

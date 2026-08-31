@@ -8,14 +8,23 @@
 // Uma requisição só devolve pasta, recentes, árvore e símbolos. Três chamadas
 // dariam três momentos, e a árvore apareceria antes dos símbolos.
 import { useCallback, useEffect, useState } from 'react';
-import { Api, type FileNode, type Projeto, type RetratoDoEspaco, type SymbolInfo } from '../api';
+import {
+  Api, type FileNode, type Projeto, type RaizAberta, type RetratoDoEspaco, type SymbolInfo,
+} from '../api';
 
 const VAZIO: RetratoDoEspaco = {
-  pasta: null, recentes: [], arvore: [], simbolos: [], truncated: false,
+  raizes: [], pasta: null, recentes: [], arvore: [], simbolos: [], truncated: false,
 };
 
 export interface PastaAberta {
-  /** Caminho absoluto, ou `''` quando nenhuma pasta está aberta. */
+  /**
+   * As raízes abertas, cada uma com a árvore dela (T004).
+   *
+   * Vazio quando não há nenhuma. Com uma só, a tela é exatamente a de antes —
+   * foi o critério para não reescrever o painel inteiro.
+   */
+  readonly raizes: readonly RaizAberta[];
+  /** Caminho absoluto da PRIMEIRA raiz, ou `''` quando não há nenhuma. */
   readonly pasta: string;
   /** Só o nome, para o cabeçalho do painel. */
   readonly nome: string;
@@ -38,6 +47,10 @@ export interface PastaAberta {
   criarArquivo(nome: string, conteudo: string): Promise<string>;
   /** Cria uma pasta e devolve o caminho; deixa o erro subir para a retentativa. */
   criarPasta(nome: string): Promise<string>;
+  /** Soma uma raiz ao espaço de trabalho (T004). */
+  acrescentar(caminho: string): Promise<void>;
+  /** Tira uma raiz, deixando as outras (T004). */
+  remover(caminho: string): Promise<void>;
   /** Renomeia um item da árvore e devolve o caminho novo (T043). */
   renomear(caminho: string, nome: string): Promise<string>;
   /** Copia um item ao lado dele e devolve o caminho da cópia (T043). */
@@ -89,13 +102,27 @@ export function usePasta(): PastaAberta {
    */
   const carregarFilhos = useCallback(async (caminho: string): Promise<void> => {
     const { nodes } = await Api.fileChildren(caminho);
-    setRetrato((atual) => ({
-      ...atual,
-      // A RAIZ não é um nó da árvore: ela É a árvore. Sem este caso, recarregar
-      // a pasta aberta não fazia nada — `enxertar` procurava um nó com aquele
-      // caminho e não achava. Custou o primeiro teste do vigia.
-      arvore: caminho === atual.pasta ? nodes : enxertar(atual.arvore, caminho, nodes),
-    }));
+    setRetrato((atual) => {
+      // Com várias raízes (T004), o enxerto vai na ÁRVORE DA RAIZ que contém o
+      // caminho — a raiz é escolhida pelo prefixo mais LONGO, para uma pasta
+      // dentro de outra aberta não cair na de fora.
+      const raizes = atual.raizes.map((raiz) => {
+        if (caminho !== raiz.pasta && !caminho.startsWith(`${raiz.pasta}/`)) return raiz;
+        const dona = atual.raizes
+          .filter((r) => caminho === r.pasta || caminho.startsWith(`${r.pasta}/`))
+          .reduce((a, b) => (b.pasta.length > a.pasta.length ? b : a));
+        if (dona.pasta !== raiz.pasta) return raiz;
+        // A RAIZ não é um nó da árvore: ela É a árvore. Sem este caso,
+        // recarregar a pasta aberta não fazia nada — `enxertar` procurava um nó
+        // com aquele caminho e não achava. Custou o primeiro teste do vigia.
+        return {
+          ...raiz,
+          arvore: caminho === raiz.pasta ? nodes : enxertar(raiz.arvore, caminho, nodes),
+        };
+      });
+      const primeira = raizes[0];
+      return { ...atual, raizes, arvore: primeira === undefined ? [] : primeira.arvore };
+    });
   }, []);
 
   useEffect(() => {
@@ -107,6 +134,15 @@ export function usePasta(): PastaAberta {
   const abrir = useCallback(async (caminho: string) => {
     setRetrato(await Api.openFolder(caminho));
     setErro(null);
+  }, []);
+
+  const acrescentar = useCallback(async (caminho: string) => {
+    setRetrato(await Api.addFolder(caminho));
+    setErro(null);
+  }, []);
+
+  const remover = useCallback(async (caminho: string) => {
+    setRetrato(await Api.removeFolder(caminho));
   }, []);
 
   const fechar = useCallback(async () => {
@@ -175,6 +211,7 @@ export function usePasta(): PastaAberta {
 
   const pasta = retrato.pasta ?? '';
   return {
+    raizes: retrato.raizes,
     pasta,
     nome: pasta === '' ? '' : (pasta.split('/').filter((p) => p !== '').pop() ?? pasta),
     recentes: retrato.recentes,
@@ -194,5 +231,7 @@ export function usePasta(): PastaAberta {
     renomear,
     duplicar,
     excluir,
+    acrescentar,
+    remover,
   };
 }
