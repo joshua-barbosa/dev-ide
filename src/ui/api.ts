@@ -337,6 +337,17 @@ export const Api = {
     request<Preferencias>('PATCH', '/api/prefs', patch),
   prefsPath: () => request<{ path: string }>('GET', '/api/prefs/file'),
   /** Cria o arquivo se preciso; devolve o caminho para abri-lo no editor. */
+  /** Os temas declarados no `config.json` (T012). */
+  prefsThemes: () =>
+    request<Record<string, { base?: string; cores?: Record<string, unknown> }>>(
+      'GET',
+      '/api/prefs/themes'
+    ),
+  /** O que o projeto sobrescreve, e onde fica o arquivo dele (T002). */
+  prefsProject: () =>
+    request<{ path: string | null; sobrescritas: string[] }>('GET', '/api/prefs/project'),
+  prefsProjectFile: () =>
+    request<{ path: string }>('POST', '/api/prefs/project/file'),
   prefsFile: () => request<{ path: string }>('POST', '/api/prefs/file'),
 
   // ---- conexões ----

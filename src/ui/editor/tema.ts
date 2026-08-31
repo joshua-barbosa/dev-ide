@@ -8,7 +8,7 @@
 // Desde a spec 017 as cores vêm da paleta em `shared/temas.ts`, e não de
 // constantes aqui: era o único jeito de o editor acompanhar a troca de tema.
 import * as monaco from 'monaco-editor';
-import { TEMAS, type NomeDoTema } from '../../shared/temas';
+import { paletaDe, type NomeDoTema } from '../../shared/temas';
 
 export const NOME_DO_TEMA = 'dev-ide';
 
@@ -20,7 +20,7 @@ export const NOME_DO_TEMA = 'dev-ide';
  * remontar o editor nem recarregar a página.
  */
 export function registrarTema(nome: NomeDoTema): void {
-  const p = TEMAS[nome];
+  const p = paletaDe(nome);
   const cor = { ...p.sintaxe, variavel: p.fg.slice(1), invalido: p.error.slice(1) };
 
   monaco.editor.defineTheme(NOME_DO_TEMA, {

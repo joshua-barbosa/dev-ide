@@ -26,6 +26,36 @@ export function createPrefsRouter(prefs: PreferencesStore): Router {
     res.json(ok(prefs.gravar(validarPatch(req.body))));
   }));
 
+  /**
+   * Os temas do usuário (T012).
+   *
+   * Rota própria, e não dentro de `GET /`, para o contrato de preferências
+   * continuar sendo "um objeto de valores simples". Uma requisição a mais no
+   * arranque; em troca, nada do que já existe muda de forma.
+   */
+  router.get('/themes', wrap((_req, res) => {
+    res.json(ok(prefs.lerTemas()));
+  }));
+
+  /**
+   * O que o PROJETO sobrescreve (T002).
+   *
+   * A tela usa para avisar: um campo que o projeto manda continua sendo
+   * mostrado, mas com a marca — mudar ali grava no arquivo do usuário e não
+   * muda nada, e não avisar seria deixar a IDE parecer quebrada.
+   */
+  router.get('/project', wrap((_req, res) => {
+    res.json(ok({
+      path: prefs.caminhoDoProjeto(),
+      sobrescritas: prefs.chavesSobrescritas(),
+    }));
+  }));
+
+  /** Cria o `.vscode/settings.json` e devolve o caminho, para a IDE abri-lo. */
+  router.post('/project/file', wrap((_req, res) => {
+    res.json(ok({ path: prefs.garantirArquivoDoProjeto() }));
+  }));
+
   /** Onde o arquivo fica — a interface precisa saber para reagir ao salvá-lo. */
   router.get('/file', wrap((_req, res) => {
     res.json(ok({ path: prefs.path }));

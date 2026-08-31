@@ -6,9 +6,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Api } from './api';
 import { padroes, type PatchDePreferencias, type Preferencias } from '../shared/prefs';
+import { definirTemasDoUsuario } from '../shared/temas';
 
 export interface PrefsController {
   readonly prefs: Preferencias;
+  /** As chaves que o `.vscode/settings.json` do projeto sobrescreve (T002). */
+  readonly sobrescritas: readonly string[];
   /** Caminho do `config.json`. Vazio até o servidor responder. */
   readonly caminho: string;
   /** Grava e devolve o conjunto resultante; o servidor é quem valida. */
@@ -20,9 +23,28 @@ export interface PrefsController {
 export function usePrefs(aoFalhar: (erro: unknown) => void): PrefsController {
   const [prefs, setPrefs] = useState<Preferencias>(padroes);
   const [caminho, setCaminho] = useState('');
+  const [sobrescritas, setSobrescritas] = useState<readonly string[]>([]);
 
   const recarregar = useCallback(async (): Promise<void> => {
-    setPrefs(await Api.prefs());
+    // Os dois juntos: um tema novo no `config.json` só vale depois de o
+    // catálogo saber dele, e o `workbench.theme` pode apontar para ele na mesma
+    // gravação. Carregar em duas etapas daria um instante com o tema errado.
+    // Os dois que PINTAM a tela vêm juntos: um tema novo no `config.json` só
+    // vale depois de o catálogo saber dele, e o `workbench.theme` pode apontar
+    // para ele na mesma gravação. Carregar em duas etapas daria um instante com
+    // o tema errado.
+    const [valores, temas] = await Promise.all([Api.prefs(), Api.prefsThemes()]);
+    definirTemasDoUsuario(temas);
+    setPrefs(valores);
+
+    // O que o projeto sobrescreve fica FORA do caminho crítico: ele só decide
+    // um aviso na tela de configurações, e esperá-lo atrasaria a primeira
+    // pintura — a IDE ficaria com o tema padrão por mais tempo, piscando.
+    Api.prefsProject()
+      .then((projeto) => setSobrescritas(projeto.sobrescritas))
+      .catch(() => {
+        // Sem o aviso a tela ainda funciona; o valor efetivo já veio certo.
+      });
   }, []);
 
   useEffect(() => {
@@ -36,8 +58,10 @@ export function usePrefs(aoFalhar: (erro: unknown) => void): PrefsController {
   }, [recarregar]);
 
   const definir = useCallback(async (patch: PatchDePreferencias): Promise<void> => {
+    // O servidor devolve o EFETIVO — com o projeto por cima, quando há um. Sem
+    // isso a tela mostraria o valor gravado e a IDE usaria outro.
     setPrefs(await Api.setPrefs(patch));
   }, []);
 
-  return { prefs, caminho, definir, recarregar };
+  return { prefs, sobrescritas, caminho, definir, recarregar };
 }

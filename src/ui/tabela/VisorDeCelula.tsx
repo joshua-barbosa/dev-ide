@@ -14,7 +14,7 @@ import { useTheme } from '@mui/material/styles';
 import { Icon } from '../Icon';
 import { tokens } from '../theme';
 import { useColorido } from '../caderno/colorir';
-import { TEMAS, type NomeDoTema } from '../../shared/temas';
+import { paletaDe, type NomeDoTema } from '../../shared/temas';
 import {
   compactar, indentar, modosDe, paraEditar, resumoDe, type ModoDoVisor,
 } from '../../shared/grade/valor';
@@ -79,7 +79,7 @@ export function VisorDeCelula({
   // A alternativa era enfiar `tema` por quatro camadas de props até aqui, para
   // chegar ao mesmo valor.
   const nomeDoTema: NomeDoTema = useTheme().palette.mode === 'dark' ? 'escuro' : 'claro';
-  const paleta = TEMAS[nomeDoTema];
+  const paleta = paletaDe(nomeDoTema);
 
   // Reabrir noutra célula precisa recomeçar. Sem isto, o visor mostraria o
   // valor da célula ANTERIOR — que parece um valor legítimo, e é o pior tipo

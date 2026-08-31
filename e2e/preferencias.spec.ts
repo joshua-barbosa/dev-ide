@@ -8,7 +8,9 @@
 // um servidor, e preferência é estado global: deixar a fonte em 22 faria um
 // teste de outro arquivo falhar por motivo que ele não menciona.
 import { expect, test } from '@playwright/test';
-import { editor, esperarEditorPronto, menu, textoDoEditor, esperarIdePronta } from './fixtures';
+import {
+  abrirArquivo, editor, esperarEditorPronto, menu, textoDoEditor, esperarIdePronta,
+} from './fixtures';
 
 /**
  * Substitui todo o conteúdo do editor pelo texto dado.
@@ -66,14 +68,33 @@ test.afterEach(async ({ page }) => {
     fetch('/api/prefs', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 'editor.fontSize': 13, 'editor.wordWrap': false }),
+      body: JSON.stringify({
+        'editor.fontSize': 13,
+        'editor.wordWrap': false,
+        'editor.tabSize': 4,
+        'workbench.theme': 'escuro',
+      }),
     })
   );
+  // E o `.vscode/settings.json` do projeto some: ele é estado do DISCO, e
+  // deixá-lo faria os testes de árvore de outro arquivo verem uma pasta a mais.
+  await page.evaluate(async () => {
+    const r = await fetch('/api/prefs/project');
+    const { path } = (await r.json()).data as { path: string | null };
+    if (path === null) return;
+    await fetch('/api/workspace/entry', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path.slice(0, path.lastIndexOf('/')) }),
+    });
+  });
 });
 
 test('File → Preferences abre o config.json no editor', async ({ page }) => {
   await menu(page, 'File');
-  await page.getByRole('menuitem', { name: 'Preferences' }).click();
+  // Ancorado: `Preferences` virou prefixo de `Preferences (config.json)` no
+  // T001, e o nome solto casa com os dois.
+  await page.getByRole('menuitem', { name: /^Preferences \(config\.json\)/ }).click();
 
   await expect(page.locator('[data-tab="config.json"]')).toBeVisible();
   // Vem com os padrões, e não vazio: o arquivo é criado se ainda não existir.
@@ -82,7 +103,9 @@ test('File → Preferences abre o config.json no editor', async ({ page }) => {
 
 test('editar a fonte no config.json muda o editor ao salvar, sem recarregar', async ({ page }) => {
   await menu(page, 'File');
-  await page.getByRole('menuitem', { name: 'Preferences' }).click();
+  // Ancorado: `Preferences` virou prefixo de `Preferences (config.json)` no
+  // T001, e o nome solto casa com os dois.
+  await page.getByRole('menuitem', { name: /^Preferences \(config\.json\)/ }).click();
   await esperarEditorPronto(page);
   await expect.poll(() => textoDoEditor(page)).toMatch(/"editor\.fontSize"/);
 
@@ -99,7 +122,9 @@ test('editar a fonte no config.json muda o editor ao salvar, sem recarregar', as
 
 test('JSON quebrado no config.json não derruba a IDE', async ({ page }) => {
   await menu(page, 'File');
-  await page.getByRole('menuitem', { name: 'Preferences' }).click();
+  // Ancorado: `Preferences` virou prefixo de `Preferences (config.json)` no
+  // T001, e o nome solto casa com os dois.
+  await page.getByRole('menuitem', { name: /^Preferences \(config\.json\)/ }).click();
   await esperarEditorPronto(page);
   await expect.poll(() => textoDoEditor(page)).toMatch(/"editor\.fontSize"/);
 
@@ -143,4 +168,116 @@ test('a rota recusa preferência desconhecida', async ({ page }) => {
 
   expect(resposta.success).toBe(false);
   expect(resposta.error).toMatch(/desconhecida/);
+});
+
+// ---------------------------------------------------------------------------
+// A tela de configurações (T001) e as preferências do projeto (T002)
+// ---------------------------------------------------------------------------
+//
+// A nota dele no T001: *"as duas formas, como o VS Code: tela com campos + o
+// config.json, lendo e escrevendo o mesmo arquivo."*
+
+const tela = (page: import('@playwright/test').Page) =>
+  page.locator('[data-tela-de-preferencias]');
+
+async function abrirTela(page: import('@playwright/test').Page): Promise<void> {
+  await menu(page, 'File');
+  await page.getByRole('menuitem', { name: /^Preferences$/ }).click();
+  await expect(tela(page)).toBeVisible();
+}
+
+test('File → Preferences abre a TELA, e o item ao lado abre o arquivo', async ({ page }) => {
+  await abrirTela(page);
+  // Os campos saem do esquema: quem chega vê preferência de verdade, com o
+  // nome da chave embaixo para achar a mesma coisa no arquivo.
+  await expect(tela(page).locator('[data-preferencia="editor.fontSize"]')).toBeVisible();
+  await expect(tela(page).locator('[data-preferencia="workbench.theme"]')).toBeVisible();
+
+  await menu(page, 'File');
+  await page.getByRole('menuitem', { name: /^Preferences \(config\.json\)/ }).click();
+  await expect.poll(() => textoDoEditor(page)).toMatch(/"editor\.fontSize"/);
+});
+
+test('mudar na tela grava no MESMO arquivo, e o editor mostra', async ({ page }) => {
+  await abrirTela(page);
+  // `exact`: o rótulo é prefixo do "Tamanho da fonte do terminal".
+  const campo = tela(page).getByLabel('Tamanho da fonte', { exact: true });
+  await campo.fill('19');
+  await campo.blur();
+
+  // O arquivo é o mesmo das duas formas: o que a tela grava, a rota devolve.
+  await expect.poll(async () => (await preferencias(page))['editor.fontSize']).toBe(19);
+
+  // E o editor de verdade usa: abre um arquivo, porque com a aba de
+  // configurações à frente o Monaco está escondido e não tem o que medir.
+  await abrirArquivo(page, 'utils.ts');
+  await esperarEditorPronto(page);
+  await expect.poll(() => fonteDoEditor(page), { timeout: 10_000 }).toBe(19);
+});
+
+test('o tema escolhido na tela repinta a IDE', async ({ page }) => {
+  await abrirTela(page);
+  await tela(page).getByLabel('Tema', { exact: true }).click();
+  await page.getByRole('option', { name: 'Nord' }).click();
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const el = document.querySelector('footer');
+        return el === null ? '' : getComputedStyle(el).backgroundColor;
+      })
+    )
+    // `#3b4252` do Nord.
+    .toBe('rgb(59, 66, 82)');
+});
+
+test('a preferência do PROJETO vence, e a tela avisa (T002)', async ({ page }) => {
+  // Escreve o `.vscode/settings.json` pela própria IDE: o caminho vem do
+  // servidor, então o teste não precisa saber onde a pasta demo mora.
+  await page.evaluate(async () => {
+    const r = await fetch('/api/prefs/project/file', { method: 'POST' });
+    const { path } = (await r.json()).data as { path: string };
+    await fetch('/api/file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, content: JSON.stringify({ 'editor.tabSize': 2 }) }),
+    });
+  });
+  await page.reload();
+  await esperarIdePronta(page);
+  await abrirTela(page);
+
+  await expect(tela(page).locator('[data-sobrescrita="editor.tabSize"]')).toBeVisible();
+  await expect(tela(page).locator('[data-sobrescrita="editor.tabSize"]')).toContainText(
+    '.vscode/settings.json'
+  );
+  expect((await preferencias(page))['editor.tabSize']).toBe(2);
+
+  // Gravar pela tela continua indo para o arquivo do USUÁRIO — e o projeto
+  // continua mandando. É o que o aviso explica.
+  const campo = tela(page).getByLabel('Tamanho da tabulação', { exact: true });
+  await campo.fill('8');
+  await campo.blur();
+  await expect.poll(async () => (await preferencias(page))['editor.tabSize']).toBe(2);
+});
+
+test('chave que a IDE não conhece no settings.json do projeto é ignorada', async ({ page }) => {
+  await page.evaluate(async () => {
+    const r = await fetch('/api/prefs/project/file', { method: 'POST' });
+    const { path } = (await r.json()).data as { path: string };
+    await fetch('/api/file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path,
+        // Um `settings.json` de verdade vem cheio de chaves do VS Code.
+        content: JSON.stringify({ 'editor.formatOnSave': true, 'files.eol': '\n' }),
+      }),
+    });
+  });
+  await page.reload();
+  await esperarIdePronta(page);
+  await abrirTela(page);
+
+  await expect(tela(page).locator('[data-sobrescrita]')).toHaveCount(0);
 });

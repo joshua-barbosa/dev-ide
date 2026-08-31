@@ -17,7 +17,7 @@ import { useRef } from 'react';
 import Box from '@mui/material/Box';
 import { useColorido } from '../caderno/colorir';
 import { tokens } from '../theme';
-import { TEMAS, type NomeDoTema } from '../../shared/temas';
+import { paletaDe, type NomeDoTema } from '../../shared/temas';
 
 export interface CampoColoridoProps {
   readonly valor: string;
@@ -84,7 +84,7 @@ export function CampoColorido({
   const colorido = useColorido(valor, linguagem, tema, tabSize);
   const camada = useRef<HTMLPreElement>(null);
   const comum = estiloDoTexto(fontSize, tabSize);
-  const paleta = TEMAS[tema];
+  const paleta = paletaDe(tema);
 
   return (
     <Box sx={{ position: 'relative', flex: 1, minWidth: 0 }}>

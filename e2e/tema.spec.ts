@@ -66,7 +66,9 @@ test('o tema sobrevive a recarregar a página', async ({ page }) => {
   await expect.poll(() => fundoDoEditor(page)).toBe('#ffffff');
 
   await page.reload();
-  expect(await fundoDoEditor(page)).toBe('#ffffff');
+  // `poll`: a IDE nasce com o tema padrão e repinta quando as preferências
+  // chegam do servidor. Ler uma vez só é apostar numa corrida.
+  await expect.poll(() => fundoDoEditor(page)).toBe('#ffffff');
 });
 
 test('trocar de tema NÃO mata o terminal aberto', async ({ page }) => {
@@ -86,16 +88,33 @@ test('trocar de tema NÃO mata o terminal aberto', async ({ page }) => {
   await expect(terminal).toContainText('marca-antes-do-tema');
 });
 
-test('tema desconhecido no config.json cai no padrão', async ({ page }) => {
+test('nome de tema é ACEITO como texto, e o desconhecido cai no padrão', async ({ page }) => {
+  // Este teste dizia o contrário até o T012: `workbench.theme` era "um entre N"
+  // e a rota RECUSAVA qualquer outro nome. Deixou de poder ser: desde que o
+  // `config.json` declara temas próprios, a lista não cabe numa constante, e
+  // recusar um nome que o próprio usuário acabou de declarar seria pior.
+  //
+  // Quem confere se o nome existe é quem resolve a paleta — e nome que não é de
+  // ninguém cai no `escuro`, provado em `temas.spec.ts`.
   const resposta = await page.evaluate(async () => {
     const r = await fetch('/api/prefs', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 'workbench.theme': 'solarized' }),
+      body: JSON.stringify({ 'workbench.theme': 'nao-existe' }),
     });
     return (await r.json()) as { success: boolean; error: string | null };
   });
+  expect(resposta.success).toBe(true);
 
-  expect(resposta.success).toBe(false);
-  expect(resposta.error).toMatch(/escuro, claro/);
+  // Texto VAZIO continua sendo recusado: seria um nome que não é de ninguém, e
+  // o efeito seria o mesmo de não ter escolhido — só que sem dizer.
+  const vazio = await page.evaluate(async () => {
+    const r = await fetch('/api/prefs', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 'workbench.theme': '  ' }),
+    });
+    return (await r.json()) as { success: boolean };
+  });
+  expect(vazio.success).toBe(false);
 });

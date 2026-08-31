@@ -104,6 +104,8 @@ export interface EditorGroupProps {
   readonly onPreview?: () => void;
   /** O formulário de conexão é montado pelo `App`, que conhece os drivers. */
   readonly formulario: React.ReactNode;
+  /** A tela de configurações (T001), montada pelo `App`, que tem as prefs. */
+  readonly preferencias: React.ReactNode;
 
   registrarEditor(handle: EditorHandle | null): void;
   onFocar(): void;
@@ -122,7 +124,7 @@ export interface EditorGroupProps {
 export function EditorGroup({
   grupo, abas, ativaId, focado, dividido,
   fontSize, tabSize, wordWrap, terminalFontSize, tema, snippets,
-  grades, formulario, emPreview, conteudoDaAba, onPreview,
+  grades, formulario, preferencias, emPreview, conteudoDaAba, onPreview,
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
   onReordenarAba,
   onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
@@ -191,6 +193,7 @@ export function EditorGroup({
     !mostrandoPreview &&
     ![
       'grid', 'conexao', 'terminal', 'tabela', 'processos', 'caderno', 'servidor',
+      'preferencias',
       // Imagem, PDF e CSV têm tela própria (T027) — o Monaco não abre nenhum
       // dos três de um jeito útil.
       'visualizador',
@@ -385,6 +388,10 @@ export function EditorGroup({
         ))}
 
       {ativa?.type === 'conexao' && formulario}
+
+      {/* A tela de configurações (T001). Montada só quando é a aba ativa: ela
+          não guarda estado nenhum — o que vale está no `config.json`. */}
+      {ativa?.type === 'preferencias' && preferencias}
 
       {/*
         A aba de servidor (spec 055). Como todas as outras, ela é escondida com

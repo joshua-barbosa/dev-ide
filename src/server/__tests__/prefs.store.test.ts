@@ -83,3 +83,64 @@ test('valor fora da faixa em disco não contamina a leitura', () => {
     assert.equal(store.ler()['editor.tabSize'], 2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Preferências por projeto (T002, spec 075)
+// ---------------------------------------------------------------------------
+
+test('o .vscode/settings.json do projeto sobrescreve o do usuário', () => {
+  comStore((_store, arquivo) => {
+    const projeto = path.join(path.dirname(arquivo), 'projeto');
+    fs.mkdirSync(path.join(projeto, '.vscode'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projeto, '.vscode', 'settings.json'),
+      JSON.stringify({ 'editor.tabSize': 2 })
+    );
+
+    const comProjeto = new PreferencesStore(arquivo, () => projeto);
+    comProjeto.gravar({ 'editor.tabSize': 8, 'editor.fontSize': 20 });
+
+    assert.equal(comProjeto.ler()['editor.tabSize'], 2, 'o projeto manda');
+    assert.equal(comProjeto.ler()['editor.fontSize'], 20, 'no resto, o usuário');
+    // O que foi GRAVADO continua sendo o do usuário: a tela nunca escreve no
+    // arquivo do projeto, que é versionado.
+    assert.equal(comProjeto.lerDoUsuario()['editor.tabSize'], 8);
+    assert.deepEqual([...comProjeto.chavesSobrescritas()], ['editor.tabSize']);
+  });
+});
+
+test('sem projeto aberto, as preferências são só as do usuário', () => {
+  comStore((store) => {
+    store.gravar({ 'editor.tabSize': 8 });
+    assert.equal(store.ler()['editor.tabSize'], 8);
+    assert.equal(store.caminhoDoProjeto(), null);
+    assert.deepEqual([...store.chavesSobrescritas()], []);
+  });
+});
+
+test('settings.json do projeto estragado não derruba nada', () => {
+  comStore((_store, arquivo) => {
+    const projeto = path.join(path.dirname(arquivo), 'projeto');
+    fs.mkdirSync(path.join(projeto, '.vscode'), { recursive: true });
+    fs.writeFileSync(path.join(projeto, '.vscode', 'settings.json'), '{ isto nao e json');
+
+    const comProjeto = new PreferencesStore(arquivo, () => projeto);
+    comProjeto.gravar({ 'editor.fontSize': 17 });
+    assert.equal(comProjeto.ler()['editor.fontSize'], 17);
+  });
+});
+
+test('o arquivo do projeto nasce VAZIO, e não com os padrões', () => {
+  // Um arquivo cheio de valores iguais aos do usuário sobrescreveria tudo sem
+  // ninguém pedir — e o primeiro commit levaria isso para os outros.
+  comStore((_store, arquivo) => {
+    const projeto = path.join(path.dirname(arquivo), 'projeto');
+    fs.mkdirSync(projeto, { recursive: true });
+    const comProjeto = new PreferencesStore(arquivo, () => projeto);
+
+    const criado = comProjeto.garantirArquivoDoProjeto();
+    assert.equal(criado, path.join(projeto, '.vscode', 'settings.json'));
+    assert.deepEqual(JSON.parse(fs.readFileSync(criado, 'utf8')), {});
+    assert.deepEqual([...comProjeto.chavesSobrescritas()], []);
+  });
+});

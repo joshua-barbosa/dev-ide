@@ -30,7 +30,20 @@ export interface RegraOpcao {
   readonly opcoes: readonly string[];
 }
 
-export type Regra = RegraNumero | RegraBooleano | RegraOpcao;
+/**
+ * Texto livre.
+ *
+ * Existe desde o T012: o nome do tema deixou de ser "um entre N" quando o
+ * `config.json` passou a poder declarar temas próprios. Quem confere se o nome
+ * existe é quem resolve a paleta, e nome errado cai no tema padrão em vez de
+ * derrubar a tela.
+ */
+export interface RegraTexto {
+  readonly padrao: string;
+  readonly tipo: 'texto';
+}
+
+export type Regra = RegraNumero | RegraBooleano | RegraOpcao | RegraTexto;
 
 /**
  * As preferências que existem.
@@ -49,7 +62,13 @@ export const ESQUEMA = {
   },
   'editor.autoSaveDelay': { padrao: 1_000, tipo: 'inteiro', min: 200, max: 60_000 },
   'terminal.fontSize': { padrao: 13, tipo: 'inteiro', min: 8, max: 40 },
-  'workbench.theme': { padrao: 'escuro', tipo: 'opcao', opcoes: ['escuro', 'claro'] },
+  'workbench.theme': { padrao: 'escuro', tipo: 'texto' },
+  // T013: seguir o sistema é escolher entre DOIS temas declarados, e não um
+  // interruptor claro/escuro — quem gosta de Nord no escuro não quer o `claro`
+  // genérico quando o sistema clareia.
+  'workbench.followSystem': { padrao: false, tipo: 'booleano' },
+  'workbench.themeLight': { padrao: 'claro', tipo: 'texto' },
+  'workbench.themeDark': { padrao: 'escuro', tipo: 'texto' },
   'vault.rememberDays': { padrao: 15, tipo: 'inteiro', min: 1, max: 365 },
 } as const satisfies Record<string, Regra>;
 
@@ -86,6 +105,7 @@ export function descreverRegra(chave: ChaveDePreferencia): string {
   const regra: Regra = ESQUEMA[chave];
   if (regra.tipo === 'booleano') return 'true ou false';
   if (regra.tipo === 'opcao') return `um de: ${regra.opcoes.join(', ')}`;
+  if (regra.tipo === 'texto') return 'texto';
   return `número inteiro entre ${regra.min} e ${regra.max}`;
 }
 
@@ -94,6 +114,9 @@ function valorValido(chave: ChaveDePreferencia, valor: unknown): boolean {
   const regra: Regra = ESQUEMA[chave];
   if (regra.tipo === 'booleano') return typeof valor === 'boolean';
   if (regra.tipo === 'opcao') return typeof valor === 'string' && regra.opcoes.includes(valor);
+  // Texto vazio não: seria um nome de tema que não é de ninguém, e o efeito
+  // seria o mesmo de não ter escolhido — só que sem dizer.
+  if (regra.tipo === 'texto') return typeof valor === 'string' && valor.trim() !== '';
   return (
     typeof valor === 'number' &&
     Number.isSafeInteger(valor) &&
@@ -153,4 +176,67 @@ export function validarPatch(bruto: unknown): PatchDePreferencias {
 /** Mescla imutável: chave ausente no patch fica como estava (Artigo IV). */
 export function mesclar(atual: Preferencias, patch: PatchDePreferencias): Preferencias {
   return { ...atual, ...patch };
+}
+
+// ---------------------------------------------------------------------------
+// A seção que NÃO é escalar
+// ---------------------------------------------------------------------------
+
+/**
+ * Onde moram os temas do usuário no `config.json` (T012).
+ *
+ * Fora do `ESQUEMA` de propósito: ele é uma tabela de valores ESCALARES — um
+ * número, um sim/não, um texto —, e a validação inteira é um laço sobre ela.
+ * Um mapa de paletas não cabe nesse laço sem transformar o esquema em outra
+ * coisa. Quem lê e valida esta seção é `normalizarTemasDoUsuario`, em
+ * `shared/temas.ts`, que é onde o assunto mora.
+ *
+ * O gravador de preferências já preserva as chaves que não conhece — foi o que
+ * permitiu esta seção existir sem nenhuma mudança nele.
+ */
+export const CHAVE_DOS_TEMAS = 'workbench.themes';
+
+// ---------------------------------------------------------------------------
+// Preferências POR PROJETO (T002)
+// ---------------------------------------------------------------------------
+
+/**
+ * Onde ficam as preferências de um projeto.
+ *
+ * O caminho do VS Code, de propósito: quem já tem um `.vscode/settings.json` no
+ * repositório não precisa criar outro arquivo para esta IDE, e o que estiver lá
+ * e nós não conhecermos é simplesmente ignorado — como o VS Code ignora o que
+ * não é dele.
+ */
+export const PASTA_DO_PROJETO = '.vscode';
+export const ARQUIVO_DO_PROJETO = 'settings.json';
+
+/**
+ * As chaves que o projeto realmente sobrescreve.
+ *
+ * Só as que existem no esquema E têm valor válido: uma chave desconhecida no
+ * `.vscode/settings.json` (as do VS Code, por exemplo) não sobrescreve nada, e
+ * dizer que sobrescreve faria a tela mostrar um aviso que não corresponde a
+ * nada.
+ */
+export function chavesDoProjeto(bruto: unknown): readonly ChaveDePreferencia[] {
+  if (bruto === null || typeof bruto !== 'object' || Array.isArray(bruto)) return [];
+  const lido = bruto as Record<string, unknown>;
+  return CHAVES.filter((chave) => lido[chave] !== undefined && valorValido(chave, lido[chave]));
+}
+
+/**
+ * O conjunto efetivo: o do usuário, com o do projeto por cima.
+ *
+ * **O projeto vence**, e é o que todo mundo espera: `editor.tabSize` de dois
+ * neste repositório não pode depender de quem clonou. O que o projeto não diz
+ * continua vindo do usuário.
+ */
+export function comOProjeto(doUsuario: Preferencias, bruto: unknown): Preferencias {
+  const chaves = chavesDoProjeto(bruto);
+  if (chaves.length === 0) return doUsuario;
+  const lido = bruto as Record<string, unknown>;
+  const saida: Record<string, number | boolean | string> = { ...doUsuario };
+  for (const chave of chaves) saida[chave] = lido[chave] as number | boolean | string;
+  return saida as Preferencias;
 }

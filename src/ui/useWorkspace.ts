@@ -165,6 +165,8 @@ export interface Workspace {
   abrirTerminal(connectionId: string | null, titulo: string): void;
   /** A lista de processos de uma conexão (spec 047). */
   abrirProcessos(connectionId: string, titulo: string): void;
+  /** A tela de configurações (T001). */
+  abrirTelaDePreferencias(): void;
   /** A aba de um SERVIDOR, com as sub-abas que ele sabe oferecer (spec 055). */
   abrirServidor(connectionId: string, titulo: string): void;
   /**
@@ -704,6 +706,7 @@ export function useWorkspace({ confirmar, aoAbrirArquivo }: WorkspaceDeps): Work
     abrirFormulario: dados.abrirFormulario,
     abrirTerminal: dados.abrirTerminal,
     abrirProcessos: dados.abrirProcessos,
+    abrirTelaDePreferencias: dados.abrirPreferencias,
     abrirServidor: dados.abrirServidor,
     abrirTabela: dados.abrirTabela,
     abrirSemTitulo,

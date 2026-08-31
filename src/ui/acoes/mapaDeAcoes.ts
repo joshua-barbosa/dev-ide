@@ -53,6 +53,8 @@ export interface DepsDoMapa {
   /** `Ctrl+P`: acha pelo NOME. Diferente de `abrirPorCaminho`, que pede o caminho. */
   readonly irParaArquivo: () => Promise<void>;
   readonly abrirPreferencias: () => Promise<void>;
+  /** A TELA de configurações (T001) — a outra forma abre o arquivo. */
+  readonly abrirTelaDePreferencias: () => void;
   readonly abrirPaleta: () => void | Promise<void>;
   readonly escolherTema: () => Promise<void>;
   /** Volta ou avança no histórico. `null` = não há para onde ir. */
@@ -68,7 +70,7 @@ export function mapaDeAcoes(deps: DepsDoMapa): Readonly<Record<IdImplementado, (
     ws, exec, conexoes, dialogs, layout, prefs, nav,
     arquivoAcoes, codigoAcoes, comandosAcoes, conexoesAcoes, pastaAcoes, snippetsAcoes,
     novoArquivo, novoTerminalNoPainel, dividirTerminalNoPainel, abrirPorCaminho, irParaArquivo,
-    abrirPreferencias, abrirPaleta, escolherTema, irPara, irParaLinha, executar,
+    abrirPreferencias, abrirTelaDePreferencias, abrirPaleta, escolherTema, irPara, irParaLinha, executar,
     setPainelLateral, avisar,
   } = deps;
 
@@ -91,7 +93,8 @@ return {
   'file.saveAll': () => avisar(arquivoAcoes.salvarTudo()),
   'file.autoSave': () => avisar(arquivoAcoes.alternarAutoSave()),
   'file.revert': () => avisar(arquivoAcoes.reverterArquivo()),
-  'file.preferences': () => avisar(abrirPreferencias()),
+  'file.preferences': () => abrirTelaDePreferencias(),
+  'file.preferencesJson': () => avisar(abrirPreferencias()),
   'file.closeEditor': () => { if (ws.activeId !== null) ws.fechar(ws.activeId); },
 
   'edit.undo': () => document.execCommand('undo'),

@@ -12,7 +12,7 @@
 // A densidade é definida uma vez, como padrão global. Material é desenhado para
 // toque; uma IDE é teclado e informação densa.
 import { createTheme, type Theme } from '@mui/material/styles';
-import { TEMAS, type NomeDoTema, type Paleta } from '../shared/temas';
+import { paletaDe, type NomeDoTema, type Paleta } from '../shared/temas';
 
 /** Prefixo curto e específico, para não colidir com variável de biblioteca. */
 const VAR = '--di';
@@ -59,7 +59,7 @@ export function aplicarVariaveis(paleta: Paleta): void {
  * parseável por essa conta.
  */
 export function criarTema(nome: NomeDoTema): Theme {
-  const p = TEMAS[nome];
+  const p = paletaDe(nome);
   return createTheme({
     palette: {
       mode: nome === 'escuro' ? 'dark' : 'light',

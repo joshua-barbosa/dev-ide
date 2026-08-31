@@ -12,7 +12,8 @@ import Box from '@mui/material/Box';
 import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
 import { aplicarVariaveis, criarTema } from './theme';
-import { TEMAS, type NomeDoTema } from '../shared/temas';
+import { paletaDe } from '../shared/temas';
+import { useTemaAtual } from './useTemaAtual';
 import { temPreview } from '../shared/markdown';
 import { Sidebar } from './Sidebar';
 import { Resizer } from './Resizer';
@@ -66,6 +67,7 @@ import { ligarCodeLensDeSql, propsDeVinculo, useAcoesDeQuery } from './query/use
 import { useAcoesRemotas } from './acoes/useAcoesRemotas';
 import { depsDasAcoesRemotas } from './acoes/depsDasAcoesRemotas';
 import { mapaDeAcoes } from './acoes/mapaDeAcoes';
+import { Api } from './api';
 import { usePasta } from './files/usePasta';
 import { useRecentesDeArquivo } from './files/useRecentesDeArquivo';
 import { usePrefs } from './usePrefs';
@@ -74,6 +76,7 @@ import { useSessaoDeAbas } from './useSessaoDeAbas';
 import { useVigia } from './useVigia';
 import { useHistorico } from './useHistorico';
 import { useSaltos } from './acoes/useSaltos';
+import { TelaDePreferencias } from './prefs/TelaDePreferencias';
 import { useSnippets } from './useSnippets';
 import { useBusca } from './files/useBusca';
 import { useComandosAcoes } from './acoes/useComandosAcoes';
@@ -142,10 +145,12 @@ export function App() {
     vinculos
   );
   const prefs = usePrefs(falhaDaIde);
-  const tema = prefs.prefs['workbench.theme'] as NomeDoTema;
+  // T013: seguindo o sistema, quem manda é ele — dentro dos dois temas que ele
+  // mesmo declarou. Ver `useTemaAtual`.
+  const tema = useTemaAtual(prefs.prefs);
   // As variáveis CSS precisam existir ANTES da primeira pintura: escrevê-las
   // num `useEffect` deixaria o primeiro quadro sem cor nenhuma.
-  aplicarVariaveis(TEMAS[tema]);
+  aplicarVariaveis(paletaDe(tema));
   const temaMui = useMemo(() => criarTema(tema), [tema]);
 
   const layout = useLayout();
@@ -421,7 +426,7 @@ export function App() {
     ws, exec, conexoes, dialogs, layout, prefs, nav,
     arquivoAcoes, codigoAcoes, comandosAcoes, conexoesAcoes, pastaAcoes, snippetsAcoes,
     novoArquivo, novoTerminalNoPainel, dividirTerminalNoPainel, abrirPorCaminho, irParaArquivo,
-    abrirPreferencias, abrirPaleta, escolherTema, irPara, irParaLinha, executar,
+    abrirPreferencias, abrirTelaDePreferencias: ws.abrirTelaDePreferencias, abrirPaleta, escolherTema, irPara, irParaLinha, executar,
     setPainelLateral, avisar,
   });
 
@@ -624,6 +629,20 @@ export function App() {
                   onReordenarAba={(id, antesDe) => ws.reordenarAba(g, id, antesDe)}
                   onComando={executarComando}
                   formulario={formularioDeConexao}
+                  preferencias={
+                    <TelaDePreferencias
+                      prefs={prefs.prefs}
+                      sobrescritas={prefs.sobrescritas}
+                      definir={prefs.definir}
+                      abrirJson={() => avisar(abrirPreferencias())}
+                      abrirDoProjeto={() =>
+                        avisar(
+                          Api.prefsProjectFile().then(({ path }) => ws.abrirArquivo(path))
+                        )
+                      }
+                      onErro={falhaDaIde}
+                    />
+                  }
                 />
               )}
             />

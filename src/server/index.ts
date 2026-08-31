@@ -42,11 +42,17 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const store = new ProjectStore(PROJECTS_DIR);
 store.ensureBaseDir();
 
-// ---- Preferências ----
-const prefs = new PreferencesStore(PreferencesStore.defaultPath());
-
 // ---- Espaço de trabalho (pasta aberta, recentes) ----
 const estado = new EstadoStore(EstadoStore.defaultPath());
+
+// ---- Preferências ----
+// A raiz entra como FUNÇÃO: o projeto aberto muda em execução, e as
+// preferências dele (T002) precisam acompanhar sem reiniciar o servidor. Com
+// mais de uma raiz (T004), vale a PRIMEIRA — preferência é do espaço, e somar
+// dois `.vscode/settings.json` daria conflito sem regra de desempate.
+const prefs = new PreferencesStore(PreferencesStore.defaultPath(), () =>
+  pastaPrincipal(estado.ler())
+);
 const comandos = new ComandosStore(ComandosStore.defaultPath());
 const snippets = new SnippetsStore(SnippetsStore.defaultPath());
 

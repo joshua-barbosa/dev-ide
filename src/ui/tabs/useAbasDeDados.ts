@@ -33,6 +33,8 @@ export interface AbasDeDados {
   abrirTerminal(connectionId: string | null, titulo: string): void;
   /** A lista de processos de uma conexão (spec 047). */
   abrirProcessos(connectionId: string, titulo: string): void;
+  /** A tela de configurações (T001). Uma só, como no VS Code. */
+  abrirPreferencias(): void;
   /** A aba de um SERVIDOR, com as sub-abas que ele sabe oferecer (spec 055). */
   abrirServidor(connectionId: string, titulo: string): void;
 }
@@ -180,8 +182,22 @@ export function useAbasDeDados(store: TabStore, salvarGrupoFocado: () => void): 
     [salvarGrupoFocado, store]
   );
 
+  const abrirPreferencias = useCallback(() => {
+    salvarGrupoFocado();
+    // Id fixo: reabrir foca a que já está aberta. Duas telas de configuração
+    // seriam duas verdades sobre o mesmo arquivo.
+    store.open({
+      id: 'preferencias',
+      type: 'preferencias',
+      title: 'Configurações',
+      icon: 'lucide:settings',
+      meta: {},
+    });
+  }, [salvarGrupoFocado, store]);
+
   return {
     abrirQuery, abrirTexto, abrirTabela, abrirFormulario, abrirTerminal, abrirProcessos,
+    abrirPreferencias,
     abrirServidor,
   };
 }

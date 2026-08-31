@@ -7,7 +7,8 @@
 import { Api } from '../api';
 import { acharArquivos, nomeDe } from '../../shared/busca-de-arquivo';
 import { iconeDeArquivo } from '../../shared/editor/arquivos';
-import { NOMES_DE_TEMA, ROTULO_DO_TEMA, type NomeDoTema } from '../../shared/temas';
+import { nomesDeTema, type NomeDoTema } from '../../shared/temas';
+import { ROTULO_DO_TEMA, type TemaEmbutido } from '../../shared/temas-embutidos';
 import type { OpcaoRapida } from '../QuickInput';
 import type { QuickInputController } from '../useQuickInput';
 
@@ -133,10 +134,18 @@ export function useAberturas(deps: AberturasDeps): Aberturas {
     const escolhido = await qi.pedir({
       titulo: 'Tema da interface',
       placeholder: 'Escolha um tema',
-      opcoes: NOMES_DE_TEMA.map((nome) => ({
+      // Os embutidos com o rótulo escrito; os do usuário com o nome que ele
+      // deu — e dizendo que são dele, senão não haveria como distinguir um
+      // `meu-nord` de um que veio no código.
+      opcoes: nomesDeTema().map((nome) => ({
         valor: nome,
-        rotulo: ROTULO_DO_TEMA[nome],
-        detalhe: nome === tema ? 'atual' : undefined,
+        rotulo: ROTULO_DO_TEMA[nome as TemaEmbutido] ?? nome,
+        detalhe:
+          nome === tema
+            ? 'atual'
+            : ROTULO_DO_TEMA[nome as TemaEmbutido] === undefined
+              ? 'seu tema'
+              : undefined,
         icone: nome === tema ? 'lucide:check' : 'lucide:circle-dot',
       })),
     });

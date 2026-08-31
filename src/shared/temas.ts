@@ -67,87 +67,161 @@ export interface PaletaDeSintaxe {
   readonly operador: string;
 }
 
-export type NomeDoTema = 'escuro' | 'claro';
+/**
+ * O nome de um tema escolhido.
+ *
+ * É texto livre desde o T012: além dos embutidos, o `config.json` pode declarar
+ * temas do usuário, e o nome deles é dele. Quem valida é `resolverTema`, que
+ * cai no `escuro` para qualquer coisa que não exista.
+ */
+export type NomeDoTema = string;
 
-export const TEMAS = {
-  escuro: {
-    bg: '#1e1f26',
-    bgPanel: '#24262e',
-    bgEditor: '#16171c',
-    border: '#34363f',
-    fg: '#d8dae2',
-    fgDim: '#8b8e99',
-    accent: '#e8a838',
-    run: '#4caf6e',
-    error: '#e05b5b',
-    selecao: '#3a4a63',
-    // Um pouco mais claro que a seleção: é o que mostra as OUTRAS ocorrências
-    // no multi-cursor, e confundi-las com a ativa tira metade da utilidade.
-    selecaoFraca: '#2c3a4d',
-    sintaxe: {
-      reservada: 'c98ade',
-      tipo: '5cc8c2',
-      funcao: 'e8a838',
-      texto: '9ecf7e',
-      numero: 'd9a05b',
-      comentario: '6b6e7a',
-      constante: 'd88fb0',
-      operador: '9aa0b0',
-    },
-    // A paleta padrão do xterm, mantida: já é feita para fundo escuro.
-    ansi: {
-      black: '#2e3138', red: '#e05b5b', green: '#4caf6e', yellow: '#e8a838',
-      blue: '#5b9bd5', magenta: '#c98ade', cyan: '#5cc8c2', white: '#d8dae2',
-      brightBlack: '#6b6e7a', brightRed: '#ff7b7b', brightGreen: '#6fd68f',
-      brightYellow: '#ffc457', brightBlue: '#7db8ef', brightMagenta: '#dfa6f0',
-      brightCyan: '#7fe0da', brightWhite: '#ffffff',
-    },
-  },
-  claro: {
-    bg: '#f0f0f2',
-    bgPanel: '#f7f7f8',
-    // O editor é o mais CLARO no tema claro, invertendo o papel que ele tem no
-    // escuro: em ambos, a área de texto é a que mais se separa da moldura.
-    bgEditor: '#ffffff',
-    border: '#d6d6db',
-    fg: '#22242b',
-    fgDim: '#6b6e79',
-    // Âmbar escurecido: o `#e8a838` do tema escuro fica ilegível sobre branco.
-    accent: '#a86a08',
-    run: '#1a7f37',
-    error: '#c0322f',
-    selecao: '#bcd6f5',
-    selecaoFraca: '#dce8f8',
-    sintaxe: {
-      reservada: '8a29b8',
-      tipo: '146b78',
-      funcao: '8a5a00',
-      texto: '297a2e',
-      numero: 'a04a12',
-      comentario: '8a8d96',
-      constante: 'a8306a',
-      operador: '5c6070',
-    },
-    // Escurecidas para o fundo branco. O "brilhante" aqui é mais SATURADO, não
-    // mais claro — sobre branco, mais claro significa invisível.
-    ansi: {
-      black: '#22242b', red: '#c0322f', green: '#1a7f37', yellow: '#8a5a00',
-      blue: '#1c5fb0', magenta: '#8a29b8', cyan: '#146b78', white: '#6b6e79',
-      brightBlack: '#8a8d96', brightRed: '#a52521', brightGreen: '#136128',
-      brightYellow: '#6d4700', brightBlue: '#134788', brightMagenta: '#6c1e91',
-      brightCyan: '#0f525c', brightWhite: '#22242b',
-    },
-  },
-} as const satisfies Record<NomeDoTema, Paleta>;
-
-export const NOMES_DE_TEMA = Object.keys(TEMAS) as readonly NomeDoTema[];
-
-export function ehTema(valor: string): valor is NomeDoTema {
-  return Object.prototype.hasOwnProperty.call(TEMAS, valor);
+/**
+ * Um tema declarado pelo usuário no `config.json`.
+ *
+ * **Herda de um embutido e sobrescreve só o que quiser.** Exigir as vinte e
+ * cinco cores para trocar o realce de comentário garantiria que ninguém
+ * escrevesse um. As chaves são as mesmas da paleta — quem quiser ver a lista
+ * abre o seletor de tema e copia a de um embutido.
+ */
+export interface TemaDoUsuario {
+  /** O embutido de onde as cores ausentes vêm. Padrão: `escuro`. */
+  readonly base?: string;
+  readonly cores?: Readonly<Record<string, unknown>>;
 }
 
-/** Rótulo para o seletor. Separado da chave, que é a que vai ao `config.json`. */
-export const ROTULO_DO_TEMA: Record<NomeDoTema, string> = {
-  escuro: 'Escuro',
-  claro: 'Claro',
-};
+const HEX = /^#[0-9a-fA-F]{6}$/;
+/** As cores de sintaxe vão para o Monaco SEM `#` — é o formato que ele espera. */
+const HEX_SEM_CERQUILHA = /^[0-9a-fA-F]{6}$/;
+
+function cor(valor: unknown, padrao: string, comCerquilha: boolean): string {
+  if (typeof valor !== 'string') return padrao;
+  const limpo = valor.trim();
+  if (comCerquilha) return HEX.test(limpo) ? limpo.toLowerCase() : padrao;
+  // Tolerante ao `#` na sintaxe: é o erro que todo mundo comete ao copiar uma
+  // cor de outro lugar, e recusar por causa dele seria pedantismo.
+  const sem = limpo.startsWith('#') ? limpo.slice(1) : limpo;
+  return HEX_SEM_CERQUILHA.test(sem) ? sem.toLowerCase() : padrao;
+}
+
+/**
+ * Junta o tema do usuário sobre o embutido que ele escolheu como base.
+ *
+ * **Cor inválida vale como ausente**, e não como erro: um dígito trocado num
+ * `config.json` editado à mão não pode deixar a IDE sem tema. O que sobra é a
+ * cor da base, que é sempre completa.
+ *
+ * Devolve `null` quando o nome não é de ninguém — quem chama decide o padrão.
+ */
+export function resolverTema(
+  nome: NomeDoTema,
+  embutidos: Readonly<Record<string, Paleta>>,
+  doUsuario: Readonly<Record<string, TemaDoUsuario>> = {}
+): Paleta | null {
+  const embutido = embutidos[nome];
+  if (embutido !== undefined) return embutido;
+
+  const meu = doUsuario[nome];
+  if (meu === undefined) return null;
+
+  const base = embutidos[meu.base ?? ''] ?? embutidos.escuro;
+  if (base === undefined) return null;
+  const c = meu.cores ?? {};
+
+  return {
+    bg: cor(c.bg, base.bg, true),
+    bgPanel: cor(c.bgPanel, base.bgPanel, true),
+    bgEditor: cor(c.bgEditor, base.bgEditor, true),
+    border: cor(c.border, base.border, true),
+    fg: cor(c.fg, base.fg, true),
+    fgDim: cor(c.fgDim, base.fgDim, true),
+    accent: cor(c.accent, base.accent, true),
+    run: cor(c.run, base.run, true),
+    error: cor(c.error, base.error, true),
+    selecao: cor(c.selecao, base.selecao, true),
+    selecaoFraca: cor(c.selecaoFraca, base.selecaoFraca, true),
+    sintaxe: juntarSintaxe(c.sintaxe, base.sintaxe),
+    ansi: juntarAnsi(c.ansi, base.ansi),
+  };
+}
+
+function juntarSintaxe(bruto: unknown, base: PaletaDeSintaxe): PaletaDeSintaxe {
+  const c = (bruto ?? {}) as Record<string, unknown>;
+  const saida = {} as Record<keyof PaletaDeSintaxe, string>;
+  for (const chave of Object.keys(base) as Array<keyof PaletaDeSintaxe>) {
+    saida[chave] = cor(c[chave], base[chave], false);
+  }
+  return saida;
+}
+
+function juntarAnsi(bruto: unknown, base: PaletaAnsi): PaletaAnsi {
+  const c = (bruto ?? {}) as Record<string, unknown>;
+  const saida = {} as Record<keyof PaletaAnsi, string>;
+  for (const chave of Object.keys(base) as Array<keyof PaletaAnsi>) {
+    saida[chave] = cor(c[chave], base[chave], true);
+  }
+  return saida;
+}
+
+/**
+ * Lê os temas do usuário como vierem do `config.json`.
+ *
+ * Tolerante em cada nível: o que não for objeto some, e o resto entra. Um tema
+ * torto não pode levar os outros junto.
+ */
+export function normalizarTemasDoUsuario(bruto: unknown): Record<string, TemaDoUsuario> {
+  if (bruto === null || typeof bruto !== 'object' || Array.isArray(bruto)) return {};
+  const saida: Record<string, TemaDoUsuario> = {};
+  for (const [nome, valor] of Object.entries(bruto as Record<string, unknown>)) {
+    if (nome === '' || valor === null || typeof valor !== 'object' || Array.isArray(valor)) {
+      continue;
+    }
+    const v = valor as Record<string, unknown>;
+    const base = typeof v.base === 'string' ? v.base : undefined;
+    const cores =
+      v.cores !== null && typeof v.cores === 'object' && !Array.isArray(v.cores)
+        ? (v.cores as Record<string, unknown>)
+        : {};
+    saida[nome] = { ...(base === undefined ? {} : { base }), cores };
+  }
+  return saida;
+}
+
+// ---------------------------------------------------------------------------
+// O catálogo vivo
+// ---------------------------------------------------------------------------
+//
+// Os embutidos são constantes; os do usuário chegam com o `config.json`, que é
+// lido depois que a tela já existe. O catálogo mora aqui, num `let`, e não numa
+// prop atravessando dez componentes — é o mesmo caminho do CodeLens e do
+// autocomplete: quem sabe registra, quem precisa pergunta.
+
+import { TEMAS, type TemaEmbutido } from './temas-embutidos';
+
+let temasDoUsuario: Readonly<Record<string, TemaDoUsuario>> = {};
+
+export function definirTemasDoUsuario(mapa: Readonly<Record<string, TemaDoUsuario>>): void {
+  temasDoUsuario = mapa;
+}
+
+/** Os nomes que o seletor oferece: embutidos primeiro, os dele depois. */
+export function nomesDeTema(): readonly string[] {
+  return [...Object.keys(TEMAS), ...Object.keys(temasDoUsuario)];
+}
+
+export function ehTema(valor: string): boolean {
+  return Object.prototype.hasOwnProperty.call(TEMAS, valor) || valor in temasDoUsuario;
+}
+
+/**
+ * A paleta de um tema, seja embutido ou dele.
+ *
+ * **Nunca devolve nada pela metade.** Nome que não existe cai no `escuro`: a
+ * alternativa seria a tela sem cor nenhuma, e um `config.json` com um nome
+ * digitado errado não pode fazer isso.
+ */
+export function paletaDe(nome: NomeDoTema): Paleta {
+  return resolverTema(nome, TEMAS, temasDoUsuario) ?? TEMAS.escuro;
+}
+
+export type { TemaEmbutido };

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CHAVES, ESQUEMA, mesclar, normalizar, padroes, validarPatch,
+  CHAVES, ESQUEMA, mesclar, normalizar, padroes, validarPatch, chavesDoProjeto, comOProjeto,
 } from '../prefs';
 
 test('os padrões cobrem todas as chaves declaradas', () => {
@@ -108,4 +108,35 @@ test('o patch recusa opção fora da lista, dizendo quais valem', () => {
 test('o atraso do auto save tem faixa', () => {
   assert.equal(normalizar({ 'editor.autoSaveDelay': 50 })['editor.autoSaveDelay'], 1_000);
   assert.equal(normalizar({ 'editor.autoSaveDelay': 300 })['editor.autoSaveDelay'], 300);
+});
+
+// ---- preferências por projeto (T002) ----
+
+test('o projeto SOBRESCREVE o usuário, e só no que ele diz', () => {
+  const usuario = { ...padroes(), 'editor.fontSize': 13, 'editor.tabSize': 4 };
+  const efetivo = comOProjeto(usuario, { 'editor.tabSize': 2 });
+  assert.equal(efetivo['editor.tabSize'], 2, 'o projeto manda');
+  assert.equal(efetivo['editor.fontSize'], 13, 'no que ele não diz, o usuário continua');
+});
+
+test('chave desconhecida no .vscode/settings.json não sobrescreve nada', () => {
+  // Um `settings.json` de verdade vem cheio de chaves do VS Code. Elas não
+  // podem virar preferência daqui, nem aviso de "o projeto mandou".
+  const bruto = { 'editor.formatOnSave': true, 'files.eol': '\n', 'editor.tabSize': 2 };
+  assert.deepEqual(chavesDoProjeto(bruto), ['editor.tabSize']);
+});
+
+test('valor inválido do projeto é ignorado, e o do usuário fica', () => {
+  const usuario = padroes();
+  const efetivo = comOProjeto(usuario, { 'editor.tabSize': 99, 'editor.fontSize': 20 });
+  assert.equal(efetivo['editor.tabSize'], usuario['editor.tabSize'], 'fora da faixa não entra');
+  assert.equal(efetivo['editor.fontSize'], 20);
+});
+
+test('projeto sem arquivo, vazio ou estragado devolve o do usuário intacto', () => {
+  const usuario = padroes();
+  for (const bruto of [null, undefined, {}, [], 7, 'x']) {
+    assert.deepEqual(comOProjeto(usuario, bruto), usuario);
+    assert.deepEqual(chavesDoProjeto(bruto), []);
+  }
 });

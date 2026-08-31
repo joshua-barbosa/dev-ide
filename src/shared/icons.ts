@@ -192,6 +192,8 @@ const ICONES_DA_INTERFACE = [
   'lucide:file-code',
   // Ações do cabeçalho da árvore (spec 035), na ordem do VS Code.
   'lucide:file-plus',
+  'lucide:file-json',
+  'lucide:settings',
   'lucide:folder-plus',
   'lucide:refresh-cw',
   // `list-collapse`, e não `chevrons-down-up`: os dois chevrons convergindo

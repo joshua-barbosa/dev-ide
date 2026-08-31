@@ -99,7 +99,10 @@ const DECLARADOS = [
   { id: 'file.saveAs', label: 'Save As…', menu: 'file', group: 3, keybinding: 'Ctrl+Shift+S', when: 'podeSalvar' },
   { id: 'file.saveAll', label: 'Save All', menu: 'file', group: 3, when: 'abaSuja' },
   { id: 'file.autoSave', label: 'Auto Save', menu: 'file', group: 4 },
+  // T001: as DUAS formas, como no VS Code. `Preferences` abre a TELA; quem
+  // quiser o arquivo tem um item ao lado — e a tela tem um botão para ele.
   { id: 'file.preferences', label: 'Preferences', menu: 'file', group: 4 },
+  { id: 'file.preferencesJson', label: 'Preferences (config.json)', menu: 'file', group: 4 },
   { id: 'file.revert', label: 'Revert File', menu: 'file', group: 5, when: 'temEditor' },
   { id: 'file.closeEditor', label: 'Close Editor', menu: 'file', group: 5, keybinding: 'Ctrl+W', when: 'temAba' },
 

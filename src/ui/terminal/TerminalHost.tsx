@@ -18,7 +18,7 @@ import '@xterm/xterm/css/xterm.css';
 import { tokens } from '../theme';
 import { pareceProntoParaComando } from '../../shared/terminal/prompt';
 import { escapaDoTerminal, formatarAtalho } from '../../shared/commands';
-import { TEMAS, type NomeDoTema } from '../../shared/temas';
+import { paletaDe, type NomeDoTema } from '../../shared/temas';
 import { resolverAparencia, type AparenciaDoTerminal } from '../../shared/terminal/aparencia';
 
 export interface TerminalHostProps {
@@ -83,7 +83,7 @@ export interface TerminalHostProps {
  * claro entregaria um terminal com metade do texto invisível.
  */
 function coresDoTerminal(nome: NomeDoTema): ITheme {
-  const p = TEMAS[nome];
+  const p = paletaDe(nome);
   return { background: p.bgEditor, foreground: p.fg, cursor: p.accent, ...p.ansi };
 }
 
