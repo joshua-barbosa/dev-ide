@@ -150,6 +150,20 @@ const DECLARADOS = [
     id: 'view.splitEditorDown', label: 'Split Editor Down', menu: 'view', group: 3,
     keybinding: 'Ctrl+Alt+\\', when: 'temAba',
   },
+  // T028: a MESMA aba dos dois lados, e não a aba mudando de lado. O nome não
+  // começa com `Split Editor` de propósito — `Split Editor` já é prefixo de
+  // `Split Editor Down`, e uma terceira entrada com o mesmo começo tornaria
+  // qualquer seletor por nome ambíguo (ver D104). Sem atalho pelo mesmo motivo
+  // do `Split Terminal Down`: o do VS Code é `Ctrl+K Ctrl+\\`, um acorde de duas
+  // teclas que esta IDE não tem, e inventar um ruim seria pior que não ter.
+  {
+    id: 'view.duplicateEditor', label: 'Duplicate Editor', menu: 'view', group: 3,
+    when: 'temEditor',
+  },
+  {
+    id: 'view.duplicateEditorDown', label: 'Duplicate Editor Down', menu: 'view', group: 3,
+    when: 'temEditor',
+  },
   { id: 'view.appearance', label: 'Appearance', menu: 'view', group: 4 },
   { id: 'view.wordWrap', label: 'Word Wrap', menu: 'view', group: 4, keybinding: 'Alt+Z' },
 

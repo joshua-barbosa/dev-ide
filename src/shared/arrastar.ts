@@ -98,3 +98,34 @@ export function decodificarCarga(bruto: string): CargaDeArraste | null {
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Reordenar abas (T029)
+// ---------------------------------------------------------------------------
+
+/**
+ * Antes de qual aba a arrastada deve entrar.
+ *
+ * Recebe a fila do grupo, a aba que está sob o cursor e de que metade dela o
+ * cursor está. Metade esquerda quer dizer "antes desta"; metade direita quer
+ * dizer "antes da PRÓXIMA" — e, quando não há próxima, `null`, que o store lê
+ * como fim da fila.
+ *
+ * Existe separado do componente porque é aritmética de índice, que é onde
+ * arrastar-e-soltar erra: um a mais ou a menos só aparece em metade dos gestos,
+ * e verificar isso no navegador é caro.
+ */
+export function alvoDaInsercao(
+  fila: readonly string[],
+  indice: number,
+  metadeDireita: boolean
+): string | null {
+  if (indice < 0 || indice >= fila.length) return null;
+  return (metadeDireita ? fila[indice + 1] : fila[indice]) ?? null;
+}
+
+/** De que metade horizontal do retângulo o ponto está. */
+export function ehMetadeDireita(r: Retangulo, x: number): boolean {
+  if (r.largura <= 0) return false;
+  return x - r.x >= r.largura / 2;
+}

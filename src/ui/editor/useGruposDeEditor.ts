@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Tab, TabStore } from "../../shared/tabs";
 import type { EditorHandle } from "./EditorHost";
 import type { EditorTabMeta, PonteiroDeEditor } from "../useWorkspace";
+import { chaveDoModelo, gemeas } from "../../shared/abas-gemeas";
 
 export interface Posicao {
   readonly linha: number;
@@ -172,14 +173,29 @@ export function useGruposDeEditor({
       const aba = store.get(id);
       const editor = editores.current.get(grupoDoEditor) ?? null;
       if (aba === null || editor === null || !ehEditavel(aba)) return;
+      const conteudo = editor.getValue();
+      const linguagem = editor.getLanguage();
       store.update(id, {
         meta: {
           ...metaDe(aba),
-          content: editor.getValue(),
-          language: editor.getLanguage(),
+          content: conteudo,
+          language: linguagem,
           view: editor.getViewState(),
         },
       });
+
+      // A gêmea recebe o TEXTO, e não a vista (T028). As duas mostram o mesmo
+      // arquivo, então o conteúdo é o mesmo por definição; cursor e rolagem são
+      // de cada uma, e copiá-los faria um lado saltar quando o outro rolasse.
+      const irmas = gemeas(store.list().map((t) => t.id), id);
+      for (const outra of irmas) {
+        if (outra === id) continue;
+        const alvo = store.get(outra);
+        if (alvo === null) continue;
+        store.update(outra, {
+          meta: { ...metaDe(alvo), content: conteudo, language: linguagem },
+        });
+      }
     },
     [store],
   );
@@ -218,8 +234,11 @@ export function useGruposDeEditor({
       const meta = metaDe(aba);
       carregando.current = true;
       try {
+        // `usarModelo` e não `setValue` (T028): a aba pega o modelo do ARQUIVO
+        // dela. Se a gêmea já o tem no outro grupo, os dois passam a mostrar o
+        // mesmo texto — e `setValue` aqui apagaria o que o outro lado escreveu.
+        editor.usarModelo(chaveDoModelo(aba.id, meta.path), meta.content, meta.language);
         editor.setLanguage(meta.language);
-        editor.setValue(meta.content);
         editor.setViewState(meta.view);
       } finally {
         carregando.current = false;

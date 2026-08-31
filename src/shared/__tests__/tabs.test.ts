@@ -333,3 +333,100 @@ test('o listener recebe a ativa do grupo focado', () => {
   store.focarGrupo(0);
   assert.equal(visto, 'a');
 });
+
+// ---- reordenar (T029) ----
+//
+// A posição é dita por "antes de QUAL aba", e não por índice. Índice obriga
+// quem chama a somar um quando a aba arrastada vinha da esquerda do alvo — o
+// erro clássico de arrastar-e-soltar, que aparece só às vezes e é chato de ver.
+
+test('reordenar leva a aba para antes da que foi dita', () => {
+  const store = comAbas('a', 'b', 'c');
+  store.reordenar('c', 0, 'a');
+  assert.deepEqual(store.doGrupo(0).map((t) => t.id), ['c', 'a', 'b']);
+});
+
+test('reordenar com antesDe null joga para o fim do grupo', () => {
+  const store = comAbas('a', 'b', 'c');
+  store.reordenar('a', 0, null);
+  assert.deepEqual(store.doGrupo(0).map((t) => t.id), ['b', 'c', 'a']);
+});
+
+test('arrastar da esquerda para a direita não erra por um', () => {
+  const store = comAbas('a', 'b', 'c');
+  // Soltar `a` na metade direita de `b` quer dizer "antes de `c`".
+  store.reordenar('a', 0, 'c');
+  assert.deepEqual(store.doGrupo(0).map((t) => t.id), ['b', 'a', 'c']);
+});
+
+test('soltar uma aba sobre ela mesma não muda nada', () => {
+  const store = comAbas('a', 'b', 'c');
+  store.reordenar('b', 0, 'b');
+  assert.deepEqual(store.doGrupo(0).map((t) => t.id), ['a', 'b', 'c']);
+});
+
+test('reordenar traz a aba arrastada para a frente', () => {
+  const store = comAbas('a', 'b', 'c');
+  store.activate('a');
+  store.reordenar('c', 0, 'a');
+  assert.equal(store.activeId(), 'c', 'quem arrasta está mexendo NELA');
+});
+
+test('reordenar para outro grupo move e posiciona de uma vez', () => {
+  const store = comAbas('a', 'b', 'c');
+  store.mover('c', 1);
+  store.reordenar('a', 1, 'c');
+
+  assert.deepEqual(store.doGrupo(0).map((t) => t.id), ['b']);
+  assert.deepEqual(store.doGrupo(1).map((t) => t.id), ['a', 'c']);
+  assert.equal(store.grupoFocado(), 1);
+  assert.equal(store.activeId(), 'a');
+});
+
+test('reordenar a ativa para outro grupo faz a origem escolher outra', () => {
+  const store = comAbas('a', 'b', 'c');
+  store.mover('c', 1);
+  store.activate('a');
+  store.reordenar('a', 1, 'c');
+  assert.equal(store.ativaDoGrupo(0), 'b', 'a vizinha à direita, como sempre');
+});
+
+test('reordenar para um grupo que ainda não existe cria o grupo', () => {
+  const store = comAbas('a', 'b');
+  store.reordenar('b', 3, null);
+  assert.deepEqual(store.grupos(), [0, 3]);
+  assert.deepEqual(store.doGrupo(3).map((t) => t.id), ['b']);
+});
+
+test('antesDe que não está no grupo destino vale como fim', () => {
+  const store = comAbas('a', 'b', 'c');
+  store.mover('c', 1);
+  // `c` não é do grupo 0: em vez de recusar, cai no fim — soltar não pode
+  // simplesmente não fazer nada e deixar quem arrastou sem resposta.
+  store.reordenar('a', 0, 'c');
+  assert.deepEqual(store.doGrupo(0).map((t) => t.id), ['b', 'a']);
+});
+
+test('reordenar id inexistente é no-op', () => {
+  const store = comAbas('a', 'b');
+  store.reordenar('zzz', 0, 'a');
+  assert.deepEqual(store.doGrupo(0).map((t) => t.id), ['a', 'b']);
+});
+
+test('reordenar notifica', () => {
+  const store = comAbas('a', 'b');
+  let vezes = 0;
+  store.onChange(() => { vezes += 1; });
+  store.reordenar('b', 0, 'a');
+  assert.equal(vezes, 1);
+});
+
+test('a ordem de um grupo não mexe na do outro', () => {
+  const store = comAbas('a', 'b', 'c', 'd');
+  store.mover('c', 1);
+  store.mover('d', 1);
+  store.reordenar('b', 0, 'a');
+
+  assert.deepEqual(store.doGrupo(0).map((t) => t.id), ['b', 'a']);
+  assert.deepEqual(store.doGrupo(1).map((t) => t.id), ['c', 'd'], 'o outro lado ficou parado');
+});

@@ -19,6 +19,7 @@ import {
   type NoDeLayout,
 } from '../../shared/layout-editor';
 import { GRUPO_PADRAO, type Tab, type TabStore } from '../../shared/tabs';
+import { proximaCopia } from '../../shared/abas-gemeas';
 
 export interface LayoutDeGrupos {
   readonly layout: NoDeLayout;
@@ -32,6 +33,14 @@ export interface LayoutDeGrupos {
   definirLayout: React.Dispatch<React.SetStateAction<NoDeLayout>>;
   /** Manda a aba ativa para um grupo novo, do lado pedido. */
   dividir(lado: Lado): void;
+  /**
+   * Abre uma SEGUNDA vista do arquivo ativo num grupo novo (T028).
+   *
+   * Diferente de `dividir`: aqui a aba original fica onde está. As duas passam
+   * a mostrar o mesmo arquivo, com o mesmo texto — quem garante isso é o modelo
+   * compartilhado do Monaco (ver `editor/modelos.ts`).
+   */
+  duplicar(lado: Lado): void;
   /** Move a fronteira entre dois irmãos (T021). */
   redimensionarLayout(caminho: readonly number[], indice: number, fracao: number): void;
 }
@@ -81,6 +90,27 @@ export function useLayoutDeGrupos(deps: DepsDoLayout): LayoutDeGrupos {
     [salvarTodosOsGrupos, store]
   );
 
+  const duplicar = useCallback(
+    (lado: Lado) => {
+      const id = store.activeId();
+      if (id === null) return;
+      const aba = store.get(id);
+      if (aba === null) return;
+      salvarTodosOsGrupos();
+      const alvo = aba.grupo;
+      setLayout((atual) => {
+        if (!podeDividir(atual)) return atual;
+        const novo = proximoGrupo(atual);
+        // A cópia nasce com o `meta` da original, inclusive a vista: abrir do
+        // lado direito na linha 1 quando se estava na linha 400 seria perder o
+        // lugar justamente no gesto que existe para comparar dois pontos.
+        store.open({ ...aba, id: proximaCopia(store.list().map((t) => t.id), aba.id), grupo: novo });
+        return dividirLayout(atual, alvo, lado, novo);
+      });
+    },
+    [salvarTodosOsGrupos, store]
+  );
+
   /**
    * Move uma fronteira do arranjo (T021).
    *
@@ -94,5 +124,5 @@ export function useLayoutDeGrupos(deps: DepsDoLayout): LayoutDeGrupos {
     []
   );
 
-  return { layout, definirLayout: setLayout, dividir, redimensionarLayout };
+  return { layout, definirLayout: setLayout, dividir, duplicar, redimensionarLayout };
 }

@@ -45,7 +45,7 @@ test('aba sem caminho é descartada, e o resto sobrevive', () => {
   assert.deepEqual(s.abas, [{ caminho: '/projeto/a.ts', grupo: 0 }]);
 });
 
-test('a mesma aba duas vezes vira uma', () => {
+test('o mesmo arquivo em DOIS grupos são duas vistas, e as duas voltam (T028)', () => {
   const s = normalizarSessao({
     ...CHEIA,
     abas: [
@@ -53,7 +53,22 @@ test('a mesma aba duas vezes vira uma', () => {
       { caminho: '/projeto/a.ts', grupo: 1 },
     ],
   });
-  assert.equal(s.abas.length, 1, 'o store não deixaria duas abas do mesmo arquivo');
+  // Era `length === 1` até o T028: o store proibia duas abas do mesmo arquivo.
+  // Agora ele permite uma por grupo, e a sessão tem de devolver as duas — senão
+  // a tela volta do F5 com um lado a menos.
+  assert.equal(s.abas.length, 2);
+  assert.deepEqual(s.abas.map((a) => a.grupo), [0, 1]);
+});
+
+test('o mesmo arquivo duas vezes no MESMO grupo vira um', () => {
+  const s = normalizarSessao({
+    ...CHEIA,
+    abas: [
+      { caminho: '/projeto/a.ts', grupo: 0 },
+      { caminho: '/projeto/a.ts', grupo: 0 },
+    ],
+  });
+  assert.equal(s.abas.length, 1, 'um grupo não mostra duas vezes a mesma coisa');
 });
 
 test('grupo estragado vira o grupo zero', () => {

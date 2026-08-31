@@ -104,13 +104,15 @@ export function normalizarSessao(bruto: unknown): SessaoDeAbas {
   for (const item of lido.abas) {
     const a = (item ?? {}) as Record<string, unknown>;
     if (typeof a.caminho !== 'string' || a.caminho === '') continue;
-    // A mesma aba duas vezes viraria duas abas do mesmo arquivo — que é
-    // exatamente o que o store proíbe quando se abre pela árvore.
-    if (vistos.has(a.caminho)) continue;
     const grupo = typeof a.grupo === 'number' && Number.isInteger(a.grupo) && a.grupo >= 0
       ? a.grupo
       : 0;
-    vistos.add(a.caminho);
+    // A chave é caminho MAIS grupo (T028). O mesmo arquivo em dois grupos é a
+    // segunda vista dele, e é para valer; o mesmo arquivo duas vezes no MESMO
+    // grupo é lixo, porque um grupo não mostra duas vezes a mesma coisa.
+    const chave = `${a.caminho}\u0000${grupo}`;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
     abas.push({ caminho: a.caminho, grupo });
   }
   if (abas.length === 0) return SESSAO_VAZIA;

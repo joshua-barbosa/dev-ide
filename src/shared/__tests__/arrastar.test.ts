@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  codificarCarga, decodificarCarga, FRACAO_DE_BORDA, zonaDoPonto, type Retangulo,
+  alvoDaInsercao, codificarCarga, decodificarCarga, ehMetadeDireita, FRACAO_DE_BORDA,
+  zonaDoPonto, type Retangulo,
 } from '../arrastar';
 
 /** Um retângulo redondo, para as contas lerem em porcentagem. */
@@ -92,4 +93,35 @@ test('o que não é carga nossa devolve null', () => {
 test('caminho com aspas e quebra de linha sobrevive à volta', () => {
   const carga = { tipo: 'arquivo', caminho: '/casa/a "b"\n/c.ts' } as const;
   assert.deepEqual(decodificarCarga(codificarCarga(carga)), carga);
+});
+
+// ---- reordenar abas (T029) ----
+
+test('metade esquerda insere antes da aba mirada', () => {
+  assert.equal(alvoDaInsercao(['a', 'b', 'c'], 1, false), 'b');
+});
+
+test('metade direita insere antes da PRÓXIMA', () => {
+  assert.equal(alvoDaInsercao(['a', 'b', 'c'], 1, true), 'c');
+});
+
+test('metade direita da última vira fim da fila', () => {
+  assert.equal(alvoDaInsercao(['a', 'b', 'c'], 2, true), null);
+});
+
+test('índice fora da fila vira fim da fila', () => {
+  assert.equal(alvoDaInsercao(['a'], 5, false), null);
+  assert.equal(alvoDaInsercao([], 0, false), null);
+  assert.equal(alvoDaInsercao(['a'], -1, false), null);
+});
+
+test('o meio exato conta como metade direita', () => {
+  const r = { x: 100, y: 0, largura: 80, altura: 20 };
+  assert.equal(ehMetadeDireita(r, 139), false);
+  assert.equal(ehMetadeDireita(r, 140), true, 'empate vai para a direita, sem zona morta');
+  assert.equal(ehMetadeDireita(r, 300), true, 'passar do alvo ainda é a direita dele');
+});
+
+test('aba de largura zero não vira divisão por zero', () => {
+  assert.equal(ehMetadeDireita({ x: 0, y: 0, largura: 0, altura: 0 }, 0), false);
 });

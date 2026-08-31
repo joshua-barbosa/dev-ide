@@ -123,6 +123,8 @@ return {
   'view.togglePanel': layout.alternarPainel,
   'view.splitEditor': () => ws.dividir('direita'),
   'view.splitEditorDown': () => ws.dividir('baixo'),
+  'view.duplicateEditor': () => ws.duplicar('direita'),
+  'view.duplicateEditorDown': () => ws.duplicar('baixo'),
   // Alterna e PERSISTE. A ação do Monaco alternaria e esqueceria — e o
   // usuário espera que a escolha sobreviva a recarregar a página.
   'view.wordWrap': () =>

@@ -40,7 +40,8 @@ test('a aba que estava em foco continua em foco', async ({ page }) => {
 test('a tela dividida volta dividida, com cada arquivo do seu lado', async ({ page }) => {
   await abrirArquivo(page, 'utils.ts');
   await menu(page, 'View');
-  await page.getByRole('menuitem', { name: 'Split Editor' }).click();
+  // Ancorado no atalho: o nome solto casa também com `Split Editor Down`.
+  await page.getByRole('menuitem', { name: /^Split Editor Ctrl/ }).click();
   await expect(page.locator('[data-grupo-editor="1"]')).toBeVisible();
   await abrirArquivo(page, 'consulta.sql');
 

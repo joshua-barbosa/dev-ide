@@ -55,6 +55,16 @@ export interface TabStore {
   focarGrupo(grupo: number): void;
   /** Move uma aba para outro grupo, ativando-a lá. */
   mover(id: string, grupo: number): void;
+  /**
+   * Põe a aba onde ela foi solta (T029).
+   *
+   * A posição é dita por **antes de qual aba**, e não por índice. Índice
+   * obrigaria quem chama a somar um quando a aba arrastada vinha da esquerda do
+   * alvo — o erro clássico de arrastar-e-soltar, que erra só às vezes.
+   *
+   * `antesDe: null` (ou uma aba que não é do grupo de destino) põe no fim.
+   */
+  reordenar(id: string, grupo: number, antesDe: string | null): void;
 
   /** Devolve a função que cancela a inscrição. */
   onChange(listener: TabListener): () => void;
@@ -182,26 +192,53 @@ export function createTabStore(): TabStore {
   }
 
   /**
-   * Move uma aba de grupo.
+   * Tira a aba de onde ela está e a põe no grupo pedido, antes de `antesDe`.
    *
-   * O grupo de origem escolhe outra ativa, e o de destino passa a ter esta —
-   * mover é também trazer o olho junto.
+   * É o coração de `mover` e de `reordenar`: as duas são o mesmo gesto, com e
+   * sem destino dentro da fila. O grupo de origem escolhe outra ativa, e o de
+   * destino passa a ter esta — mexer numa aba é também trazer o olho junto.
    */
-  function mover(id: string, grupo: number): void {
+  function posicionar(id: string, grupo: number, antesDe: string | null): void {
     const i = indexOf(id);
     if (i === -1) return;
     const aba = tabs[i];
-    if (aba.grupo === grupo) return;
-
     const origem = aba.grupo;
     const indiceNaOrigem = doGrupo(origem).findIndex((t) => t.id === id);
     const eraAtiva = ativas.get(origem) === id;
 
-    tabs = [...tabs.slice(0, i), { ...aba, grupo }, ...tabs.slice(i + 1)];
-    if (eraAtiva) reativar(origem, indiceNaOrigem);
+    // Sai da fila ANTES de escolher onde entra: assim "antes de X" quer dizer a
+    // mesma coisa venha a aba da esquerda ou da direita de X.
+    const sem = tabs.filter((t) => t.id !== id);
+    const alvo =
+      antesDe === null ? -1 : sem.findIndex((t) => t.id === antesDe && t.grupo === grupo);
+    let posicao: number;
+    if (alvo !== -1) {
+      posicao = alvo;
+    } else {
+      // No fim do GRUPO, que não é o fim da lista: as abas dos outros grupos
+      // dividem o mesmo array e não podem ser ultrapassadas por engano.
+      const ultimaDoGrupo = sem.reduce((k, t, j) => (t.grupo === grupo ? j : k), -1);
+      posicao = ultimaDoGrupo === -1 ? sem.length : ultimaDoGrupo + 1;
+    }
+    tabs = [...sem.slice(0, posicao), { ...aba, grupo }, ...sem.slice(posicao)];
+
+    if (origem !== grupo && eraAtiva) reativar(origem, indiceNaOrigem);
     definirAtiva(grupo, id);
     focado = grupo;
     notify();
+  }
+
+  function mover(id: string, grupo: number): void {
+    const aba = get(id);
+    if (aba === null || aba.grupo === grupo) return;
+    posicionar(id, grupo, null);
+  }
+
+  function reordenar(id: string, grupo: number, antesDe: string | null): void {
+    // Soltar uma aba sobre ela mesma é o gesto de quem desistiu no meio do
+    // caminho: não pode reordenar nada nem piscar a tela.
+    if (antesDe === id) return;
+    posicionar(id, grupo, antesDe);
   }
 
   function update(id: string, patch: Partial<Tab>): Tab | null {
@@ -250,6 +287,7 @@ export function createTabStore(): TabStore {
     grupoFocado: () => focado,
     focarGrupo,
     mover,
+    reordenar,
     onChange,
   };
 }

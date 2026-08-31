@@ -15,9 +15,20 @@ async function textoDoGrupo(page: Page, n: number): Promise<string> {
   return bruto.replace(/\u00a0/g, ' ');
 }
 
+/**
+ * O item `Split Editor`, e não o `Split Editor Down`.
+ *
+ * `getByRole` casa por PEDAÇO do nome, e os dois itens começam igual — o nome
+ * solto casa com os dois e o Playwright recusa por ambiguidade. A âncora usa o
+ * atalho, que é onde eles se separam. É a mesma armadilha do `Ex·porta·r` e da
+ * `Senha mestra`, e a terceira vez que ela aparece nesta IDE.
+ */
+const itemDeDividir = (page: Page) =>
+  page.getByRole('menuitem', { name: /^Split Editor Ctrl/ });
+
 async function dividir(page: Page): Promise<void> {
   await menu(page, 'View');
-  await page.getByRole('menuitem', { name: 'Split Editor' }).click();
+  await itemDeDividir(page).click();
 }
 
 test.beforeEach(async ({ page }) => {
@@ -32,7 +43,7 @@ test('a IDE começa com um grupo só', async ({ page }) => {
 
 test('Split Editor fica cinza sem aba aberta', async ({ page }) => {
   await menu(page, 'View');
-  await expect(page.getByRole('menuitem', { name: 'Split Editor' })).toBeDisabled();
+  await expect(itemDeDividir(page)).toBeDisabled();
 });
 
 test('dividir manda a aba ativa para o segundo grupo', async ({ page }) => {

@@ -654,6 +654,7 @@ export function App() {
                     ws.grupoFocado === g && contexto.temEditor ? () => executar('file') : undefined
                   }
                   onSoltar={(zona, carga) => ws.soltarNoGrupo(g, zona, carga)}
+                  onReordenarAba={(id, antesDe) => ws.reordenarAba(g, id, antesDe)}
                   onComando={executarComando}
                   formulario={formularioDeConexao}
                 />

@@ -31,6 +31,7 @@ import { LINGUAGEM_TODAS, type Snippet } from '../../shared/snippets';
 import { registrarCodeLensDeSql } from '../query/codelens';
 import { emmetCSS, emmetHTML, emmetJSX } from 'emmet-monaco-es';
 import { NOME_DO_TEMA, registrarTema } from './tema';
+import { modeloDe } from './modelos';
 
 // O caminho destes imports NÃO é o que a documentação sugere: o `exports` do
 // pacote remapeia `./*` para `./esm/vs/*`, então `monaco-editor/esm/vs/...`
@@ -75,6 +76,15 @@ export interface EditorHandle {
    * a query da esquerda rodaria com o arquivo da direita.
    */
   uriDoModelo(): string | null;
+  /**
+   * Põe neste editor o modelo de texto desta chave (T028).
+   *
+   * Duas abas com a MESMA chave recebem o MESMO modelo — é o que faz o arquivo
+   * aberto em dois grupos ser um texto só. Substituiu o `setValue` na troca de
+   * aba: `setValue` num modelo compartilhado apagaria o que o outro lado
+   * acabou de escrever.
+   */
+  usarModelo(chave: string, conteudo: string, linguagem: string): void;
   getViewState(): ViewState;
   setViewState(view: ViewState | null): void;
   focus(): void;
@@ -142,8 +152,11 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     if (embrulho === null) return;
 
     const ed = monaco.editor.create(embrulho, {
-      value: '',
-      language: 'plaintext',
+      // Sem modelo ao nascer (T028). Deixar o Monaco criar um anônimo faria o
+      // editor DONO dele, e o descarte automático levaria junto o modelo
+      // compartilhado assim que o arranjo remontasse este grupo. Quem põe o
+      // modelo é o efeito que carrega a aba do grupo.
+      model: null,
       theme: NOME_DO_TEMA,
       fontFamily: tokens.fontMono,
       fontSize,
@@ -184,7 +197,9 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     return () => {
       mudou.dispose();
       moveu.dispose();
-      ed.getModel()?.dispose();
+      // O modelo NÃO é descartado aqui: ele pode estar em uso pelo outro grupo,
+      // e este editor é remontado a cada mudança na forma do arranjo. Quem o
+      // descarta é quem fecha a última aba que o usa (ver `modelos.ts`).
       ed.dispose();
       editor.current = null;
     };
@@ -286,6 +301,15 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     ref,
     (): EditorHandle => ({
       getValue: () => editor.current?.getValue() ?? '',
+
+      usarModelo: (chave, conteudo, linguagem) => {
+        const ed = editor.current;
+        if (ed === null) return;
+        const modelo = modeloDe(chave, conteudo, linguagem);
+        // Só troca quando é outro: `setModel` com o mesmo modelo joga fora
+        // rolagem e seleção sem motivo.
+        if (ed.getModel() !== modelo) ed.setModel(modelo);
+      },
 
       setValue: (valor) => {
         const ed = editor.current;

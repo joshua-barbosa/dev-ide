@@ -115,6 +115,8 @@ export interface EditorGroupProps {
   readonly onExecutar?: () => void;
   /** Soltou algo neste grupo, na zona dada (spec 025). */
   onSoltar(zona: Zona, carga: CargaDeArraste): void;
+  /** Soltou uma aba na BARRA deste grupo, antes da aba dita (T029). */
+  onReordenarAba(id: string, antesDe: string | null): void;
 }
 
 export function EditorGroup({
@@ -122,6 +124,7 @@ export function EditorGroup({
   fontSize, tabSize, wordWrap, terminalFontSize, tema, snippets,
   grades, formulario, emPreview, conteudoDaAba, onPreview,
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
+  onReordenarAba,
   onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
   qi, abrirComando, onErroDaTabela, onMudarCaderno, onRodarBloco, onAbrirArquivo,
   capacidadesDe, onAbrirArquivoRemoto, onAbrirTerminalDoServidor,
@@ -228,6 +231,14 @@ export function EditorGroup({
         onClose={onFechar}
         onExecutar={onExecutar}
         ehSql={ativa?.type === 'sql'}
+        onArrastarNaBarra={() => definirZona(null)}
+        onSoltarNaBarra={(carga, antesDe) => {
+          definirZona(null);
+          // Arquivo solto na barra abre neste grupo, no fim da fila: escolher
+          // posição para algo que ainda nem é aba seria promessa a mais.
+          if (carga.tipo === 'aba') onReordenarAba(carga.id, antesDe);
+          else onSoltar('centro', carga);
+        }}
       />
 
       {/* A faixa abaixo das abas (T025). O switch morava DENTRO da barra de

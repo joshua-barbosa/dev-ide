@@ -9,6 +9,7 @@
 import { useEffect, useRef } from 'react';
 import { usePersistido } from './usePersistido';
 import { montarSessao, normalizarSessao, SESSAO_VAZIA } from '../shared/sessao-abas';
+import { idBaseDe } from '../shared/abas-gemeas';
 import type { Workspace } from './useWorkspace';
 
 export interface SessaoDeAbasDeps {
@@ -54,14 +55,23 @@ export function useSessaoDeAbas({ ws, pasta, aoFalhar }: SessaoDeAbasDeps): void
     // Só aba de ARQUIVO: aba sem título não tem caminho, e aba de query ou
     // terminal é vista de uma conexão viva — ressuscitá-la sem a conexão daria
     // uma aba que não faz nada.
+    // `idBaseDe` e não o id cru: a segunda vista do mesmo arquivo (T028) se
+    // chama `copia:2:file:…`, e filtrar pelo prefixo `file:` a deixaria de fora
+    // — a tela voltaria do F5 com um lado a menos.
+    const caminhoDe = (id: string): string | null => {
+      const base = idBaseDe(id);
+      return base.startsWith('file:') ? base.slice('file:'.length) : null;
+    };
+
     const abas = ws.tabs
-      .filter((t) => t.id.startsWith('file:'))
-      .map((t) => ({ caminho: t.id.slice('file:'.length), grupo: t.grupo }));
+      .map((t) => ({ caminho: caminhoDe(t.id), grupo: t.grupo }))
+      .filter((a): a is { caminho: string; grupo: number } => a.caminho !== null);
 
     const ativas: Record<string, string> = {};
     for (const grupo of ws.grupos) {
       const id = ws.store.ativaDoGrupo(grupo);
-      if (id !== null && id.startsWith('file:')) ativas[grupo] = id.slice('file:'.length);
+      const caminho = id === null ? null : caminhoDe(id);
+      if (caminho !== null) ativas[grupo] = caminho;
     }
 
     const sessao = montarSessao({

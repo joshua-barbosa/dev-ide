@@ -23,11 +23,14 @@ import { EXT_TO_LANG, NOME_TO_LANG } from '../shared/editor/languages';
 import { montarAbaDeArquivo } from './editor/abaDeArquivo';
 import { gravarSeRemota, idDaAbaRemota, lerParaAba } from './remoto/abaRemota';
 import { soltarNoGrupoCom } from './tabs/soltura';
+import { restaurarSessaoCom } from './tabs/restauracao';
 import { Api } from './api';
 import { useTabs } from './tabs/useTabs';
 import { useAbasDeDados } from './tabs/useAbasDeDados';
 import { useGruposDeEditor } from './editor/useGruposDeEditor';
-import { conciliar, type SessaoDeAbas } from '../shared/sessao-abas';
+import type { SessaoDeAbas } from '../shared/sessao-abas';
+import { chaveDoModelo, gemeas, idBaseDe } from '../shared/abas-gemeas';
+import { descartarModelo } from './editor/modelos';
 
 export interface EditorTabMeta {
   /** Caminho no disco; `null` em aba de query, que não tem arquivo. */
@@ -84,6 +87,8 @@ export interface Workspace {
   /** Manda a aba ativa para o outro grupo, criando-o se preciso. */
   /** Divide o grupo ativo para o lado pedido. `direita` é o padrão (T020). */
   dividir(lado?: Lado): void;
+  /** Abre uma segunda vista do arquivo ativo num grupo novo (T028). */
+  duplicar(lado?: Lado): void;
   /** Move a fronteira entre dois irmãos do arranjo (T021). */
   redimensionarLayout(caminho: readonly number[], indice: number, fracao: number): void;
   /**
@@ -92,6 +97,13 @@ export interface Workspace {
    * `centro` abre ali mesmo; qualquer outra zona cria um grupo naquele lado.
    */
   soltarNoGrupo(grupoAlvo: number, zona: Zona, carga: CargaDeArraste): void;
+  /**
+   * Uma aba foi solta na BARRA de um grupo, antes da aba dita (T029).
+   *
+   * Soltar na barra é um gesto diferente de soltar no editor: ali se escolhe um
+   * lugar na fila, aqui se escolhe um lado da tela.
+   */
+  reordenarAba(grupo: number, id: string, antesDe: string | null): void;
   /** Abas mostrando o conteúdo renderizado em vez do texto. */
   readonly emPreview: ReadonlySet<string>;
   /** Alterna entre texto e renderizado na aba ativa. */
@@ -250,7 +262,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
 
 
   // O ARRANJO dos grupos mora em `editor/useLayoutDeGrupos.ts` — ver a nota lá.
-  const { layout, definirLayout, dividir, redimensionarLayout } = useLayoutDeGrupos({
+  const { layout, definirLayout, dividir, duplicar, redimensionarLayout } = useLayoutDeGrupos({
     store, tabs, grupoFocado, salvarTodosOsGrupos,
   });
 
@@ -314,22 +326,6 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   // salvas com Ctrl+S e não interessam ao vigia de disco. Ver `useAbasDeDados`.
   const dados = useAbasDeDados(store, salvarGrupoFocado);
 
-  const marcarAbaSuja = useCallback(
-    (id: string, sujo: boolean) => {
-      store.update(id, { dirty: sujo });
-    },
-    [store]
-  );
-
-  /**
-   * Abre uma aba sem título, sem perguntar nada.
-   *
-   * O nome só é pedido ao salvar — antes disso, exigir a extensão obrigaria a
-   * decidir a linguagem antes de escrever a primeira linha.
-   *
-   * Nasce suja porque conteúdo que não está em disco é exatamente o que a marca
-   * de não salvo significa.
-   */
   /**
    * Abre uma aba sem título, com o conteúdo e a linguagem dados.
    *
@@ -371,10 +367,31 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     [salvarGrupoFocado, store]
   );
 
+  /**
+   * Joga fora o modelo de texto que ficou sem nenhuma vista (T028).
+   *
+   * O modelo morre com a ÚLTIMA vista, e não com a primeira: descartá-lo com a
+   * gêmea aberta apagaria o texto do outro grupo. E deixá-lo vivo depois da
+   * última é pior que vazamento — reabrir o arquivo mostraria o modelo velho em
+   * vez do que está em disco.
+   */
+  const descartarSeOrfao = useCallback(
+    (chave: string) => {
+      const usado = store
+        .list()
+        .some((t) => chaveDoModelo(t.id, metaDe(t).path ?? null) === chave);
+      if (!usado) descartarModelo(chave);
+    },
+    [store]
+  );
+
   const fechar = useCallback(
     async (id: string) => {
       const aba = store.get(id);
-      if (aba !== null && aba.dirty) {
+      // A gêmea que fica segura o texto (T028): fechar uma das duas vistas não
+      // perde nada, então perguntar "fechar sem salvar?" seria alarme falso.
+      const outraVista = aba !== null && gemeas(store.list().map((t) => t.id), id).length > 1;
+      if (aba !== null && aba.dirty && !outraVista) {
         const ok = await confirmar({
           titulo: 'Alterações não salvas',
           mensagem: `"${aba.title}" tem alterações não salvas.\n\nFechar mesmo assim?`,
@@ -385,8 +402,26 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
       }
       // (2) NÃO zera `ultimaAtiva` aqui — ver o comentário do topo.
       store.close(id);
+
+      if (aba !== null) descartarSeOrfao(chaveDoModelo(aba.id, metaDe(aba).path));
     },
-    [confirmar, store]
+    [confirmar, descartarSeOrfao, store]
+  );
+
+  /**
+   * Marca uma aba e as gêmeas dela (T028).
+   *
+   * O mesmo arquivo em dois grupos divide o texto, então tem de dividir também
+   * a marca de "não salvo": deixar uma limpa faria o F5 perguntar por uma e não
+   * pela outra, e fechar a limpa não avisaria nada.
+   */
+  const marcarComGemeas = useCallback(
+    (id: string, sujo: boolean) => {
+      for (const outro of gemeas(store.list().map((t) => t.id), id)) {
+        if (store.get(outro)?.dirty !== sujo) store.update(outro, { dirty: sujo });
+      }
+    },
+    [store]
   );
 
   const marcarSujo = useCallback(() => {
@@ -394,9 +429,8 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     const id = ed.abaCarregadaEmFoco();
     if (id === null) return;
     setEdicoes((n) => n + 1);
-    const aba = store.get(id);
-    if (aba !== null && !aba.dirty) store.update(id, { dirty: true });
-  }, [ed, store]);
+    marcarComGemeas(id, true);
+  }, [ed, marcarComGemeas]);
 
   /**
    * Grava a aba ativa e devolve o caminho.
@@ -418,7 +452,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
       meta.content
     );
     if (remoto !== null) {
-      store.update(aba.id, { dirty: false });
+      marcarComGemeas(aba.id, false);
       return remoto;
     }
 
@@ -434,12 +468,13 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
       return meta.path;
     }
 
+
     const editor = editorRef.current;
     if (editor === null || !ehEditavel(aba)) return null;
     await Api.saveFile(meta.path, editor.getValue());
-    store.update(aba.id, { dirty: false });
+    marcarComGemeas(aba.id, false);
     return meta.path;
-  }, [active, store]);
+  }, [active, marcarComGemeas, store]);
 
   /**
    * Grava tudo que está sujo e tem para onde ir.
@@ -453,7 +488,19 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     // gravar os dois lados.
     salvarTodosOsGrupos();
 
-    const sujas = store.list().filter((aba) => aba.dirty && ehEditavel(aba));
+    // Uma gravação por ARQUIVO, e não por vista: com o mesmo arquivo aberto
+    // dos dois lados, as duas abas estão sujas e gravá-lo duas vezes contaria
+    // dois em "3 arquivos salvos".
+    const vistos = new Set<string>();
+    const sujas = store
+      .list()
+      .filter((aba) => aba.dirty && ehEditavel(aba))
+      .filter((aba) => {
+        const base = idBaseDe(aba.id);
+        if (vistos.has(base)) return false;
+        vistos.add(base);
+        return true;
+      });
     let gravadas = 0;
     let semNome = 0;
 
@@ -464,25 +511,12 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         continue;
       }
       await Api.saveFile(meta.path, meta.content);
-      store.update(aba.id, { dirty: false });
+      marcarComGemeas(aba.id, false);
       gravadas += 1;
     }
     return { gravadas, semNome };
-  }, [salvarTodosOsGrupos, store]);
+  }, [marcarComGemeas, salvarTodosOsGrupos, store]);
 
-  /**
-   * Volta a aba ativa ao que está em disco.
-   *
-   * Deixa o erro subir quando o arquivo sumiu: reverter para o nada seria
-   * destruir o que restou no editor (AC-14).
-   */
-  /**
-   * Manda a aba ativa para o outro grupo.
-   *
-   * Com um grupo, cria o segundo; com dois, alterna de lado. Dois grupos é o
-   * limite desta spec: cobre o pedido ("dividir a tela com mais de um arquivo")
-   * e mantém a barra de abas legível numa janela de tamanho normal.
-   */
   /**
    * Abre um arquivo num grupo específico.
    *
@@ -506,35 +540,18 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   /**
    * Reabre as abas de uma sessão guardada (spec 029).
    *
-   * Tenta abrir cada uma e **deixa cair em silêncio** a que não existe mais: o
-   * arquivo pode ter sido apagado com a IDE fechada, e uma caixa de erro por
-   * arquivo sumido seria pior que a ausência dele. O que sobreviveu passa por
-   * `conciliar`, que é quem impede meia tela em branco.
+   * O como mora em `tabs/restauracao.ts` desde o T028, quando este arquivo
+   * bateu de novo no teto do Artigo IV.
    */
   const restaurarSessao = useCallback(
-    async (sessao: SessaoDeAbas): Promise<void> => {
-      const abertos = new Set<string>();
-      for (const aba of sessao.abas) {
-        try {
-          await abrirNoGrupo(aba.caminho, aba.grupo);
-          abertos.add(aba.caminho);
-        } catch {
-          // sumiu do disco enquanto a IDE estava fechada
-        }
-      }
-      if (abertos.size === 0) return;
-
-      const final = conciliar(sessao, abertos);
-      // Aba num grupo que o arranjo não tem ficaria invisível para sempre.
-      for (const aba of final.abas) {
-        const atual = store.get(`file:${aba.caminho}`);
-        if (atual !== null && atual.grupo !== aba.grupo) store.mover(atual.id, aba.grupo);
-      }
-      definirLayout(final.layout);
-      for (const caminho of Object.values(final.ativas)) store.activate(`file:${caminho}`);
-      store.focarGrupo(final.grupoFocado);
-    },
-    [abrirNoGrupo, store]
+    (sessao: SessaoDeAbas): Promise<void> =>
+      restaurarSessaoCom({
+        store,
+        abrirArquivo,
+        caminhoDaAba: (aba) => (ehEditavel(aba) ? metaDe(aba).path : null),
+        setLayout: definirLayout,
+      })(sessao),
+    [abrirArquivo, definirLayout, store]
   );
 
   // Onde uma aba cai ao ser solta. Mora em `tabs/soltura.ts` desde a spec 053,
@@ -548,6 +565,16 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         setLayout: definirLayout,
       })(grupoAlvo, zona, carga),
     [abrirNoGrupo, salvarTodosOsGrupos, store]
+  );
+
+  const reordenarAba = useCallback(
+    (grupo: number, id: string, antesDe: string | null): void => {
+      // Grava os editores antes: se a aba muda de grupo, o outro lado passa a
+      // mostrar outro arquivo, e o que estava na tela precisa já estar no store.
+      salvarTodosOsGrupos();
+      store.reordenar(id, grupo, antesDe);
+    },
+    [salvarTodosOsGrupos, store]
   );
 
   /**
@@ -675,6 +702,9 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
       if (aba === null) return;
       const language = linguagemDe(caminho);
       store.close(idAntigo);
+      // A aba sem título deixa de existir, e o modelo dela junto: o texto passa
+      // a viver no modelo do ARQUIVO, com a chave nova.
+      descartarSeOrfao(chaveDoModelo(idAntigo, null));
       store.open({
         id: `file:${caminho}`,
         type: language === 'sql' ? 'sql' : 'editor',
@@ -686,7 +716,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
       });
       editorRef.current?.setLanguage(language);
     },
-    [salvarNaAba, store]
+    [descartarSeOrfao, salvarNaAba, store]
   );
 
   return {
@@ -699,9 +729,11 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     layout,
     podeDividir: true,
     soltarNoGrupo,
+    reordenarAba,
     editorRef,
     registrarEditor,
     dividir,
+    duplicar,
     redimensionarLayout,
     emPreview,
     alternarPreview,
@@ -730,6 +762,9 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         // salva, e não há o que salvar num arquivo que acabou de ser apagado.
         if (meta.path === caminho) store.close(aba.id);
       }
+      // Arquivo apagado do disco: o modelo tem de ir junto, senão recriá-lo lá
+      // fora e abrir de novo mostraria o texto de antes.
+      descartarSeOrfao(chaveDoModelo('', caminho));
     },
     abaDaUri: (uri: string) => {
       const grupo = grupoDaUri(uri);
@@ -738,7 +773,8 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
       return id === null ? null : store.get(id);
     },
     adotarArquivo,
-    marcarAbaSuja,
+    // Uma função só: `marcarComGemeas` faz o mesmo quando não há gêmea.
+    marcarAbaSuja: marcarComGemeas,
     ativar: (id) => store.activate(id),
     fechar,
     marcarSujo,
