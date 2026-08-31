@@ -12,7 +12,7 @@ import Box from '@mui/material/Box';
 import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
 import { aplicarVariaveis, criarTema } from './theme';
-import { NOMES_DE_TEMA, ROTULO_DO_TEMA, TEMAS, type NomeDoTema } from '../shared/temas';
+import { TEMAS, type NomeDoTema } from '../shared/temas';
 import { temPreview } from '../shared/markdown';
 import { Sidebar } from './Sidebar';
 import { Resizer } from './Resizer';
@@ -39,7 +39,6 @@ import type { AparenciaDoTerminal } from '../shared/terminal/aparencia';
 const VAZIA: AparenciaDoTerminal = {};
 import { useContextMenu } from './ContextMenu';
 import { useDialogs } from './useDialogs';
-import { Api } from './api';
 import { useCodebase } from './sql/useCodebase';
 import { MenuBar } from './MenuBar';
 import { StatusBar } from './StatusBar';
@@ -79,6 +78,7 @@ import { useComandosAcoes } from './acoes/useComandosAcoes';
 import { useArquivoAcoes } from './acoes/useArquivoAcoes';
 import { useCodigoAcoes } from './acoes/useCodigoAcoes';
 import { usePastaAcoes } from './acoes/usePastaAcoes';
+import { useAberturas } from './acoes/useAberturas';
 import { useConexoesAcoes } from './acoes/useConexoesAcoes';
 import { useStatusAcoes } from './acoes/useStatusAcoes';
 import { useSnippetsAcoes } from './acoes/useSnippetsAcoes';
@@ -225,12 +225,22 @@ export function App() {
     ws.abrirSemTitulo();
   };
 
+  const copiar = (texto: string): void => {
+    void navigator.clipboard?.writeText(texto);
+  };
+
   const arquivoAcoes = useArquivoAcoes({
     qi, ws, pasta, prefs, avisar: dialogs.avisar, confirmar: dialogs.confirmar,
   });
   const codigoAcoes = useCodigoAcoes({ qi, ws, avisar: dialogs.avisar });
   const pastaAcoes = usePastaAcoes({
     qi, pasta, avisar: dialogs.avisar, abrirArquivo: ws.abrirArquivo,
+    confirmar: dialogs.confirmar,
+    // As abas seguem o disco (T043): renomear as leva junto, excluir as fecha.
+    aoRenomear: ws.renomearPorCaminho,
+    aoExcluir: ws.fecharPorCaminho,
+    abrirMenu: menu.abrir,
+    copiar,
   });
   /** O caminho do arquivo em foco — a chave do vínculo e do painel de símbolos. */
   const caminhoAtivo =
@@ -263,41 +273,12 @@ export function App() {
   });
 
 
-  /**
-   * Abre o `config.json` como aba do editor.
-   *
-   * É a "tela de configurações" desta IDE, e de propósito: a IDE já sabe abrir,
-   * editar e salvar arquivo, então isto custa uma linha e cobre 100% das
-   * chaves. Um formulário custaria um campo por preferência, e ficaria para
-   * trás a cada chave nova.
-   */
-  const abrirPreferencias = async (): Promise<void> => {
-    const { path } = await Api.prefsFile();
-    await ws.abrirArquivo(path);
-  };
-
-  const abrirPorCaminho = async (): Promise<void> => {
-    const caminho = await qi.pedir({
-      titulo: 'Abrir arquivo',
-      placeholder: 'Caminho absoluto do arquivo',
-    });
-    if (caminho !== null) await ws.abrirArquivo(caminho);
-  };
-
-  /** Escolhe o tema. Vale para moldura, editor e terminal ao mesmo tempo. */
-  const escolherTema = async (): Promise<void> => {
-    const escolhido = await qi.pedir({
-      titulo: 'Tema da interface',
-      placeholder: 'Escolha um tema',
-      opcoes: NOMES_DE_TEMA.map((nome) => ({
-        valor: nome,
-        rotulo: ROTULO_DO_TEMA[nome],
-        detalhe: nome === tema ? 'atual' : undefined,
-        icone: nome === tema ? 'lucide:check' : 'lucide:circle-dot',
-      })),
-    });
-    if (escolhido !== null) await prefs.definir({ 'workbench.theme': escolhido as NomeDoTema });
-  };
+  const { abrirPreferencias, abrirPorCaminho, escolherTema } = useAberturas({
+    qi,
+    abrirArquivo: ws.abrirArquivo,
+    tema,
+    definirTema: (nome) => prefs.definir({ 'workbench.theme': nome }),
+  });
 
   const { escolherLinguagem, irParaLinha } = useStatusAcoes({
     qi,
@@ -326,9 +307,6 @@ export function App() {
     if (escolhido !== null) executarComando(escolhido);
   };
 
-  const copiar = (texto: string): void => {
-    void navigator.clipboard?.writeText(texto);
-  };
 
   // As ações da árvore remota (spec 053). Vêm antes dos menus porque eles as
   // consomem: o menu de um nó remoto é inteiramente delas.
@@ -563,6 +541,9 @@ export function App() {
           onAbrirPasta={() => avisar(pastaAcoes.abrirPasta())}
           onNovoArquivo={() => avisar(pastaAcoes.novoArquivoNaPasta())}
           onNovaPasta={() => avisar(pastaAcoes.novaPasta())}
+          onMenuDoArquivo={pastaAcoes.menuDoItem}
+          onRenomearArquivo={(no) => avisar(pastaAcoes.renomearItem(no.path))}
+          onExcluirArquivo={(no) => avisar(pastaAcoes.excluirItem(no.path, no.type === 'dir'))}
           busca={{
             busca,
             // Abre o arquivo e pula para a ocorrência — clicar num resultado

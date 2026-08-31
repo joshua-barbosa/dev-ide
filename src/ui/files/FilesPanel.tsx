@@ -30,12 +30,27 @@ export interface FilesPanelProps {
   readonly onNovoArquivo: () => void;
   readonly onNovaPasta: () => void;
   readonly onErro: (erro: unknown) => void;
+  /** Botão direito num item da árvore (T043) — quem monta o menu é o `App`. */
+  readonly onMenuDoItem: (no: FileNode, e: React.MouseEvent) => void;
+  /** `F2` e `Delete` no item selecionado — os mesmos fluxos do menu. */
+  readonly onRenomear: (no: FileNode) => void;
+  readonly onExcluir: (no: FileNode) => void;
 }
 
 export function FilesPanel({
   pasta, onAbrirArquivo, caminhoAtivo, onAbrirPasta, onNovoArquivo, onNovaPasta, onErro,
+  onMenuDoItem, onRenomear, onExcluir,
 }: FilesPanelProps) {
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
+  /**
+   * O item SELECIONADO — diferente do arquivo aberto (T043).
+   *
+   * `F2` e `Delete` precisam de um alvo, e o arquivo aberto não serve: uma
+   * pasta nunca é "aberta", e clicar numa pasta para renomeá-la deixaria as
+   * teclas apontando para o último arquivo aberto. Duas perguntas diferentes,
+   * dois estados.
+   */
+  const [selecionado, setSelecionado] = useState<FileNode | null>(null);
   /** Pastas cujo conteúdo está sendo pedido agora — a linha mostra "…". */
   const [carregando, setCarregando] = useState<ReadonlySet<string>>(new Set());
 
@@ -132,12 +147,22 @@ export function FilesPanel({
             }
             expansivel={no.type === 'dir'}
             aberto={aberta}
-            ativo={no.path === caminhoAtivo}
+            ativo={no.path === caminhoAtivo || no.path === selecionado?.path}
             // Cinza e itálico com um significado exato: a IDE não indexa isto.
             // Continua abrindo, arrastando e editando como qualquer outro.
             esmaecido={no.ignored === true}
             titulo={no.ignored === true ? `${no.path} — ignorado pelo .gitignore` : no.path}
-            onClick={() => (no.type === 'dir' ? alternar(no) : abrir(no.path))}
+            onClick={() => {
+              setSelecionado(no);
+              if (no.type === 'dir') alternar(no);
+              else abrir(no.path);
+            }}
+            onContextMenu={(e) => {
+              // Selecionar ANTES de abrir o menu: sem isso, o item do menu e o
+              // que a tecla `Delete` pega poderiam ser dois itens diferentes.
+              setSelecionado(no);
+              onMenuDoItem(no, e);
+            }}
             aoArrastar={
               no.type === 'dir'
                 ? undefined
@@ -233,7 +258,22 @@ export function FilesPanel({
         </Box>
       )}
 
-      <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <Box
+        sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}
+        // `tabIndex` porque uma `div` não recebe tecla sem ele — e sem foco na
+        // árvore, `F2` e `Delete` seriam atalhos globais roubando o editor.
+        tabIndex={-1}
+        onKeyDown={(e) => {
+          if (selecionado === null) return;
+          if (e.key === 'F2') {
+            e.preventDefault();
+            onRenomear(selecionado);
+          } else if (e.key === 'Delete') {
+            e.preventDefault();
+            onExcluir(selecionado);
+          }
+        }}
+      >
         {pasta.arvore.length === 0 ? (
           <Box sx={{ px: 1.25, color: 'text.secondary', fontSize: 11 }}>
             pasta vazia — crie um arquivo

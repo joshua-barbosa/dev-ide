@@ -38,6 +38,11 @@ export interface PastaAberta {
   criarArquivo(nome: string, conteudo: string): Promise<string>;
   /** Cria uma pasta e devolve o caminho; deixa o erro subir para a retentativa. */
   criarPasta(nome: string): Promise<string>;
+  /** Renomeia um item da árvore e devolve o caminho novo (T043). */
+  renomear(caminho: string, nome: string): Promise<string>;
+  /** Copia um item ao lado dele e devolve o caminho da cópia (T043). */
+  duplicar(caminho: string): Promise<string>;
+  excluir(caminho: string): Promise<void>;
 }
 
 /**
@@ -140,6 +145,34 @@ export function usePasta(): PastaAberta {
     [recarregar]
   );
 
+  // As três mexem no disco e recarregam a árvore. O erro SOBE: quem chama
+  // sabe se está num laço de retentativa (renomear) ou se mostra um aviso.
+  const renomear = useCallback(
+    async (caminho: string, nome: string): Promise<string> => {
+      const novo = await Api.renameEntry(caminho, nome.trim());
+      await recarregar();
+      return novo.path;
+    },
+    [recarregar]
+  );
+
+  const duplicar = useCallback(
+    async (caminho: string): Promise<string> => {
+      const copia = await Api.duplicateEntry(caminho);
+      await recarregar();
+      return copia.path;
+    },
+    [recarregar]
+  );
+
+  const excluir = useCallback(
+    async (caminho: string): Promise<void> => {
+      await Api.deleteEntry(caminho);
+      await recarregar();
+    },
+    [recarregar]
+  );
+
   const pasta = retrato.pasta ?? '';
   return {
     pasta,
@@ -158,5 +191,8 @@ export function usePasta(): PastaAberta {
     criarProjeto,
     criarArquivo,
     criarPasta,
+    renomear,
+    duplicar,
+    excluir,
   };
 }

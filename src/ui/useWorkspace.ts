@@ -24,6 +24,7 @@ import { montarAbaDeArquivo } from './editor/abaDeArquivo';
 import { gravarSeRemota, idDaAbaRemota, lerParaAba } from './remoto/abaRemota';
 import { soltarNoGrupoCom } from './tabs/soltura';
 import { restaurarSessaoCom } from './tabs/restauracao';
+import { abasDoDisco } from './tabs/abas-do-disco';
 import { Api } from './api';
 import { useTabs } from './tabs/useTabs';
 import { useAbasDeDados } from './tabs/useAbasDeDados';
@@ -36,6 +37,13 @@ export interface EditorTabMeta {
   /** Caminho no disco; `null` em aba de query, que não tem arquivo. */
   readonly path: string | null;
   readonly content: string;
+  /**
+   * A versão em disco em que esta aba se baseia (T047).
+   *
+   * Ausente numa aba que nunca veio do disco — e a comparação do vigia cai,
+   * nesse caso, no que está na tela, que é o comportamento de antes.
+   */
+  readonly emDisco?: string;
   readonly language: string;
   readonly view: ViewState | null;
   readonly connectionId?: string;
@@ -189,7 +197,18 @@ export interface Workspace {
    * que não existe mais não pode ficar aberta — o próximo `Ctrl+S` o recriaria.
    */
   fecharPorCaminho(caminho: string): void;
-  adotarArquivo(idAntigo: string, caminho: string): void;
+  /**
+   * Liga a aba ao arquivo de outro caminho.
+   *
+   * `sujo` existe por causa do T043: em `Save As` o arquivo acabou de ir para o
+   * disco e a aba nasce limpa; num RENOMEAR pela árvore o conteúdo não foi
+   * gravado, e limpar a marca faria a IDE perder trabalho sem avisar.
+   */
+  adotarArquivo(idAntigo: string, caminho: string, sujo?: boolean): void;
+  /** Fecha as abas de um item apagado — o próprio, ou tudo dentro dele (T043). */
+  fecharPorCaminho(caminho: string): void;
+  /** Leva as abas junto com o item renomeado (T043). */
+  renomearPorCaminho(de: string, para: string): void;
   /** Devolve o caminho gravado, ou `null` se não havia o que salvar. */
   salvar(): Promise<string | null>;
   /**
@@ -416,9 +435,21 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
    * pela outra, e fechar a limpa não avisaria nada.
    */
   const marcarComGemeas = useCallback(
-    (id: string, sujo: boolean) => {
+    (id: string, sujo: boolean, gravado?: string) => {
       for (const outro of gemeas(store.list().map((t) => t.id), id)) {
-        if (store.get(outro)?.dirty !== sujo) store.update(outro, { dirty: sujo });
+        const aba = store.get(outro);
+        if (aba === null) continue;
+        // `emDisco` acompanha a gravação (T047): sem isto o vigia compararia
+        // com a versão de quando a aba abriu, e todo salvamento viraria
+        // "mudou em disco" na notificação que o próprio salvamento gera.
+        if (gravado !== undefined) {
+          store.update(outro, {
+            dirty: sujo,
+            meta: { ...metaDe(aba), content: gravado, emDisco: gravado },
+          });
+        } else if (aba.dirty !== sujo) {
+          store.update(outro, { dirty: sujo });
+        }
       }
     },
     [store]
@@ -464,15 +495,16 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     // versão de antes da última tecla.
     if (aba.type === 'caderno') {
       await Api.saveFile(meta.path, meta.content);
-      store.update(aba.id, { dirty: false });
+      store.update(aba.id, { dirty: false, meta: { ...meta, emDisco: meta.content } });
       return meta.path;
     }
 
 
     const editor = editorRef.current;
     if (editor === null || !ehEditavel(aba)) return null;
-    await Api.saveFile(meta.path, editor.getValue());
-    marcarComGemeas(aba.id, false);
+    const gravado = editor.getValue();
+    await Api.saveFile(meta.path, gravado);
+    marcarComGemeas(aba.id, false, gravado);
     return meta.path;
   }, [active, marcarComGemeas, store]);
 
@@ -511,7 +543,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         continue;
       }
       await Api.saveFile(meta.path, meta.content);
-      marcarComGemeas(aba.id, false);
+      marcarComGemeas(aba.id, false, meta.content);
       gravadas += 1;
     }
     return { gravadas, semNome };
@@ -537,12 +569,30 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     [abrirArquivo, store]
   );
 
-  /**
-   * Reabre as abas de uma sessão guardada (spec 029).
-   *
-   * O como mora em `tabs/restauracao.ts` desde o T028, quando este arquivo
-   * bateu de novo no teto do Artigo IV.
-   */
+  /** Reabre as abas de uma sessão guardada — o como está em `tabs/restauracao.ts`. */
+  // As abas e o disco: renomear, apagar, reler e o conflito (T043, T047).
+  const doDisco = abasDoDisco({
+    store,
+    caminhoDaAba: (aba) => (ehEditavel(aba) ? metaDe(aba).path : null),
+    adotar: (id, caminho) => adotarArquivo(id, caminho, store.get(id)?.dirty === true),
+    metaDaAba: (aba) => aba.meta as Record<string, unknown>,
+    editorDoGrupo: ed.editorDoGrupo,
+    abaCarregada: ed.abaCarregada,
+    semSujar: ed.semSujar,
+    aoEntrarEmConflito: (ids) =>
+      setConflitos((atual) => new Set([...atual, ...ids])),
+  });
+  const recarregarDoDisco = useCallback(
+    (caminhos: readonly string[]) => doDisco.recarregarDoDisco(caminhos),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [store]
+  );
+  const sincronizarComDisco = useCallback(
+    (caminhos: readonly string[]) => doDisco.sincronizarComDisco(caminhos),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [store]
+  );
+
   const restaurarSessao = useCallback(
     (sessao: SessaoDeAbas): Promise<void> =>
       restaurarSessaoCom({
@@ -614,69 +664,12 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
 
     const dados = await Api.readFile(meta.path);
     ed.semSujar(() => editor.setValue(dados.content));
-    store.update(aba.id, { dirty: false, meta: { ...meta, content: dados.content, view: null } });
+    store.update(aba.id, {
+      dirty: false,
+      meta: { ...meta, content: dados.content, emDisco: dados.content, view: null },
+    });
   }, [active, ed, store]);
 
-  /**
-   * Relê do disco as abas abertas dos caminhos dados.
-   *
-   * Substituir em arquivos reescreve o disco POR BAIXO do editor. Sem isto a
-   * aba aberta segue mostrando o texto de antes — e salvá-la depois desfaz a
-   * substituição em silêncio, que é o pior desfecho possível: o usuário viu
-   * "3 arquivos alterados" e o arquivo voltou ao que era.
-   */
-  const recarregarDoDisco = useCallback(
-    async (caminhos: readonly string[]): Promise<void> => {
-      for (const caminho of caminhos) {
-        const aba = store.get(`file:${caminho}`);
-        if (aba === null || !ehEditavel(aba)) continue;
-
-        const dados = await Api.readFile(caminho);
-        store.update(aba.id, {
-          dirty: false,
-          meta: { ...metaDe(aba), content: dados.content, view: null },
-        });
-
-        // O efeito de carregar não vai reagir: para ele esta aba já é a ativa
-        // do grupo. Quem está na tela precisa ser trocado aqui.
-        if (store.ativaDoGrupo(aba.grupo) !== aba.id) continue;
-        const editor = ed.editorDoGrupo(aba.grupo);
-        if (editor === null) continue;
-        ed.semSujar(() => editor.setValue(dados.content));
-      }
-    },
-    [ed, store]
-  );
-
-  const sincronizarComDisco = useCallback(
-    async (caminhos: readonly string[]): Promise<readonly string[]> => {
-      const emConflito: string[] = [];
-      const limpos: string[] = [];
-
-      for (const caminho of caminhos) {
-        const aba = store.get(`file:${caminho}`);
-        if (aba === null || !ehEditavel(aba)) continue;
-        if (aba.dirty) emConflito.push(aba.title);
-        else limpos.push(caminho);
-      }
-
-      if (emConflito.length > 0) {
-        setConflitos((atual) => {
-          const proximo = new Set(atual);
-          for (const caminho of caminhos) {
-            const aba = store.get(`file:${caminho}`);
-            if (aba !== null && aba.dirty) proximo.add(aba.id);
-          }
-          return proximo;
-        });
-      }
-      // A aba sem alteração pode ser trocada sem perguntar nada: não há duas
-      // versões, há uma só, e ela está no disco.
-      if (limpos.length > 0) await recarregarDoDisco(limpos);
-      return emConflito;
-    },
-    [recarregarDoDisco, store]
-  );
 
   /**
    * Liga a aba sem título ao arquivo recém-criado.
@@ -693,7 +686,7 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
    * o defeito ainda mais confuso: parecia que salvar tinha apagado tudo.
    */
   const adotarArquivo = useCallback(
-    (idAntigo: string, caminho: string) => {
+    (idAntigo: string, caminho: string, sujo = false) => {
       const abaOriginal = store.get(idAntigo);
       if (abaOriginal === null) return;
       salvarNaAba(idAntigo, abaOriginal.grupo);
@@ -710,9 +703,16 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
         type: language === 'sql' ? 'sql' : 'editor',
         title: caminho.split('/').pop() ?? caminho,
         icon: iconeDeArquivo(caminho, language),
-        dirty: false,
+        dirty: sujo,
         grupo: aba.grupo,
-        meta: { ...metaDe(aba), path: caminho, language },
+        meta: {
+          ...metaDe(aba),
+          path: caminho,
+          language,
+          // Em `Save As` o arquivo acabou de ser gravado com este conteúdo; num
+          // renomear, o disco também já tem exatamente isto.
+          ...(sujo ? {} : { emDisco: metaDe(aba).content }),
+        },
       });
       editorRef.current?.setLanguage(language);
     },
@@ -756,15 +756,14 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     abrirSemTitulo,
     mudarCaderno,
     fecharPorCaminho: (caminho: string) => {
-      for (const aba of store.list()) {
-        const meta = aba.meta as { path?: string | null };
-        // `store.close` e não `fechar`: `fechar` pergunta sobre alteração não
-        // salva, e não há o que salvar num arquivo que acabou de ser apagado.
-        if (meta.path === caminho) store.close(aba.id);
-      }
+      doDisco.fecharPorCaminho(caminho);
       // Arquivo apagado do disco: o modelo tem de ir junto, senão recriá-lo lá
       // fora e abrir de novo mostraria o texto de antes.
       descartarSeOrfao(chaveDoModelo('', caminho));
+    },
+    renomearPorCaminho: (de, para) => {
+      doDisco.renomearPorCaminho(de, para);
+      descartarSeOrfao(chaveDoModelo('', de));
     },
     abaDaUri: (uri: string) => {
       const grupo = grupoDaUri(uri);

@@ -199,3 +199,162 @@ test('criar arquivo que já existe é recusado sem sobrescrever', async () => {
     assert.match(fs.readFileSync(path.join(projeto, 'utils.ts'), 'utf8'), /VERSAO/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Renomear, duplicar e excluir (T043, spec 073)
+// ---------------------------------------------------------------------------
+//
+// As três guardas que cada uma repete, e por quê:
+//   1. **dentro da pasta aberta** — sem isso a árvore vira um `rm` do disco
+//      inteiro por uma URL;
+//   2. **não sobrescreve** — renomear por cima de um arquivo existente perde o
+//      que estava lá, e em silêncio;
+//   3. **o que não existe dá erro** — mexer no nada é sempre engano de quem
+//      chamou, e responder "ok" esconderia o engano.
+
+async function comPastaAberta(
+  fn: (call: Chamada, projeto: string) => Promise<void>
+): Promise<void> {
+  await comServidor(async (call, _dados, projeto) => {
+    await call('POST', '/workspace', { path: projeto });
+    await fn(call, projeto);
+  });
+}
+
+test('renomear troca o nome e devolve o caminho novo', async () => {
+  await comPastaAberta(async (call, projeto) => {
+    const r = await call('POST', '/workspace/rename', { path: 'utils.ts', name: 'ferramentas.ts' });
+    assert.equal(r.success, true);
+    assert.equal((r.data as { path: string }).path, path.join(projeto, 'ferramentas.ts'));
+    assert.equal(fs.existsSync(path.join(projeto, 'utils.ts')), false);
+    assert.match(fs.readFileSync(path.join(projeto, 'ferramentas.ts'), 'utf8'), /VERSAO/);
+  });
+});
+
+test('renomear aceita mover para outra pasta de dentro do projeto', async () => {
+  await comPastaAberta(async (call, projeto) => {
+    fs.mkdirSync(path.join(projeto, 'src'));
+    const r = await call('POST', '/workspace/rename', { path: 'utils.ts', name: 'src/utils.ts' });
+    assert.equal(r.success, true);
+    assert.equal(fs.existsSync(path.join(projeto, 'src', 'utils.ts')), true);
+  });
+});
+
+test('renomear por cima de arquivo existente é recusado', async () => {
+  await comPastaAberta(async (call, projeto) => {
+    fs.writeFileSync(path.join(projeto, 'outro.ts'), 'nao me apague\n');
+    const r = await call('POST', '/workspace/rename', { path: 'utils.ts', name: 'outro.ts' });
+    assert.equal(r.success, false);
+    assert.match(r.error ?? '', /já existe/);
+    assert.equal(fs.readFileSync(path.join(projeto, 'outro.ts'), 'utf8'), 'nao me apague\n');
+  });
+});
+
+test('renomear para fora da pasta aberta é recusado', async () => {
+  await comPastaAberta(async (call, projeto) => {
+    const r = await call('POST', '/workspace/rename', { path: 'utils.ts', name: '../fugiu.ts' });
+    assert.equal(r.success, false);
+    assert.equal(fs.existsSync(path.join(projeto, 'utils.ts')), true);
+  });
+});
+
+test('renomear o que não existe diz que não existe', async () => {
+  await comPastaAberta(async (call) => {
+    const r = await call('POST', '/workspace/rename', { path: 'fantasma.ts', name: 'x.ts' });
+    assert.equal(r.success, false);
+    assert.match(r.error ?? '', /não existe/);
+  });
+});
+
+test('renomear só a caixa do nome funciona', async () => {
+  // `Utils.ts` sobre `utils.ts`: num sistema que diferencia maiúsculas é
+  // renomear de verdade, e recusar por "já existe" seria recusar o próprio.
+  await comPastaAberta(async (call, projeto) => {
+    const r = await call('POST', '/workspace/rename', { path: 'utils.ts', name: 'Utils.ts' });
+    assert.equal(r.success, true);
+    assert.equal(fs.existsSync(path.join(projeto, 'Utils.ts')), true);
+  });
+});
+
+test('duplicar cria uma cópia com sufixo, sem tocar no original', async () => {
+  await comPastaAberta(async (call, projeto) => {
+    const r = await call('POST', '/workspace/duplicate', { path: 'utils.ts' });
+    assert.equal(r.success, true);
+    assert.equal((r.data as { path: string }).path, path.join(projeto, 'utils copy.ts'));
+    assert.match(fs.readFileSync(path.join(projeto, 'utils copy.ts'), 'utf8'), /VERSAO/);
+    assert.equal(fs.existsSync(path.join(projeto, 'utils.ts')), true);
+  });
+});
+
+test('duplicar duas vezes numera a partir da segunda', async () => {
+  await comPastaAberta(async (call, projeto) => {
+    await call('POST', '/workspace/duplicate', { path: 'utils.ts' });
+    const r = await call('POST', '/workspace/duplicate', { path: 'utils.ts' });
+    assert.equal((r.data as { path: string }).path, path.join(projeto, 'utils copy 2.ts'));
+  });
+});
+
+test('duplicar uma PASTA leva o conteúdo junto', async () => {
+  await comPastaAberta(async (call, projeto) => {
+    fs.mkdirSync(path.join(projeto, 'src', 'dentro'), { recursive: true });
+    fs.writeFileSync(path.join(projeto, 'src', 'dentro', 'a.ts'), 'oi\n');
+    const r = await call('POST', '/workspace/duplicate', { path: 'src' });
+    assert.equal(r.success, true);
+    assert.equal(
+      fs.readFileSync(path.join(projeto, 'src copy', 'dentro', 'a.ts'), 'utf8'),
+      'oi\n'
+    );
+  });
+});
+
+test('excluir apaga o arquivo', async () => {
+  await comPastaAberta(async (call, projeto) => {
+    const r = await call('DELETE', '/workspace/entry', { path: 'utils.ts' });
+    assert.equal(r.success, true);
+    assert.equal(fs.existsSync(path.join(projeto, 'utils.ts')), false);
+  });
+});
+
+test('excluir uma pasta leva o que há dentro', async () => {
+  await comPastaAberta(async (call, projeto) => {
+    fs.mkdirSync(path.join(projeto, 'lixo'));
+    fs.writeFileSync(path.join(projeto, 'lixo', 'a.ts'), 'x\n');
+    const r = await call('DELETE', '/workspace/entry', { path: 'lixo' });
+    assert.equal(r.success, true);
+    assert.equal(fs.existsSync(path.join(projeto, 'lixo')), false);
+  });
+});
+
+test('excluir a própria pasta aberta é recusado', async () => {
+  // Sem isto o botão direito na raiz apagaria o projeto e deixaria a IDE
+  // apontando para o nada.
+  await comPastaAberta(async (call, projeto) => {
+    const r = await call('DELETE', '/workspace/entry', { path: '.' });
+    assert.equal(r.success, false);
+    assert.equal(fs.existsSync(projeto), true);
+  });
+});
+
+test('excluir fora da pasta aberta é recusado', async () => {
+  await comPastaAberta(async (call, _projeto) => {
+    const r = await call('DELETE', '/workspace/entry', { path: '../projeto' });
+    assert.equal(r.success, false);
+  });
+});
+
+test('excluir o que não existe diz que não existe', async () => {
+  await comPastaAberta(async (call) => {
+    const r = await call('DELETE', '/workspace/entry', { path: 'fantasma.ts' });
+    assert.equal(r.success, false);
+    assert.match(r.error ?? '', /não existe/);
+  });
+});
+
+test('criar arquivo DENTRO de uma pasta escolhida (T045)', async () => {
+  await comPastaAberta(async (call, projeto) => {
+    fs.mkdirSync(path.join(projeto, 'src'));
+    const r = await call('POST', '/workspace/file', { name: 'src/novo.ts', content: '' });
+    assert.equal(r.success, true);
+    assert.equal((r.data as { path: string }).path, path.join(projeto, 'src', 'novo.ts'));
+  });
+});

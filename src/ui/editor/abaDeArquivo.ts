@@ -79,6 +79,14 @@ export async function montarAbaDeArquivo(
       meta: {
         path: dados.path,
         content: dados.content,
+        // A versão EM DISCO em que esta aba se baseia (T047).
+        //
+        // Diferente de `content`, que acompanha o que está sendo digitado. É
+        // com ela que o vigia compara: se o arquivo foi reescrito com os mesmos
+        // bytes — um formatador, um `git checkout` de ida e volta, o `touch` de
+        // um build —, não há nada de ninguém para perder, e avisar seria alarme
+        // falso.
+        emDisco: dados.content,
         language,
         view: null,
         // O CSV é TEXTO e continua sendo lido normalmente — o `meta.content`

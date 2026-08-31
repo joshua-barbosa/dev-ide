@@ -19,6 +19,7 @@ import {
   dentroDaPasta, filhosDaPasta, listarSubpastas, pastaValida, varrerArquivos,
   type FileNode,
 } from '../pastas';
+import { nomeDeCopia } from '../../shared/nome-de-copia';
 import type { EstadoStore } from '../estado';
 
 export interface RetratoDoEspaco {
@@ -167,6 +168,74 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
 
     fs.mkdirSync(alvo, { recursive: true });
     res.status(201).json(ok({ path: alvo }));
+  }));
+
+  // -------------------------------------------------------------------------
+  // Renomear, duplicar e excluir (T043, spec 073)
+  // -------------------------------------------------------------------------
+  //
+  // Três guardas em todas elas, e as três já evitaram estrago em alguma IDE:
+  //   1. **dentro da pasta aberta** — sem isso a árvore vira um `rm` do disco
+  //      inteiro por uma URL;
+  //   2. **não sobrescreve** — mover por cima de um arquivo existente perde o
+  //      que estava lá, em silêncio;
+  //   3. **o que não existe dá erro** — mexer no nada é engano de quem chamou,
+  //      e responder "ok" esconderia o engano.
+
+  /** A pasta aberta, validada — ou o erro que diz que não há nenhuma. */
+  const raizAberta = (): string => {
+    const atual = estado.ler().pastaAtual;
+    if (atual === null) throw new Error('Abra uma pasta antes.');
+    return pastaValida(atual);
+  };
+
+  /** Um item DE DENTRO da pasta aberta, que precisa existir. */
+  const itemExistente = (raiz: string, relativo: string): string => {
+    const alvo = dentroDaPasta(raiz, relativo.trim());
+    if (!fs.existsSync(alvo)) throw new Error(`"${relativo}" não existe.`);
+    return alvo;
+  };
+
+  router.post('/workspace/rename', wrap((req, res) => {
+    const raiz = raizAberta();
+    const de = itemExistente(raiz, requireString(req.body?.path, 'path'));
+    const nome = requireString(req.body?.name, 'name').trim();
+    if (nome === '') throw new Error('O nome não pode ser vazio.');
+    // Relativo à PASTA DO ITEM, e não à raiz: quem renomeia digita o nome, e
+    // `src/a.ts` renomeado para `b.ts` tem de ficar em `src/`.
+    const para = dentroDaPasta(raiz, path.join(path.relative(raiz, path.dirname(de)), nome));
+
+    // `!==` e não `existsSync` sozinho: trocar só a caixa (`utils.ts` para
+    // `Utils.ts`) é renomear de verdade, e recusar por "já existe" seria
+    // recusar o próprio arquivo.
+    if (para !== de && fs.existsSync(para)) {
+      throw new Error(`"${nome}" já existe nesta pasta.`);
+    }
+    fs.mkdirSync(path.dirname(para), { recursive: true });
+    fs.renameSync(de, para);
+    res.json(ok({ path: para }));
+  }));
+
+  router.post('/workspace/duplicate', wrap((req, res) => {
+    const raiz = raizAberta();
+    const de = itemExistente(raiz, requireString(req.body?.path, 'path'));
+    const pai = path.dirname(de);
+    const nome = nomeDeCopia(path.basename(de), (c) => fs.existsSync(path.join(pai, c)));
+    const para = path.join(pai, nome);
+    // `recursive` cobre pasta e arquivo com a mesma chamada — duplicar uma
+    // pasta sem o conteúdo dela seria uma casca, não uma cópia.
+    fs.cpSync(de, para, { recursive: true });
+    res.json(ok({ path: para }));
+  }));
+
+  router.delete('/workspace/entry', wrap((req, res) => {
+    const raiz = raizAberta();
+    const alvo = itemExistente(raiz, requireString(req.body?.path, 'path'));
+    // A própria raiz não: o botão direito nela apagaria o projeto e deixaria a
+    // IDE apontando para o nada.
+    if (alvo === raiz) throw new Error('A pasta aberta não pode ser excluída por aqui.');
+    fs.rmSync(alvo, { recursive: true, force: true });
+    res.json(ok({ path: alvo }));
   }));
 
   return router;

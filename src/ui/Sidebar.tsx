@@ -12,6 +12,7 @@ import { ConnectionsPanel, type ConnectionsPanelProps } from './connections/Conn
 import { SymbolsPanel } from './files/SymbolsPanel';
 import { SearchPanel, type SearchPanelProps } from './files/SearchPanel';
 import type { PastaAberta } from './files/usePasta';
+import type { FileNode } from './api';
 
 // Só ícone: o nome vira dica ao passar o mouse e rótulo acessível. Ganha
 // largura na lateral, que é estreita por natureza.
@@ -35,6 +36,10 @@ export interface SidebarProps {
   readonly onAbrirPasta: () => void;
   readonly onNovoArquivo: () => void;
   readonly onNovaPasta: () => void;
+  /** O menu de botão direito da árvore de arquivos e as teclas dele (T043). */
+  readonly onMenuDoArquivo: (no: FileNode, e: React.MouseEvent) => void;
+  readonly onRenomearArquivo: (no: FileNode) => void;
+  readonly onExcluirArquivo: (no: FileNode) => void;
   readonly busca: SearchPanelProps;
   readonly onErro: (erro: unknown) => void;
   /** Controlado por fora: o menu View também troca de painel. */
@@ -47,6 +52,9 @@ export function Sidebar({
   onAbrirPasta,
   onNovoArquivo,
   onNovaPasta,
+  onMenuDoArquivo,
+  onRenomearArquivo,
+  onExcluirArquivo,
   busca,
   onErro,
   painelAtivo,
@@ -108,6 +116,9 @@ export function Sidebar({
             onAbrirPasta={onAbrirPasta}
             onNovoArquivo={onNovoArquivo}
             onNovaPasta={onNovaPasta}
+            onMenuDoItem={onMenuDoArquivo}
+            onRenomear={onRenomearArquivo}
+            onExcluir={onExcluirArquivo}
             onErro={onErro}
           />
         )}

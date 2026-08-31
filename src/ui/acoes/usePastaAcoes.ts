@@ -5,6 +5,8 @@
 import { Api } from '../api';
 import { pedirComRetentativa, type QuickInputController } from '../useQuickInput';
 import type { PastaAberta } from '../files/usePasta';
+import type { EntradaMenu } from '../ContextMenu';
+import type { FileNode } from '../api';
 
 export interface PastaAcoesDeps {
   readonly qi: QuickInputController;
@@ -12,6 +14,19 @@ export interface PastaAcoesDeps {
   avisar(mensagem: string, titulo?: string): Promise<void>;
   /** Abre o arquivo recém-criado — criar sem abrir seria meio caminho. */
   abrirArquivo(caminho: string): Promise<void>;
+  /** Pergunta antes do que não tem volta (T043). */
+  confirmar(o: {
+    titulo: string;
+    mensagem: string;
+    rotuloConfirmar?: string;
+    destrutivo?: boolean;
+  }): Promise<boolean>;
+  /** As abas seguem o disco: renomear leva junto, excluir fecha (T043). */
+  aoRenomear(de: string, para: string): void;
+  aoExcluir(caminho: string): void;
+  /** Abre o menu de contexto nas coordenadas do cursor. */
+  abrirMenu(e: React.MouseEvent, entradas: readonly EntradaMenu[]): void;
+  copiar(texto: string): void;
 }
 
 export interface PastaAcoes {
@@ -22,6 +37,15 @@ export interface PastaAcoes {
   escolherProjeto(): Promise<void>;
   abrirPasta(): Promise<void>;
   abrirRecente(): Promise<void>;
+  // ---- o menu de botão direito da árvore (T043, T045) ----
+  /** Cria um arquivo DENTRO da pasta escolhida, e o abre (T045). */
+  novoArquivoEm(pastaDoItem: string): Promise<void>;
+  novaPastaEm(pastaDoItem: string): Promise<void>;
+  /** O menu de botão direito de um item da árvore (T043, T045). */
+  menuDoItem(no: FileNode, e: React.MouseEvent): void;
+  renomearItem(caminho: string): Promise<void>;
+  duplicarItem(caminho: string): Promise<void>;
+  excluirItem(caminho: string, ehPasta: boolean): Promise<void>;
 }
 
 export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
@@ -145,7 +169,133 @@ export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
     );
   };
 
+  // -------------------------------------------------------------------------
+  // O menu de botão direito da árvore (T043, T045)
+  // -------------------------------------------------------------------------
+
+  /** O caminho de um item RELATIVO à pasta aberta — é o que as rotas de criar pedem. */
+  const relativo = (caminho: string): string =>
+    caminho.startsWith(`${pasta.pasta}/`) ? caminho.slice(pasta.pasta.length + 1) : '';
+
+  /**
+   * Cria dentro da pasta escolhida (T045).
+   *
+   * A desculpa que eu tinha era que `Novo arquivo` no cabeçalho já resolvia —
+   * e resolve, desde que você digite o caminho inteiro toda vez. O menu da
+   * pasta poupa isso: o prefixo já vai posto, e o campo abre com ele.
+   */
+  const criarEm = async (
+    pastaDoItem: string,
+    titulo: string,
+    gravar: (nome: string) => Promise<string>
+  ): Promise<string | null> => {
+    const prefixo = relativo(pastaDoItem);
+    return pedirComRetentativa(
+      qi,
+      {
+        titulo,
+        placeholder: prefixo === '' ? 'ex.: utils.ts' : `dentro de ${prefixo}/`,
+        // O prefixo entra COMO TEXTO no campo, e não como enfeite: assim ele
+        // é visível, editável e chega ao servidor sem depender de o chamador
+        // lembrar de recolocá-lo.
+        valorInicial: prefixo === '' ? '' : `${prefixo}/`,
+      },
+      gravar
+    );
+  };
+
+  const novoArquivoEm = async (pastaDoItem: string): Promise<void> => {
+    const criado = await criarEm(pastaDoItem, 'Nome do arquivo', (nome) =>
+      pasta.criarArquivo(nome, '')
+    );
+    if (criado !== null) await abrirArquivo(criado);
+  };
+
+  const novaPastaEm = async (pastaDoItem: string): Promise<void> => {
+    await criarEm(pastaDoItem, 'Nome da pasta', (nome) => pasta.criarPasta(nome));
+  };
+
+  /**
+   * Renomeia, e leva as abas abertas junto.
+   *
+   * O campo abre com o nome ATUAL — renomear costuma ser trocar uma letra, e
+   * obrigar a redigitar o nome inteiro seria hostil.
+   */
+  const renomearItem = async (caminho: string): Promise<void> => {
+    const atual = caminho.split('/').pop() ?? caminho;
+    const novo = await pedirComRetentativa(
+      qi,
+      { titulo: 'Renomear', placeholder: atual, valorInicial: atual },
+      (nome: string) => pasta.renomear(caminho, nome)
+    );
+    if (novo !== null && novo !== caminho) deps.aoRenomear(caminho, novo);
+  };
+
+  const duplicarItem = async (caminho: string): Promise<void> => {
+    await pasta.duplicar(caminho);
+  };
+
+  /**
+   * Exclui, depois de perguntar.
+   *
+   * A nota dele foi explícita: *"com F2 e Delete com confirmação"*. Não há
+   * lixeira aqui — o que sai, sai —, então a caixa diz o nome e é destrutiva.
+   */
+  const excluirItem = async (caminho: string, ehPasta: boolean): Promise<void> => {
+    const nome = caminho.split('/').pop() ?? caminho;
+    const ok = await deps.confirmar({
+      titulo: 'Excluir',
+      mensagem: ehPasta
+        ? `Excluir a pasta "${nome}" e tudo que há dentro dela?\n\nIsto não tem desfazer.`
+        : `Excluir "${nome}"?\n\nIsto não tem desfazer.`,
+      rotuloConfirmar: 'excluir',
+      destrutivo: true,
+    });
+    if (!ok) return;
+    await pasta.excluir(caminho);
+    deps.aoExcluir(caminho);
+  };
+
+  /**
+   * O menu de botão direito da árvore de arquivos (T043, T045).
+   *
+   * A ordem é a do VS Code, e não é enfeite: a mão já sabe onde `Renomear` e
+   * `Excluir` ficam. `Excluir` fica sozinho no fim, atrás de um separador —
+   * é o único que não tem volta.
+   *
+   * `Novo arquivo aqui` só aparece em PASTA (T045). Num arquivo ele existiria
+   * como "ao lado deste", que é a mesma coisa que o botão do cabeçalho já faz,
+   * e um item a mais para ler toda vez.
+   */
+  const menuDoItem = (no: FileNode, e: React.MouseEvent): void => {
+    const pastaDoItem = no.type === 'dir' ? no.path : no.path.slice(0, no.path.lastIndexOf('/'));
+    const relativo = no.path.startsWith(`${pasta.pasta}/`)
+      ? no.path.slice(pasta.pasta.length + 1)
+      : no.path;
+    deps.abrirMenu(e, [
+      ...(no.type === 'dir'
+        ? [
+            { label: 'Novo arquivo aqui', onClick: () => novoArquivoEm(pastaDoItem) },
+            { label: 'Nova pasta aqui', onClick: () => novaPastaEm(pastaDoItem) },
+            null,
+          ]
+        : []),
+      { label: 'Renomear (F2)', onClick: () => renomearItem(no.path) },
+      { label: 'Duplicar', onClick: () => duplicarItem(no.path) },
+      null,
+      { label: 'Copiar caminho', onClick: () => deps.copiar(no.path) },
+      { label: 'Copiar caminho relativo', onClick: () => deps.copiar(relativo) },
+      null,
+      {
+        label: 'Excluir (Delete)',
+        danger: true,
+        onClick: () => excluirItem(no.path, no.type === 'dir'),
+      },
+    ]);
+  };
+
   return {
     novoProjeto, escolherProjeto, abrirPasta, abrirRecente, novoArquivoNaPasta, novaPasta,
+    novoArquivoEm, novaPastaEm, menuDoItem, renomearItem, duplicarItem, excluirItem,
   };
 }

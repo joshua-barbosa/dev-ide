@@ -296,6 +296,13 @@ export const Api = {
     request<{ path: string }>('POST', '/api/workspace/file', { name, content }),
   createWorkspaceFolder: (name: string) =>
     request<{ path: string }>('POST', '/api/workspace/folder', { name }),
+  /** Renomear, duplicar e excluir na árvore (T043). O caminho é absoluto. */
+  renameEntry: (path: string, name: string) =>
+    request<{ path: string }>('POST', '/api/workspace/rename', { path, name }),
+  duplicateEntry: (path: string) =>
+    request<{ path: string }>('POST', '/api/workspace/duplicate', { path }),
+  deleteEntry: (path: string) =>
+    request<{ path: string }>('DELETE', '/api/workspace/entry', { path }),
 
   // ---- preferências ----
   prefs: () => request<Preferencias>('GET', '/api/prefs'),

@@ -137,3 +137,55 @@ test('mudança dentro de node_modules NÃO mexe na IDE', async ({ page }) => {
   await expect(page.getByRole('tab', { name: /Problems/ })).not.toContainText('1');
   expect(await textoDoEditor(page)).toBe(antes);
 });
+
+// ---------------------------------------------------------------------------
+// Comparar o CONTEÚDO antes de avisar (T047, spec 073)
+// ---------------------------------------------------------------------------
+//
+// A desculpa que eu tinha escrito era *"o `mtime` é o bastante"*. Não é: ele
+// muda quando um formatador grava o mesmo texto, quando o git troca de ramo e
+// volta, quando o `touch` de um build passa por cima. Nesses casos o aviso é
+// falso — e aviso falso repetido ensina a ignorar o verdadeiro.
+
+test('gravar o MESMO texto por fora não vira conflito (T047)', async ({ page }) => {
+  const nome = `vigia-igual-${Date.now()}.txt`;
+  porFora(nome, 'original\n');
+  await expect(linhaArvore(page, nome)).toBeVisible({ timeout: 10_000 });
+  await abrirArquivo(page, nome);
+  await esperarEditorPronto(page);
+
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type('minha edicao');
+  const antes = await textoDoEditor(page);
+
+  // O `mtime` muda; o conteúdo em disco continua o mesmo de antes.
+  porFora(nome, 'original\n');
+
+  // Nada acontece: nem aviso em `Problems`, nem troca do que está na tela.
+  await page.waitForTimeout(2_000);
+  await expect(page.getByRole('tab', { name: /Problems/ })).not.toContainText('1');
+  expect(await textoDoEditor(page)).toBe(antes);
+});
+
+test('a aba LIMPA não é recarregada quando o texto é o mesmo (T047)', async ({ page }) => {
+  // Recarregar sem necessidade não é só desperdício: `setValue` joga fora o
+  // histórico de desfazer, e o `Ctrl+Z` de quem estava trabalhando some.
+  const nome = `vigia-limpa-${Date.now()}.txt`;
+  porFora(nome, 'linha um\n');
+  await expect(linhaArvore(page, nome)).toBeVisible({ timeout: 10_000 });
+  await abrirArquivo(page, nome);
+  await esperarEditorPronto(page);
+
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type('rascunho');
+  await page.keyboard.press('Control+s');
+  await expect(page.locator(`[data-tab="${nome}"]`)).toHaveAttribute('data-tab-dirty', 'false');
+
+  porFora(nome, await textoDoEditor(page));
+  await page.waitForTimeout(2_000);
+
+  // O desfazer continua vivo, porque ninguém trocou o texto por baixo dele.
+  await editor(page).click();
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => textoDoEditor(page)).not.toContain('rascunho');
+});
