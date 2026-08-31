@@ -27,6 +27,17 @@ export interface PedidoRapido {
    * Sem esta distinção, apagar o filtro não fazia nada.
    */
   readonly permiteVazio?: boolean;
+  /**
+   * Substitui o filtro padrão da lista (T051).
+   *
+   * O padrão é "contém todos os termos", que serve para escolher um tema ou uma
+   * conexão. O `Ctrl+P` precisa de outra coisa: casamento por subsequência e
+   * uma ORDEM — e a ordem não cabe num filtro de `includes`.
+   */
+  readonly filtrar?: (
+    opcoes: readonly OpcaoRapida[],
+    texto: string
+  ) => readonly OpcaoRapida[];
 }
 
 export interface QuickInputController {

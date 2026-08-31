@@ -10,7 +10,7 @@
 // 2. `null` significa "nenhuma aba". Usá-lo também para "aba fechada" faz a
 //    guarda engolir o evento de fechar a última, e a barra de status fica presa
 //    no arquivo anterior.
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { Tab, TabStore } from '../shared/tabs';
 import type { Lado, NoDeLayout } from '../shared/layout-editor';
 import { useLayoutDeGrupos } from './editor/useLayoutDeGrupos';
@@ -21,16 +21,17 @@ import { ICONE_DE_ARQUIVO, iconeDeArquivo } from '../shared/editor/arquivos';
 import type { EditorHandle, ViewState } from './editor/EditorHost';
 import { EXT_TO_LANG, NOME_TO_LANG } from '../shared/editor/languages';
 import { montarAbaDeArquivo } from './editor/abaDeArquivo';
-import { gravarSeRemota, idDaAbaRemota, lerParaAba } from './remoto/abaRemota';
+import { idDaAbaRemota, lerParaAba } from './remoto/abaRemota';
 import { soltarNoGrupoCom } from './tabs/soltura';
 import { restaurarSessaoCom } from './tabs/restauracao';
 import { abasDoDisco } from './tabs/abas-do-disco';
+import { gravacao } from './tabs/gravacao';
 import { Api } from './api';
 import { useTabs } from './tabs/useTabs';
 import { useAbasDeDados } from './tabs/useAbasDeDados';
 import { useGruposDeEditor } from './editor/useGruposDeEditor';
 import type { SessaoDeAbas } from '../shared/sessao-abas';
-import { chaveDoModelo, gemeas, idBaseDe } from '../shared/abas-gemeas';
+import { chaveDoModelo, gemeas } from '../shared/abas-gemeas';
 import { descartarModelo } from './editor/modelos';
 
 export interface EditorTabMeta {
@@ -249,9 +250,17 @@ export interface WorkspaceDeps {
     rotuloConfirmar?: string;
     destrutivo?: boolean;
   }): Promise<boolean>;
+  /**
+   * Um arquivo foi aberto no editor (T051).
+   *
+   * Existe para a lista de recentes do `Ctrl+P`. Fica aqui, e não em cada
+   * chamador, porque a árvore, a busca, os símbolos e o próprio `Ctrl+P` abrem
+   * todos por esta função — e um deles esqueceria de avisar.
+   */
+  aoAbrirArquivo?(caminho: string): void;
 }
 
-export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
+export function useWorkspace({ confirmar, aoAbrirArquivo }: WorkspaceDeps): Workspace {
   const { store, tabs, activeId, active, grupos, grupoFocado } = useTabs();
   const [cursor, setCursor] = useState({ linha: 1, coluna: 1 });
   const [edicoes, setEdicoes] = useState(0);
@@ -285,14 +294,20 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     store, tabs, grupoFocado, salvarTodosOsGrupos,
   });
 
+  const aoAbrir = useRef(aoAbrirArquivo);
+  aoAbrir.current = aoAbrirArquivo;
+
   const abrirArquivo = useCallback(
     async (caminho: string) => {
       const jaAberta = store.get(`file:${caminho}`);
       if (jaAberta !== null) {
-        // Já aberta: foca, preservando edições não salvas.
+        // Já aberta: foca, preservando edições não salvas. Continua contando
+        // como "aberto agora" para os recentes — voltar a um arquivo é usá-lo.
+        aoAbrir.current?.(caminho);
         store.activate(jaAberta.id);
         return;
       }
+      aoAbrir.current?.(caminho);
 
       const { aba } = await montarAbaDeArquivo(caminho, Api.readFile, linguagemDe);
       // Salva a aba corrente antes de abrir a nova, senão o conteúdo se perde.
@@ -463,91 +478,6 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     marcarComGemeas(id, true);
   }, [ed, marcarComGemeas]);
 
-  /**
-   * Grava a aba ativa e devolve o caminho.
-   *
-   * Devolve `null` quando não há arquivo conhecido — aba sem título ou aba de
-   * query. Quem chama decide o que fazer: no caso do sem-título, pedir o nome.
-   * Este gancho não pergunta nada, para continuar sem depender de interface.
-   */
-  const salvar = useCallback(async (): Promise<string | null> => {
-    const aba = active;
-    if (aba === null) return null;
-    const meta = metaDe(aba);
-
-    // Arquivo do servidor (spec 053): vai de volta por onde veio. Vem ANTES da
-    // guarda de `path`, que é nulo aqui — o arquivo não existe em disco.
-    const remoto = await gravarSeRemota(
-      aba,
-      ehEditavel(aba) ? editorRef.current : null,
-      meta.content
-    );
-    if (remoto !== null) {
-      marcarComGemeas(aba.id, false);
-      return remoto;
-    }
-
-    if (meta.path === null) return null;
-
-    // O caderno (spec 048) não tem editor do Monaco: o conteúdo dele já mora no
-    // `meta`, atualizado a cada tecla pelos blocos. Os demais leem do editor,
-    // porque o `meta` só é atualizado ao trocar de aba — salvar dali gravaria a
-    // versão de antes da última tecla.
-    if (aba.type === 'caderno') {
-      await Api.saveFile(meta.path, meta.content);
-      store.update(aba.id, { dirty: false, meta: { ...meta, emDisco: meta.content } });
-      return meta.path;
-    }
-
-
-    const editor = editorRef.current;
-    if (editor === null || !ehEditavel(aba)) return null;
-    const gravado = editor.getValue();
-    await Api.saveFile(meta.path, gravado);
-    marcarComGemeas(aba.id, false, gravado);
-    return meta.path;
-  }, [active, marcarComGemeas, store]);
-
-  /**
-   * Grava tudo que está sujo e tem para onde ir.
-   *
-   * O conteúdo da aba ATIVA vem do editor, não do estado da aba: o estado só é
-   * atualizado ao trocar de aba, então salvar a partir dele gravaria a versão
-   * de antes da última tecla (AC-2).
-   */
-  const salvarTodas = useCallback(async (): Promise<{ gravadas: number; semNome: number }> => {
-    // Todos os grupos, não só o focado: "Save All" com a tela dividida tem que
-    // gravar os dois lados.
-    salvarTodosOsGrupos();
-
-    // Uma gravação por ARQUIVO, e não por vista: com o mesmo arquivo aberto
-    // dos dois lados, as duas abas estão sujas e gravá-lo duas vezes contaria
-    // dois em "3 arquivos salvos".
-    const vistos = new Set<string>();
-    const sujas = store
-      .list()
-      .filter((aba) => aba.dirty && ehEditavel(aba))
-      .filter((aba) => {
-        const base = idBaseDe(aba.id);
-        if (vistos.has(base)) return false;
-        vistos.add(base);
-        return true;
-      });
-    let gravadas = 0;
-    let semNome = 0;
-
-    for (const aba of sujas) {
-      const meta = metaDe(aba);
-      if (meta.path === null) {
-        semNome += 1;
-        continue;
-      }
-      await Api.saveFile(meta.path, meta.content);
-      marcarComGemeas(aba.id, false, meta.content);
-      gravadas += 1;
-    }
-    return { gravadas, semNome };
-  }, [marcarComGemeas, salvarTodosOsGrupos, store]);
 
   /**
    * Abre um arquivo num grupo específico.
@@ -570,6 +500,33 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
   );
 
   /** Reabre as abas de uma sessão guardada — o como está em `tabs/restauracao.ts`. */
+  // Gravar em disco mora em `tabs/gravacao.ts` — ver a nota lá.
+  const escrita = gravacao({
+    store,
+    abaAtiva: () => active,
+    editorAtivo: () => editorRef.current,
+    ehEditavel,
+    metaDe,
+    marcarComGemeas,
+    salvarTodosOsGrupos,
+    semSujar: ed.semSujar,
+  });
+  const salvar = useCallback(
+    () => escrita.salvar(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [active, store]
+  );
+  const salvarTodas = useCallback(
+    () => escrita.salvarTodas(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [store]
+  );
+  const reverter = useCallback(
+    () => escrita.reverter(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [active, store]
+  );
+
   // As abas e o disco: renomear, apagar, reler e o conflito (T043, T047).
   const doDisco = abasDoDisco({
     store,
@@ -651,24 +608,6 @@ export function useWorkspace({ confirmar }: WorkspaceDeps): Workspace {
     [store]
   );
 
-  const reverter = useCallback(async (): Promise<void> => {
-    const aba = active;
-    const editor = editorRef.current;
-    if (aba === null || editor === null || !ehEditavel(aba)) {
-      throw new Error('Não há arquivo aberto para reverter.');
-    }
-    const meta = metaDe(aba);
-    if (meta.path === null) {
-      throw new Error('Esta aba ainda não foi salva — não há versão em disco para voltar.');
-    }
-
-    const dados = await Api.readFile(meta.path);
-    ed.semSujar(() => editor.setValue(dados.content));
-    store.update(aba.id, {
-      dirty: false,
-      meta: { ...meta, content: dados.content, emDisco: dados.content, view: null },
-    });
-  }, [active, ed, store]);
 
 
   /**

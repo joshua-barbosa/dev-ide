@@ -30,13 +30,18 @@ export interface QuickInputProps {
   readonly valorInicial?: string;
   readonly erro?: string | null;
   readonly permiteVazio?: boolean;
+  /** Substitui o filtro padrão da lista — ver `PedidoRapido.filtrar` (T051). */
+  readonly filtrar?: (
+    opcoes: readonly OpcaoRapida[],
+    texto: string
+  ) => readonly OpcaoRapida[];
   readonly onConfirmar: (valor: string) => void;
   readonly onCancelar: () => void;
 }
 
 export function QuickInput({
   aberto, titulo, placeholder, opcoes, valorInicial = '', erro = null,
-  permiteVazio = false, onConfirmar, onCancelar,
+  permiteVazio = false, filtrar, onConfirmar, onCancelar,
 }: QuickInputProps) {
   const [texto, setTexto] = useState(valorInicial);
   const [indice, setIndice] = useState(0);
@@ -46,12 +51,13 @@ export function QuickInput({
 
   const visiveis = useMemo(() => {
     if (opcoes === undefined) return [];
+    if (filtrar !== undefined) return filtrar(opcoes, texto);
     const termos = texto.toLowerCase().split(/\s+/).filter((t) => t !== '');
     return opcoes.filter((o) => {
       const alvo = `${o.rotulo} ${o.detalhe ?? ''}`.toLowerCase();
       return termos.every((termo) => alvo.includes(termo));
     });
-  }, [opcoes, texto]);
+  }, [filtrar, opcoes, texto]);
 
   // Cada abertura começa limpa; sem isso a caixa reabre com a busca anterior.
   useEffect(() => {

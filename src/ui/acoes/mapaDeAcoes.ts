@@ -50,6 +50,8 @@ export interface DepsDoMapa {
   /** Divide o terminal ativo. `horizontal` (lado a lado) é o padrão (T020). */
   readonly dividirTerminalNoPainel: (orientacao?: 'horizontal' | 'vertical') => void;
   readonly abrirPorCaminho: () => Promise<void>;
+  /** `Ctrl+P`: acha pelo NOME. Diferente de `abrirPorCaminho`, que pede o caminho. */
+  readonly irParaArquivo: () => Promise<void>;
   readonly abrirPreferencias: () => Promise<void>;
   readonly abrirPaleta: () => void | Promise<void>;
   readonly escolherTema: () => Promise<void>;
@@ -65,7 +67,7 @@ export function mapaDeAcoes(deps: DepsDoMapa): Readonly<Record<IdImplementado, (
   const {
     ws, exec, conexoes, dialogs, layout, prefs, nav,
     arquivoAcoes, codigoAcoes, comandosAcoes, conexoesAcoes, pastaAcoes, snippetsAcoes,
-    novoArquivo, novoTerminalNoPainel, dividirTerminalNoPainel, abrirPorCaminho,
+    novoArquivo, novoTerminalNoPainel, dividirTerminalNoPainel, abrirPorCaminho, irParaArquivo,
     abrirPreferencias, abrirPaleta, escolherTema, irPara, irParaLinha, executar,
     setPainelLateral, avisar,
   } = deps;
@@ -130,7 +132,7 @@ return {
   'view.wordWrap': () =>
     avisar(prefs.definir({ 'editor.wordWrap': !prefs.prefs['editor.wordWrap'] })),
 
-  'go.file': () => avisar(abrirPorCaminho()),
+  'go.file': () => avisar(irParaArquivo()),
   'go.symbol': () => setPainelLateral('symbols'),
   'go.line': () => avisar(irParaLinha()),
   'go.definition': () => avisar(codigoAcoes.irParaDefinicao()),

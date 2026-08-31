@@ -88,6 +88,29 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
     res.json({ success: true, data: filhosDaPasta(pastaValida(alvo), raiz), error: null });
   }));
 
+  /**
+   * Todo arquivo da pasta aberta, para o `Ctrl+P` (T051).
+   *
+   * Caminhos RELATIVOS: é o que se lê na lista, e o cliente já sabe a raiz.
+   *
+   * Respeita o `.gitignore` pela mesma razão da busca e dos símbolos — ninguém
+   * abre `node_modules/.../index.js` pelo `Ctrl+P`, e ter mil deles na lista
+   * empurraria para baixo o arquivo que se procura.
+   */
+  router.get('/workspace/files', wrap((_req, res) => {
+    const atual = estado.ler().pastaAtual;
+    if (atual === null) {
+      res.json(ok({ files: [], truncated: false }));
+      return;
+    }
+    const raiz = pastaValida(atual);
+    const { arquivos, truncated } = varrerArquivos(raiz);
+    res.json(ok({
+      files: arquivos.map((a) => path.relative(raiz, a)),
+      truncated,
+    }));
+  }));
+
   /** Navegador de pastas. Sem `path`, começa na pasta pessoal do usuário. */
   router.get('/folders', wrap((req, res) => {
     const bruto = typeof req.query.path === 'string' && req.query.path !== ''

@@ -67,6 +67,7 @@ import { useAcoesRemotas } from './acoes/useAcoesRemotas';
 import { depsDasAcoesRemotas } from './acoes/depsDasAcoesRemotas';
 import { mapaDeAcoes } from './acoes/mapaDeAcoes';
 import { usePasta } from './files/usePasta';
+import { useRecentesDeArquivo } from './files/useRecentesDeArquivo';
 import { usePrefs } from './usePrefs';
 import { useAutoSave } from './useAutoSave';
 import { useSessaoDeAbas } from './useSessaoDeAbas';
@@ -103,7 +104,12 @@ export function App() {
   const falhaDeConexao = falhou('conexão');
   const falhaDaIde = falhou('ide');
 
-  const ws = useWorkspace({ confirmar: dialogs.confirmar });
+  const ws = useWorkspace({
+    confirmar: dialogs.confirmar,
+    // A lista de recentes do `Ctrl+P` (T051). Aqui, e não em cada chamador:
+    // árvore, busca, símbolos e o próprio `Ctrl+P` abrem todos por `abrirArquivo`.
+    aoAbrirArquivo: (caminho) => recentesDeArquivo.registrar(caminho),
+  });
   /**
    * O snippet que a barra do painel mandou, por pane (T087).
    *
@@ -120,6 +126,7 @@ export function App() {
   const conexoes = useConnections({ confirmar: dialogs.confirmar });
   const menu = useContextMenu(falhaDaIde);
   const pasta = usePasta();
+  const recentesDeArquivo = useRecentesDeArquivo(pasta.pasta);
   const qi = useQuickInput();
   // O vínculo precisa existir ANTES da execução: é ele que diz contra quem cada
   // arquivo roda (spec 038).
@@ -273,11 +280,14 @@ export function App() {
   });
 
 
-  const { abrirPreferencias, abrirPorCaminho, escolherTema } = useAberturas({
+  const { abrirPreferencias, abrirPorCaminho, irParaArquivo, escolherTema } = useAberturas({
     qi,
     abrirArquivo: ws.abrirArquivo,
     tema,
     definirTema: (nome) => prefs.definir({ 'workbench.theme': nome }),
+    pasta: pasta.pasta,
+    recentes: recentesDeArquivo.lista,
+    avisar: dialogs.avisar,
   });
 
   const { escolherLinguagem, irParaLinha } = useStatusAcoes({
@@ -436,7 +446,7 @@ export function App() {
   const ACOES = mapaDeAcoes({
     ws, exec, conexoes, dialogs, layout, prefs, nav,
     arquivoAcoes, codigoAcoes, comandosAcoes, conexoesAcoes, pastaAcoes, snippetsAcoes,
-    novoArquivo, novoTerminalNoPainel, dividirTerminalNoPainel, abrirPorCaminho,
+    novoArquivo, novoTerminalNoPainel, dividirTerminalNoPainel, abrirPorCaminho, irParaArquivo,
     abrirPreferencias, abrirPaleta, escolherTema, irPara, irParaLinha, executar,
     setPainelLateral, avisar,
   });
@@ -758,6 +768,7 @@ export function App() {
         valorInicial={qi.pedido?.valorInicial}
         erro={qi.pedido?.erro ?? null}
         permiteVazio={qi.pedido?.permiteVazio === true}
+        filtrar={qi.pedido?.filtrar}
         onConfirmar={qi.confirmar}
         onCancelar={qi.cancelar}
       />

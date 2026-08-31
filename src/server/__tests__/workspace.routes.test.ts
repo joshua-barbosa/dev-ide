@@ -358,3 +358,40 @@ test('criar arquivo DENTRO de uma pasta escolhida (T045)', async () => {
     assert.equal((r.data as { path: string }).path, path.join(projeto, 'src', 'novo.ts'));
   });
 });
+
+// ---------------------------------------------------------------------------
+// A lista de arquivos do `Ctrl+P` (T051, spec 073)
+// ---------------------------------------------------------------------------
+
+test('a lista de arquivos vem relativa à pasta aberta', async () => {
+  await comPastaAberta(async (call, projeto) => {
+    fs.mkdirSync(path.join(projeto, 'src'));
+    fs.writeFileSync(path.join(projeto, 'src', 'a.ts'), 'x\n');
+    const r = (await call('GET', '/workspace/files')).data as { files: string[] };
+    assert.deepEqual([...r.files].sort(), ['src/a.ts', 'utils.ts']);
+  });
+});
+
+test('a lista respeita o .gitignore', async () => {
+  // Ninguém abre `node_modules/.../index.js` pelo Ctrl+P, e ter mil deles na
+  // lista empurraria para baixo o arquivo que se procura.
+  await comPastaAberta(async (call, projeto) => {
+    fs.mkdirSync(path.join(projeto, 'node_modules'));
+    fs.writeFileSync(path.join(projeto, 'node_modules', 'dep.js'), 'x\n');
+    fs.writeFileSync(path.join(projeto, '.gitignore'), 'segredo.txt\n');
+    fs.writeFileSync(path.join(projeto, 'segredo.txt'), 'x\n');
+
+    const r = (await call('GET', '/workspace/files')).data as { files: string[] };
+    assert.ok(!r.files.some((f) => f.startsWith('node_modules')));
+    assert.ok(!r.files.includes('segredo.txt'));
+  });
+});
+
+test('sem pasta aberta a lista vem vazia, e não com erro', async () => {
+  // O `Ctrl+P` pode ser apertado antes de abrir pasta; erro ali seria ruído.
+  await comServidor(async (call) => {
+    const r = await call('GET', '/workspace/files');
+    assert.equal(r.success, true);
+    assert.deepEqual((r.data as { files: string[] }).files, []);
+  });
+});

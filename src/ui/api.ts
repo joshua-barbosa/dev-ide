@@ -288,6 +288,9 @@ export const Api = {
       `/api/files/children?path=${encodeURIComponent(caminho)}`
     ),
   docs: () => request<{ path: string }>('GET', '/api/docs'),
+  /** Todo arquivo da pasta aberta, em caminho relativo, para o `Ctrl+P` (T051). */
+  workspaceFiles: () =>
+    request<{ files: string[]; truncated: boolean }>('GET', '/api/workspace/files'),
   openFolder: (path: string) => request<RetratoDoEspaco>('POST', '/api/workspace', { path }),
   closeFolder: () => request<RetratoDoEspaco>('DELETE', '/api/workspace'),
   forgetFolder: (path: string) =>
