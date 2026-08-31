@@ -17,6 +17,9 @@ import {
   interpretarTamanho,
   type FiltroDaArvore,
 } from '../../shared/tree/filtro-da-arvore';
+import {
+  chaveDoNo, expansoesSemAConexao, filhosSemAConexao,
+} from '../../shared/connections/arvore-aberta';
 import { Api, type CriteriosDeArvore, type DriverInfo } from '../api';
 import type { ArquivoDeQuery, Vinculo } from '../../shared/sql/vinculo';
 
@@ -80,8 +83,8 @@ function criteriosDe(filtro: FiltroDaArvore | undefined): CriteriosDeArvore | un
 }
 
 /** Chave de cache: id da conexão mais o caminho do nó. */
-const chaveDe = (id: string, caminho: readonly string[]): string =>
-  [id, ...caminho].join('\u0000');
+/** A chave do cache de filhos. A montagem mora em `shared` e é testada lá. */
+const chaveDe = chaveDoNo;
 
 /** Um pedido de senha em aberto — o que o diálogo precisa saber para se desenhar. */
 export interface PedidoDeSenha {
@@ -368,14 +371,27 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
     [buscarFilhos, carregarFiltros, expandidos, garantirDestrancado, marcar, recarregar]
   );
 
+  /**
+   * Fecha UMA conexão.
+   *
+   * **O cache de filhos é limpo só do que é dela.** Ele era zerado inteiro, e
+   * como a chave começa pelo id da conexão, isso apagava a árvore já carregada
+   * de TODAS as outras: elas continuavam expandidas, sem filhos, e a tela ficava
+   * igual à de quem desconectou tudo. O servidor sempre fechou só a pedida — o
+   * estrago era só aqui.
+   *
+   * As marcas de expansão dos nós internos também saem: reconectar depois com
+   * `expandidos` cheio faria a árvore tentar reabrir ramos que ainda não têm
+   * filhos, disparando uma busca por nó de uma vez só.
+   */
   const desconectar = useCallback(
     async (id: string) => {
       await Api.disconnect(id);
-      setExpandidos((atual) => marcar(atual, `conn:${id}`, false));
-      setFilhos(new Map());
+      setExpandidos((atual) => expansoesSemAConexao(atual, id));
+      setFilhos((atual) => filhosSemAConexao(atual, id));
       await recarregar();
     },
-    [marcar, recarregar]
+    [recarregar]
   );
 
   const alternarNo = useCallback(

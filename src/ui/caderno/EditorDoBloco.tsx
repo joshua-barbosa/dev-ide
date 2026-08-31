@@ -63,16 +63,29 @@ export function EditorDoBloco({
       theme: NOME_DO_TEMA,
       fontFamily: tokens.fontMono,
       fontSize,
+      // A MESMA entrelinha da camada de cor (`estiloDoTexto` usa 1.5). Sem
+      // fixar, o Monaco deriva a dele da fonte — e o bloco mudava de altura ao
+      // ganhar foco, empurrando o que vem embaixo.
+      lineHeight: Math.round(fontSize * 1.5),
       tabSize,
       insertSpaces: true,
       automaticLayout: true,
       // Um bloco não é um arquivo: minimapa, régua de rolagem e números de
       // linha roubariam a largura que o código usa.
       minimap: { enabled: false },
+      // O bloco já tem `▷ Run ＋Tab JSON` na barra dele (spec 051). O CodeLens
+      // de SQL é registrado por LINGUAGEM (spec 038), então ele aparecia aqui
+      // dentro também — os mesmos três botões duas vezes, e uma linha a mais
+      // empurrando o código para baixo.
+      codeLens: false,
       lineNumbers: 'off',
       glyphMargin: false,
       folding: false,
-      lineDecorationsWidth: 0,
+      // Os 8px da esquerda são os do `padding` de `estiloDoTexto`: sem eles o
+      // texto COLA na parede ao entrar em edição, e o bloco parece outro. Vem
+      // por aqui, e não por `padding` do embrulho — mexer na caixa muda a
+      // geometria das frestas de arrastar bloco, e o teste pegou.
+      lineDecorationsWidth: 8,
       lineNumbersMinChars: 0,
       overviewRulerLanes: 0,
       scrollbar: { vertical: 'hidden', alwaysConsumeMouseWheel: false },
@@ -126,6 +139,10 @@ export function EditorDoBloco({
       ref={caixa}
       data-editor-do-bloco
       aria-label={rotulo}
+      // Os 8px laterais são os do `padding` de `estiloDoTexto`. O Monaco só
+      // aceita `padding` em cima e embaixo, então a folga lateral vem daqui —
+      // sem ela o texto COLA na parede ao entrar em edição, e o bloco parece
+      // outro. Vertical continua com o `padding` do próprio editor.
       sx={{ width: '100%', minWidth: 0 }}
     />
   );

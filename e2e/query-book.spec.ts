@@ -570,3 +570,47 @@ test('bloco de Python roda, e a saída cai no Output (T077)', async ({ page }) =
     timeout: 30_000,
   });
 });
+
+// ---------------------------------------------------------------------------
+// O bloco em EDIÇÃO tem a mesma cara do bloco parado
+// ---------------------------------------------------------------------------
+//
+// Ele descreveu assim: *"está meio quebrado ali, grudado com a parede, ele meio
+// que desconfigura"*. Três causas, todas do Monaco que entra no foco (T073):
+// texto colado na parede, entrelinha diferente da camada de cor, e o CodeLens
+// de SQL — registrado por LINGUAGEM (spec 038) — aparecendo DENTRO do bloco,
+// repetindo os três botões que a barra dele já tem.
+
+test('o bloco em foco NÃO repete Run/Tab/JSON dentro do editor', async ({ page }) => {
+  await novoCaderno(page, 'sem-codelens');
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await escreverNoBloco(page, 0, 'select 1');
+
+  const editor = bloco(page, 0).locator('[data-editor-do-bloco]');
+  await expect(editor).toBeVisible();
+  // O CodeLens do Monaco desenha os comandos em `.codelens-decoration`.
+  await expect(editor.locator('.codelens-decoration')).toHaveCount(0);
+});
+
+test('entrar em edição NÃO move o texto para a parede', async ({ page }) => {
+  await novoCaderno(page, 'sem-pulo');
+  await barra(page).getByRole('button', { name: 'Add Code' }).click();
+  await escreverNoBloco(page, 0, 'select 1');
+  await sairDoBloco(page);
+
+  // Onde o texto começa com a camada de cor, e onde ele começa com o Monaco.
+  const parado = await bloco(page, 0)
+    .locator('pre')
+    .first()
+    .evaluate((el) => el.getBoundingClientRect().left + parseFloat(getComputedStyle(el).paddingLeft));
+
+  await bloco(page, 0).click();
+  await bloco(page, 0).locator('[data-editor-do-bloco]').waitFor();
+  const editando = await bloco(page, 0)
+    .locator('.view-lines')
+    .first()
+    .evaluate((el) => el.getBoundingClientRect().left);
+
+  // Dois pixels de folga: o Monaco arredonda a própria medida.
+  expect(Math.abs(parado - editando)).toBeLessThan(2);
+});

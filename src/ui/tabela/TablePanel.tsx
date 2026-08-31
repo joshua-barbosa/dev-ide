@@ -84,7 +84,12 @@ function CampoDeSql({
             estado.executarSql();
           }
         }}
-        sx={{ fontSize: 11 }}
+        // Sem `fontSize` aqui. Ele valia só para a `textarea`, e o texto
+        // colorido ficava maior que o invisível — clicar no fim de uma palavra
+        // punha o cursor no meio dela. Hoje `CampoColorido` reaplica as
+        // métricas depois do `sx` e isto não teria efeito; sai porque promete
+        // uma coisa que não acontece mais.
+        sx={{}}
       />
     </Box>
   );

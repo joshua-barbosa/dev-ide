@@ -201,3 +201,78 @@ test('o SQL da aba de tabela sai COLORIDO (T059)', async ({ page }) => {
     }, { timeout: 15_000 })
     .toBeGreaterThan(1);
 });
+
+test('as DUAS camadas do campo de SQL medem o caractere igual', async ({ page }) => {
+  // O defeito que ele descreveu usando: *"clico no final de coligadas, o cursor
+  // fica no meio"*, *"se começo a apagar, ele está no final"*, *"digitar começa
+  // a apagar e digitar por cima"*.
+  //
+  // A causa era uma linha: a aba de tabela mandava `fontSize: 11` só para a
+  // `textarea`. O texto COLORIDO ficava maior que o invisível, e o cursor
+  // andava numa régua diferente da que se vê.
+  await abrirTabela(page);
+  const campo = page.locator('[data-sql-da-tabela]');
+  await expect(campo).toBeVisible();
+
+  const metricas = await campo.evaluate((el) => {
+    const pre = el.parentElement?.querySelector('pre');
+    const daTextarea = getComputedStyle(el);
+    const daCor = pre === null || pre === undefined ? null : getComputedStyle(pre);
+    return {
+      fonteTexto: daTextarea.fontSize,
+      fonteCor: daCor?.fontSize ?? '',
+      entrelinhaTexto: daTextarea.lineHeight,
+      entrelinhaCor: daCor?.lineHeight ?? '',
+      familiaTexto: daTextarea.fontFamily,
+      familiaCor: daCor?.fontFamily ?? '',
+      padTexto: daTextarea.padding,
+      padCor: daCor?.padding ?? '',
+      larguraTexto: el.scrollWidth,
+      larguraCor: pre?.scrollWidth ?? 0,
+    };
+  });
+
+  assertIguais(metricas);
+});
+
+/** As quatro propriedades que decidem onde um caractere cai. */
+function assertIguais(m: Record<string, string | number>): void {
+  expect(m.fonteTexto).toBe(m.fonteCor);
+  expect(m.entrelinhaTexto).toBe(m.entrelinhaCor);
+  expect(m.familiaTexto).toBe(m.familiaCor);
+  expect(m.padTexto).toBe(m.padCor);
+}
+
+test('o MESMO texto ocupa a mesma largura nas duas camadas', async ({ page }) => {
+  // É a consequência observável do desalinhamento, e o que ele viu: o texto
+  // colorido mais largo que o invisível faz o cursor — desenhado pela camada
+  // invisível — cair no meio da palavra que se vê.
+  await abrirTabela(page);
+  const campo = page.locator('[data-sql-da-tabela]');
+  await expect(campo).toBeVisible();
+  await campoSql(page).fill('SELECT id, nome, criado_em FROM alunos WHERE ativo = 1');
+
+  await expect
+    .poll(async () =>
+      campo.evaluate((el) => {
+        const pre = el.parentElement?.querySelector('pre');
+        if (pre === null || pre === undefined) return -1;
+        // A largura do CONTEÚDO, medida pelo mesmo caminho nos dois.
+        const faixa = document.createRange();
+        faixa.selectNodeContents(pre);
+        const daCor = faixa.getBoundingClientRect().width;
+
+        const sonda = document.createElement('span');
+        const estilo = getComputedStyle(el);
+        sonda.style.font = estilo.font;
+        sonda.style.letterSpacing = estilo.letterSpacing;
+        sonda.style.whiteSpace = 'pre';
+        sonda.textContent = (el as HTMLTextAreaElement).value;
+        document.body.appendChild(sonda);
+        const doTexto = sonda.getBoundingClientRect().width;
+        sonda.remove();
+
+        return Math.abs(daCor - doTexto);
+      }), { timeout: 15_000 })
+    .toBeLessThan(2);
+});

@@ -46,7 +46,16 @@ export interface CampoColoridoProps {
    */
   readonly marcaDoTexto?: Readonly<Record<string, string | boolean>>;
   readonly marcaDaCor?: Readonly<Record<string, string | boolean>>;
-  /** `sx` extra da `textarea`, para a aba de tabela poder esticá-la. */
+  /**
+   * `sx` extra da `textarea` — altura, borda, fundo.
+   *
+   * **O que decide a posição de um caractere NÃO passa por aqui.** Fonte,
+   * entrelinha, padding e `tab-size` são reaplicados depois deste `sx`, e por
+   * isso não há como um chamador desalinhar as camadas. Já houve: a aba de
+   * tabela mandava `fontSize: 11` só para a `textarea`, o texto colorido ficava
+   * maior que o invisível, e clicar no fim de uma palavra punha o cursor no
+   * meio dela.
+   */
   readonly sx?: Record<string, unknown>;
 }
 
@@ -135,6 +144,17 @@ export function CampoColorido({
           // colorido e o trecho selecionado viraria uma tarja lisa.
           '&::selection': { bgcolor: `${paleta.accent}55` },
           ...sx,
+          // DEPOIS do `sx`, e de propósito: ver a nota na propriedade. As duas
+          // camadas medem o caractere igual, ou o cursor descola do texto.
+          fontFamily: comum.fontFamily,
+          fontSize: comum.fontSize,
+          lineHeight: comum.lineHeight,
+          letterSpacing: comum.letterSpacing,
+          padding: comum.padding,
+          tabSize: comum.tabSize,
+          whiteSpace: comum.whiteSpace,
+          overflowWrap: comum.overflowWrap,
+          wordBreak: comum.wordBreak,
         }}
       />
     </Box>
