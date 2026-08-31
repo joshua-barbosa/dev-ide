@@ -11,6 +11,17 @@
 export interface Posicao {
   readonly abaId: string;
   readonly linha: number;
+  /**
+   * O arquivo em disco desta posição (T011).
+   *
+   * É o que permite VOLTAR para um arquivo já fechado, reabrindo-o. Antes, a
+   * posição de uma aba fechada era pulada em silêncio — e `Back` atravessava
+   * meia sessão de navegação até achar uma aba viva.
+   *
+   * Ausente em aba sem título e em aba de query: elas não existem em disco, e
+   * não há o que reabrir.
+   */
+  readonly caminho?: string;
 }
 
 export interface Historico {
@@ -58,15 +69,16 @@ export interface Movimento {
 }
 
 /**
- * Anda no histórico, pulando posições de abas que não existem mais.
+ * Anda no histórico, pulando o que não dá mais para alcançar.
  *
- * `abaExiste` é injetado para este módulo continuar puro — ele não sabe o que é
- * uma aba, só recebe um teste.
+ * `alcancavel` é injetado para este módulo continuar puro — ele não sabe o que
+ * é uma aba nem o que é disco, só recebe um teste. Desde o T011 uma posição de
+ * aba FECHADA continua alcançável quando ela tem caminho: quem chama reabre.
  */
 function andar(
   historico: Historico,
   passo: -1 | 1,
-  abaExiste: (abaId: string) => boolean
+  alcancavel: (posicao: Posicao) => boolean
 ): Movimento {
   let indice = historico.indice;
   for (;;) {
@@ -78,18 +90,24 @@ function andar(
     }
     indice = proximo;
     const posicao = historico.posicoes[indice];
-    if (posicao !== undefined && abaExiste(posicao.abaId)) {
+    if (posicao !== undefined && alcancavel(posicao)) {
       return { historico: { ...historico, indice }, destino: posicao };
     }
   }
 }
 
-export function voltar(historico: Historico, abaExiste: (abaId: string) => boolean): Movimento {
-  return andar(historico, -1, abaExiste);
+export function voltar(
+  historico: Historico,
+  alcancavel: (posicao: Posicao) => boolean
+): Movimento {
+  return andar(historico, -1, alcancavel);
 }
 
-export function avancar(historico: Historico, abaExiste: (abaId: string) => boolean): Movimento {
-  return andar(historico, 1, abaExiste);
+export function avancar(
+  historico: Historico,
+  alcancavel: (posicao: Posicao) => boolean
+): Movimento {
+  return andar(historico, 1, alcancavel);
 }
 
 /** Tira as posições de uma aba fechada, para o histórico não encher de lixo. */

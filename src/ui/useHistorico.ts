@@ -26,19 +26,25 @@ export interface Navegacao {
 }
 
 export interface NavegacaoDeps {
-  /** Falso para posição cuja aba foi fechada — ela é pulada. */
-  abaExiste(abaId: string): boolean;
+  /**
+   * Falso para posição que não dá mais para alcançar — ela é pulada.
+   *
+   * Desde o T011, aba fechada COM caminho continua alcançável: quem vai até lá
+   * reabre o arquivo. Sem caminho — aba sem título, aba de query — não há o que
+   * reabrir, e a posição segue sendo pulada.
+   */
+  alcancavel(posicao: Posicao): boolean;
 }
 
-export function useHistorico({ abaExiste }: NavegacaoDeps): Navegacao {
+export function useHistorico({ alcancavel }: NavegacaoDeps): Navegacao {
   const historico = useRef<Historico>(HISTORICO_VAZIO);
   const [espelho, setEspelho] = useState(HISTORICO_VAZIO);
   // Sem isto, o `Back` ativaria a aba de destino, e essa ativação seria
   // registrada como salto novo — apagando o futuro e prendendo o usuário entre
   // duas posições.
   const andando = useRef(false);
-  const existe = useRef(abaExiste);
-  existe.current = abaExiste;
+  const existe = useRef(alcancavel);
+  existe.current = alcancavel;
 
   const aplicar = useCallback((novo: Historico) => {
     historico.current = novo;

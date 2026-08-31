@@ -219,6 +219,14 @@ export interface Workspace {
    * quem chama decide como contar isso ao usuário.
    */
   salvarTodas(): Promise<{ readonly gravadas: number; readonly semNome: number }>;
+  /**
+   * Descarrega TODOS os editores para o store, sem gravar em disco.
+   *
+   * A sessão usa no `pagehide` (T036): o `meta.view` só é atualizado ao trocar
+   * de aba, e sem isto a aba em foco na hora do F5 voltaria na posição de
+   * quando foi aberta.
+   */
+  salvarTodosOsGrupos(): void;
   /** Relê o arquivo do disco, jogando fora o que não foi salvo. */
   reverter(): Promise<void>;
   /** Relê do disco as abas abertas dos caminhos dados. */
@@ -274,6 +282,10 @@ export function useWorkspace({ confirmar, aoAbrirArquivo }: WorkspaceDeps): Work
 
   // Sem aba, a posição do cursor anterior é estado velho na barra de status.
   const aoEsvaziarFoco = useCallback(() => setCursor({ linha: 1, coluna: 1 }), []);
+  const aoPosicionarCursor = useCallback(
+    (linha: number, coluna: number) => setCursor({ linha, coluna }),
+    []
+  );
 
   /**
    * Tudo que sabe que existe mais de um editor mora aqui.
@@ -283,7 +295,8 @@ export function useWorkspace({ confirmar, aoAbrirArquivo }: WorkspaceDeps): Work
    * escrito no backlog antes disso.
    */
   const ed = useGruposDeEditor({
-    store, tabs, activeId, grupos, grupoFocado, aoEsvaziarFoco, ehEditavel, metaDe,
+    store, tabs, activeId, grupos, grupoFocado, aoEsvaziarFoco, aoPosicionarCursor,
+    ehEditavel, metaDe,
   });
   const { editorRef, registrarEditor, salvarNaAba, salvarGrupoFocado, salvarTodosOsGrupos } = ed;
   const { grupoDaUri } = ed;
@@ -557,6 +570,7 @@ export function useWorkspace({ confirmar, aoAbrirArquivo }: WorkspaceDeps): Work
         abrirArquivo,
         caminhoDaAba: (aba) => (ehEditavel(aba) ? metaDe(aba).path : null),
         setLayout: definirLayout,
+        vistaAoCarregar: ed.vistaAoCarregar,
       })(sessao),
     [abrirArquivo, definirLayout, store]
   );
@@ -718,6 +732,7 @@ export function useWorkspace({ confirmar, aoAbrirArquivo }: WorkspaceDeps): Work
     marcarSujo,
     salvar,
     salvarTodas,
+    salvarTodosOsGrupos,
     reverter,
     recarregarDoDisco,
     sincronizarComDisco,

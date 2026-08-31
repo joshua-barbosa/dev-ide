@@ -10,10 +10,44 @@
 // não existe mais) sem navegador nem servidor.
 import { gruposDe, LAYOUT_INICIAL, removerGrupo, type NoDeLayout } from './layout-editor';
 
+/**
+ * Onde o cursor e a rolagem estavam (T036).
+ *
+ * O mesmo formato do `ViewState` do editor — deslocamento em caracteres, e não
+ * linha/coluna. É o que as abas já guardam, e ter dois formatos obrigaria a
+ * converter nas duas pontas.
+ */
+export interface VistaSalva {
+  readonly selectionStart: number;
+  readonly selectionEnd: number;
+  readonly scrollTop: number;
+  readonly scrollLeft: number;
+}
+
 /** Uma aba guardada. Só arquivo: ver `NÃO se guarda` abaixo. */
 export interface AbaSalva {
   readonly caminho: string;
   readonly grupo: number;
+  /** Ausente numa sessão gravada antes do T036 — e aí a aba abre na linha 1. */
+  readonly view?: VistaSalva;
+}
+
+/** Leitura tolerante da vista: qualquer campo torto descarta a vista inteira. */
+function lerVista(bruto: unknown): VistaSalva | null {
+  if (bruto === null || typeof bruto !== 'object') return null;
+  const v = bruto as Record<string, unknown>;
+  const numero = (x: unknown): number | null =>
+    typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : null;
+
+  const selectionStart = numero(v.selectionStart);
+  const selectionEnd = numero(v.selectionEnd);
+  const scrollTop = numero(v.scrollTop);
+  const scrollLeft = numero(v.scrollLeft);
+  if (selectionStart === null || selectionEnd === null) return null;
+  if (scrollTop === null || scrollLeft === null) return null;
+  // Metade da vista não serve para nada: mandar o cursor sem a rolagem daria um
+  // salto visível, e a rolagem sem o cursor deixaria os dois discordando.
+  return { selectionStart, selectionEnd, scrollTop, scrollLeft };
 }
 
 export interface SessaoDeAbas {
@@ -113,7 +147,11 @@ export function normalizarSessao(bruto: unknown): SessaoDeAbas {
     const chave = `${a.caminho}\u0000${grupo}`;
     if (vistos.has(chave)) continue;
     vistos.add(chave);
-    abas.push({ caminho: a.caminho, grupo });
+    const view = lerVista(a.view);
+    // Espalhado, e não `view: undefined`: chave com `undefined` não é o mesmo
+    // que chave ausente para `deepEqual` nem para `JSON.stringify`, e a sessão
+    // é comparada pelos dois lugares.
+    abas.push({ caminho: a.caminho, grupo, ...(view === null ? {} : { view }) });
   }
   if (abas.length === 0) return SESSAO_VAZIA;
 

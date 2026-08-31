@@ -156,7 +156,9 @@ test('gravar o MESMO texto por fora não vira conflito (T047)', async ({ page })
 
   await page.keyboard.press('Control+End');
   await page.keyboard.type('minha edicao');
-  const antes = await textoDoEditor(page);
+  // Espera o texto CHEGAR à tela antes de mexer no disco: fotografá-lo no meio
+  // da digitação compara duas coisas diferentes e falha sem defeito nenhum.
+  await expect.poll(() => textoDoEditor(page)).toContain('minha edicao');
 
   // O `mtime` muda; o conteúdo em disco continua o mesmo de antes.
   porFora(nome, 'original\n');
@@ -164,7 +166,7 @@ test('gravar o MESMO texto por fora não vira conflito (T047)', async ({ page })
   // Nada acontece: nem aviso em `Problems`, nem troca do que está na tela.
   await page.waitForTimeout(2_000);
   await expect(page.getByRole('tab', { name: /Problems/ })).not.toContainText('1');
-  expect(await textoDoEditor(page)).toBe(antes);
+  expect(await textoDoEditor(page)).toContain('minha edicao');
 });
 
 test('a aba LIMPA não é recarregada quando o texto é o mesmo (T047)', async ({ page }) => {

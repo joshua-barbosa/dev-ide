@@ -8,7 +8,7 @@
 // A regra que este arquivo existe para cumprir: **o que não abriu não pode
 // deixar meia tela em branco.** Um arquivo apagado com a IDE fechada some em
 // silêncio, e `conciliar` acerta o arranjo com o que sobrou.
-import { conciliar, type SessaoDeAbas } from '../../shared/sessao-abas';
+import { conciliar, type SessaoDeAbas, type VistaSalva } from '../../shared/sessao-abas';
 import { proximaCopia } from '../../shared/abas-gemeas';
 import type { NoDeLayout } from '../../shared/layout-editor';
 import type { Tab, TabStore } from '../../shared/tabs';
@@ -20,6 +20,8 @@ export interface DepsDaRestauracao {
   /** O caminho em disco de uma aba, ou `null` quando ela não é de arquivo. */
   caminhoDaAba(aba: Tab): string | null;
   setLayout(layout: NoDeLayout): void;
+  /** Marca a vista a aplicar quando o arquivo carregar (T036). */
+  vistaAoCarregar(caminho: string, vista: VistaSalva): void;
 }
 
 export function restaurarSessaoCom(deps: DepsDaRestauracao) {
@@ -55,6 +57,9 @@ export function restaurarSessaoCom(deps: DepsDaRestauracao) {
     const abertos = new Set<string>();
     for (const aba of sessao.abas) {
       try {
+        // ANTES de abrir: o efeito que carrega o editor roda entre um `await` e
+        // o seguinte, e depois de abrir já é tarde — a aba entrou na linha 1.
+        if (aba.view !== undefined) deps.vistaAoCarregar(aba.caminho, aba.view);
         await garantirVista(aba.caminho, aba.grupo);
         abertos.add(aba.caminho);
       } catch {

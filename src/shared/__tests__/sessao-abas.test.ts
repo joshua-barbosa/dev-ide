@@ -134,3 +134,53 @@ test('a conciliação não inventa aba nem grupo', () => {
   const s = conciliar(CHEIA, new Set(['/projeto/a.ts', '/projeto/b.ts']));
   assert.deepEqual(s, CHEIA);
 });
+
+// ---- cursor e rolagem (T036, spec 073) ----
+
+const VISTA = { selectionStart: 12, selectionEnd: 20, scrollTop: 340, scrollLeft: 0 };
+
+test('a vista vai e volta inteira', () => {
+  const s = normalizarSessao({
+    ...CHEIA,
+    abas: [{ caminho: '/projeto/a.ts', grupo: 0, view: VISTA }],
+  });
+  assert.deepEqual(s.abas[0]?.view, VISTA);
+});
+
+test('sessão gravada ANTES do T036 abre sem vista, e não quebrada', () => {
+  const s = normalizarSessao({ ...CHEIA, abas: [{ caminho: '/projeto/a.ts', grupo: 0 }] });
+  assert.equal(s.abas[0]?.view, undefined);
+  assert.deepEqual(s.abas[0], { caminho: '/projeto/a.ts', grupo: 0 }, 'sem chave sobrando');
+});
+
+test('vista pela metade é descartada inteira', () => {
+  // Mandar o cursor sem a rolagem daria um salto visível; a rolagem sem o
+  // cursor deixaria os dois discordando.
+  for (const torta of [
+    { selectionStart: 1 },
+    { ...VISTA, scrollTop: 'muito' },
+    { ...VISTA, selectionEnd: -3 },
+    { ...VISTA, scrollLeft: Number.NaN },
+    'nada',
+    null,
+  ]) {
+    const s = normalizarSessao({
+      ...CHEIA,
+      abas: [{ caminho: '/projeto/a.ts', grupo: 0, view: torta }],
+    });
+    assert.equal(s.abas[0]?.view, undefined, `deveria descartar ${JSON.stringify(torta)}`);
+  }
+});
+
+test('cada VISTA do mesmo arquivo guarda a própria posição (T028 + T036)', () => {
+  const outra = { ...VISTA, scrollTop: 0 };
+  const s = normalizarSessao({
+    ...CHEIA,
+    abas: [
+      { caminho: '/projeto/a.ts', grupo: 0, view: VISTA },
+      { caminho: '/projeto/a.ts', grupo: 1, view: outra },
+    ],
+  });
+  assert.deepEqual(s.abas[0]?.view, VISTA);
+  assert.deepEqual(s.abas[1]?.view, outra);
+});

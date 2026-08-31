@@ -85,6 +85,15 @@ export interface EditorHandle {
    * acabou de escrever.
    */
   usarModelo(chave: string, conteudo: string, linguagem: string): void;
+  /**
+   * Onde o cursor está agora, em linha e coluna.
+   *
+   * Existe para a barra de status ser derivada de ESTADO, e não de evento: o
+   * Monaco não dispara `onDidChangeCursorPosition` quando a posição pedida é a
+   * que já valia, então carregar uma aba não garante um evento. Quem carrega
+   * pergunta e conta.
+   */
+  posicaoDoCursor(): { readonly linha: number; readonly coluna: number };
   getViewState(): ViewState;
   setViewState(view: ViewState | null): void;
   focus(): void;
@@ -357,6 +366,11 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
       },
 
       totalDeLinhas: () => editor.current?.getModel()?.getLineCount() ?? 0,
+
+      posicaoDoCursor: () => {
+        const p = editor.current?.getPosition();
+        return { linha: p?.lineNumber ?? 1, coluna: p?.column ?? 1 };
+      },
       uriDoModelo: () => editor.current?.getModel()?.uri.toString() ?? null,
 
       // O nosso `ViewState` é por deslocamento em caracteres, e não por

@@ -72,7 +72,10 @@ test('navegar depois de voltar descarta o caminho da frente', async ({ page }) =
   await expect(page.getByRole('menuitem', { name: /^Forward/ })).toBeDisabled();
 });
 
-test('Back pula aba fechada em vez de falhar', async ({ page }) => {
+test('Back REABRE a aba fechada (T011, spec 073)', async ({ page }) => {
+  // Este teste dizia o contrário até o T011: `Back` PULAVA a aba fechada. A
+  // mudança é de propósito e é o item inteiro — fechar a aba não desfaz a
+  // navegação, e pular levava quem apertava a um lugar que ele não pediu.
   await abrirArquivo(page, 'utils.ts');
   await abrirArquivo(page, 'consulta.sql');
   await menu(page, 'File');
@@ -83,5 +86,6 @@ test('Back pula aba fechada em vez de falhar', async ({ page }) => {
   await expect(page.locator('[data-tab="consulta.sql"]')).toHaveCount(0);
 
   await page.keyboard.press('Alt+ArrowLeft');
-  await expect(abaAtiva(page)).toHaveAttribute('data-tab', 'utils.ts');
+  await expect(page.locator('[data-tab="consulta.sql"]')).toBeVisible();
+  await expect(abaAtiva(page)).toHaveAttribute('data-tab', 'consulta.sql');
 });

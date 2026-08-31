@@ -286,3 +286,114 @@ test('dentroDaPasta aceita subcaminho e recusa byte nulo', () => {
     assert.throws(() => dentroDaPasta(raiz, 'a\0.ts'), /inválido/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// O `.gitignore` global e o índice do git (T042, spec 073)
+// ---------------------------------------------------------------------------
+
+/** Monta um `.git/index` v2 de mentira com os nomes dados. */
+function escreverIndice(raiz: string, nomes: readonly string[]): void {
+  const cabecalho = Buffer.alloc(12);
+  cabecalho.write('DIRC', 0, 'latin1');
+  cabecalho.writeUInt32BE(2, 4);
+  cabecalho.writeUInt32BE(nomes.length, 8);
+  const entradas = nomes.map((nome) => {
+    const bytes = Buffer.from(nome, 'utf8');
+    const e = Buffer.alloc(Math.ceil((62 + bytes.length + 1) / 8) * 8);
+    e.writeUInt16BE(Math.min(bytes.length, 0x0fff), 60);
+    bytes.copy(e, 62);
+    return e;
+  });
+  fs.mkdirSync(path.join(raiz, '.git'), { recursive: true });
+  fs.writeFileSync(path.join(raiz, '.git', 'index'), Buffer.concat([cabecalho, ...entradas]));
+}
+
+test('o .git/info/exclude vale como .gitignore', () => {
+  comPasta((raiz) => {
+    fs.mkdirSync(path.join(raiz, '.git', 'info'), { recursive: true });
+    fs.writeFileSync(path.join(raiz, '.git', 'info', 'exclude'), 'so-meu.txt\n');
+    fs.writeFileSync(path.join(raiz, 'so-meu.txt'), 'x');
+    fs.writeFileSync(path.join(raiz, 'outro.txt'), 'x');
+
+    const { arquivos } = varrerArquivos(raiz);
+    assert.ok(!arquivos.some((a) => a.endsWith('so-meu.txt')));
+    assert.ok(arquivos.some((a) => a.endsWith('outro.txt')));
+  });
+});
+
+test('o .gitignore do projeto ainda pode REABRIR o que o global fechou', () => {
+  // A ordem importa: global primeiro, projeto depois, e a última regra vence.
+  comPasta((raiz) => {
+    fs.mkdirSync(path.join(raiz, '.git', 'info'), { recursive: true });
+    fs.writeFileSync(path.join(raiz, '.git', 'info', 'exclude'), '*.log\n');
+    fs.writeFileSync(path.join(raiz, '.gitignore'), '!importante.log\n');
+    fs.writeFileSync(path.join(raiz, 'importante.log'), 'x');
+    fs.writeFileSync(path.join(raiz, 'ruido.log'), 'x');
+
+    const { arquivos } = varrerArquivos(raiz);
+    assert.ok(arquivos.some((a) => a.endsWith('importante.log')));
+    assert.ok(!arquivos.some((a) => a.endsWith('ruido.log')));
+  });
+});
+
+test('arquivo NO ÍNDICE do git nunca é ignorado', () => {
+  // Quem fez `git add -f` num arquivo dentro de `dist/` quer aquele arquivo
+  // versionado — escondê-lo da busca seria esconder o que foi posto ali de
+  // propósito.
+  comPasta((raiz) => {
+    fs.mkdirSync(path.join(raiz, 'dist'));
+    fs.writeFileSync(path.join(raiz, 'dist', 'forcado.js'), 'x');
+    fs.writeFileSync(path.join(raiz, 'dist', 'gerado.js'), 'x');
+    escreverIndice(raiz, ['dist/forcado.js']);
+
+    const { arquivos } = varrerArquivos(raiz);
+    assert.ok(arquivos.some((a) => a.endsWith('dist/forcado.js')));
+    assert.ok(!arquivos.some((a) => a.endsWith('dist/gerado.js')));
+  });
+});
+
+test('a PASTA ignorada é atravessada quando há rastreado lá dentro', () => {
+  // Sem isto a varredura pararia na pasta e nunca chegaria ao arquivo.
+  comPasta((raiz) => {
+    fs.mkdirSync(path.join(raiz, 'dist', 'fundo'), { recursive: true });
+    fs.writeFileSync(path.join(raiz, 'dist', 'fundo', 'forcado.js'), 'x');
+    escreverIndice(raiz, ['dist/fundo/forcado.js']);
+
+    const { arquivos } = varrerArquivos(raiz);
+    assert.ok(arquivos.some((a) => a.endsWith('dist/fundo/forcado.js')));
+  });
+});
+
+test('na árvore, o rastreado deixa de aparecer cinza', () => {
+  comPasta((raiz) => {
+    fs.writeFileSync(path.join(raiz, '.gitignore'), '*.log\n');
+    fs.writeFileSync(path.join(raiz, 'versionado.log'), 'x');
+    fs.writeFileSync(path.join(raiz, 'solto.log'), 'x');
+    escreverIndice(raiz, ['versionado.log']);
+
+    const { nodes } = filhosDaPasta(raiz);
+    assert.equal(nodes.find((n) => n.name === 'versionado.log')?.ignored, undefined);
+    assert.equal(nodes.find((n) => n.name === 'solto.log')?.ignored, true);
+  });
+});
+
+test('sem .git, tudo segue como antes', () => {
+  comPasta((raiz) => {
+    fs.writeFileSync(path.join(raiz, '.gitignore'), '*.log\n');
+    fs.writeFileSync(path.join(raiz, 'x.log'), 'x');
+    const { arquivos } = varrerArquivos(raiz);
+    assert.ok(!arquivos.some((a) => a.endsWith('x.log')));
+  });
+});
+
+test('índice ilegível não muda nada — o .gitignore volta a mandar sozinho', () => {
+  comPasta((raiz) => {
+    fs.mkdirSync(path.join(raiz, '.git'), { recursive: true });
+    fs.writeFileSync(path.join(raiz, '.git', 'index'), 'nao sou um indice');
+    fs.writeFileSync(path.join(raiz, '.gitignore'), '*.log\n');
+    fs.writeFileSync(path.join(raiz, 'x.log'), 'x');
+
+    const { arquivos } = varrerArquivos(raiz);
+    assert.ok(!arquivos.some((a) => a.endsWith('x.log')));
+  });
+});

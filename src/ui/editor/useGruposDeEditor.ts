@@ -14,7 +14,7 @@
 // mudança na forma do arranjo. Os comentários no lugar explicam cada uma.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Tab, TabStore } from "../../shared/tabs";
-import type { EditorHandle } from "./EditorHost";
+import type { EditorHandle, ViewState } from "./EditorHost";
 import type { EditorTabMeta, PonteiroDeEditor } from "../useWorkspace";
 import { chaveDoModelo, gemeas } from "../../shared/abas-gemeas";
 
@@ -50,6 +50,14 @@ export interface GruposDeEditor {
   abaCarregadaEmFoco(): string | null;
   /** Marca para onde ir assim que a aba terminar de carregar. */
   irAoCarregar(id: string, posicao: Posicao): void;
+  /**
+   * Marca a vista a aplicar quando o arquivo deste CAMINHO carregar (T036).
+   *
+   * Por caminho, e não por id de aba: quem restaura a sessão registra ANTES de
+   * abrir, porque o efeito que carrega o editor roda entre um `await` e o
+   * seguinte — depois de abrir já é tarde, a aba entrou na linha 1.
+   */
+  vistaAoCarregar(caminho: string, vista: ViewState): void;
   /** Roda `fn` sem que a mudança conte como edição do usuário. */
   semSujar(fn: () => void): void;
   /** Verdadeiro enquanto o editor está sendo recarregado por troca de aba. */
@@ -64,6 +72,14 @@ export interface GruposDeEditorDeps {
   readonly grupoFocado: number;
   /** Chamado quando o grupo em foco fica sem aba — o rodapé precisa saber. */
   readonly aoEsvaziarFoco: () => void;
+  /**
+   * Onde o cursor parou depois de carregar a aba do grupo em foco.
+   *
+   * O Monaco não avisa quando a posição pedida é a que já valia, e um modelo
+   * novo nasce em 1,1 — sem isto a barra de status fica com a linha da aba
+   * anterior ao trocar para uma que abre no começo.
+   */
+  readonly aoPosicionarCursor: (linha: number, coluna: number) => void;
   /** Só abas de texto têm editor; terminal e formulário não. */
   readonly ehEditavel: (aba: Tab) => boolean;
   readonly metaDe: (aba: Tab) => EditorTabMeta;
@@ -76,6 +92,7 @@ export function useGruposDeEditor({
   grupos,
   grupoFocado,
   aoEsvaziarFoco,
+  aoPosicionarCursor,
   ehEditavel,
   metaDe,
 }: GruposDeEditorDeps): GruposDeEditor {
@@ -159,6 +176,9 @@ export function useGruposDeEditor({
     new Map<string, { linha: number; coluna: number }>(),
   );
 
+  /** Vista a aplicar quando o arquivo deste caminho carregar (T036). */
+  const vistaPendente = useRef(new Map<string, ViewState>());
+
   /**
    * Guarda no store o que está no editor de `grupoDoEditor`.
    *
@@ -239,7 +259,16 @@ export function useGruposDeEditor({
         // mesmo texto — e `setValue` aqui apagaria o que o outro lado escreveu.
         editor.usarModelo(chaveDoModelo(aba.id, meta.path), meta.content, meta.language);
         editor.setLanguage(meta.language);
-        editor.setViewState(meta.view);
+        // A vista guardada na sessão vence o `meta.view` desta abertura: a aba
+        // acabou de nascer, e o `meta.view` dela é `null` por definição.
+        const daSessao = meta.path === null ? undefined : vistaPendente.current.get(meta.path);
+        if (daSessao !== undefined) {
+          vistaPendente.current.delete(meta.path ?? '');
+          editor.setViewState(daSessao);
+          store.update(aba.id, { meta: { ...meta, view: daSessao } });
+        } else {
+          editor.setViewState(meta.view);
+        }
       } finally {
         carregando.current = false;
       }
@@ -248,6 +277,12 @@ export function useGruposDeEditor({
       if (destino !== undefined) {
         posicaoPendente.current.delete(aba.id);
         editor.goToPosition(destino.linha, destino.coluna);
+      }
+
+      // Conta onde o cursor parou. Ver a nota em `aoPosicionarCursor`.
+      if (grupo === grupoFocado) {
+        const pos = editor.posicaoDoCursor();
+        aoPosicionarCursor(pos.linha, pos.coluna);
       }
     }
 
@@ -258,6 +293,7 @@ export function useGruposDeEditor({
   }, [
     activeId,
     aoEsvaziarFoco,
+    aoPosicionarCursor,
     ehEditavel,
     grupoFocado,
     grupos,
@@ -303,6 +339,9 @@ export function useGruposDeEditor({
         ultimaAtiva.current.get(focoAtual.current) ?? null,
       irAoCarregar: (id, posicao) => {
         posicaoPendente.current.set(id, posicao);
+      },
+      vistaAoCarregar: (caminho, vista) => {
+        vistaPendente.current.set(caminho, vista);
       },
       semSujar: (fn) => {
         carregando.current = true;

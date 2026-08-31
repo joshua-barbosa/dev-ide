@@ -35,12 +35,20 @@ function gravar(chave: string, valor: unknown): void {
   }
 }
 
-/** Como `useState`, mas persistido. Aceita atualizador, como o original. */
+/**
+ * Como `useState`, mas persistido. Aceita atualizador, como o original.
+ *
+ * O terceiro item é a gravação **síncrona**, e existe por um defeito real: o
+ * `definir` grava DENTRO do atualizador do `setState`, e o React pode adiar
+ * esse atualizador para o próximo render — que nunca vem quando a página está
+ * sendo descarregada. Quem grava no `pagehide` precisa da versão que escreve
+ * agora (T036).
+ */
 export function usePersistido<T>(
   chave: string,
   padrao: T,
   normalizar?: (bruto: unknown) => T
-): [T, (valor: T | ((atual: T) => T)) => void] {
+): [T, (valor: T | ((atual: T) => T)) => void, (valor: T) => void] {
   const [valor, setValor] = useState<T>(() => ler(chave, padrao, normalizar));
 
   const definir = useCallback(
@@ -54,5 +62,13 @@ export function usePersistido<T>(
     [chave]
   );
 
-  return [valor, definir];
+  const gravarJa = useCallback(
+    (novo: T) => {
+      gravar(chave, novo);
+      setValor(novo);
+    },
+    [chave]
+  );
+
+  return [valor, definir, gravarJa];
 }

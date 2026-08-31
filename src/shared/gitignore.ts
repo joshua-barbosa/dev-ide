@@ -22,6 +22,46 @@ export interface Regra {
 }
 
 /**
+ * Lê uma classe de caractere (`[abc]`, `[a-z]`, `[!x]`) a partir do `[` em `i`.
+ *
+ * Devolve `null` quando não há fechamento — e aí o `[` é literal, como no git.
+ *
+ * Três bordas que os testes fixam:
+ * - **`]` logo depois do `[` (ou do `!`) é literal**, e não fecha a classe;
+ * - **`!` e `^` negam**; o git documenta o primeiro e aceita o segundo;
+ * - **a barra nunca entra**, senão `a[b/c]d` viraria um padrão que atravessa
+ *   pasta e ignoraria caminho fundo por engano.
+ */
+function lerClasse(padrao: string, i: number): { fonte: string; fim: number } | null {
+  let j = i + 1;
+  let negada = false;
+  if (padrao[j] === '!' || padrao[j] === '^') {
+    negada = true;
+    j += 1;
+  }
+
+  let corpo = '';
+  // `]` na primeira posição é literal: `[]]` é a classe que casa `]`.
+  if (padrao[j] === ']') {
+    corpo += '\\]';
+    j += 1;
+  }
+  while (j < padrao.length && padrao[j] !== ']') {
+    const c = padrao[j] as string;
+    // O intervalo passa inteiro; o resto é escapado para não virar sintaxe.
+    if (c === '-' && corpo !== '' && padrao[j + 1] !== ']') corpo += '-';
+    else if (c === '\\') corpo += '\\\\';
+    else corpo += c.replace(/[\]^\\]/g, '\\$&');
+    j += 1;
+  }
+  if (j >= padrao.length) return null;
+
+  // Sempre com a barra de fora: nem uma classe positiva pode casá-la.
+  const fonte = negada ? `(?![/])[^${corpo}/]` : `(?![/])[${corpo}]`;
+  return { fonte, fim: j };
+}
+
+/**
  * Traduz um padrão do `.gitignore` para expressão regular.
  *
  * As três diferenças que importam em relação a um glob comum:
@@ -67,6 +107,16 @@ function compilar(bruto: string): Regra | null {
     if (c === '?') {
       fonte += '[^/]';
       continue;
+    }
+    if (c === '[') {
+      const classe = lerClasse(padrao, i);
+      if (classe !== null) {
+        fonte += classe.fonte;
+        i = classe.fim;
+        continue;
+      }
+      // Colchete sem fechamento é caractere literal — é o que o git faz, em vez
+      // de abrir uma classe que come o resto da linha.
     }
     fonte += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
   }
@@ -143,14 +193,19 @@ export function ignorado(
 }
 
 // ---------------------------------------------------------------------------
-// O que NÃO é suportado, e por quê
+// O que é suportado, e o que não é
 // ---------------------------------------------------------------------------
 //
-// - **Classes de caractere** (`[abc]`, `[a-z]`): raríssimas em `.gitignore` de
-//   projeto, e o custo de acertar os casos de borda não se paga.
-// - **`.gitignore` global do usuário** e `.git/info/exclude`: são configuração
-//   da máquina, não do projeto, e a IDE não deve depender delas para decidir o
-//   que varrer.
-// - **Arquivo já rastreado pelo git** continua ignorado aqui. O git sabe o que
-//   está no índice; nós não lemos o índice, e ler seria trazer um segundo
-//   modelo de estado.
+// As três lacunas que este rodapé listava como recusadas — classes de
+// caractere, `.gitignore` global e o índice do git — **foram fechadas** no
+// T042 (spec 073). As classes estão aqui; as outras duas moram em
+// `server/git-repo.ts`, porque dependem de disco e de caminho da máquina.
+//
+// O que continua de fora, e por quê:
+//
+// - **`\` escapando um caractere especial** (`\#arquivo`, `\!nome`). Aparece
+//   em `.gitignore` gerado por ferramenta, quase nunca escrito à mão, e a
+//   consequência de errar é pequena: um arquivo a mais ou a menos na varredura,
+//   nunca perda de dado.
+// - **`[[:alpha:]]` e as demais classes POSIX nomeadas.** O git as aceita
+//   dentro de `[...]`; não vi nenhuma em `.gitignore` de projeto real.

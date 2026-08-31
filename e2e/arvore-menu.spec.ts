@@ -19,6 +19,19 @@ async function menuDe(page: Page, nome: string): Promise<void> {
 }
 
 /**
+ * Cria um arquivo na RAIZ, pelo botão do cabeçalho.
+ *
+ * Existe porque a suíte compartilha uma pasta só: renomear ou apagar um arquivo
+ * do cenário quebra os testes de OUTRO arquivo de spec, e a falha aparece longe
+ * da causa. Já custou quatro testes vermelhos em `codigo.spec.ts`.
+ */
+async function criarNaRaiz(page: Page, nome: string): Promise<void> {
+  await page.getByRole('button', { name: 'Novo arquivo' }).click();
+  await responder(page, nome);
+  await expect(linhaArvore(page, nome)).toBeVisible();
+}
+
+/**
  * Abre a pasta `sub` e cria um arquivo dentro dela pelo menu.
  *
  * A pasta precisa estar EXPANDIDA: o arquivo novo nasce dentro dela, e numa
@@ -78,30 +91,33 @@ test('"novo arquivo aqui" já vem com a pasta escrita no campo', async ({ page }
 });
 
 test('duplicar cria a cópia ao lado, sem tocar no original', async ({ page }) => {
-  await menuDe(page, 'lib.ts');
+  await criarNaRaiz(page, 'para-duplicar.ts');
+  await menuDe(page, 'para-duplicar.ts');
   await item(page, /^Duplicar$/).click();
 
-  await expect(linhaArvore(page, 'lib copy.ts')).toBeVisible();
-  await expect(linhaArvore(page, 'lib.ts')).toBeVisible();
+  await expect(linhaArvore(page, 'para-duplicar copy.ts')).toBeVisible();
+  await expect(linhaArvore(page, 'para-duplicar.ts')).toBeVisible();
 });
 
 test('renomear leva a ABA ABERTA junto', async ({ page }) => {
-  await abrirArquivo(page, 'usa-lib.ts');
-  await menuDe(page, 'usa-lib.ts');
+  await criarNaRaiz(page, 'antes-do-nome.ts');
+  await abrirArquivo(page, 'antes-do-nome.ts');
+  await menuDe(page, 'antes-do-nome.ts');
   await item(page, /^Renomear/).click();
 
   // O campo abre com o nome atual: renomear costuma ser trocar uma letra.
-  await expect(entradaRapida(page)).toHaveValue('usa-lib.ts');
-  await responder(page, 'usa-a-lib.ts');
+  await expect(entradaRapida(page)).toHaveValue('antes-do-nome.ts');
+  await responder(page, 'depois-do-nome.ts');
 
-  await expect(linhaArvore(page, 'usa-a-lib.ts')).toBeVisible();
+  await expect(linhaArvore(page, 'depois-do-nome.ts')).toBeVisible();
   // A aba TEM de acompanhar: senão Ctrl+S recria o arquivo com o nome antigo.
-  await expect(page.locator('[data-tab="usa-a-lib.ts"]')).toBeVisible();
-  await expect(page.locator('[data-tab="usa-lib.ts"]')).toHaveCount(0);
+  await expect(page.locator('[data-tab="depois-do-nome.ts"]')).toBeVisible();
+  await expect(page.locator('[data-tab="antes-do-nome.ts"]')).toHaveCount(0);
 });
 
 test('renomear por cima de um arquivo existente é recusado, sem perder o que foi digitado', async ({ page }) => {
-  await menuDe(page, 'ignorado.txt');
+  await criarNaRaiz(page, 'quase-renomeado.ts');
+  await menuDe(page, 'quase-renomeado.ts');
   await item(page, /^Renomear/).click();
   await responder(page, 'utils.ts');
 
@@ -112,16 +128,17 @@ test('renomear por cima de um arquivo existente é recusado, sem perder o que fo
   await expect(page.getByRole('dialog', { name: 'Renomear' })).toContainText('já existe');
   await expect(entradaRapida(page)).toHaveValue('utils.ts');
   await entradaRapida(page).press('Escape');
-  await expect(linhaArvore(page, 'ignorado.txt')).toBeVisible();
+  await expect(linhaArvore(page, 'quase-renomeado.ts')).toBeVisible();
 });
 
 test('excluir PERGUNTA antes, e cancelar não apaga nada', async ({ page }) => {
-  await menuDe(page, 'ignorado.txt');
+  await criarNaRaiz(page, 'quase-apagado.ts');
+  await menuDe(page, 'quase-apagado.ts');
   await item(page, /^Excluir/).click();
 
   await expect(page.getByRole('dialog')).toContainText('não tem desfazer');
   await confirmar(page, false);
-  await expect(linhaArvore(page, 'ignorado.txt')).toBeVisible();
+  await expect(linhaArvore(page, 'quase-apagado.ts')).toBeVisible();
 });
 
 test('excluir fecha a aba do arquivo apagado', async ({ page }) => {

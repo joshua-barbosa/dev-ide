@@ -83,3 +83,73 @@ test('as regras padrão não pegam código de verdade', () => {
     assert.equal(ig(caminho), false, `${caminho} não devia ser ignorado`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Classes de caractere (T042, spec 073)
+// ---------------------------------------------------------------------------
+//
+// A desculpa que eu tinha escrito no rodapé do módulo era *"raríssimas em
+// `.gitignore` de projeto, e o custo de acertar os casos de borda não se
+// paga"*. Ele mandou fazer, e o custo é este arquivo: as bordas viram teste.
+
+test('classe simples casa qualquer um dos caracteres', () => {
+  const r = com('arquivo[123].txt');
+  assert.equal(ig('arquivo1.txt', r), true);
+  assert.equal(ig('arquivo3.txt', r), true);
+  assert.equal(ig('arquivo4.txt', r), false);
+  assert.equal(ig('arquivo.txt', r), false, 'a classe casa UM caractere, não zero');
+});
+
+test('intervalo casa a faixa inteira', () => {
+  const r = com('log[0-9].txt');
+  assert.equal(ig('log0.txt', r), true);
+  assert.equal(ig('log7.txt', r), true);
+  assert.equal(ig('loga.txt', r), false);
+});
+
+test('classe NEGADA casa o que está fora dela', () => {
+  const r = com('t[!e]ste.txt');
+  assert.equal(ig('taste.txt', r), true);
+  assert.equal(ig('teste.txt', r), false);
+});
+
+test('`^` também nega, como na expressão regular', () => {
+  // O git documenta `!`, mas aceita `^`. Recusar seria recusar `.gitignore`
+  // que já funciona no git.
+  const r = com('t[^e]ste.txt');
+  assert.equal(ig('taste.txt', r), true);
+  assert.equal(ig('teste.txt', r), false);
+});
+
+test('a classe NUNCA casa a barra', () => {
+  // Sem isto, `a[b/c]d` viraria um padrão que atravessa pasta — e um caminho
+  // fundo seria ignorado por engano.
+  const r = com('a[/]b');
+  assert.equal(ig('a/b', r), false);
+});
+
+test('colchete sem fechamento é caractere literal', () => {
+  // É o que o git faz: um `[` solto não vira classe aberta até o fim da linha.
+  const r = com('a[b.txt');
+  assert.equal(ig('a[b.txt', r), true);
+  assert.equal(ig('ab.txt', r), false);
+});
+
+test('`]` logo no começo da classe é literal', () => {
+  const r = com('a[]]b');
+  assert.equal(ig('a]b', r), true);
+});
+
+test('caractere especial de regex dentro da classe não escapa dela', () => {
+  const r = com('v[.-]1');
+  assert.equal(ig('v.1', r), true);
+  assert.equal(ig('v-1', r), true);
+  assert.equal(ig('vx1', r), false, 'o ponto dentro da classe é literal');
+});
+
+test('classe combinada com estrela continua sem atravessar barra', () => {
+  const r = com('*[0-9].log');
+  assert.equal(ig('build/saida1.log', r), true, 'sem barra no padrão, vale em qualquer nível');
+  assert.equal(ig('saida1.log', r), true);
+  assert.equal(ig('saida.log', r), false);
+});

@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ignorado, lerRegras, REGRAS_PADRAO, type Regra } from '../shared/gitignore';
+import { arquivosRastreados, textoDasExclusoesGlobais, type Rastreados } from './git-repo';
 
 export interface FileNode {
   name: string;
@@ -140,13 +141,14 @@ export function filhosDaPasta(
   }
 
   const regras = regrasAte(raiz, dir);
+  const rastreados = arquivosRastreados(raiz);
   const nodes: FileNode[] = [];
   for (const entrada of entradas) {
     if (nodes.length >= MAX_ENTRADAS) break;
     if (NAO_MOSTRADAS.has(entrada.name)) continue;
     const full = path.join(dir, entrada.name);
     const relativo = path.relative(raiz, full).split(path.sep).join('/');
-    const cinza = ignorado(relativo, entrada.isDirectory(), regras);
+    const cinza = ehIgnorado(relativo, entrada.isDirectory(), regras, rastreados);
     if (entrada.isDirectory()) {
       // `children` ausente significa "ainda não carregada" para a interface —
       // diferente de `[]`, que significa "carregada e vazia".
@@ -168,8 +170,36 @@ export function filhosDaPasta(
  * de baixo vê o de cima. Sem isto, abrir uma subpasta perderia as regras da
  * raiz e nada ficaria cinza lá dentro.
  */
+function regrasBase(raiz: string): readonly Regra[] {
+  // As exclusões globais entram DEPOIS das padrão e ANTES das do projeto: quem
+  // põe `*.log` no `~/.config/git/ignore` espera que valha aqui, e o
+  // `.gitignore` do projeto ainda pode reabrir com `!`.
+  const global = textoDasExclusoesGlobais(raiz);
+  return global === '' ? REGRAS_PADRAO : [...REGRAS_PADRAO, ...lerRegras(global)];
+}
+
+/**
+ * O `ignorado` desta IDE, com a regra que o git tem e a nossa não tinha (T042).
+ *
+ * **Arquivo no índice nunca é ignorado.** Alguém que fez `git add -f` num
+ * arquivo dentro de `dist/` quer aquele arquivo versionado — e deixá-lo fora da
+ * busca seria esconder justamente o que foi posto ali de propósito.
+ *
+ * Vale também para a PASTA que o contém: parar nela nunca chegaria ao arquivo.
+ */
+function ehIgnorado(
+  relativo: string,
+  ehPasta: boolean,
+  regras: readonly Regra[],
+  rastreados: Rastreados | null
+): boolean {
+  if (!ignorado(relativo, ehPasta, regras)) return false;
+  if (rastreados === null) return true;
+  return ehPasta ? !rastreados.pastas.has(relativo) : !rastreados.arquivos.has(relativo);
+}
+
 function regrasAte(raiz: string, dir: string): readonly Regra[] {
-  let regras: readonly Regra[] = REGRAS_PADRAO;
+  let regras: readonly Regra[] = regrasBase(raiz);
   const relativo = path.relative(raiz, dir);
   const partes = relativo === '' ? [] : relativo.split(path.sep);
 
@@ -205,6 +235,7 @@ export function varrerArquivos(
   opcoes: { readonly extensoes?: ReadonlySet<string>; readonly max?: number } = {}
 ): { arquivos: string[]; truncated: boolean } {
   const max = opcoes.max ?? MAX_ARQUIVOS_VARRIDOS;
+  const rastreados = arquivosRastreados(raiz);
   const arquivos: string[] = [];
   let truncated = false;
 
@@ -236,7 +267,7 @@ export function varrerArquivos(
       }
       const full = path.join(dir, entrada.name);
       const relativo = path.relative(raiz, full).split(path.sep).join('/');
-      if (ignorado(relativo, entrada.isDirectory(), regras)) continue;
+      if (ehIgnorado(relativo, entrada.isDirectory(), regras, rastreados)) continue;
 
       if (entrada.isDirectory()) andar(full, profundidade + 1, regras);
       else if (entrada.isFile()) {
@@ -247,7 +278,7 @@ export function varrerArquivos(
     }
   };
 
-  andar(raiz, 0, REGRAS_PADRAO);
+  andar(raiz, 0, regrasBase(raiz));
   return { arquivos, truncated };
 }
 

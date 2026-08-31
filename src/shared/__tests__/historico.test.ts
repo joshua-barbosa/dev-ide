@@ -71,17 +71,44 @@ test('registrar não muta o histórico anterior', () => {
 
 // ---- abas fechadas ----
 
-test('voltar pula posição de aba fechada', () => {
+test('voltar pula posição que não dá mais para alcançar', () => {
   const h = comSaltos(p('a'), p('fechada'), p('c'));
-  const { destino } = voltar(h, (id) => id !== 'fechada');
+  const { destino } = voltar(h, (q) => q.abaId !== 'fechada');
   assert.deepEqual(destino, p('a'), 'pulou a do meio em vez de falhar');
 });
 
 test('sem destino válido, o índice não anda', () => {
   const h = comSaltos(p('fechada'), p('c'));
-  const { historico, destino } = voltar(h, (id) => id !== 'fechada');
+  const { historico, destino } = voltar(h, (q) => q.abaId !== 'fechada');
   assert.equal(destino, null);
   assert.equal(historico.indice, h.indice, 'ficar num lugar sem volta seria pior');
+});
+
+// ---- voltar para arquivo já FECHADO (T011, spec 073) ----
+
+const comArquivo = (abaId: string, caminho: string, linha = 1): Posicao =>
+  ({ abaId, linha, caminho });
+
+test('a posição de uma aba fechada COM caminho continua alcançável', () => {
+  // Antes do T011 ela era pulada em silêncio, e `Back` atravessava meia sessão
+  // de navegação até achar uma aba viva.
+  const h = comSaltos(p('a'), comArquivo('fechada', '/p/b.ts', 42), p('c'));
+  const viva = (q: Posicao): boolean => q.abaId !== 'fechada' || q.caminho !== undefined;
+
+  const { destino } = voltar(h, viva);
+  assert.deepEqual(destino, comArquivo('fechada', '/p/b.ts', 42));
+});
+
+test('aba fechada SEM caminho continua sendo pulada', () => {
+  // Aba sem título e aba de query não existem em disco: não há o que reabrir.
+  const h = comSaltos(p('a'), p('sem-titulo'), p('c'));
+  const viva = (q: Posicao): boolean => q.abaId !== 'sem-titulo';
+  assert.deepEqual(voltar(h, viva).destino, p('a'));
+});
+
+test('o caminho não muda o que conta como a MESMA posição', () => {
+  const h = comSaltos(comArquivo('a', '/p/a.ts', 3), comArquivo('a', '/p/a.ts', 3));
+  assert.equal(h.posicoes.length, 1, 'saltar para onde já se está não empilha');
 });
 
 test('esquecerAba tira as posições dela e ajusta o índice', () => {
