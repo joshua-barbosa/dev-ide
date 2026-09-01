@@ -32,9 +32,18 @@ export interface EstiloDaFoto {
   readonly escala: number;
 }
 
+/**
+ * A altura de linha que o MONACO usaria para este tamanho de fonte.
+ *
+ * Ele deriva a altura da fonte quando ninguém fixa uma, e a razão é 1.35 no
+ * Linux e no Windows. Fixar 1.5 aqui deixava a foto mais arejada que o editor —
+ * parecido, mas não igual, que é justamente o que uma foto de tela não pode ser.
+ */
+export const alturaDeLinha = (fontSize: number): number => Math.round(fontSize * 1.35);
+
 export const ESTILO_PADRAO: EstiloDaFoto = {
   fontSize: 14,
-  lineHeight: 21,
+  lineHeight: alturaDeLinha(14),
   recheio: 20,
   moldura: 32,
   enfeiteDeJanela: true,
@@ -141,4 +150,29 @@ export function nomeDaFoto(caminho: string | null, primeiraLinha: number): strin
   const semExtensao = base.includes('.') ? base.slice(0, base.lastIndexOf('.')) : base;
   const limpo = semExtensao.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '');
   return `${limpo === '' ? 'trecho' : limpo}-L${primeiraLinha}.png`;
+}
+
+/**
+ * Duas cores em `#rrggbb` misturadas na proporção `quanto` (0 a 1).
+ *
+ * Existe para a moldura da foto: `bgPanel` puxado um tanto para a cor de
+ * destaque dá um degradê que se enxerga, sem inventar cor que não está no tema.
+ *
+ * **Cor que não seja `#rgb` ou `#rrggbb` volta como veio.** Um tema do usuário
+ * com uma cor escrita de outro jeito não pode derrubar a foto inteira — é a
+ * mesma regra da spec 075 para cor inválida.
+ */
+export function misturarCores(a: string, b: string, quanto: number): string {
+  const valida = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+  if (!valida.test(a) || !valida.test(b)) return a;
+  const ler = (c: string): readonly number[] => {
+    const h = c.slice(1);
+    const n = h.length === 3 ? h.split('').map((d) => d + d).join('') : h;
+    return [0, 2, 4].map((i) => Number.parseInt(n.slice(i, i + 2), 16));
+  };
+  const [ra, ga, ba] = ler(a) as [number, number, number];
+  const [rb, gb, bb] = ler(b) as [number, number, number];
+  const m = (x: number, y: number): string =>
+    Math.round(x + (y - x) * quanto).toString(16).padStart(2, '0');
+  return `#${m(ra, rb)}${m(ga, gb)}${m(ba, bb)}`;
 }

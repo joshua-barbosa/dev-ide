@@ -10,7 +10,6 @@
 // em arquivo grande.
 import { Api } from '../api';
 import { capacidadeDe, podeFormatar, type ModoDeFormatacao } from '../../shared/formatacao';
-import type { PedidoDeCodeSnap } from '../editor/CodeSnapDialog';
 import type { TrechoDeTrabalho } from '../editor/EditorHost';
 import type { Workspace } from '../useWorkspace';
 
@@ -21,8 +20,6 @@ export interface FormatacaoAcoesDeps {
   /** O dialeto da conexão ativa, quando houver: muda como o SQL quebra. */
   readonly dialetoAtivo: string | null;
   avisar(mensagem: string, titulo?: string): Promise<void>;
-  /** Abre a janela do CodeSnap. */
-  abrirCodeSnap(pedido: PedidoDeCodeSnap): void;
 }
 
 export interface FormatacaoAcoes {
@@ -31,7 +28,7 @@ export interface FormatacaoAcoes {
 }
 
 export function useFormatacaoAcoes(deps: FormatacaoAcoesDeps): FormatacaoAcoes {
-  const { ws, tabSize, dialetoAtivo, avisar, abrirCodeSnap } = deps;
+  const { ws, tabSize, dialetoAtivo, avisar } = deps;
 
   /** O editor em foco e o trecho em que os comandos agem. */
   const trecho = (): {
@@ -99,11 +96,12 @@ export function useFormatacaoAcoes(deps: FormatacaoAcoesDeps): FormatacaoAcoes {
   };
 
   /**
-   * A foto do trecho (CodeSnap).
+   * A foto do trecho (CodeSnap), numa aba AO LADO.
    *
-   * Sem seleção ela sairia com o arquivo inteiro, o que quase nunca é o que se
-   * quer — mas recusar seria pior. Ela sai, e o aviso é a própria prévia: se
-   * veio o arquivo todo, dá para ver e fechar.
+   * Não carrega o texto junto: o painel lê a seleção do editor de origem a cada
+   * movimento do cursor, e é isso que faz a foto acompanhar o que ele marca.
+   * Passar o trecho aqui congelaria a foto no primeiro, que é justamente o que
+   * ele corrigiu no diálogo.
    */
   const foto = async (): Promise<void> => {
     const atual = trecho();
@@ -111,18 +109,11 @@ export function useFormatacaoAcoes(deps: FormatacaoAcoesDeps): FormatacaoAcoes {
       await avisar('Abra um arquivo e selecione o trecho que você quer fotografar.', 'CodeSnap');
       return;
     }
-    if (atual.alvo.texto.trim() === '') {
-      await avisar('Não há nada selecionado para fotografar.', 'CodeSnap');
+    if (atual.alvo.inteiro || atual.alvo.texto.trim() === '') {
+      await avisar('Selecione no editor o trecho que você quer fotografar.', 'CodeSnap');
       return;
     }
-    const aba = ws.active;
-    abrirCodeSnap({
-      texto: atual.alvo.texto,
-      // A do MONACO, e não a da IDE: é ela que o `colorize` entende.
-      linguagem: atual.alvo.linguagemDoMonaco,
-      primeiraLinha: atual.alvo.primeiraLinha,
-      caminho: ((aba?.meta ?? {}) as { path?: string | null }).path ?? null,
-    });
+    ws.abrirCodeSnap(ws.grupoFocado);
   };
 
   return { formatar, foto };

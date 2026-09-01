@@ -8,7 +8,7 @@
 // por isso o mapa de classe→cor é lido do CSS de verdade, e não adivinhado.
 import type * as monacoNS from 'monaco-editor';
 import {
-  centroDoCirculo, medir, semORecuoComum,
+  centroDoCirculo, medir, misturarCores, semORecuoComum,
   type EstiloDaFoto,
 } from '../../shared/codesnap';
 import { tokens } from '../theme';
@@ -79,6 +79,38 @@ function leitorDeCores(corDoTexto: string): (classe: string) => string {
   };
 }
 
+/**
+ * Escreve um pedaço CARACTERE A CARACTERE, e devolve onde parou.
+ *
+ * Parece desperdício, e não é: a fonte do editor é a Fira Code, que tem
+ * **ligaduras**. Num `fillText` de uma vez, `--no-cache-dir` sai com um traço
+ * longo e `==9.7.6` sai com um `═` — e o Monaco desenha os dois caracteres
+ * separados, porque `fontLigatures` vem desligado. A foto ficava mostrando um
+ * código diferente do que está na tela, e quem copiasse da imagem leria errado.
+ *
+ * O canvas 2D não tem como desligar ligadura: `letterSpacing` não resolve
+ * (testado), e não existe `font-feature-settings` aqui. Uma chamada por
+ * caractere resolve, porque cada uma é uma composição independente.
+ *
+ * A iteração é por `of`, e não por índice: assim um emoji ou um acento composto
+ * sai inteiro em vez de partido ao meio.
+ */
+function escrever(ctx: CanvasRenderingContext2D, texto: string, x: number, y: number): number {
+  let cursor = x;
+  for (const caractere of texto) {
+    ctx.fillText(caractere, cursor, y);
+    cursor += ctx.measureText(caractere).width;
+  }
+  return cursor;
+}
+
+/** A largura de um texto pela MESMA conta do desenho — soma por caractere. */
+function largura(ctx: CanvasRenderingContext2D, texto: string): number {
+  let total = 0;
+  for (const caractere of texto) total += ctx.measureText(caractere).width;
+  return total;
+}
+
 function cantoArredondado(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, largura: number, altura: number, raio: number
@@ -123,10 +155,13 @@ export async function desenharFoto({
   // alinhamento do código.
   const fonte = `${estilo.fontSize}px ${tokens.fontMono}`;
   ctx.font = fonte;
+  // Medida pela mesma conta do desenho: com ligadura, medir a linha inteira e
+  // desenhar caractere a caractere daria dois números diferentes, e a janelinha
+  // ficaria estreita demais para o que ela contém.
   const larguraDaLinha = (pedacos: Pedaco[]): number =>
-    ctx.measureText(pedacos.map((p) => p.texto).join('')).width;
+    largura(ctx, pedacos.map((p) => p.texto).join(''));
   const larguraDoTexto = Math.max(1, ...linhas.map(larguraDaLinha));
-  const larguraDeUmDigito = ctx.measureText('0').width;
+  const larguraDeUmDigito = largura(ctx, '0');
 
   const m = medir(linhas.length, larguraDoTexto, larguraDeUmDigito, estilo);
   canvas.width = Math.ceil(m.largura * estilo.escala);
@@ -136,22 +171,34 @@ export async function desenharFoto({
   ctx.font = fonte;
   ctx.textBaseline = 'top';
 
-  // 1. A moldura: um degradê discreto, para a janelinha ter de onde se
-  //    destacar. Fundo chapado deixaria a foto colada em qualquer página.
+  // 1. A moldura: degradê com um FIO da cor de destaque no meio. Antes ele ia
+  //    de `bg` a `bgPanel`, que num tema escuro são dois cinzas quase iguais — o
+  //    resultado era um retângulo chapado, e a janelinha não tinha de onde se
+  //    destacar. A cor de destaque é a do tema dele, então a foto continua sendo
+  //    a cara da IDE dele, e não uma moldura genérica.
   const degrade = ctx.createLinearGradient(0, 0, m.largura, m.altura);
   degrade.addColorStop(0, paleta.bg);
-  degrade.addColorStop(1, paleta.bgPanel);
+  degrade.addColorStop(0.5, misturarCores(paleta.bgPanel, paleta.accent, 0.14));
+  degrade.addColorStop(1, paleta.bg);
   ctx.fillStyle = degrade;
   ctx.fillRect(0, 0, m.largura, m.altura);
 
-  // 2. A janelinha, com sombra.
+  // 2. A janelinha, com sombra e um fio de contorno.
   ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.45)';
-  ctx.shadowBlur = 24;
-  ctx.shadowOffsetY = 8;
+  ctx.shadowColor = 'rgba(0,0,0,0.55)';
+  ctx.shadowBlur = 30;
+  ctx.shadowOffsetY = 10;
   ctx.fillStyle = paleta.bgEditor;
   cantoArredondado(ctx, m.janelaX, m.janelaY, m.janelaLargura, m.janelaAltura, 10);
   ctx.fill();
+  ctx.restore();
+  // O fio existe porque em tema escuro a janela e a moldura são dois cinzas
+  // parecidos, e sem ele a foto vira um retângulo chapado sem borda visível.
+  ctx.save();
+  ctx.strokeStyle = paleta.border;
+  ctx.lineWidth = 1;
+  cantoArredondado(ctx, m.janelaX + 0.5, m.janelaY + 0.5, m.janelaLargura - 1, m.janelaAltura - 1, 10);
+  ctx.stroke();
   ctx.restore();
 
   // 3. Os três círculos.
@@ -173,15 +220,13 @@ export async function desenharFoto({
       const numero = String(estilo.primeiraLinha + i);
       ctx.fillStyle = paleta.fgDim;
       // Alinhado à direita, como em toda margem de editor.
-      const x = m.janelaX + estilo.recheio + m.larguraDosNumeros - 16
-        - ctx.measureText(numero).width;
-      ctx.fillText(numero, x, y);
+      const x = m.janelaX + estilo.recheio + m.larguraDosNumeros - 16 - largura(ctx, numero);
+      escrever(ctx, numero, x, y);
     }
     let x = m.codigoX;
     for (const pedaco of pedacos) {
       ctx.fillStyle = pedaco.cor;
-      ctx.fillText(pedaco.texto, x, y);
-      x += ctx.measureText(pedaco.texto).width;
+      x = escrever(ctx, pedaco.texto, x, y);
     }
   });
 

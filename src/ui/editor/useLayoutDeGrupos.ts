@@ -41,6 +41,18 @@ export interface LayoutDeGrupos {
    * compartilhado do Monaco (ver `editor/modelos.ts`).
    */
   duplicar(lado: Lado): void;
+  /**
+   * Abre uma aba NOVA no grupo ao lado, dividindo a tela se preciso (spec 077).
+   *
+   * É o que o CodeSnap pede: *"ele divide a tela — na esquerda o código que
+   * havia selecionado e na direita o preview da imagem"*. A aba de origem fica
+   * onde está, e por isso ele continua selecionando texto nela.
+   *
+   * Já dividido, a aba vai para um grupo que já existe em vez de recusar: com
+   * a tela dividida ao meio, "não dá para dividir mais" não é resposta útil
+   * para quem só quer ver a foto ao lado.
+   */
+  abrirAoLado(aba: Omit<Tab, 'grupo'>, lado?: Lado): void;
   /** Move a fronteira entre dois irmãos (T021). */
   redimensionarLayout(caminho: readonly number[], indice: number, fracao: number): void;
 }
@@ -111,6 +123,30 @@ export function useLayoutDeGrupos(deps: DepsDoLayout): LayoutDeGrupos {
     [salvarTodosOsGrupos, store]
   );
 
+  const abrirAoLado = useCallback(
+    (nova: Omit<Tab, 'grupo'>, lado: Lado = 'direita') => {
+      const id = store.activeId();
+      const alvo = id === null ? GRUPO_PADRAO : (store.get(id)?.grupo ?? GRUPO_PADRAO);
+      salvarTodosOsGrupos();
+      setLayout((atual) => {
+        if (!podeDividir(atual)) {
+          // Sem espaço para outro grupo: usa um que já exista, e só cai no
+          // próprio quando não há nenhum outro.
+          const outros = store
+            .list()
+            .map((t) => t.grupo)
+            .filter((g) => g !== alvo);
+          store.open({ ...nova, grupo: outros[0] ?? alvo });
+          return atual;
+        }
+        const novo = proximoGrupo(atual);
+        store.open({ ...nova, grupo: novo });
+        return dividirLayout(atual, alvo, lado, novo);
+      });
+    },
+    [salvarTodosOsGrupos, store]
+  );
+
   /**
    * Move uma fronteira do arranjo (T021).
    *
@@ -124,5 +160,7 @@ export function useLayoutDeGrupos(deps: DepsDoLayout): LayoutDeGrupos {
     []
   );
 
-  return { layout, definirLayout: setLayout, dividir, duplicar, redimensionarLayout };
+  return {
+    layout, definirLayout: setLayout, dividir, duplicar, abrirAoLado, redimensionarLayout,
+  };
 }

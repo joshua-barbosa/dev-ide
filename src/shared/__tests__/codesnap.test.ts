@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  ALTURA_DO_ENFEITE, centroDoCirculo, ESTILO_PADRAO, medir, nomeDaFoto, semORecuoComum,
+  ALTURA_DO_ENFEITE, alturaDeLinha, centroDoCirculo, ESTILO_PADRAO, medir, misturarCores,
+  nomeDaFoto, semORecuoComum,
 } from '../codesnap';
 
 const estilo = { ...ESTILO_PADRAO, numeros: false, enfeiteDeJanela: false };
@@ -94,4 +95,31 @@ test('trecho sem arquivo ainda ganha um nome utilizável', () => {
 test('nome com caractere estranho não vira caminho nem some', () => {
   assert.equal(nomeDaFoto('/tmp/a b/c#d.sql', 7), 'c-d-L7.png');
   assert.equal(nomeDaFoto('/tmp/###.txt', 3), 'trecho-L3.png');
+});
+
+// ---------------------------------------------------------------------------
+// A altura de linha e a mistura de cor
+// ---------------------------------------------------------------------------
+
+test('a altura de linha é a que o Monaco usaria', () => {
+  // 1.35 é a razão do Monaco no Linux e no Windows. Estava fixa em 1.5, e a
+  // foto saía mais arejada que o editor — parecida, e não igual.
+  assert.equal(alturaDeLinha(14), 19);
+  assert.equal(alturaDeLinha(12), 16);
+  assert.equal(ESTILO_PADRAO.lineHeight, alturaDeLinha(ESTILO_PADRAO.fontSize));
+});
+
+test('misturar cor anda de uma para a outra', () => {
+  assert.equal(misturarCores('#000000', '#ffffff', 0), '#000000');
+  assert.equal(misturarCores('#000000', '#ffffff', 1), '#ffffff');
+  assert.equal(misturarCores('#000000', '#ffffff', 0.5), '#808080');
+});
+
+test('a forma curta de três dígitos vale', () => {
+  assert.equal(misturarCores('#000', '#fff', 1), '#ffffff');
+});
+
+test('cor inválida volta como veio, e não derruba a foto', () => {
+  assert.equal(misturarCores('rgb(0,0,0)', '#ffffff', 0.5), 'rgb(0,0,0)');
+  assert.equal(misturarCores('#000000', 'azul', 0.5), '#000000');
 });

@@ -12,7 +12,7 @@ import { useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import { TabBar } from './tabs/TabBar';
 import { ZonaDeSoltura } from './ZonaDeSoltura';
-import { EditorHost, type EditorHandle } from './editor/EditorHost';
+import { EditorHost, type AcaoDeMenuDoEditor, type EditorHandle } from './editor/EditorHost';
 import { AbaDeTerminal } from './terminal/AbaDeTerminal';
 import { ResultGrid } from './grid/ResultGrid';
 import { TabelaHost } from './tabela/TabelaHost';
@@ -110,6 +110,9 @@ export interface EditorGroupProps {
   /** A tela de configurações (T001), montada pelo `App`, que tem as prefs. */
   readonly preferencias: React.ReactNode;
   readonly requisitos: React.ReactNode;
+  readonly codesnap: React.ReactNode;
+  /** Itens próprios no menu de botão direito do editor (spec 077). */
+  readonly acoesDeMenu?: readonly AcaoDeMenuDoEditor[];
 
   registrarEditor(handle: EditorHandle | null): void;
   onFocar(): void;
@@ -128,7 +131,7 @@ export interface EditorGroupProps {
 export function EditorGroup({
   grupo, abas, ativaId, focado, dividido,
   fontSize, tabSize, wordWrap, terminalFontSize, tema, snippets, emmet,
-  grades, formulario, preferencias, requisitos, emPreview, conteudoDaAba, onPreview,
+  grades, formulario, preferencias, requisitos, codesnap, acoesDeMenu, emPreview, conteudoDaAba, onPreview,
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
   onReordenarAba,
   onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
@@ -197,7 +200,7 @@ export function EditorGroup({
     !mostrandoPreview &&
     ![
       'grid', 'conexao', 'terminal', 'tabela', 'processos', 'caderno', 'servidor',
-      'preferencias', 'requisitos',
+      'preferencias', 'requisitos', 'codesnap',
       // Imagem, PDF e CSV têm tela própria (T027) — o Monaco não abre nenhum
       // dos três de um jeito útil.
       'visualizador',
@@ -257,6 +260,7 @@ export function EditorGroup({
       <Box sx={{ flex: 1, display: mostrarEditor ? 'flex' : 'none', minHeight: 0 }}>
         <EditorHost
           ref={registrarEditor}
+          acoesDeMenu={acoesDeMenu}
           onChange={onMudar}
           onCursor={onCursor}
           fontSize={fontSize}
@@ -398,6 +402,7 @@ export function EditorGroup({
           não guarda estado nenhum — o que vale está no `config.json`. */}
       {ativa?.type === 'preferencias' && preferencias}
       {ativa?.type === 'requisitos' && requisitos}
+      {ativa?.type === 'codesnap' && codesnap}
 
       {/*
         A aba de servidor (spec 055). Como todas as outras, ela é escondida com

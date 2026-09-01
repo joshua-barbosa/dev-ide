@@ -210,8 +210,15 @@ test('o Beautify age só na SELEÇÃO quando há uma', async ({ page }) => {
 // CodeSnap
 // ---------------------------------------------------------------------------
 
-test('CodeSnap mostra a prévia do trecho selecionado (e nada sem seleção)', async ({ page }) => {
-  await comArquivo(page, 'zorbax-foto.js', 'const a = 1;\nconst b = 2;\n');
+test('CodeSnap abre AO LADO e segue a seleção (spec 077)', async ({ page }) => {
+  // As duas linhas têm comprimentos BEM diferentes de propósito: a prova de
+  // que a foto foi redesenhada é a largura do canvas mudar, e com linhas do
+  // mesmo tamanho ela não mudaria nem com o redesenho acontecendo.
+  await comArquivo(
+    page,
+    'zorbax-foto.js',
+    'const a = 1;\nconst bemMaisLongaParaMudarALargura = 222222222;\n'
+  );
 
   await editor(page).click();
   await page.keyboard.press('Control+Home');
@@ -220,12 +227,30 @@ test('CodeSnap mostra a prévia do trecho selecionado (e nada sem seleção)', a
   await menu(page, 'Edit');
   await page.getByRole('menuitem', { name: /Foto do trecho/ }).click();
 
-  const janela = page.getByRole('dialog', { name: 'Foto do trecho' });
-  await expect(janela).toBeVisible();
-  // A prévia é o CANVAS que vira PNG — não uma imitação em HTML.
-  await expect(janela.locator('[data-codesnap-previa] canvas')).toBeVisible();
-  await expect(janela.getByRole('button', { name: 'Copiar imagem' })).toBeVisible();
-  await page.keyboard.press('Escape');
+  // Aba, e não diálogo: era a correção dele. E a tela fica DIVIDIDA, com o
+  // arquivo de um lado e a foto do outro.
+  await expect(page.locator('[data-tab="Foto do trecho"]')).toBeVisible();
+  await expect(page.locator('[data-grupo-editor]')).toHaveCount(2);
+  const painel = page.locator('[data-painel-de-codesnap]');
+  await expect(painel.locator('canvas')).toBeVisible({ timeout: 10_000 });
+  await expect(painel.getByRole('button', { name: 'Copiar imagem' })).toBeEnabled();
+
+  // O foco VOLTOU para o código: ele não precisa clicar de volta para seguir
+  // selecionando, que é o ponto de a foto ficar ao lado.
+  await expect(page.locator('[data-grupo-focado="true"] [data-editor]')).toBeVisible();
+
+  // A prova de que ela SEGUE: marcar a segunda linha no arquivo redesenha a
+  // foto, sem fechar nem reabrir nada. O tamanho muda porque o texto muda.
+  const antes = await painel.locator('canvas').evaluate((c) => (c as HTMLCanvasElement).width);
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Shift+End');
+  await expect
+    .poll(
+      async () => painel.locator('canvas').evaluate((c) => (c as HTMLCanvasElement).width),
+      { timeout: 10_000 }
+    )
+    .not.toBe(antes);
 
   await apagar(page, 'zorbax-foto.js');
 });

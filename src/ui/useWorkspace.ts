@@ -178,6 +178,16 @@ export interface Workspace {
   abrirTelaDePreferencias(): void;
   /** A tela do que a IDE precisa da máquina (spec 077). */
   abrirRequisitos(): void;
+  /**
+   * A foto do trecho, numa aba AO LADO (spec 077).
+   *
+   * Ao lado, e não em diálogo: assim ele continua selecionando no arquivo, e a
+   * foto acompanha. `origem` é o grupo do editor de onde a seleção vem — o
+   * painel lê dele, e não do grupo em foco, que passa a ser o da própria foto.
+   */
+  abrirCodeSnap(origem: number): void;
+  /** O editor de um grupo, para quem precisa ler de um que não está em foco. */
+  editorDoGrupo(grupo: number): EditorHandle | null;
   /** A aba de um SERVIDOR, com as sub-abas que ele sabe oferecer (spec 055). */
   abrirServidor(connectionId: string, titulo: string): void;
   /**
@@ -316,7 +326,9 @@ export function useWorkspace({ confirmar, aoAbrirArquivo }: WorkspaceDeps): Work
 
 
   // O ARRANJO dos grupos mora em `editor/useLayoutDeGrupos.ts` — ver a nota lá.
-  const { layout, definirLayout, dividir, duplicar, redimensionarLayout } = useLayoutDeGrupos({
+  const {
+    layout, definirLayout, dividir, duplicar, abrirAoLado, redimensionarLayout,
+  } = useLayoutDeGrupos({
     store, tabs, grupoFocado, salvarTodosOsGrupos,
   });
 
@@ -719,6 +731,26 @@ export function useWorkspace({ confirmar, aoAbrirArquivo }: WorkspaceDeps): Work
     abrirProcessos: dados.abrirProcessos,
     abrirTelaDePreferencias: dados.abrirPreferencias,
     abrirRequisitos: dados.abrirRequisitos,
+    abrirCodeSnap: (origem: number) => {
+      abrirAoLado({
+        id: 'codesnap',
+        type: 'codesnap',
+        title: 'Foto do trecho',
+        icon: 'lucide:camera',
+        dirty: false,
+        meta: { origem },
+      });
+      // O foco VOLTA para o código. Abrir uma aba foca a aba nova, e aqui isso
+      // seria o contrário do que a foto existe para fazer: ele disse *"posso
+      // continuar selecionando o texto no arquivo aberto"*, e teria de clicar
+      // de volta antes de cada seleção. O `setTimeout` espera o grupo novo
+      // existir na tela — focar antes disso não acha editor nenhum.
+      setTimeout(() => {
+        store.focarGrupo(origem);
+        ed.editorDoGrupo(origem)?.focus();
+      }, 0);
+    },
+    editorDoGrupo: ed.editorDoGrupo,
     abrirServidor: dados.abrirServidor,
     abrirTabela: dados.abrirTabela,
     abrirSemTitulo,

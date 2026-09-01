@@ -162,11 +162,34 @@ export interface EditorHostProps {
    * quem sabe o que fazer com ela.
    */
   readonly onComando: (id: string) => void;
+  /**
+   * Itens PRÓPRIOS no menu de botão direito do editor (spec 077).
+   *
+   * Ele pediu por causa do CodeSnap: *"o botão de tirar o CodeSnap fica quando
+   * eu clico com botão direito no código selecionado"*. O Monaco tem o menu
+   * dele, e `addAction` é a porta oficial para entrar nesse menu — reimplementar
+   * o menu inteiro só para caber um item seria trocar o que funciona por uma
+   * cópia pior.
+   */
+  readonly acoesDeMenu?: readonly AcaoDeMenuDoEditor[];
+}
+
+export interface AcaoDeMenuDoEditor {
+  readonly id: string;
+  readonly rotulo: string;
+  /**
+   * Condição do Monaco para o item aparecer habilitado.
+   *
+   * Ex.: `editorHasSelection` — sem seleção não há trecho para fotografar, e um
+   * item que falha depois de clicado é pior que um item apagado.
+   */
+  readonly quando?: string;
+  aoRodar(): void;
 }
 
 export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function EditorHost(
   { onChange, onCursor, fontSize, tabSize, wordWrap, tema, snippets, onComando,
-    emmet = EMMET_PADRAO },
+    emmet = EMMET_PADRAO, acoesDeMenu = [] },
   ref
 ) {
   const caixa = useRef<HTMLDivElement>(null);
@@ -176,9 +199,11 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
   const aoMudar = useRef(onChange);
   const aoMoverCursor = useRef(onCursor);
   const aoComandar = useRef(onComando);
+  const acoesAtuais = useRef(acoesDeMenu);
   aoMudar.current = onChange;
   aoMoverCursor.current = onCursor;
   aoComandar.current = onComando;
+  acoesAtuais.current = acoesDeMenu;
 
   // O tema precisa existir ANTES do primeiro `create`, senão o editor nasce com
   // o `vs-dark` padrão e só repinta no efeito seguinte — um piscar visível.
@@ -236,7 +261,27 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
       () => aoComandar.current('go.references')
     );
 
+    // Itens próprios no menu de botão direito (spec 077). Registrados uma vez,
+    // com o corpo lido da ref: assim trocar a função não exige recriar o editor.
+    const acoes = acoesAtuais.current.map((acao, i) =>
+      ed.addAction({
+        id: acao.id,
+        label: acao.rotulo,
+        // `navigation` é o primeiro grupo do menu do Monaco, onde ficam as
+        // ações que levam a algum lugar. `9_cutcopypaste` viria antes do
+        // Recortar, e empurrar o que ele usa todo dia para baixo seria pior.
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 10 + i,
+        ...(acao.quando === undefined ? {} : { precondition: acao.quando }),
+        run: () => {
+          const atual = acoesAtuais.current.find((a) => a.id === acao.id);
+          atual?.aoRodar();
+        },
+      })
+    );
+
     return () => {
+      for (const acao of acoes) acao.dispose();
       mudou.dispose();
       moveu.dispose();
       // O modelo NÃO é descartado aqui: ele pode estar em uso pelo outro grupo,

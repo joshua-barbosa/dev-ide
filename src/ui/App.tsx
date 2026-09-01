@@ -15,7 +15,8 @@ import { aplicarVariaveis, criarTema } from './theme';
 import { paletaDe } from '../shared/temas';
 import { useFormatacaoAcoes } from './acoes/useFormatacaoAcoes';
 import { useSaidaAcoes } from './acoes/useSaidaAcoes';
-import { CodeSnapDialog, type PedidoDeCodeSnap } from './editor/CodeSnapDialog';
+import { PainelDeCodeSnap } from './editor/PainelDeCodeSnap';
+import { acaoDeMenuDaFoto, useFotoDoTrecho } from './editor/useFotoDoTrecho';
 import { TelaDeRequisitos } from './ajuda/TelaDeRequisitos';
 import { useTemaAtual } from './useTemaAtual';
 import { temPreview } from '../shared/markdown';
@@ -376,13 +377,12 @@ export function App() {
   });
   const snippetsAcoes = useSnippetsAcoes({ qi, ws, snippets, linguagem, avisar: dialogs.avisar });
 
-  /** O pedido do CodeSnap em voo; `null` com a janela fechada (spec 077). */
-  const [codeSnap, setCodeSnap] = useState<PedidoDeCodeSnap | null>(null);
+  const foto = useFotoDoTrecho(ws);
   const formatacaoAcoes = useFormatacaoAcoes({
     ws, tabSize: prefs.prefs['editor.tabSize'],
     // O dialeto muda como o SQL quebra: `LIMIT` e `TOP` não são a mesma coisa.
     dialetoAtivo: conexoes.acharConexao(vinculos.vinculoDe(caminhoAtivo)?.connectionId)?.type ?? null,
-    avisar: dialogs.avisar, abrirCodeSnap: setCodeSnap,
+    avisar: dialogs.avisar,
   });
 
 
@@ -632,6 +632,16 @@ export function App() {
                   onComando={executarComando}
                   formulario={formularioDeConexao}
                   requisitos={<TelaDeRequisitos onErro={falhaDaIde} />}
+                  acoesDeMenu={acaoDeMenuDaFoto(() => avisar(formatacaoAcoes.foto()))}
+                  codesnap={
+                    <PainelDeCodeSnap
+                      {...foto}
+                      cursor={ws.cursor}
+                      paleta={paletaDe(tema)}
+                      onErro={falhaDaIde}
+                      avisar={dialogs.avisar}
+                    />
+                  }
                   preferencias={
                     <TelaDePreferencias
                       prefs={prefs.prefs}
@@ -782,13 +792,7 @@ export function App() {
 
       {dialogs.elemento}
       {menu.elemento}
-      <CodeSnapDialog
-        pedido={codeSnap}
-        paleta={paletaDe(tema)}
-        onFechar={() => setCodeSnap(null)}
-        onErro={falhaDaIde}
-        avisar={dialogs.avisar}
-      />
+
     </Box>
     </ThemeProvider>
   );
