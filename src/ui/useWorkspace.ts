@@ -63,7 +63,16 @@ export function linguagemDe(caminho: string): string {
   if (porNome !== undefined) return porNome;
 
   if (!nome.includes('.')) return 'plain';
-  const ext = `.${nome.split('.').pop() ?? ''}`;
+  // Extensão DUPLA antes da simples (T041): `.blade.php` cairia em `.php` e
+  // perderia o rótulo de Blade — que é o que faz a barra de status dizer o que
+  // o arquivo é. O realce continua o de PHP, que é o certo.
+  const partes = nome.split('.');
+  if (partes.length > 2) {
+    const dupla = `.${partes.slice(-2).join('.')}`;
+    const porDupla = EXT_TO_LANG[dupla];
+    if (porDupla !== undefined) return porDupla;
+  }
+  const ext = `.${partes.pop() ?? ''}`;
   return EXT_TO_LANG[ext] ?? 'plain';
 }
 

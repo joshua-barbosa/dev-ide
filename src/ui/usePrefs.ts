@@ -7,9 +7,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { Api } from './api';
 import { padroes, type PatchDePreferencias, type Preferencias } from '../shared/prefs';
 import { definirTemasDoUsuario } from '../shared/temas';
+import { EMMET_PADRAO, type ConfiguracaoDoEmmet } from '../shared/emmet';
 
 export interface PrefsController {
   readonly prefs: Preferencias;
+  /** Como o Emmet está configurado (T022). */
+  readonly emmet: ConfiguracaoDoEmmet;
   /** As chaves que o `.vscode/settings.json` do projeto sobrescreve (T002). */
   readonly sobrescritas: readonly string[];
   /** Caminho do `config.json`. Vazio até o servidor responder. */
@@ -24,6 +27,7 @@ export function usePrefs(aoFalhar: (erro: unknown) => void): PrefsController {
   const [prefs, setPrefs] = useState<Preferencias>(padroes);
   const [caminho, setCaminho] = useState('');
   const [sobrescritas, setSobrescritas] = useState<readonly string[]>([]);
+  const [emmet, setEmmet] = useState<ConfiguracaoDoEmmet>(EMMET_PADRAO);
 
   const recarregar = useCallback(async (): Promise<void> => {
     // Os dois juntos: um tema novo no `config.json` só vale depois de o
@@ -36,6 +40,14 @@ export function usePrefs(aoFalhar: (erro: unknown) => void): PrefsController {
     const [valores, temas] = await Promise.all([Api.prefs(), Api.prefsThemes()]);
     definirTemasDoUsuario(temas);
     setPrefs(valores);
+
+    // Fora do caminho crítico, como o do projeto: o Emmet só entra em ação
+    // quando alguém digita uma abreviação, e esperá-lo atrasaria a pintura.
+    Api.prefsEmmet()
+      .then(setEmmet)
+      .catch(() => {
+        // Sem a configuração dele, valem os padrões — que é o que valia antes.
+      });
 
     // O que o projeto sobrescreve fica FORA do caminho crítico: ele só decide
     // um aviso na tela de configurações, e esperá-lo atrasaria a primeira
@@ -63,5 +75,5 @@ export function usePrefs(aoFalhar: (erro: unknown) => void): PrefsController {
     setPrefs(await Api.setPrefs(patch));
   }, []);
 
-  return { prefs, sobrescritas, caminho, definir, recarregar };
+  return { prefs, emmet, sobrescritas, caminho, definir, recarregar };
 }

@@ -384,7 +384,7 @@ export function App() {
   const comandosAcoes = useComandosAcoes({
     qi, avisar: dialogs.avisar, rodarNoTerminal: (c) => novoTerminalNoPainel(c),
   });
-  const snippetsAcoes = useSnippetsAcoes({ qi, ws, snippets, linguagem });
+  const snippetsAcoes = useSnippetsAcoes({ qi, ws, snippets, linguagem, avisar: dialogs.avisar });
 
 
   /** Ids dos terminais que dividem a tela com o ativo. */
@@ -608,6 +608,7 @@ export function App() {
                   onAbrirArquivo={ws.abrirArquivo}
                   tema={tema}
                   snippets={snippets.lista}
+                  emmet={prefs.emmet}
                   grades={exec.grades}
                   emPreview={ws.emPreview}
                   conteudoDaAba={ws.conteudoDaAba}

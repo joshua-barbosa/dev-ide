@@ -6,6 +6,7 @@
 // de estado próprio; o estado continua nos ganchos de sempre.
 import { Api } from '../api';
 import type { QuickInputController } from '../useQuickInput';
+import type { Tarefa } from '../../shared/tarefas';
 
 export interface ComandosAcoesDeps {
   readonly qi: QuickInputController;
@@ -15,8 +16,10 @@ export interface ComandosAcoesDeps {
 }
 
 export interface ComandosAcoes {
-  /** A caixa do `Run Task…`: descobertos, salvos e a gestão. */
+  /** A caixa do `Run Task…`: tarefas, descobertos, salvos e a gestão. */
   abrir(): Promise<void>;
+  /** `Run Build Task` / `Run Test Task` (T016). */
+  rodarDoGrupo(grupo: 'build' | 'test'): Promise<void>;
 }
 
 export function useComandosAcoes(deps: ComandosAcoesDeps): ComandosAcoes {
@@ -30,12 +33,21 @@ export function useComandosAcoes(deps: ComandosAcoesDeps): ComandosAcoes {
    * comandos.
    */
   const abrir = async (): Promise<void> => {
-    const { salvos, descobertos } = await Api.commands();
+    const { salvos, descobertos, tarefas } = await Api.commands();
 
     const escolhido = await qi.pedir({
       titulo: 'Comandos',
       placeholder: 'Escolha um comando',
       opcoes: [
+        // As tarefas do projeto vêm PRIMEIRO: elas são as do repositório em que
+        // ele está, e as outras duas listas valem em qualquer pasta.
+        ...tarefas.map((t) => ({
+          valor: `tarefa:${t.nome}`,
+          rotulo: t.nome,
+          detalhe: t.comando,
+          icone: 'lucide:play',
+          sufixo: t.grupo === undefined ? 'tarefa' : t.grupo,
+        })),
         ...descobertos.map((c) => ({
           valor: `rodar:shell:${c.comando}`,
           rotulo: c.nome,
@@ -63,11 +75,69 @@ export function useComandosAcoes(deps: ComandosAcoesDeps): ComandosAcoes {
 
     if (verbo === 'novo') return salvar();
     if (verbo === 'remover') return remover();
+    if (verbo === 'tarefa') return rodarTarefa(resto);
 
     // O prefixo `shell:` continua no valor por compatibilidade com o formato,
     // mas é o único destino desde a spec 039 — SQL salvo virou arquivo na pasta
     // `Query` da conexão (decisão D3).
     rodarNoTerminal(resto.slice(resto.indexOf(':') + 1));
+  };
+
+  /**
+   * Roda uma tarefa do `tasks.json`, com as dependências antes (T015).
+   *
+   * **Quem faz a sequência é o SHELL**, com `&&`. A IDE não tem integração de
+   * shell e não sabe quando um comando terminou; encadear no próprio terminal
+   * resolve isso de graça — e ainda pára na primeira que falhar, que é o que
+   * `dependsOrder: sequence` promete.
+   *
+   * Passo com mais de uma tarefa vai em terminais separados: é o paralelo, e
+   * o `&&` faria dele uma fila.
+   *
+   * Tarefa de FUNDO nunca entra numa corrente: ela não termina, e o que viesse
+   * depois nunca rodaria.
+   */
+  const rodarTarefa = async (nome: string): Promise<void> => {
+    const { passos } = await Api.taskPlan(nome);
+
+    for (const passo of passos) {
+      const emCorrente = passo.filter((t) => !t.deFundo);
+      for (const fundo of passo.filter((t) => t.deFundo)) {
+        rodarNoTerminal(comandoDe(fundo));
+      }
+      if (emCorrente.length === 1) {
+        rodarNoTerminal(comandoDe(emCorrente[0] as Tarefa));
+      } else {
+        for (const t of emCorrente) rodarNoTerminal(comandoDe(t));
+      }
+    }
+  };
+
+  /** A linha que vai para o terminal, com o `cd` quando a tarefa pede outro cwd. */
+  const comandoDe = (t: Tarefa): string =>
+    t.cwd === undefined ? t.comando : `cd ${JSON.stringify(t.cwd)} && ${t.comando}`;
+
+  /**
+   * `Run Build Task` e `Run Test Task` (T016).
+   *
+   * Sem tarefa padrão, ABRE a lista em vez de escolher no chute — e sem tarefa
+   * nenhuma, diz o que falta.
+   */
+  const rodarDoGrupo = async (grupo: 'build' | 'test'): Promise<void> => {
+    const { tarefa } = await Api.defaultTask(grupo);
+    if (tarefa !== null) return rodarTarefa(tarefa.nome);
+
+    const { tarefas } = await Api.commands();
+    if (tarefas.length === 0) {
+      await avisar(
+        'Este projeto não tem tarefas.\n\n' +
+          'Crie um .vscode/tasks.json com um "label", um "command" e ' +
+          '"group": { "kind": "build", "isDefault": true }.',
+        grupo === 'build' ? 'Run Build Task' : 'Run Test Task'
+      );
+      return;
+    }
+    await abrir();
   };
 
   /** Cria um comando salvo, avisando sobre senha em texto puro. */
@@ -108,5 +178,5 @@ export function useComandosAcoes(deps: ComandosAcoesDeps): ComandosAcoes {
   };
 
 
-  return { abrir };
+  return { abrir, rodarDoGrupo };
 }

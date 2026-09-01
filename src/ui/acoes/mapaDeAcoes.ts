@@ -148,6 +148,8 @@ return {
   'run.file': () => executar('file'),
   'run.selection': () => executar('block'),
   'run.stop': () => avisar(exec.parar()),
+  'run.buildTask': () => avisar(comandosAcoes.rodarDoGrupo('build')),
+  'run.testTask': () => avisar(comandosAcoes.rodarDoGrupo('test')),
   'run.disconnect': () => {
     const id = exec.conexaoAtiva;
     if (id !== null) avisar(conexoes.desconectar(id));

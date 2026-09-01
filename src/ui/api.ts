@@ -1,3 +1,5 @@
+import type { Tarefa } from '../shared/tarefas';
+import type { ConfiguracaoDoEmmet } from '../shared/emmet';
 // Cliente da API REST.
 //
 // Todas as respostas do servidor usam o envelope {success, data, error}; este
@@ -77,6 +79,8 @@ export interface ResultadoDaBusca {
 export interface ListaDeComandos {
   readonly salvos: readonly ComandoSalvo[];
   readonly descobertos: readonly ComandoDescoberto[];
+  /** As do `.vscode/tasks.json` da pasta aberta (T015). */
+  readonly tarefas: readonly Tarefa[];
 }
 
 export interface DriverInfo {
@@ -230,6 +234,15 @@ export const Api = {
 
   // ---- comandos salvos (spec 018) ----
   commands: () => request<ListaDeComandos>('GET', '/api/commands'),
+  /** O plano de execução de uma tarefa do `tasks.json` (T015). */
+  taskPlan: (nome: string) =>
+    request<{ passos: Tarefa[][] }>(
+      'GET',
+      `/api/commands/tarefas/${encodeURIComponent(nome)}/plano`
+    ),
+  /** A tarefa padrão de um grupo — o que `Run Build Task` roda (T016). */
+  defaultTask: (grupo: 'build' | 'test') =>
+    request<{ tarefa: Tarefa | null }>('GET', `/api/commands/tarefas/padrao/${grupo}`),
   createCommand: (nome: string, comando: string, destino: DestinoDeComando) =>
     request<ComandoSalvo>('POST', '/api/commands', { nome, comando, destino }),
   deleteCommand: (id: string) =>
@@ -239,6 +252,9 @@ export const Api = {
   snippets: () => request<Snippet[]>('GET', '/api/snippets'),
   createSnippet: (dados: Omit<Snippet, 'id'>) =>
     request<Snippet>('POST', '/api/snippets', dados),
+  /** Importa snippets do VS Code de um arquivo ou pasta (T017). */
+  importSnippets: (path: string) =>
+    request<{ importados: number; repetidos: number }>('POST', '/api/snippets/import', { path }),
   deleteSnippet: (id: string) =>
     request<{ removido: boolean }>('DELETE', `/api/snippets/${encodeURIComponent(id)}`),
 
@@ -348,6 +364,8 @@ export const Api = {
     request<{ path: string | null; sobrescritas: string[] }>('GET', '/api/prefs/project'),
   prefsProjectFile: () =>
     request<{ path: string }>('POST', '/api/prefs/project/file'),
+  /** A configuração do Emmet (T022). */
+  prefsEmmet: () => request<ConfiguracaoDoEmmet>('GET', '/api/prefs/emmet'),
   prefsFile: () => request<{ path: string }>('POST', '/api/prefs/file'),
 
   // ---- conexões ----

@@ -56,6 +56,11 @@ export function createPrefsRouter(prefs: PreferencesStore): Router {
     res.json(ok({ path: prefs.garantirArquivoDoProjeto() }));
   }));
 
+  /** A configuração do Emmet (T022). */
+  router.get('/emmet', wrap((_req, res) => {
+    res.json(ok(prefs.lerEmmet()));
+  }));
+
   /** Onde o arquivo fica — a interface precisa saber para reagir ao salvá-lo. */
   router.get('/file', wrap((_req, res) => {
     res.json(ok({ path: prefs.path }));

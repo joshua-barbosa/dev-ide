@@ -31,6 +31,7 @@ import type { QueryResult, SessionCapabilities } from '../shared/contracts';
 import type { Vinculo } from '../shared/sql/vinculo';
 import type { ResultadoSalvo } from '../shared/sql/caderno';
 import type { Snippet } from '../shared/snippets';
+import type { ConfiguracaoDoEmmet } from '../shared/emmet';
 import type { EstadoGrade } from './useExecution';
 import {
   decodificarCarga, MIME_DE_ARRASTE, zonaDoPonto, type CargaDeArraste, type Zona,
@@ -93,6 +94,8 @@ export interface EditorGroupProps {
   readonly terminalFontSize: number;
   readonly tema: NomeDoTema;
   readonly snippets: readonly Snippet[];
+  /** Como o Emmet está configurado (T022). */
+  readonly emmet: ConfiguracaoDoEmmet;
   /** Comando pedido de DENTRO do editor, por tecla que o Monaco reserva. */
   readonly onComando: (id: string) => void;
 
@@ -123,7 +126,7 @@ export interface EditorGroupProps {
 
 export function EditorGroup({
   grupo, abas, ativaId, focado, dividido,
-  fontSize, tabSize, wordWrap, terminalFontSize, tema, snippets,
+  fontSize, tabSize, wordWrap, terminalFontSize, tema, snippets, emmet,
   grades, formulario, preferencias, emPreview, conteudoDaAba, onPreview,
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
   onReordenarAba,
@@ -260,6 +263,7 @@ export function EditorGroup({
           wordWrap={wordWrap}
           tema={tema}
           snippets={snippets}
+          emmet={emmet}
           onComando={onComando}
         />
       </Box>

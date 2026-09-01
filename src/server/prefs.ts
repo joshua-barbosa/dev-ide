@@ -6,11 +6,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {
-  ARQUIVO_DO_PROJETO, CHAVE_DOS_TEMAS, chavesDoProjeto, comOProjeto, mesclar, normalizar,
+  ARQUIVO_DO_PROJETO, CHAVE_DO_EMMET, CHAVE_DOS_TEMAS, chavesDoProjeto, comOProjeto, mesclar,
+  normalizar,
   PASTA_DO_PROJETO, padroes,
   type PatchDePreferencias, type Preferencias,
 } from '../shared/prefs';
 import { normalizarTemasDoUsuario, type TemaDoUsuario } from '../shared/temas';
+import { lerConfiguracaoDoEmmet, type ConfiguracaoDoEmmet } from '../shared/emmet';
 import { arquivoDeDados } from './paths';
 import { gravarJsonAtomico, lerJsonTolerante } from './arquivo-json';
 
@@ -104,6 +106,18 @@ export class PreferencesStore implements LeitorDePreferencias {
    */
   lerTemas(): Record<string, TemaDoUsuario> {
     return normalizarTemasDoUsuario(this.lerCru()[CHAVE_DOS_TEMAS]);
+  }
+
+  /**
+   * A configuração do Emmet (T022).
+   *
+   * Do usuário com a do PROJETO por cima, como as preferências escalares: um
+   * repositório de Laravel pode querer o Emmet em `blade` sem que isso valha
+   * para os outros projetos dele.
+   */
+  lerEmmet(): ConfiguracaoDoEmmet {
+    const doProjeto = this.lerCruDoProjeto()[CHAVE_DO_EMMET];
+    return lerConfiguracaoDoEmmet(doProjeto ?? this.lerCru()[CHAVE_DO_EMMET]);
   }
 
   /** Aplica um patch já validado e devolve o conjunto completo resultante. */

@@ -54,7 +54,7 @@ const prefs = new PreferencesStore(PreferencesStore.defaultPath(), () =>
   pastaPrincipal(estado.ler())
 );
 const comandos = new ComandosStore(ComandosStore.defaultPath());
-const snippets = new SnippetsStore(SnippetsStore.defaultPath());
+const snippets = new SnippetsStore(SnippetsStore.defaultPath(), () => pastaPrincipal(estado.ler()));
 
 // ---- Execuções em andamento (para poder parar) ----
 const execucoes = new RegistroDeExecucoes();

@@ -19,6 +19,18 @@ export function createSnippetsRouter(snippets: SnippetsStore): Router {
     res.status(201).json(ok(snippets.criar(validarSnippet(req.body, snippets.ler()))));
   }));
 
+  /**
+   * Importa snippets do VS Code (T017).
+   *
+   * O caminho vem do cliente e é usado como veio: a IDE já lê e grava caminho
+   * absoluto arbitrário em `/api/file`, e cercar só esta rota daria sensação de
+   * segurança sem tirar capacidade de quem chegou até aqui — é a mesma nota do
+   * `routes/workspace.ts`.
+   */
+  router.post('/import', wrap((req, res) => {
+    res.json(ok(snippets.importar(requireString(req.body?.path, 'path'))));
+  }));
+
   router.delete('/:id', wrap((req, res) => {
     res.json(ok({ removido: snippets.remover(requireString(req.params.id, 'id')) }));
   }));

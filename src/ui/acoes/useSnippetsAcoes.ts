@@ -3,6 +3,7 @@
 // Mesmo corte do `useComandosAcoes`: os fluxos de um assunto, com as
 // dependências vindas de fora, para o `App` voltar a caber no teto de 800 linhas
 // do Artigo IV.
+import { Api } from '../api';
 import { LINGUAGEM_TODAS, rotuloDaLinguagem } from '../../shared/snippets';
 import { LINGUAGENS } from '../../shared/editor/idiomas';
 import type { QuickInputController } from '../useQuickInput';
@@ -15,6 +16,7 @@ export interface SnippetsAcoesDeps {
   readonly snippets: Snippets;
   /** Linguagem do editor em foco — decide quais snippets aparecem. */
   readonly linguagem: string;
+  avisar(mensagem: string, titulo?: string): Promise<void>;
 }
 
 export interface SnippetsAcoes {
@@ -22,7 +24,7 @@ export interface SnippetsAcoes {
 }
 
 export function useSnippetsAcoes(deps: SnippetsAcoesDeps): SnippetsAcoes {
-  const { qi, ws, snippets, linguagem } = deps;
+  const { qi, ws, snippets, linguagem, avisar } = deps;
 
   /**
    * A caixa de snippets: inserir, criar e remover.
@@ -47,6 +49,7 @@ export function useSnippetsAcoes(deps: SnippetsAcoesDeps): SnippetsAcoes {
           sufixo: rotuloDaLinguagem(s.linguagem),
         })),
         { valor: 'novo:', rotulo: 'Salvar um snippet novo…', icone: 'lucide:plus' },
+        { valor: 'importar:', rotulo: 'Importar snippets do VS Code…', icone: 'lucide:download' },
         ...(snippets.lista.length === 0
           ? []
           : [{ valor: 'remover:', rotulo: 'Remover um snippet…', icone: 'lucide:trash-2' }]),
@@ -55,10 +58,42 @@ export function useSnippetsAcoes(deps: SnippetsAcoesDeps): SnippetsAcoes {
     if (escolhido === null) return;
 
     if (escolhido === 'novo:') return salvar();
+    if (escolhido === 'importar:') return importar();
     if (escolhido === 'remover:') return remover();
 
     const alvo = snippets.lista.find((s) => s.id === escolhido.slice('inserir:'.length));
     if (alvo !== undefined) ws.editorRef.current?.inserirSnippet(alvo.corpo);
+  };
+
+  /**
+   * Importa os snippets que ele já tem no VS Code (T017).
+   *
+   * O campo abre com o caminho padrão do Linux preenchido: é onde eles estão em
+   * quase todo caso, e quem os tem em outro lugar apaga e digita o dele. Pedir
+   * um caminho vazio faria todo mundo ir procurar a pasta.
+   *
+   * Aceita ARQUIVO ou PASTA. A pasta é o caso comum — são muitos arquivos, um
+   * por linguagem.
+   */
+  const importar = async (): Promise<void> => {
+    const caminho = await qi.pedir({
+      titulo: 'Importar snippets do VS Code',
+      placeholder: 'Arquivo ou pasta de snippets',
+      valorInicial: `${'~'}/.config/Code/User/snippets`,
+    });
+    if (caminho === null) return;
+
+    const { importados, repetidos } = await Api.importSnippets(caminho);
+    // Dizer QUANTOS entraram e quantos já existiam: importar em silêncio
+    // deixaria quem importou sem saber se funcionou.
+    await snippets.recarregar();
+    await avisar(
+      importados === 0 && repetidos === 0
+        ? 'Nenhum snippet foi encontrado nesse caminho.'
+        : `${importados} snippet(s) importado(s).` +
+            (repetidos === 0 ? '' : ` ${repetidos} já existia(m) e não entrou(ram) de novo.`),
+      'Importar snippets'
+    );
   };
 
   /**

@@ -8,6 +8,9 @@ import { Router } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { requireString, wrap } from '../http/handlers';
+import { lerJsonTolerante } from '../arquivo-json';
+import { pastaPrincipal } from '../../shared/estado';
+import { lerTarefas, planoDe, tarefaPadrao, type Tarefa } from '../../shared/tarefas';
 import { scriptsDoManifesto, validarComando, type ComandoDescoberto } from '../../shared/comandos-salvos';
 import type { ComandosStore } from '../comandos';
 import type { EstadoStore } from '../estado';
@@ -39,8 +42,39 @@ export function createComandosRouter(comandos: ComandosStore, estado: EstadoStor
     return saida;
   };
 
+  /**
+   * As tarefas do `.vscode/tasks.json` da pasta aberta (T015).
+   *
+   * Da PRIMEIRA raiz, como as preferências do projeto (T002): tarefa é do
+   * espaço de trabalho, e somar dois `tasks.json` daria `label` repetido sem
+   * regra de desempate.
+   */
+  const tarefas = (): readonly Tarefa[] => {
+    const raiz = pastaPrincipal(estado.ler());
+    if (raiz === null) return [];
+    return lerTarefas(lerJsonTolerante(path.join(raiz, '.vscode', 'tasks.json')));
+  };
+
   router.get('/', wrap((_req, res) => {
-    res.json(ok({ salvos: comandos.ler(), descobertos: descobertos() }));
+    res.json(ok({ salvos: comandos.ler(), descobertos: descobertos(), tarefas: tarefas() }));
+  }));
+
+  /**
+   * O plano de execução de uma tarefa (T015).
+   *
+   * Resolvido no SERVIDOR porque é ele que tem o arquivo — e resolver no
+   * cliente exigiria mandar o `tasks.json` inteiro para cada clique. Ciclo e
+   * dependência inexistente saem como erro, com os nomes.
+   */
+  router.get('/tarefas/:nome/plano', wrap((req, res) => {
+    res.json(ok(planoDe(tarefas(), req.params.nome)));
+  }));
+
+  /** A tarefa padrão de um grupo — o que `Run Build Task` roda (T016). */
+  router.get('/tarefas/padrao/:grupo', wrap((req, res) => {
+    const grupo = req.params.grupo;
+    if (grupo !== 'build' && grupo !== 'test') throw new Error('Grupo desconhecido.');
+    res.json(ok({ tarefa: tarefaPadrao(tarefas(), grupo) }));
   }));
 
   router.post('/', wrap((req, res) => {

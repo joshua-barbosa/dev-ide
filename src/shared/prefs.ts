@@ -240,3 +240,12 @@ export function comOProjeto(doUsuario: Preferencias, bruto: unknown): Preferenci
   for (const chave of chaves) saida[chave] = lido[chave] as number | boolean | string;
   return saida as Preferencias;
 }
+
+/**
+ * Onde o Emmet é configurado no `config.json` (T022).
+ *
+ * Fora do `ESQUEMA` pelo mesmo motivo dos temas: linguagens e snippets são
+ * listas e mapas, e a validação do esquema é um laço sobre valores escalares.
+ * Quem lê e valida esta seção é `lerConfiguracaoDoEmmet`, em `shared/emmet.ts`.
+ */
+export const CHAVE_DO_EMMET = 'emmet';

@@ -14,6 +14,11 @@ export const EXT_TO_LANG: Record<string, string> = {
   '.ts': 'typescript', '.tsx': 'typescript',
   '.py': 'python',
   '.php': 'php',
+  // T041. `.blade.php` cai em `.php` pela extensão — o nome inteiro é checado
+  // ANTES, e é por isso que o Blade ganha rótulo e ícone próprios sem perder o
+  // realce de PHP. Ver `NOME_TO_LANG` e `linguagemDe`.
+  '.twig': 'twig',
+  '.blade.php': 'blade',
   '.c': 'c', '.h': 'c',
   '.cs': 'csharp',
   '.json': 'json',

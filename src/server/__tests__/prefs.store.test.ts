@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { PreferencesStore } from '../prefs';
+import { SnippetsStore } from '../snippets';
 import { padroes } from '../../shared/prefs';
 
 function comStore(fn: (store: PreferencesStore, arquivo: string) => void): void {
@@ -142,5 +143,79 @@ test('o arquivo do projeto nasce VAZIO, e não com os padrões', () => {
     assert.equal(criado, path.join(projeto, '.vscode', 'settings.json'));
     assert.deepEqual(JSON.parse(fs.readFileSync(criado, 'utf8')), {});
     assert.deepEqual([...comProjeto.chavesSobrescritas()], []);
+  });
+});
+
+test('os snippets do PROJETO somam aos globais, e não substituem (T018)', () => {
+  comStore((_store, arquivo) => {
+    const projeto = path.join(path.dirname(arquivo), 'proj-snip');
+    fs.mkdirSync(path.join(projeto, '.vscode'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projeto, '.vscode', 'meus.code-snippets'),
+      JSON.stringify({
+        'Do projeto': { prefix: 'proj', body: 'x' },
+        // Mesmo prefixo de um global: NÃO substitui — substituir faria um
+        // repositório qualquer trocar, em silêncio, um snippet de todo lugar.
+        Global: { prefix: 'glob', body: 'do projeto' },
+      })
+    );
+
+    const snips = new SnippetsStore(path.join(path.dirname(arquivo), 'snippets.json'), () => projeto);
+    snips.criar({ nome: 'Global', prefixo: 'glob', corpo: 'do usuario', linguagem: '*' });
+
+    const lista = snips.ler();
+    assert.deepEqual(lista.map((s) => s.prefixo).sort(), ['glob', 'proj']);
+    assert.equal(lista.find((s) => s.prefixo === 'glob')?.corpo, 'do usuario');
+  });
+});
+
+test('importar do VS Code traz os novos e conta os repetidos (T017)', () => {
+  comStore((_store, arquivo) => {
+    const pasta = path.join(path.dirname(arquivo), 'vscode-snippets');
+    fs.mkdirSync(pasta, { recursive: true });
+    fs.writeFileSync(
+      path.join(pasta, 'javascript.json'),
+      JSON.stringify({ Log: { prefix: 'log', body: ["console.log($1)"] } })
+    );
+    fs.writeFileSync(
+      path.join(pasta, 'python.json'),
+      JSON.stringify({ Main: { prefix: 'main', body: 'if __name__ == "__main__":' } })
+    );
+
+    const snips = new SnippetsStore(path.join(path.dirname(arquivo), 'snippets.json'));
+    assert.deepEqual(snips.importar(pasta), { importados: 2, repetidos: 0 });
+    // A linguagem sai do NOME do arquivo.
+    assert.equal(snips.ler().find((s) => s.prefixo === 'log')?.linguagem, 'javascript');
+
+    // De novo: nada entra, e ele fica sabendo.
+    assert.deepEqual(snips.importar(pasta), { importados: 0, repetidos: 2 });
+    assert.equal(snips.ler().length, 2);
+  });
+});
+
+test('importar um ARQUIVO só também vale', () => {
+  comStore((_store, arquivo) => {
+    const alvo = path.join(path.dirname(arquivo), 'sql.json');
+    fs.writeFileSync(alvo, JSON.stringify({ Select: { prefix: 'sel', body: 'SELECT * FROM $1' } }));
+    const snips = new SnippetsStore(path.join(path.dirname(arquivo), 'snippets.json'));
+    assert.equal(snips.importar(alvo).importados, 1);
+    assert.equal(snips.ler()[0]?.linguagem, 'sql');
+  });
+});
+
+test('remover só mexe nos GLOBAIS — o do projeto vem do repositório', () => {
+  comStore((_store, arquivo) => {
+    const projeto = path.join(path.dirname(arquivo), 'proj-rm');
+    fs.mkdirSync(path.join(projeto, '.vscode'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projeto, '.vscode', 'a.code-snippets'),
+      JSON.stringify({ Doprojeto: { prefix: 'proj', body: 'x' } })
+    );
+    const snips = new SnippetsStore(path.join(path.dirname(arquivo), 'snippets.json'), () => projeto);
+    const doProjeto = snips.ler().find((s) => s.prefixo === 'proj');
+    assert.ok(doProjeto !== undefined);
+
+    assert.equal(snips.remover(doProjeto.id), false, 'não é dos globais');
+    assert.equal(snips.ler().length, 1, 'e continua vindo do repositório');
   });
 });

@@ -197,6 +197,13 @@ const DECLARADOS = [
   { id: 'run.file', label: 'Run File', menu: 'run', group: 1, keybinding: 'Ctrl+Enter', when: 'temEditor' },
   { id: 'run.selection', label: 'Run Selection', menu: 'run', group: 1, when: 'temEditor' },
   { id: 'run.stop', label: 'Stop', menu: 'run', group: 2, when: 'executando' },
+  // T016: o atalho é o do VS Code. Sem tarefa padrão a lista abre, em vez de a
+  // IDE escolher uma no chute.
+  {
+    id: 'run.buildTask', label: 'Run Build Task', menu: 'run', group: 2,
+    keybinding: 'Ctrl+Shift+B', when: 'temProjeto',
+  },
+  { id: 'run.testTask', label: 'Run Test Task', menu: 'run', group: 2, when: 'temProjeto' },
   { id: 'run.disconnect', label: 'Disconnect Connection', menu: 'run', group: 3, when: 'temConexaoAtiva' },
 
   // ---- Terminal ----

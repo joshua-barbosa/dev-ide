@@ -28,6 +28,14 @@ const PARA_MONACO: Readonly<Record<string, string>> = {
   shell: 'shell',
   xml: 'xml',
   dockerfile: 'dockerfile',
+  // T041. Nenhum dos dois tem modo próprio no Monaco, e escrever dois
+  // tokenizadores para ganhar cor em `@if` e `{% %}` seria caro; o que eles são
+  // de fato — HTML com marcação extra — o Monaco já sabe pintar.
+  //
+  // **É esta linha que liga o Emmet neles**: a biblioteca casa por id do
+  // MONACO, e `html` e `php` já estão na lista de dialetos.
+  twig: 'html',
+  blade: 'php',
 };
 
 export const LINGUAGEM_PADRAO_MONACO = 'plaintext';

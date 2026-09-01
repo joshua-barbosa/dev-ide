@@ -29,7 +29,8 @@ import { tokens } from '../theme';
 import type { NomeDoTema } from '../../shared/temas';
 import { LINGUAGEM_TODAS, type Snippet } from '../../shared/snippets';
 import { registrarCodeLensDeSql } from '../query/codelens';
-import { emmetCSS, emmetHTML, emmetJSX } from 'emmet-monaco-es';
+import { emmetCSS, emmetHTML, emmetJSX, registerCustomSnippets } from 'emmet-monaco-es';
+import { DIALETOS, EMMET_PADRAO, sintaxeDoDialeto, type ConfiguracaoDoEmmet } from '../../shared/emmet';
 import { NOME_DO_TEMA, registrarTema } from './tema';
 import { modeloDe } from './modelos';
 
@@ -120,6 +121,8 @@ export interface EditorHostProps {
   readonly tema: NomeDoTema;
   /** Snippets a oferecer na conclusão (spec 019). */
   readonly snippets: readonly Snippet[];
+  /** Como o Emmet está configurado (T022). Ausente = os padrões. */
+  readonly emmet?: ConfiguracaoDoEmmet;
   /**
    * Executa um comando da IDE pedido de dentro do editor (spec 032).
    *
@@ -133,7 +136,8 @@ export interface EditorHostProps {
 }
 
 export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function EditorHost(
-  { onChange, onCursor, fontSize, tabSize, wordWrap, tema, snippets, onComando },
+  { onChange, onCursor, fontSize, tabSize, wordWrap, tema, snippets, onComando,
+    emmet = EMMET_PADRAO },
   ref
 ) {
   const caixa = useRef<HTMLDivElement>(null);
@@ -235,15 +239,31 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     // PHP entra na lista do HTML (spec 033). Quem decide se o cursor está numa
     // ilha de HTML ou dentro de `<?php ?>` é a própria biblioteca, olhando os
     // tokens do Monaco — foi o que tornou este item pequeno em vez de grande.
+    //
+    // Desde o T022 a lista vem do `config.json`, e o padrão é este mesmo. As
+    // linguagens são ids do MONACO: `blade` é `php` e `twig` é `html` (T041),
+    // então os dois já estão cobertos pelo padrão.
+    const cfg = emmet;
+    for (const dialeto of DIALETOS) {
+      const meus = cfg.snippets[dialeto];
+      if (Object.keys(meus).length > 0) {
+        registerCustomSnippets(sintaxeDoDialeto(dialeto), { ...meus });
+      }
+    }
+
+    // Lista VAZIA desliga o dialeto — é como se desliga o Emmet no CSS sem
+    // inventar um interruptor separado.
     const descartar = [
-      emmetHTML(monaco, ['html', 'php']),
-      emmetCSS(monaco),
-      emmetJSX(monaco),
-    ];
+      cfg.linguagens.html.length === 0 ? null : emmetHTML(monaco, [...cfg.linguagens.html]),
+      cfg.linguagens.css.length === 0 ? null : emmetCSS(monaco, [...cfg.linguagens.css]),
+      cfg.linguagens.jsx.length === 0 ? null : emmetJSX(monaco, [...cfg.linguagens.jsx]),
+    ].filter((d): d is () => void => d !== null);
     return () => {
       for (const d of descartar) d();
     };
-  }, []);
+    // Reage à configuração: mudar o `config.json` religa o Emmet onde ele passou
+    // a valer, sem F5.
+  }, [emmet]);
 
   // Conclusão de snippet.
   //
