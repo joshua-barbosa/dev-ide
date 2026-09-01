@@ -119,10 +119,18 @@ const DECLARADOS = [
   { id: 'edit.toggleComment', label: 'Toggle Line Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+/' },
   { id: 'edit.toggleBlockComment', label: 'Toggle Block Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+Shift+A' },
   { id: 'edit.snippets', label: 'Snippets…', menu: 'edit', group: 5, keybinding: 'Ctrl+Shift+J' },
+  { id: 'edit.emmet', label: 'Emmet: Expand Abbreviation', menu: 'edit', group: 5, keybinding: 'Tab' },
+  // Beautify e Minify (spec 077). Agem no que está SELECIONADO e, sem seleção,
+  // no documento inteiro — e por isso o `when` é `temEditor`, e não
+  // `temSelecao`.
+  { id: 'edit.beautify', label: 'Beautify', menu: 'edit', group: 6, keybinding: 'Ctrl+Shift+I', when: 'temEditor' },
+  { id: 'edit.minify', label: 'Minify', menu: 'edit', group: 6, when: 'temEditor' },
+  // O CodeSnap: foto do trecho selecionado. Sem seleção não há trecho, então
+  // aqui o `when` é mesmo `temSelecao`.
+  { id: 'edit.codeSnap', label: 'Foto do trecho (CodeSnap)…', menu: 'edit', group: 6, when: 'temSelecao' },
   // Sem entrada em `ACOES` e sem `pending`: quem o executa é o EDITOR, quando o
   // Tab chega nele. Está em `ATENDIDOS_PELO_EDITOR`, como a busca e o
   // multi-cursor.
-  { id: 'edit.emmet', label: 'Emmet: Expand Abbreviation', menu: 'edit', group: 5, keybinding: 'Tab' },
 
   // ---- Selection ----
   { id: 'selection.all', label: 'Select All', menu: 'selection', group: 1, keybinding: 'Ctrl+A', when: 'temEditor' },
@@ -234,6 +242,9 @@ const DECLARADOS = [
   { id: 'help.commands', label: 'Show All Commands', menu: 'help', group: 1, keybinding: 'Ctrl+Shift+P' },
   { id: 'help.about', label: 'About dev-ide', menu: 'help', group: 2 },
   { id: 'help.docs', label: 'Documentation', menu: 'help', group: 2 },
+  // A ideia dele: a IDE dizendo o que precisa da máquina, verificado em vez de
+  // escrito num README que envelhece (spec 077).
+  { id: 'help.requisitos', label: 'O que esta IDE precisa da sua máquina', menu: 'help', group: 2 },
 ] as const satisfies readonly Command[];
 
 export const COMMANDS: readonly Command[] = DECLARADOS;

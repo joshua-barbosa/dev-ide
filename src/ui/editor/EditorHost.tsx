@@ -108,6 +108,35 @@ export interface EditorHandle {
    * backlog dava como impossível antes da troca do editor.
    */
   inserirSnippet(corpo: string): void;
+  /**
+   * O trecho em que Beautify, Minify e CodeSnap agem (spec 077).
+   *
+   * O que está SELECIONADO e, sem seleção, o documento inteiro — a regra do
+   * `Format Selection` de qualquer editor, e ela vale para os três.
+   */
+  trechoDeTrabalho(): TrechoDeTrabalho | null;
+  /**
+   * Troca o trecho por outro texto, num passo que o `Ctrl+Z` desfaz.
+   *
+   * `executeEdits`, e não `setValue`: o segundo limpa a pilha de desfazer, e um
+   * formatador que não se desfaz é um formatador que ninguém usa em arquivo
+   * grande. O trecho volta INTEIRO como veio porque o alcance vai dentro dele:
+   * entre ler e escrever há uma ida ao servidor, e reler a seleção depois
+   * poderia escrever no lugar errado.
+   */
+  substituirTrecho(trecho: TrechoDeTrabalho, texto: string): void;
+}
+
+export interface TrechoDeTrabalho {
+  readonly texto: string;
+  /** A linha do ARQUIVO em que o trecho começa — o CodeSnap numera por ela. */
+  readonly primeiraLinha: number;
+  /** `true` quando não havia seleção e o trecho é o documento todo. */
+  readonly inteiro: boolean;
+  /** A linguagem como o MONACO a chama — é o que o `colorize` entende. */
+  readonly linguagemDoMonaco: string;
+  /** Opaco de propósito: só este arquivo sabe ler. */
+  readonly alcance: unknown;
 }
 
 export interface EditorHostProps {
@@ -346,6 +375,36 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
         // `setValue` do modelo, e não `pushEditOperations`: trocar de aba não
         // deve deixar a troca no histórico de desfazer da aba anterior.
         ed.getModel()?.setValue(valor);
+      },
+
+      trechoDeTrabalho: () => {
+        const ed = editor.current;
+        const modelo = ed?.getModel();
+        if (ed === null || ed === undefined || modelo === undefined || modelo === null) return null;
+        const selecao = ed.getSelection();
+        const vazia = selecao === null || selecao.isEmpty();
+        const alcance = vazia ? modelo.getFullModelRange() : selecao;
+        return {
+          texto: modelo.getValueInRange(alcance),
+          primeiraLinha: alcance.startLineNumber,
+          inteiro: vazia,
+          linguagemDoMonaco: modelo.getLanguageId(),
+          alcance,
+        };
+      },
+
+      substituirTrecho: (trecho, texto) => {
+        const ed = editor.current;
+        if (ed === null || ed === undefined) return;
+        ed.pushUndoStop();
+        ed.executeEdits('formatacao', [
+          { range: trecho.alcance as monaco.IRange, text: texto },
+        ]);
+        ed.pushUndoStop();
+        const posicao = ed.getPosition();
+        // Sem isto o texto novo pode ficar fora da tela e parecer que nada
+        // aconteceu.
+        if (posicao !== null) ed.revealPositionInCenterIfOutsideViewport(posicao);
       },
 
       getSelection: () => {

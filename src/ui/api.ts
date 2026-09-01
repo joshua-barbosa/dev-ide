@@ -1,4 +1,6 @@
 import type { Tarefa } from '../shared/tarefas';
+import type { Capacidade, ModoDeFormatacao } from '../shared/formatacao';
+import type { EstadoDaFerramenta } from '../shared/ferramentas';
 import type { ConfiguracaoDoEmmet } from '../shared/emmet';
 // Cliente da API REST.
 //
@@ -605,6 +607,25 @@ export const Api = {
     request<{ caminho: string }>('POST', '/api/queries/rename', { ...v, de, para }),
   deleteQuery: (v: Vinculo, nome: string) =>
     request<{ caminho: string }>('DELETE', '/api/queries', { ...v, nome }),
+
+  // Beautify, Minify e o inventário do que a máquina tem (spec 077).
+  formatCapabilities: () =>
+    request<{
+      capacidades: Record<string, Capacidade>;
+      ferramentas: EstadoDaFerramenta[];
+    }>('GET', '/api/format'),
+  format: (p: {
+    texto: string;
+    linguagem: string;
+    modo: ModoDeFormatacao;
+    tabSize: number;
+    dialeto?: string;
+  }) => request<{ texto: string }>('POST', '/api/format', p),
+
+  pasteEntry: (path: string, into: string, cut: boolean) =>
+    request<{ path: string; movido: boolean }>('POST', '/api/workspace/paste', { path, into, cut }),
+  revealEntry: (path: string) =>
+    request<{ path: string }>('POST', '/api/workspace/reveal', { path }),
 
   listLinks: () =>
     request<{ raiz: string; links: Record<string, Vinculo> }>('GET', '/api/queries/links'),

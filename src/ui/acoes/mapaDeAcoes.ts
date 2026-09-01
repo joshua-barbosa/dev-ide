@@ -23,6 +23,7 @@ import type { ComandosAcoes } from './useComandosAcoes';
 import type { ConexoesAcoes } from './useConexoesAcoes';
 import type { PastaAcoes } from './usePastaAcoes';
 import type { SnippetsAcoes } from './useSnippetsAcoes';
+import type { FormatacaoAcoes } from './useFormatacaoAcoes';
 
 /**
  * Tudo que os comandos alcançam.
@@ -45,6 +46,7 @@ export interface DepsDoMapa {
   readonly conexoesAcoes: ConexoesAcoes;
   readonly pastaAcoes: PastaAcoes;
   readonly snippetsAcoes: SnippetsAcoes;
+  readonly formatacaoAcoes: FormatacaoAcoes;
   readonly novoArquivo: () => void;
   readonly novoTerminalNoPainel: () => void;
   /** Divide o terminal ativo. `horizontal` (lado a lado) é o padrão (T020). */
@@ -69,6 +71,7 @@ export function mapaDeAcoes(deps: DepsDoMapa): Readonly<Record<IdImplementado, (
   const {
     ws, exec, conexoes, dialogs, layout, prefs, nav,
     arquivoAcoes, codigoAcoes, comandosAcoes, conexoesAcoes, pastaAcoes, snippetsAcoes,
+    formatacaoAcoes,
     novoArquivo, novoTerminalNoPainel, dividirTerminalNoPainel, abrirPorCaminho, irParaArquivo,
     abrirPreferencias, abrirTelaDePreferencias, abrirPaleta, escolherTema, irPara, irParaLinha, executar,
     setPainelLateral, avisar,
@@ -102,6 +105,10 @@ return {
   'edit.cut': () => document.execCommand('cut'),
   'edit.copy': () => document.execCommand('copy'),
   'edit.snippets': () => avisar(snippetsAcoes.abrir()),
+  // Beautify, Minify e a foto do trecho (spec 077).
+  'edit.beautify': () => avisar(formatacaoAcoes.formatar('beautify')),
+  'edit.minify': () => avisar(formatacaoAcoes.formatar('minify')),
+  'edit.codeSnap': () => avisar(formatacaoAcoes.foto()),
   'edit.paste': () => avisar(navigator.clipboard.readText().then((t) => {
     document.execCommand('insertText', false, t);
   })),
@@ -170,6 +177,7 @@ return {
   // Destino honesto em vez de remoção: a IDE não tem documentação escrita,
   // mas tem um README — e é para ele que o usuário deve ser levado.
   'help.docs': () => avisar(Api.docs().then(({ path }) => ws.abrirArquivo(path))),
+  'help.requisitos': () => ws.abrirRequisitos(),
   'help.about': () => void dialogs.avisar(
     'IDE local com painéis de banco e serviço, sem licença e sem limite de conexões.',
     'dev-ide'

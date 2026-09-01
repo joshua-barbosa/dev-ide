@@ -10,10 +10,12 @@
 // a navegação a uma raiz daria sensação de segurança sem tirar capacidade
 // nenhuma de quem já chegou até aqui.
 import { Router } from 'express';
+import { spawn } from 'node:child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { requireString, wrap } from '../http/handlers';
+import { acharNoPath } from '../ferramentas-da-maquina';
 import { EXTENSOES_DE_SIMBOLO, extractSymbols, type SymbolInfo } from '../symbols';
 import {
   dentroDaPasta, filhosDaPasta, listarSubpastas, pastaValida, varrerArquivos,
@@ -381,6 +383,82 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
     if (alvo === raiz) throw new Error('A pasta aberta não pode ser excluída por aqui.');
     fs.rmSync(alvo, { recursive: true, force: true });
     res.json(ok({ path: alvo }));
+  }));
+
+  /**
+   * Colar: copia ou MOVE um item para dentro de uma pasta (menu da árvore).
+   *
+   * Uma rota para os dois porque o cuidado é o mesmo, e é todo ele sobre não
+   * destruir nada:
+   *
+   * - **o nome só ganha sufixo quando já existe um igual no destino.** O
+   *   `nomeDeCopia` do Duplicar acrescenta " copy" sempre — e ali é certo,
+   *   porque a cópia nasce na MESMA pasta. Aqui não: colar `a.txt` numa pasta
+   *   que não tem `a.txt` tem de dar `a.txt`. O sufixo existe só para não
+   *   sobrescrever em silêncio, que seria perder trabalho num gesto de dois
+   *   cliques;
+   * - **colar uma pasta dentro dela mesma é recusado** — `cpSync` entraria em
+   *   recursão e encheria o disco antes de alguém perceber;
+   * - mover é `rename`, que no mesmo sistema de arquivos é atômico. Entre
+   *   sistemas diferentes ele falha com `EXDEV`, e aí a cópia-e-apaga entra.
+   */
+  router.post('/workspace/paste', wrap((req, res) => {
+    const { alvo: de } = itemExistente(requireString(req.body?.path, 'path'));
+    const { alvo: destino } = itemExistente(requireString(req.body?.into, 'into'));
+    const recortar = req.body?.cut === true;
+
+    if (!fs.statSync(destino).isDirectory()) throw new Error('O destino não é uma pasta.');
+    if (de === destino) throw new Error('Origem e destino são o mesmo item.');
+    if (fs.statSync(de).isDirectory() && (destino + path.sep).startsWith(de + path.sep)) {
+      throw new Error('Não dá para colar uma pasta dentro dela mesma.');
+    }
+
+    const original = path.basename(de);
+    const ocupado = (c: string): boolean => fs.existsSync(path.join(destino, c));
+    const nome = ocupado(original) ? nomeDeCopia(original, ocupado) : original;
+    const para = path.join(destino, nome);
+    if (recortar) {
+      try {
+        fs.renameSync(de, para);
+      } catch (erro) {
+        // Entre partições diferentes o `rename` não existe; copiar e apagar é
+        // o que o `mv` faz por baixo.
+        if ((erro as NodeJS.ErrnoException).code !== 'EXDEV') throw erro;
+        fs.cpSync(de, para, { recursive: true });
+        fs.rmSync(de, { recursive: true, force: true });
+      }
+    } else {
+      fs.cpSync(de, para, { recursive: true });
+    }
+    res.json(ok({ path: para, movido: recortar }));
+  }));
+
+  /**
+   * Abre a pasta no gerenciador de arquivos do sistema.
+   *
+   * O `Open Containing Folder` da captura dele. O servidor roda na máquina
+   * dele, então não é preciso esperar o Electron para isto — mas é preciso o
+   * `xdg-open`, e a tela de ferramentas diz quando ele falta.
+   *
+   * `spawn` solto e `unref`: o gerenciador de arquivos é um programa de vida
+   * longa, e esperar por ele penduraria a requisição até ele ser fechado.
+   */
+  router.post('/workspace/reveal', wrap((req, res) => {
+    const { alvo } = itemExistente(requireString(req.body?.path, 'path'));
+    const pasta = fs.statSync(alvo).isDirectory() ? alvo : path.dirname(alvo);
+    const abridor = acharNoPath(['xdg-open', 'gio', 'open']);
+    if (abridor === null) {
+      throw new Error(
+        'O xdg-open não está nesta máquina — é ele que abre o gerenciador de ' +
+          'arquivos.\n\nsudo apt install xdg-utils'
+      );
+    }
+    const filho = spawn(abridor, abridor.endsWith('gio') ? ['open', pasta] : [pasta], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    filho.unref();
+    res.json(ok({ path: pasta }));
   }));
 
   return router;

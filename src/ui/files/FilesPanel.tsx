@@ -34,6 +34,8 @@ export interface FilesPanelProps {
   readonly onMenuDoItem: (no: FileNode, e: React.MouseEvent) => void;
   /** Botão direito no cabeçalho de uma RAIZ (T004). */
   readonly onMenuDaRaiz: (pasta: string, e: React.MouseEvent) => void;
+  /** O menu do vazio abaixo da árvore (spec 077). */
+  readonly onMenuDoVazio: (e: React.MouseEvent) => void;
   /** Soma outra pasta ao espaço de trabalho (T004). */
   readonly onAcrescentarPasta: () => void;
   /** `F2` e `Delete` no item selecionado — os mesmos fluxos do menu. */
@@ -43,7 +45,7 @@ export interface FilesPanelProps {
 
 export function FilesPanel({
   pasta, onAbrirArquivo, caminhoAtivo, onAbrirPasta, onNovoArquivo, onNovaPasta, onErro,
-  onMenuDoItem, onMenuDaRaiz, onAcrescentarPasta, onRenomear, onExcluir,
+  onMenuDoItem, onMenuDaRaiz, onMenuDoVazio, onAcrescentarPasta, onRenomear, onExcluir,
 }: FilesPanelProps) {
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
   /**
@@ -223,7 +225,18 @@ export function FilesPanel({
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <Box
+      data-painel-de-arquivos
+      // `flex: 1` para o painel OCUPAR a lateral inteira. Sem isto ele
+      // encolhia até a última linha, e o vazio abaixo dele pertencia à barra —
+      // que não tem menu nenhum. Era esse o defeito que ele achou: ali o botão
+      // direito não fazia nada, e o menu do Chrome aparecia por cima da IDE.
+      sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+      // O menu do vazio fica AQUI, e não na lista: é este elemento que possui
+      // o espaço em branco. A linha tem `onContextMenu` própria e o
+      // `abrirMenu` faz `stopPropagation`, então as duas não se atropelam.
+      onContextMenu={onMenuDoVazio}
+    >
       <Box
         sx={{
           px: 1, pb: 0.75, display: 'flex', gap: 0.5, alignItems: 'center', minWidth: 0,
@@ -277,6 +290,7 @@ export function FilesPanel({
       )}
 
       <Box
+        data-arvore
         sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}
         // `tabIndex` porque uma `div` não recebe tecla sem ele — e sem foco na
         // árvore, `F2` e `Delete` seriam atalhos globais roubando o editor.

@@ -16,6 +16,7 @@ import { createWorkspaceRouter } from './routes/workspace';
 import { createComandosRouter } from './routes/comandos';
 import { ComandosStore } from './comandos';
 import { createSnippetsRouter } from './routes/snippets';
+import { createFormatarRouter } from './routes/formatar';
 import { createBuscaRouter } from './routes/busca';
 import { createQueriesRouter } from './routes/queries';
 import { VinculosStore } from './vinculos';
@@ -100,6 +101,7 @@ app.use('/api', createWorkspaceRouter(estado, ROOT));
 app.use('/api/commands', createComandosRouter(comandos, estado));
 app.use('/api/snippets', createSnippetsRouter(snippets));
 app.use('/api/search', createBuscaRouter(estado));
+app.use('/api/format', createFormatarRouter());
 app.use(
   '/api/queries',
   createQueriesRouter({

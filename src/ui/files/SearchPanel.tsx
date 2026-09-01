@@ -7,7 +7,7 @@
 // Nada de lógica de casamento aqui: o que decide o que casa mora em
 // `shared/busca.ts`, e quem varre é o servidor. Este arquivo é formulário,
 // lista e dois botões perigosos.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import InputBase from '@mui/material/InputBase';
@@ -42,6 +42,22 @@ const nomeDe = (caminho: string): string => caminho.split('/').pop() ?? caminho;
 export function SearchPanel({ busca, onAbrir, onConfirmar, onErro }: SearchPanelProps) {
   const [recolhidos, setRecolhidos] = useState<ReadonlySet<string>>(new Set());
   const [filtroAberto, setFiltroAberto] = useState(false);
+
+  /**
+   * Filtro que chega DE FORA abre a gaveta (spec 077).
+   *
+   * O "Buscar dentro desta pasta" do menu da árvore preenche o `Incluir`, e um
+   * filtro que passa a valer sem aparecer é a pior combinação: a busca devolve
+   * menos resultados e nada na tela diz por quê. Só abre na TRANSIÇÃO de vazio
+   * para cheio — quem fechar a gaveta depois continua com ela fechada.
+   */
+  const filtroAnterior = useRef('');
+  useEffect(() => {
+    const agora = `${busca.incluir}\u0000${busca.excluir}`;
+    const tinha = filtroAnterior.current !== '\u0000';
+    filtroAnterior.current = agora;
+    if (!tinha && agora !== '\u0000') setFiltroAberto(true);
+  }, [busca.incluir, busca.excluir]);
 
   const alternar = (caminho: string): void => {
     setRecolhidos((atual) => {

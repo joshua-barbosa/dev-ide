@@ -40,6 +40,7 @@ export interface SidebarProps {
   readonly onMenuDoArquivo: (no: FileNode, e: React.MouseEvent) => void;
   /** Menu e ação das RAÍZES do espaço de trabalho (T004). */
   readonly onMenuDaRaiz: (pasta: string, e: React.MouseEvent) => void;
+  readonly onMenuDoVazio: (e: React.MouseEvent) => void;
   readonly onAcrescentarPasta: () => void;
   readonly onRenomearArquivo: (no: FileNode) => void;
   readonly onExcluirArquivo: (no: FileNode) => void;
@@ -57,6 +58,7 @@ export function Sidebar({
   onNovaPasta,
   onMenuDoArquivo,
   onMenuDaRaiz,
+  onMenuDoVazio,
   onAcrescentarPasta,
   onRenomearArquivo,
   onExcluirArquivo,
@@ -123,6 +125,7 @@ export function Sidebar({
             onNovaPasta={onNovaPasta}
             onMenuDoItem={onMenuDoArquivo}
             onMenuDaRaiz={onMenuDaRaiz}
+            onMenuDoVazio={onMenuDoVazio}
             onAcrescentarPasta={onAcrescentarPasta}
             onRenomear={onRenomearArquivo}
             onExcluir={onExcluirArquivo}

@@ -27,7 +27,24 @@ export interface PastaAcoesDeps {
   /** Abre o menu de contexto nas coordenadas do cursor. */
   abrirMenu(e: React.MouseEvent, entradas: readonly EntradaMenu[]): void;
   copiar(texto: string): void;
+  // ---- o que a captura dele mostrava e o menu não tinha (spec 077) ----
+  /** Abre um terminal do painel de baixo já dentro da pasta. */
+  abrirTerminalEm(pasta: string): void;
+  /** Abre a busca com o `Incluir` apontando para a pasta. */
+  buscarNaPasta(pasta: string): void;
+  /** Recarrega a árvore depois de uma colagem. */
+  recarregar(): void;
 }
+
+/**
+ * O que está esperando para ser colado.
+ *
+ * Fora do hook de propósito: o menu é remontado a cada clique com o estado de
+ * agora (é a nota do `mapaDeAcoes`), e um `useState` aqui seria lido velho pelo
+ * item de menu que já está na tela. Uma variável de módulo é a área de
+ * transferência da IDE — e ela morre com a aba, como a do sistema não morre.
+ */
+let areaDeTransferencia: { readonly caminho: string; readonly recortar: boolean } | null = null;
 
 export interface PastaAcoes {
   novoProjeto(): Promise<void>;
@@ -47,6 +64,13 @@ export interface PastaAcoes {
   novaPastaEm(pastaDoItem: string): Promise<void>;
   /** O menu de botão direito de um item da árvore (T043, T045). */
   menuDoItem(no: FileNode, e: React.MouseEvent): void;
+  /**
+   * O menu do VAZIO abaixo da árvore (spec 077).
+   *
+   * Era o defeito que ele achou usando: ali o botão direito não fazia nada e
+   * ainda deixava o menu do Chrome aparecer por cima da IDE.
+   */
+  menuDoVazio(e: React.MouseEvent): void;
   renomearItem(caminho: string): Promise<void>;
   duplicarItem(caminho: string): Promise<void>;
   excluirItem(caminho: string, ehPasta: boolean): Promise<void>;
@@ -139,7 +163,15 @@ export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
     deps.abrirMenu(e, [
       { label: 'Novo arquivo aqui', onClick: () => novoArquivoEm(raiz) },
       { label: 'Nova pasta aqui', onClick: () => novaPastaEm(raiz) },
+      ...(areaDeTransferencia === null
+        ? []
+        : [{ label: 'Colar aqui', onClick: () => colarEm(raiz) }]),
       null,
+      { label: 'Abrir no terminal integrado', onClick: () => deps.abrirTerminalEm(raiz) },
+      { label: 'Buscar dentro desta pasta', onClick: () => deps.buscarNaPasta(raiz) },
+      { label: 'Abrir no gerenciador de arquivos', onClick: () => revelar(raiz) },
+      null,
+      { label: 'Adicionar pasta ao espaço…', onClick: () => acrescentarPasta() },
       { label: 'Copiar caminho', onClick: () => deps.copiar(raiz) },
       null,
       { label: 'Remover do espaço', onClick: () => pasta.remover(raiz) },
@@ -314,6 +346,18 @@ export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
       { label: 'Renomear (F2)', onClick: () => renomearItem(no.path) },
       { label: 'Duplicar', onClick: () => duplicarItem(no.path) },
       null,
+      { label: 'Copiar', onClick: () => guardarParaColar(no.path, false) },
+      { label: 'Recortar', onClick: () => guardarParaColar(no.path, true) },
+      // Só aparece quando há o que colar E há onde: colar dentro de um arquivo
+      // não existe, e um item apagado que nunca acende é ruído permanente.
+      ...(areaDeTransferencia !== null && no.type === 'dir'
+        ? [{ label: `Colar em "${no.name}"`, onClick: () => colarEm(pastaDoItem) }]
+        : []),
+      null,
+      { label: 'Abrir no terminal integrado', onClick: () => deps.abrirTerminalEm(pastaDoItem) },
+      { label: 'Buscar dentro desta pasta', onClick: () => deps.buscarNaPasta(pastaDoItem) },
+      { label: 'Abrir no gerenciador de arquivos', onClick: () => revelar(no.path) },
+      null,
       { label: 'Copiar caminho', onClick: () => deps.copiar(no.path) },
       { label: 'Copiar caminho relativo', onClick: () => deps.copiar(relativo) },
       null,
@@ -325,9 +369,78 @@ export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
     ]);
   };
 
+  /** Guarda o item para colar. Copiar e recortar só diferem nesta marca. */
+  const guardarParaColar = (caminho: string, recortar: boolean): void => {
+    areaDeTransferencia = { caminho, recortar };
+  };
+
+  /**
+   * Cola o guardado dentro da pasta.
+   *
+   * O RECORTE é esquecido depois de colar, e a cópia não: recortar duas vezes
+   * no mesmo item moveria uma pasta que já não está mais lá, e o erro sairia
+   * como "não existe" — enquanto colar a mesma cópia em três lugares é gesto
+   * legítimo.
+   */
+  const colarEm = async (destino: string): Promise<void> => {
+    const guardado = areaDeTransferencia;
+    if (guardado === null) return;
+    const { path: criado, movido } = await Api.pasteEntry(
+      guardado.caminho,
+      destino,
+      guardado.recortar
+    );
+    if (movido) {
+      areaDeTransferencia = null;
+      // A aba do arquivo movido tem de ir junto, senão ela salva no caminho
+      // antigo — que já não existe.
+      deps.aoRenomear(guardado.caminho, criado);
+    }
+    deps.recarregar();
+  };
+
+  const revelar = async (caminho: string): Promise<void> => {
+    try {
+      await Api.revealEntry(caminho);
+    } catch (e) {
+      // A falta do `xdg-open` vem com a linha que o instala; mostrá-la é o
+      // ponto todo da tela de requisitos.
+      await avisar((e as Error).message, 'Abrir no gerenciador de arquivos');
+    }
+  };
+
+  /**
+   * O menu do vazio abaixo da árvore (spec 077).
+   *
+   * Ele age na PRIMEIRA raiz, que é a mesma que o botão `+` do cabeçalho usa —
+   * e é a única resposta possível: ali embaixo não há item nenhum apontado.
+   */
+  const menuDoVazio = (e: React.MouseEvent): void => {
+    const raiz = pasta.pasta;
+    if (raiz === '') {
+      deps.abrirMenu(e, [{ label: 'Abrir pasta…', onClick: () => abrirPasta() }]);
+      return;
+    }
+    deps.abrirMenu(e, [
+      { label: 'Novo arquivo aqui', onClick: () => novoArquivoEm(raiz) },
+      { label: 'Nova pasta aqui', onClick: () => novaPastaEm(raiz) },
+      ...(areaDeTransferencia === null
+        ? []
+        : [{ label: 'Colar aqui', onClick: () => colarEm(raiz) }]),
+      null,
+      { label: 'Abrir no terminal integrado', onClick: () => deps.abrirTerminalEm(raiz) },
+      { label: 'Buscar dentro desta pasta', onClick: () => deps.buscarNaPasta(raiz) },
+      { label: 'Abrir no gerenciador de arquivos', onClick: () => revelar(raiz) },
+      null,
+      { label: 'Adicionar pasta ao espaço…', onClick: () => acrescentarPasta() },
+      { label: 'Copiar caminho', onClick: () => deps.copiar(raiz) },
+    ]);
+  };
+
   return {
     novoProjeto, escolherProjeto, abrirPasta, acrescentarPasta, abrirRecente,
-    novoArquivoNaPasta, novaPasta, novoArquivoEm, novaPastaEm, menuDoItem, menuDaRaiz,
+    novoArquivoNaPasta, novaPasta, novoArquivoEm, novaPastaEm,
+    menuDoItem, menuDaRaiz, menuDoVazio,
     renomearItem, duplicarItem, excluirItem,
   };
 }

@@ -35,6 +35,8 @@ export interface AbasDeDados {
   abrirProcessos(connectionId: string, titulo: string): void;
   /** A tela de configurações (T001). Uma só, como no VS Code. */
   abrirPreferencias(): void;
+  /** A tela do que a IDE precisa da máquina (spec 077). */
+  abrirRequisitos(): void;
   /** A aba de um SERVIDOR, com as sub-abas que ele sabe oferecer (spec 055). */
   abrirServidor(connectionId: string, titulo: string): void;
 }
@@ -195,9 +197,21 @@ export function useAbasDeDados(store: TabStore, salvarGrupoFocado: () => void): 
     });
   }, [salvarGrupoFocado, store]);
 
+  /** A tela de requisitos da máquina (spec 077). Id fixo, pelo mesmo motivo. */
+  const abrirRequisitos = useCallback(() => {
+    salvarGrupoFocado();
+    store.open({
+      id: 'requisitos',
+      type: 'requisitos',
+      title: 'Requisitos da máquina',
+      icon: 'lucide:hard-drive',
+      meta: {},
+    });
+  }, [salvarGrupoFocado, store]);
+
   return {
     abrirQuery, abrirTexto, abrirTabela, abrirFormulario, abrirTerminal, abrirProcessos,
-    abrirPreferencias,
+    abrirPreferencias, abrirRequisitos,
     abrirServidor,
   };
 }

@@ -13,6 +13,10 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
 import { aplicarVariaveis, criarTema } from './theme';
 import { paletaDe } from '../shared/temas';
+import { useFormatacaoAcoes } from './acoes/useFormatacaoAcoes';
+import { useSaidaAcoes } from './acoes/useSaidaAcoes';
+import { CodeSnapDialog, type PedidoDeCodeSnap } from './editor/CodeSnapDialog';
+import { TelaDeRequisitos } from './ajuda/TelaDeRequisitos';
 import { useTemaAtual } from './useTemaAtual';
 import { temPreview } from '../shared/markdown';
 import { Sidebar } from './Sidebar';
@@ -44,7 +48,7 @@ import { useCodebase } from './sql/useCodebase';
 import { MenuBar } from './MenuBar';
 import { StatusBar } from './StatusBar';
 import { QuickInput } from './QuickInput';
-import { pedirComRetentativa, useQuickInput } from './useQuickInput';
+import { useQuickInput } from './useQuickInput';
 import {
   comandoDoAtalho, filtrarComandos, formatarAtalho,
   type ContextoDeComandos,
@@ -233,6 +237,17 @@ export function App() {
     aoExcluir: ws.fecharPorCaminho,
     abrirMenu: menu.abrir,
     copiar,
+    // O terminal ganha o `cd` como comando inicial, que é o mesmo caminho que
+    // as tarefas do `tasks.json` usam para o `options.cwd` (spec 076).
+    abrirTerminalEm: (destino) => novoTerminalNoPainel(`cd ${JSON.stringify(destino)}`),
+    // O `Incluir` da busca fala em glob relativo à raiz; a raiz inteira vira
+    // string vazia, que é "tudo" — e é o que ela já fazia.
+    buscarNaPasta: (destino) => {
+      const dentro = destino === pasta.pasta ? '' : destino.replace(`${pasta.pasta}/`, '');
+      busca.definirIncluir(dentro === '' ? '' : `${dentro}/**`);
+      setPainelLateral('search');
+    },
+    recarregar: () => void pasta.recarregar().catch(falhaDaIde),
   });
   /** O caminho do arquivo em foco — a chave do vínculo e do painel de símbolos. */
   const caminhoAtivo =
@@ -354,37 +369,21 @@ export function App() {
     layout.mostrarPainel('terminal');
   };
 
-  const texto = (): string => exec.saida.map((l) => l.texto).join('');
-
-  /** Leva a saída para uma aba do editor, sem passar por arquivo. */
-  const abrirSaidaNoEditor = (): void => {
-    const conteudo = texto();
-    if (conteudo === '') return;
-    ws.abrirTexto('saida:editor', 'output.log', conteudo, 'plaintext');
-  };
-
-  /** Grava a saída na pasta aberta, com o nome pedido pela entrada rápida. */
-  const salvarSaidaComo = async (): Promise<void> => {
-    const conteudo = texto();
-    if (conteudo === '') return;
-    if (pasta.pasta === '') {
-      await dialogs.avisar(
-        'Abra uma pasta antes de salvar a saída — é nela que o arquivo será gravado.',
-        'Salvar saída'
-      );
-      return;
-    }
-    await pedirComRetentativa(
-      qi,
-      { titulo: 'Salvar saída como', placeholder: 'ex.: saida.log', valorInicial: 'saida.log' },
-      (nome) => pasta.criarArquivo(nome, conteudo)
-    );
-  };
+  const saidaAcoes = useSaidaAcoes({ qi, ws, exec, pasta, avisar: dialogs.avisar });
 
   const comandosAcoes = useComandosAcoes({
     qi, avisar: dialogs.avisar, rodarNoTerminal: (c) => novoTerminalNoPainel(c),
   });
   const snippetsAcoes = useSnippetsAcoes({ qi, ws, snippets, linguagem, avisar: dialogs.avisar });
+
+  /** O pedido do CodeSnap em voo; `null` com a janela fechada (spec 077). */
+  const [codeSnap, setCodeSnap] = useState<PedidoDeCodeSnap | null>(null);
+  const formatacaoAcoes = useFormatacaoAcoes({
+    ws, tabSize: prefs.prefs['editor.tabSize'],
+    // O dialeto muda como o SQL quebra: `LIMIT` e `TOP` não são a mesma coisa.
+    dialetoAtivo: conexoes.acharConexao(vinculos.vinculoDe(caminhoAtivo)?.connectionId)?.type ?? null,
+    avisar: dialogs.avisar, abrirCodeSnap: setCodeSnap,
+  });
 
 
   /** Ids dos terminais que dividem a tela com o ativo. */
@@ -425,6 +424,7 @@ export function App() {
   const ACOES = mapaDeAcoes({
     ws, exec, conexoes, dialogs, layout, prefs, nav,
     arquivoAcoes, codigoAcoes, comandosAcoes, conexoesAcoes, pastaAcoes, snippetsAcoes,
+    formatacaoAcoes,
     novoArquivo, novoTerminalNoPainel, dividirTerminalNoPainel, abrirPorCaminho, irParaArquivo,
     abrirPreferencias, abrirTelaDePreferencias: ws.abrirTelaDePreferencias, abrirPaleta, escolherTema, irPara, irParaLinha, executar,
     setPainelLateral, avisar,
@@ -532,6 +532,7 @@ export function App() {
           onNovaPasta={() => avisar(pastaAcoes.novaPasta())}
           onMenuDoArquivo={pastaAcoes.menuDoItem}
           onMenuDaRaiz={pastaAcoes.menuDaRaiz}
+          onMenuDoVazio={pastaAcoes.menuDoVazio}
           onAcrescentarPasta={() => avisar(pastaAcoes.acrescentarPasta())}
           onRenomearArquivo={(no) => avisar(pastaAcoes.renomearItem(no.path))}
           onExcluirArquivo={(no) => avisar(pastaAcoes.excluirItem(no.path, no.type === 'dir'))}
@@ -630,6 +631,7 @@ export function App() {
                   onReordenarAba={(id, antesDe) => ws.reordenarAba(g, id, antesDe)}
                   onComando={executarComando}
                   formulario={formularioDeConexao}
+                  requisitos={<TelaDeRequisitos onErro={falhaDaIde} />}
                   preferencias={
                     <TelaDePreferencias
                       prefs={prefs.prefs}
@@ -675,8 +677,8 @@ export function App() {
                 terminais={terminais}
                 onLimpar={exec.limparSaida}
                 onLimparProblemas={problemas.limpar}
-                onAbrirNoEditor={abrirSaidaNoEditor}
-                onSalvarComo={() => avisar(salvarSaidaComo())}
+                onAbrirNoEditor={saidaAcoes.abrirNoEditor}
+                onSalvarComo={() => avisar(saidaAcoes.salvarComo())}
                 onNovoTerminal={() => novoTerminalNoPainel()}
                 onDividirTerminal={dividirTerminalNoPainel}
                 onAtivarTerminal={(id) => setTerminais((a) => ativarTerminal(a, id))}
@@ -780,6 +782,13 @@ export function App() {
 
       {dialogs.elemento}
       {menu.elemento}
+      <CodeSnapDialog
+        pedido={codeSnap}
+        paleta={paletaDe(tema)}
+        onFechar={() => setCodeSnap(null)}
+        onErro={falhaDaIde}
+        avisar={dialogs.avisar}
+      />
     </Box>
     </ThemeProvider>
   );

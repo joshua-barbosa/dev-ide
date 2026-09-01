@@ -194,6 +194,8 @@ const ICONES_DA_INTERFACE = [
   'lucide:file-plus',
   'lucide:file-json',
   'lucide:settings',
+  'lucide:circle-alert',
+  'lucide:hard-drive',
   'lucide:folder-plus',
   'lucide:refresh-cw',
   // `list-collapse`, e não `chevrons-down-up`: os dois chevrons convergindo
