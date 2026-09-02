@@ -113,8 +113,15 @@ test('`$x^2$` vira fórmula, e `R$ 10` continua sendo dinheiro', async ({ page }
   await page.locator('[data-barra-do-arquivo]').getByRole('radio', { name: 'Preview' }).click();
   await expect(preview(page)).toBeVisible();
 
+  // O texto primeiro: prova que o preview desenhou. A fórmula vem DEPOIS, e de
+  // uma biblioteca carregada sob demanda — na suíte inteira ela disputa a
+  // máquina com quinhentos outros testes, e vinte segundos não bastavam. Foi o
+  // terceiro teste DESTE arquivo a falhar por esperar de menos.
+  await expect(preview(page)).toContainText('por metro');
+  // Se a CARGA falhar, isto aqui diz por quê em vez de estourar por tempo.
+  await expect(preview(page)).not.toHaveAttribute('data-formula-erro', /.*/);
   // O KaTeX marca o que renderizou com a classe `katex`.
-  await expect(preview(page).locator('.katex').first()).toBeVisible({ timeout: 20_000 });
+  await expect(preview(page).locator('.katex').first()).toBeVisible({ timeout: 60_000 });
   // Uma só: o `R$ 10` não pode ter virado matemática.
   await expect(preview(page).locator('.katex')).toHaveCount(1);
   await expect(preview(page)).toContainText('R$ 10');

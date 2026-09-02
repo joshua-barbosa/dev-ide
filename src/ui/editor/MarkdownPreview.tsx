@@ -17,6 +17,11 @@ export interface MarkdownPreviewProps {
   readonly fonte: string;
 }
 
+/** A mensagem de um erro, sem supor que ele é um `Error`. */
+function mensagemDoErro(erro: unknown): string {
+  return erro instanceof Error ? erro.message : String(erro);
+}
+
 export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
   // Renderizar a cada tecla seria refazer o documento inteiro por caractere.
   const html = useMemo(() => renderizarMarkdown(fonte), [fonte]);
@@ -41,7 +46,14 @@ export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
     // cai na corrida toda vez. O preview comum tinha o mesmo defeito desde a
     // spec 068 — só precisava de azar.
     if (alvo.querySelector(`.${CLASSE_DO_MERMAID}`) !== null) {
-      void import('mermaid').then(async ({ default: mermaid }) => {
+      void import('mermaid').catch((erro: unknown) => {
+        // Ver a nota do KaTeX abaixo: carga que falha em silêncio some com o
+        // desenho e não deixa dizer por quê.
+        if (alvo.isConnected) alvo.setAttribute('data-mermaid-erro-de-carga', mensagemDoErro(erro));
+        return null;
+      }).then(async (mod) => {
+        if (mod === null) return;
+        const { default: mermaid } = mod;
         mermaid.initialize({
           startOnLoad: false,
           // `strict` escapa o HTML dentro dos rótulos do diagrama. É a mesma
@@ -85,13 +97,26 @@ export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
     }
 
     if (acharFormulas(fonte).length > 0) {
-      void Promise.all([import('katex'), import('katex/dist/katex.min.css')]).then(
-        ([{ default: katex }]) => {
+      void Promise.all([import('katex'), import('katex/dist/katex.min.css')])
+        .then(([{ default: katex }]) => {
           // Mesma razão do mermaid: o que decide é o nó ainda estar na tela.
           if (!alvo.isConnected) return;
           renderizarFormulas(alvo, katex);
-        }
-      );
+        })
+        // **A carga que falha não pode falhar em silêncio.**
+        //
+        // Sem isto, um `import()` recusado deixava a fórmula como o texto cru
+        // `$x^2$`, sem erro, sem aviso e sem rastro — quem olhasse concluiria
+        // que a IDE não sabe fórmula. O diagrama já mostrava a mensagem quando
+        // o desenho falhava (`data-mermaid-erro`); a CARGA das duas bibliotecas
+        // é que não mostrava nada.
+        //
+        // A marca fica no nó: é o que um teste pode afirmar e o que um relato
+        // dele pode citar.
+        .catch((erro: unknown) => {
+          if (!alvo.isConnected) return;
+          alvo.setAttribute('data-formula-erro', mensagemDoErro(erro));
+        });
     }
 
   }, [html, fonte]);
