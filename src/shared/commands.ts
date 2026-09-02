@@ -71,6 +71,31 @@ export interface Command {
    * marcado — o usuário pediu ver o mapa inteiro para decidir o que fica.
    */
   readonly pending?: boolean;
+  /**
+   * O NAVEGADOR já faz isto, no elemento que estiver com o foco.
+   *
+   * Estes atalhos **não são interceptados**: o ouvinte de teclado os deixa
+   * passar, sem `preventDefault`. Existe por um defeito que ele relatou —
+   * *"os atalhos de teclado não funcionam em nenhum editor ali. O CTRL + X,
+   * CTRL + C, CTRL + V"* —, e a causa não era o comando estar faltando: era a
+   * IDE engolir a tecla e reimplementar por baixo, com `document.execCommand`.
+   *
+   * Interceptar era errado por três motivos, e o defeito é só o mais visível:
+   *
+   * - **`preventDefault` mata o evento nativo** (`copy`, `cut`, `paste`) que o
+   *   Monaco escuta. Sem ele, quem copia é o `execCommand`, que é outra coisa.
+   * - **A cópia com MULTI-CURSOR se perde.** O Monaco guarda um pedaço por
+   *   cursor e cola um em cada; o `execCommand` devolve um texto só, e colar
+   *   com três cursores repete o mesmo em todos.
+   * - **O `Ctrl+Z` da caixa de busca ia parar no editor.** Um atalho
+   *   interceptado vale na página inteira; o nativo vale onde está o foco, que
+   *   é o que qualquer um espera ao desfazer o que acabou de digitar.
+   *
+   * O item de MENU continua existindo e funcionando: ele é um clique, e não
+   * uma tecla. O `keybinding` continua declarado porque é verdade — a tecla faz
+   * aquilo, só que sem passar por aqui.
+   */
+  readonly nativo?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,11 +132,11 @@ const DECLARADOS = [
   { id: 'file.closeEditor', label: 'Close Editor', menu: 'file', group: 5, keybinding: 'Ctrl+W', when: 'temAba' },
 
   // ---- Edit ----
-  { id: 'edit.undo', label: 'Undo', menu: 'edit', group: 1, keybinding: 'Ctrl+Z', when: 'temEditor' },
-  { id: 'edit.redo', label: 'Redo', menu: 'edit', group: 1, keybinding: 'Ctrl+Shift+Z', when: 'temEditor' },
-  { id: 'edit.cut', label: 'Cut', menu: 'edit', group: 2, keybinding: 'Ctrl+X', when: 'temEditor' },
-  { id: 'edit.copy', label: 'Copy', menu: 'edit', group: 2, keybinding: 'Ctrl+C', when: 'temEditor' },
-  { id: 'edit.paste', label: 'Paste', menu: 'edit', group: 2, keybinding: 'Ctrl+V', when: 'temEditor' },
+  { id: 'edit.undo', label: 'Undo', menu: 'edit', group: 1, keybinding: 'Ctrl+Z', when: 'temEditor', nativo: true },
+  { id: 'edit.redo', label: 'Redo', menu: 'edit', group: 1, keybinding: 'Ctrl+Shift+Z', when: 'temEditor', nativo: true },
+  { id: 'edit.cut', label: 'Cut', menu: 'edit', group: 2, keybinding: 'Ctrl+X', when: 'temEditor', nativo: true },
+  { id: 'edit.copy', label: 'Copy', menu: 'edit', group: 2, keybinding: 'Ctrl+C', when: 'temEditor', nativo: true },
+  { id: 'edit.paste', label: 'Paste', menu: 'edit', group: 2, keybinding: 'Ctrl+V', when: 'temEditor', nativo: true },
   { id: 'edit.find', label: 'Find', menu: 'edit', group: 3, keybinding: 'Ctrl+F' },
   { id: 'edit.replace', label: 'Replace', menu: 'edit', group: 3, keybinding: 'Ctrl+H' },
   { id: 'edit.findInFiles', label: 'Find in Files', menu: 'edit', group: 4, keybinding: 'Ctrl+Shift+F' },
@@ -138,7 +163,7 @@ const DECLARADOS = [
   // multi-cursor.
 
   // ---- Selection ----
-  { id: 'selection.all', label: 'Select All', menu: 'selection', group: 1, keybinding: 'Ctrl+A', when: 'temEditor' },
+  { id: 'selection.all', label: 'Select All', menu: 'selection', group: 1, keybinding: 'Ctrl+A', when: 'temEditor', nativo: true },
   { id: 'selection.expand', label: 'Expand Selection', menu: 'selection', group: 1, keybinding: 'Shift+Alt+ArrowRight' },
   { id: 'selection.shrink', label: 'Shrink Selection', menu: 'selection', group: 1, keybinding: 'Shift+Alt+ArrowLeft' },
   { id: 'selection.copyLineUp', label: 'Copy Line Up', menu: 'selection', group: 2, keybinding: 'Ctrl+Shift+Alt+ArrowUp' },

@@ -350,3 +350,33 @@ test('formatarAtalho produz as teclas de função declaradas', () => {
   assert.equal(tecla('F12'), 'F12');
   assert.equal(tecla('F12', true), 'Shift+F12');
 });
+
+// ---------------------------------------------------------------------------
+// Atalhos que o NAVEGADOR faz (defeito relatado em 02/09/2026)
+// ---------------------------------------------------------------------------
+
+test('a área de transferência e o desfazer são NATIVOS', () => {
+  // O defeito: *"os atalhos de teclado não funcionam em nenhum editor ali.
+  // O CTRL + X, CTRL + C, CTRL + V"*. A causa não era comando faltando — era a
+  // IDE engolir a tecla com `preventDefault`, matando o evento que o Monaco
+  // escuta, e reimplementar por baixo com `document.execCommand`.
+  for (const id of ['edit.cut', 'edit.copy', 'edit.paste', 'edit.undo', 'edit.redo']) {
+    const cmd = COMMANDS.find((c) => c.id === id);
+    assert.equal(cmd?.nativo, true, `${id} tem de passar direto`);
+  }
+});
+
+test('o que é nativo continua declarando o atalho — a tecla FAZ aquilo', () => {
+  // Tirar o `keybinding` esconderia do menu e da paleta um atalho que existe.
+  // Ele só não passa por este módulo.
+  const copiar = COMMANDS.find((c) => c.id === 'edit.copy');
+  assert.equal(copiar?.keybinding, 'Ctrl+C');
+});
+
+test('os que o EDITOR atende não são nativos: esses a IDE despacha', () => {
+  // `Ctrl+D` e `Shift+Alt+↓` funcionavam justamente por passarem por aqui e
+  // caírem numa ação nomeada do Monaco. Marcá-los como nativos os quebraria.
+  for (const id of ['selection.addNextOccurrence', 'selection.copyLineDown']) {
+    assert.notEqual(COMMANDS.find((c) => c.id === id)?.nativo, true);
+  }
+});

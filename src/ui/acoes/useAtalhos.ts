@@ -18,6 +18,14 @@ export function useAtalhos(
   despacho.current = (e: KeyboardEvent) => {
     const cmd = comandoDoAtalho(formatarAtalho(e), contexto);
     if (cmd === null) return;
+
+    // O NAVEGADOR faz melhor: sai daqui sem engolir a tecla.
+    //
+    // `Ctrl+C`, `Ctrl+X` e `Ctrl+V` eram interceptados, e o `preventDefault`
+    // matava o evento nativo que o Monaco escuta — a tecla parecia morta, que
+    // foi exatamente o que ele relatou. Ver `Command.nativo`.
+    if (cmd.nativo === true) return;
+
     // Só engole a tecla quando há comando DISPONÍVEL — caso contrário o editor
     // perderia atalhos que ele próprio trata.
     e.preventDefault();
