@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  chaveDoModelo, ehCopia, gemeas, idBaseDe, idDeCopia, proximaCopia,
+  ESQUEMA_DO_MODELO, caminhoDaUri, chaveDoModelo, ehCopia, gemeas, idBaseDe, idDeCopia, proximaCopia,
 } from '../abas-gemeas';
 
 const A = 'file:/casa/a.ts';
@@ -58,4 +58,40 @@ test('aba sem arquivo tem modelo só dela', () => {
   assert.equal(chaveDoModelo('sem-titulo:1', null), 'aba:sem-titulo:1');
   assert.equal(chaveDoModelo('sem-titulo:1', ''), 'aba:sem-titulo:1');
   assert.notEqual(chaveDoModelo('sem-titulo:1', null), chaveDoModelo('sem-titulo:2', null));
+});
+
+// ---------------------------------------------------------------------------
+// A URI do modelo, e a volta (lote E)
+//
+// Os provedores de linguagem do Monaco rodam DENTRO do editor e não enxergam o
+// estado do React. O caminho do arquivo tem de sair da própria URI.
+// ---------------------------------------------------------------------------
+
+test('a URI de um arquivo devolve o caminho de volta', () => {
+  const chave = chaveDoModelo('file:/casa/a.ts', '/casa/a.ts');
+  const uri = `${ESQUEMA_DO_MODELO}${encodeURIComponent(chave)}`;
+  assert.equal(caminhoDaUri(uri), '/casa/a.ts');
+});
+
+test('caminho com espaço e acento sobrevive à ida e à volta', () => {
+  const caminho = '/casa/meus projetos/coração.ts';
+  const uri = `${ESQUEMA_DO_MODELO}${encodeURIComponent(chaveDoModelo('x', caminho))}`;
+  assert.equal(caminhoDaUri(uri), caminho);
+});
+
+test('aba SEM arquivo devolve `null`', () => {
+  // Não há o que perguntar ao serviço de linguagem sobre um texto que não está
+  // em lugar nenhum.
+  const uri = `${ESQUEMA_DO_MODELO}${encodeURIComponent(chaveDoModelo('sem-titulo:1', null))}`;
+  assert.equal(caminhoDaUri(uri), null);
+});
+
+test('URI de outro esquema devolve `null`', () => {
+  assert.equal(caminhoDaUri('file:///casa/a.ts'), null);
+  assert.equal(caminhoDaUri(''), null);
+});
+
+test('URI estragada não derruba o autocomplete', () => {
+  // `%` solto faz o `decodeURIComponent` lançar.
+  assert.equal(caminhoDaUri(`${ESQUEMA_DO_MODELO}%zz`), null);
 });

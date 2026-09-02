@@ -4,6 +4,7 @@
 // o resto vai para o runner. Ter isso espalhado pelos gatilhos foi o que fez
 // "▶ arquivo" mandar SQL para o Node na versão anterior.
 import { useCallback, useRef, useState } from 'react';
+import { semCores } from '../shared/problem-matcher';
 import type { QueryResult } from '../shared/contracts';
 import type { Vinculo } from '../shared/sql/vinculo';
 import { Api } from './api';
@@ -153,7 +154,18 @@ export interface DepsDeVinculoNaExecucao {
 export function useExecution(
   ws: Workspace,
   aoFalhar: AoFalharExecucao = () => {},
-  vinculos: DepsDeVinculoNaExecucao = { vinculoDe: () => null, garantir: async () => null }
+  vinculos: DepsDeVinculoNaExecucao = { vinculoDe: () => null, garantir: async () => null },
+  /**
+   * Chamado com a saída completa quando a execução termina (T008).
+   *
+   * No FIM da lista de propósito: acrescentá-lo antes do `vinculos` mudaria a
+   * posição de um parâmetro que já tinha chamador — e o TypeScript pegou isso,
+   * mas a lição fica.
+   *
+   * Injetado como o `aoFalhar`, e pelo mesmo motivo: o gancho continua sem
+   * saber o que é uma aba `Problems`.
+   */
+  aoTerminar?: (saida: string, arquivo: string | undefined) => void
 ): Execution {
   const [grades, setGrades] = useState<ReadonlyMap<string, EstadoGrade>>(new Map());
   const [saida, setSaida] = useState<readonly LinhaSaida[]>([]);
@@ -167,8 +179,22 @@ export function useExecution(
   const execucaoAtual = useRef<string | null>(null);
   const [executando, setExecutando] = useState(false);
 
+  /**
+   * A saída acumulada desta execução, em `ref`.
+   *
+   * O `setSaida` do React é assíncrono, e o `finally` que lê a saída para o
+   * problem matcher (T008) roda antes de a lista nova existir. A `ref` é a
+   * cópia que já está pronta naquele instante.
+   */
+  const saidaAcumulada = useRef('');
+
   const escrever = useCallback((texto: string, erro: boolean) => {
-    setSaida((atual) => [...atual, { texto, erro }]);
+    // Sem as cores ANSI: este painel é um `<pre>`, e não um terminal. O Python
+    // 3.13 colore o traceback, e os códigos apareceriam aqui como sujeira.
+    // (Quem entende de cor é o painel de terminal, com o xterm.)
+    const limpo = semCores(texto);
+    saidaAcumulada.current += limpo;
+    setSaida((atual) => [...atual, { texto: limpo, erro }]);
   }, []);
 
   const atualizarGrade = useCallback((id: string, estado: EstadoGrade) => {
@@ -361,6 +387,9 @@ export function useExecution(
       payload.runId = runId;
       execucaoAtual.current = runId;
       setExecutando(true);
+      // Zera a acumulada: os problemas são os DESTA rodada, e não a soma delas
+      // — senão um erro corrigido continuaria na aba depois do build seguinte.
+      saidaAcumulada.current = '';
 
       setStatus({ texto: 'executando…', erro: false });
       try {
@@ -392,9 +421,14 @@ export function useExecution(
       } finally {
         execucaoAtual.current = null;
         setExecutando(false);
+        // A saída inteira vira problemas clicáveis (T008). No FIM, e não a cada
+        // linha: um compilador escreve o erro em duas linhas — a mensagem e a
+        // seta que aponta a coluna —, e ler pela metade daria um problema sem
+        // mensagem.
+        aoTerminar?.(saidaAcumulada.current, payload.filePath as string | undefined);
       }
     },
-    [aoFalhar, escrever]
+    [aoFalhar, aoTerminar, escrever]
   );
 
   const executarCodigo = useCallback(

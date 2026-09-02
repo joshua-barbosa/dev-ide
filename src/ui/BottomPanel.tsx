@@ -36,6 +36,8 @@ export interface BottomPanelProps extends AcoesDoPainel {
   readonly linhas: readonly LinhaSaida[];
   readonly status: { readonly texto: string; readonly erro: boolean };
   readonly problemas: readonly Problema[];
+  /** Abre o arquivo na linha do problema (T008). */
+  onIrParaProblema?: (caminho: string, linha: number, coluna: number) => void;
   readonly terminais: EstadoDeTerminais;
   /** Conteúdo dos terminais, montado por fora — ver a nota sobre desmontar. */
   readonly children?: React.ReactNode;
@@ -47,7 +49,7 @@ function horaDe(iso: string): string {
 }
 
 export function BottomPanel({
-  aba, onAba, altura, linhas, status, problemas, terminais, children,
+  aba, onAba, altura, linhas, status, problemas, onIrParaProblema, terminais, children,
   onLimpar, onAbrirNoEditor, onSalvarComo, onLimparProblemas,
   onNovoTerminal, onDividirTerminal, onFecharTerminal, onAtivarTerminal, onEsconder,
 }: BottomPanelProps) {
@@ -168,13 +170,41 @@ export function BottomPanel({
                 <Box
                   key={p.id}
                   data-problema
+                  data-clicavel={p.lugar === undefined ? undefined : 'true'}
+                  // O problema com LUGAR leva ao arquivo e à linha (T008); o
+                  // que não tem — uma conexão que caiu — não finge que leva.
+                  onClick={
+                    p.lugar === undefined
+                      ? undefined
+                      : () => onIrParaProblema?.(p.lugar!.caminho, p.lugar!.linha, p.lugar!.coluna)
+                  }
                   sx={{
                     display: 'flex', gap: 1, px: 1.25, py: 0.4, fontSize: 12,
                     fontFamily: tokens.fontMono, alignItems: 'baseline',
+                    ...(p.lugar === undefined
+                      ? {}
+                      : { cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }),
                   }}
                 >
-                  <Box sx={{ color: 'error.main', flexShrink: 0 }}>{p.origem}</Box>
+                  <Box
+                    sx={{
+                      flexShrink: 0,
+                      color:
+                        p.severidade === 'aviso'
+                          ? 'warning.main'
+                          : p.severidade === 'nota'
+                            ? 'text.secondary'
+                            : 'error.main',
+                    }}
+                  >
+                    {p.origem}
+                  </Box>
                   <Box sx={{ flex: 1, minWidth: 0, whiteSpace: 'pre-wrap' }}>{p.mensagem}</Box>
+                  {p.lugar !== undefined && (
+                    <Box sx={{ color: 'text.secondary', fontSize: 10, flexShrink: 0 }}>
+                      {(p.lugar.caminho.split('/').pop() ?? '')}:{p.lugar.linha}
+                    </Box>
+                  )}
                   <Box sx={{ color: 'text.secondary', fontSize: 10, flexShrink: 0 }}>
                     {horaDe(p.quando)}
                   </Box>

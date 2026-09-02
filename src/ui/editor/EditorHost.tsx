@@ -31,6 +31,7 @@ import { LINGUAGEM_TODAS, type Snippet } from '../../shared/snippets';
 import { registrarCodeLensDeSql } from '../query/codelens';
 import { emmetCSS, emmetHTML, emmetJSX, registerCustomSnippets } from 'emmet-monaco-es';
 import { DIALETOS, EMMET_PADRAO, sintaxeDoDialeto, type ConfiguracaoDoEmmet } from '../../shared/emmet';
+import { marcarDiagnosticos, registrarProvedores, type ContextoDeLinguagem } from './provedores';
 import { NOME_DO_TEMA, registrarTema } from './tema';
 import { modeloDe } from './modelos';
 
@@ -172,6 +173,14 @@ export interface EditorHostProps {
    * cópia pior.
    */
   readonly acoesDeMenu?: readonly AcaoDeMenuDoEditor[];
+  /**
+   * O que a inteligência de código precisa saber (lote E).
+   *
+   * Ausente = sem projeto aberto, e aí os provedores não são registrados: o
+   * serviço não teria onde procurar, e cada tecla viraria uma ida ao servidor
+   * que volta vazia.
+   */
+  readonly contextoDeLinguagem?: ContextoDeLinguagem;
 }
 
 export interface AcaoDeMenuDoEditor {
@@ -189,7 +198,7 @@ export interface AcaoDeMenuDoEditor {
 
 export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function EditorHost(
   { onChange, onCursor, fontSize, tabSize, wordWrap, tema, snippets, onComando,
-    emmet = EMMET_PADRAO, acoesDeMenu = [] },
+    emmet = EMMET_PADRAO, acoesDeMenu = [], contextoDeLinguagem },
   ref
 ) {
   const caixa = useRef<HTMLDivElement>(null);
@@ -200,10 +209,20 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
   const aoMoverCursor = useRef(onCursor);
   const aoComandar = useRef(onComando);
   const acoesAtuais = useRef(acoesDeMenu);
+  const contextoAtual = useRef(contextoDeLinguagem);
+  /**
+   * O relógio que atrasa os diagnósticos (T037).
+   *
+   * Pedir a cada tecla seria uma ida ao servidor por caractere digitado — e o
+   * serviço de TypeScript reanalisa o projeto a cada pedido. 400 ms é o tempo
+   * de parar de digitar, e é o que o VS Code usa.
+   */
+  const relogioDeDiagnostico = useRef<ReturnType<typeof setTimeout> | null>(null);
   aoMudar.current = onChange;
   aoMoverCursor.current = onCursor;
   aoComandar.current = onComando;
   acoesAtuais.current = acoesDeMenu;
+  contextoAtual.current = contextoDeLinguagem;
 
   // O tema precisa existir ANTES do primeiro `create`, senão o editor nasce com
   // o `vs-dark` padrão e só repinta no efeito seguinte — um piscar visível.
@@ -213,6 +232,26 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     registrarTema(tema);
     registrado.add(tema);
   }
+
+  /** Pede os diagnósticos depois de a digitação parar. */
+  const pedirDiagnosticos = (): void => {
+    const ctx = contextoAtual.current;
+    const ed = editor.current;
+    const modelo = ed?.getModel();
+    if (ctx === undefined || modelo === undefined || modelo === null) return;
+    const pasta = ctx.pastaAtual();
+    const caminho = ctx.caminhoDoModelo(modelo.uri.toString());
+    if (pasta === '' || caminho === null) return;
+
+    if (relogioDeDiagnostico.current !== null) clearTimeout(relogioDeDiagnostico.current);
+    relogioDeDiagnostico.current = setTimeout(() => {
+      void marcarDiagnosticos(monaco, modelo, {
+        pasta,
+        caminho,
+        conteudo: modelo.getValue(),
+      });
+    }, 400);
+  };
 
   useEffect(() => {
     const embrulho = caixa.current;
@@ -242,7 +281,10 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     });
     editor.current = ed;
 
-    const mudou = ed.onDidChangeModelContent(() => aoMudar.current());
+    const mudou = ed.onDidChangeModelContent(() => {
+      aoMudar.current();
+      pedirDiagnosticos();
+    });
     const moveu = ed.onDidChangeCursorPosition((e) =>
       aoMoverCursor.current(e.position.lineNumber, e.position.column)
     );
@@ -255,6 +297,17 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     // `import` da primeira linha em vez do arquivo onde a função está —
     // parece funcionar, e está errado. Quem sabe procurar no projeto inteiro é
     // o serviço do servidor (spec 032).
+    // Os provedores de definição, referências e completar (lote E). Registrados
+    // aqui e uma vez só: eles são GLOBAIS do Monaco, e não deste editor.
+    //
+    // Isto é o que faz `Ctrl+clique` e o peek existirem — os dois são do
+    // Monaco, e só faltava alguém responder "onde isto está definido?".
+    if (contextoDeLinguagem !== undefined) {
+      registrarProvedores(monaco, contextoDeLinguagem);
+    }
+
+    // O F12 continua devolvido à IDE, e de propósito: quem aprendeu a apertá-lo
+    // na spec 032 não deve descobrir que ele mudou de dono.
     ed.addCommand(monaco.KeyCode.F12, () => aoComandar.current('go.definition'));
     ed.addCommand(
       monaco.KeyMod.Shift | monaco.KeyCode.F12,
@@ -281,6 +334,7 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     );
 
     return () => {
+      if (relogioDeDiagnostico.current !== null) clearTimeout(relogioDeDiagnostico.current);
       for (const acao of acoes) acao.dispose();
       mudou.dispose();
       moveu.dispose();

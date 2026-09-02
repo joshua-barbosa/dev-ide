@@ -5,7 +5,7 @@
 // mesmo escrevi.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { lerSaida } from '../problem-matcher';
+import { lerSaida, semCores } from '../problem-matcher';
 
 const RAIZ = '/casa/projeto';
 
@@ -122,4 +122,56 @@ test('sem severidade declarada, é ERRO', () => {
 
 test('saída vazia devolve lista vazia', () => {
   assert.deepEqual(lerSaida('', RAIZ), []);
+});
+
+// ---------------------------------------------------------------------------
+// O que a saída REAL desta máquina tem, e o teste inventado não tinha
+// ---------------------------------------------------------------------------
+
+test('traceback COLORIDO do Python 3.13 é lido', () => {
+  // Medido na saída desta máquina: o Python 3.13 colore o traceback, e o `"`
+  // deixa de vir logo depois de `File `. Sem tirar as cores, NENHUM erro de
+  // Python chegava à aba Problems.
+  const colorido =
+    'Traceback (most recent call last):\n' +
+    '  File \u001b[35m"/tmp/x.py"\u001b[0m, line \u001b[35m2\u001b[0m, in \u001b[35m<module>\u001b[0m\n' +
+    '    raise ValueError("estourou")\n' +
+    '\u001b[1;35mValueError\u001b[0m: \u001b[35mestourou\u001b[0m\n';
+
+  const achados = lerSaida(colorido, '/casa');
+  assert.equal(achados.length, 1);
+  assert.equal(achados[0]?.linha, 2);
+  assert.equal(achados[0]?.mensagem, 'ValueError: estourou');
+});
+
+test('semCores não come texto de verdade', () => {
+  assert.equal(semCores('sem cor nenhuma'), 'sem cor nenhuma');
+  assert.equal(semCores('a\u001b[31mb\u001b[0mc'), 'abc');
+});
+
+test('a cópia temporária da execução vira o arquivo de verdade', () => {
+  // A execução copia o código para `/tmp/dev-ide-run-XXXX/main.py` e roda de
+  // lá. Sem traduzir, clicar no problema abriria um arquivo já apagado.
+  const saida =
+    'Traceback (most recent call last):\n' +
+    '  File "/tmp/dev-ide-run-Ga5k6d/main.py", line 2, in <module>\n' +
+    'ValueError: estourou\n';
+
+  const [achado] = lerSaida(saida, '/casa', '/casa/projeto/script.py');
+  assert.equal(achado?.caminho, '/casa/projeto/script.py');
+});
+
+test('sem o arquivo real, a cópia continua como está — sem inventar', () => {
+  const saida = '  File "/tmp/dev-ide-run-Ga5k6d/main.py", line 2, in <module>\nValueError: x\n';
+  assert.equal(lerSaida(saida, '/casa')[0]?.caminho, '/tmp/dev-ide-run-Ga5k6d/main.py');
+});
+
+test('só a CÓPIA é traduzida: a biblioteca do sistema no traceback fica', () => {
+  const saida =
+    'Traceback (most recent call last):\n' +
+    '  File "/usr/lib/python3.13/json/decoder.py", line 355, in raw_decode\n' +
+    'JSONDecodeError: Expecting value\n';
+
+  const [achado] = lerSaida(saida, '/casa', '/casa/projeto/script.py');
+  assert.equal(achado?.caminho, '/usr/lib/python3.13/json/decoder.py');
 });

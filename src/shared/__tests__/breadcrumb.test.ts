@@ -32,10 +32,10 @@ test('arquivo fora da raiz aparece inteiro', () => {
 // ---------------------------------------------------------------------------
 
 const SIMBOLOS: readonly SimboloDaTrilha[] = [
-  { nome: 'TabelaHost', tipo: 'class', linha: 10, linhaFim: 100 },
-  { nome: 'carregarPagina', tipo: 'method', linha: 20, linhaFim: 40 },
-  { nome: 'ordenar', tipo: 'method', linha: 50, linhaFim: 60 },
-  { nome: 'ajudante', tipo: 'function', linha: 120, linhaFim: 130 },
+  { name: 'TabelaHost', kind: 'class', line: 10, lineEnd: 100 },
+  { name: 'carregarPagina', kind: 'method', line: 20, lineEnd: 40 },
+  { name: 'ordenar', kind: 'method', line: 50, lineEnd: 60 },
+  { name: 'ajudante', kind: 'function', line: 120, lineEnd: 130 },
 ];
 
 test('a trilha vai do mais EXTERNO para o mais interno', () => {
@@ -62,8 +62,8 @@ test('sem `linhaFim`, o fim é o começo do próximo', () => {
   // A aproximação está documentada: ela erra em código solto depois do último
   // `}`, e a alternativa custaria uma varredura por movimento de cursor.
   const sem: readonly SimboloDaTrilha[] = [
-    { nome: 'primeira', tipo: 'function', linha: 1 },
-    { nome: 'segunda', tipo: 'function', linha: 10 },
+    { name: 'primeira', kind: 'function', line: 1 },
+    { name: 'segunda', kind: 'function', line: 10 },
   ];
   assert.deepEqual(trilhaDoSimbolo(sem, 5).map((d) => d.rotulo), ['primeira']);
   assert.deepEqual(trilhaDoSimbolo(sem, 15).map((d) => d.rotulo), ['segunda']);
@@ -87,4 +87,15 @@ test('a trilha inteira põe o símbolo DEPOIS do arquivo', () => {
 test('sem símbolo nenhum, sobra o caminho', () => {
   const t = trilha('/casa/projeto/leia.md', RAIZ, [], 1);
   assert.deepEqual(t.map((d) => d.rotulo), ['leia.md']);
+});
+
+test('a trilha usa só os símbolos DESTE arquivo', () => {
+  // A lista do painel é do projeto inteiro. Sem o filtro, a classe de outro
+  // arquivo apareceria só por ter uma linha com o mesmo número.
+  const deVarios: readonly SimboloDaTrilha[] = [
+    { name: 'DaquiMesmo', kind: 'class', line: 10, lineEnd: 100, file: '/casa/projeto/a.ts' },
+    { name: 'DeOutro', kind: 'class', line: 10, lineEnd: 100, file: '/casa/projeto/b.ts' },
+  ];
+  const t = trilha('/casa/projeto/a.ts', RAIZ, deVarios, 20);
+  assert.deepEqual(t.map((d) => d.rotulo), ['a.ts', 'DaquiMesmo']);
 });

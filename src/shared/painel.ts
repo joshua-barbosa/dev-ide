@@ -29,6 +29,20 @@ export interface Problema {
   readonly mensagem: string;
   /** ISO; a interface formata. Guardar formatado impediria reformatar depois. */
   readonly quando: string;
+  /**
+   * Onde o problema está, quando se sabe (T008).
+   *
+   * É o que torna a linha CLICÁVEL — a nota dele pedia *"problema clicável
+   * levando a arquivo e linha"*. Ausente nos problemas que não vêm de um
+   * arquivo: uma conexão que caiu não tem linha.
+   */
+  readonly lugar?: {
+    readonly caminho: string;
+    readonly linha: number;
+    readonly coluna: number;
+  };
+  /** `erro` quando ausente — é a origem histórica desta lista. */
+  readonly severidade?: 'erro' | 'aviso' | 'nota';
 }
 
 export const MAX_PROBLEMAS = 200;

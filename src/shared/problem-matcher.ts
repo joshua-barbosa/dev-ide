@@ -90,13 +90,51 @@ function severidadeDe(bruta: string | undefined): ProblemaAchado['severidade'] {
 }
 
 /**
+ * Tira os códigos de cor ANSI.
+ *
+ * **Sem isto, nada de Python casa.** O Python 3.13 passou a colorir o traceback,
+ * e a linha que chega é `File \x1b[35m"/tmp/x.py"\x1b[0m, line \x1b[35m2\x1b[0m`
+ * — o `"` deixa de vir logo depois de `File `, e o regex falha. Foi medido na
+ * saída real desta máquina, e não deduzido.
+ *
+ * Vale para todo mundo: `ruff`, `tsc` e `gcc` também colorem quando acham que
+ * estão falando com um terminal.
+ */
+export function semCores(texto: string): string {
+  // eslint-disable-next-line no-control-regex
+  return texto.replace(/\u001b\[[0-9;]*m/g, '');
+}
+
+/**
+ * Onde o arquivo REALMENTE está, quando ele foi executado por cópia.
+ *
+ * A execução de um trecho — ou de uma aba com alteração não salva — copia o
+ * código para `/tmp/dev-ide-run-XXXX/main.py` e roda de lá. O traceback aponta
+ * para a cópia, que é apagada logo depois: clicar no problema abriria um
+ * arquivo que não existe mais.
+ *
+ * `arquivoReal` é o que a aba estava mostrando. Só a cópia é traduzida — um
+ * traceback que passa por uma biblioteca do sistema continua apontando para ela.
+ */
+function traduzirCopia(caminho: string, arquivoReal: string | undefined): string {
+  if (arquivoReal === undefined) return caminho;
+  return /(^|\/)dev-ide-run-[^/]+\/main\.[a-z]+$/.test(caminho) ? arquivoReal : caminho;
+}
+
+/**
  * Lê a saída de um comando e devolve os problemas.
  *
  * `raiz` serve para transformar caminho relativo em absoluto — a aba Problems
  * precisa abrir o arquivo, e `src/a.ts` sozinho não diz de qual projeto é.
+ *
+ * `arquivoReal` desfaz a cópia temporária da execução — ver `traduzirCopia`.
  */
-export function lerSaida(saida: string, raiz: string): readonly ProblemaAchado[] {
-  const linhas = saida.split('\n');
+export function lerSaida(
+  saida: string,
+  raiz: string,
+  arquivoReal?: string
+): readonly ProblemaAchado[] {
+  const linhas = semCores(saida).split('\n');
   const achados: ProblemaAchado[] = [];
 
   for (const [i, linha] of linhas.entries()) {
@@ -121,7 +159,7 @@ export function lerSaida(saida: string, raiz: string): readonly ProblemaAchado[]
         padrao.campos.codigo === undefined ? undefined : m[padrao.campos.codigo];
 
       achados.push({
-        caminho: absoluto(caminho, raiz),
+        caminho: traduzirCopia(absoluto(caminho, raiz), arquivoReal),
         linha: Math.max(1, numero),
         coluna: Number.isFinite(coluna) ? Math.max(1, coluna) : 1,
         severidade: severidadeDe(

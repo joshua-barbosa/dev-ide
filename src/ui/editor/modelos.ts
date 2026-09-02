@@ -11,6 +11,7 @@
 // editor mataria o texto do outro grupo — e a remontagem do editor acontece
 // toda vez que o arranjo muda de forma.
 import * as monaco from 'monaco-editor';
+import { ESQUEMA_DO_MODELO } from '../../shared/abas-gemeas';
 import { idDoMonaco } from '../../shared/editor/monaco-ids';
 
 /**
@@ -22,7 +23,7 @@ import { idDoMonaco } from '../../shared/editor/monaco-ids';
  * pediu e não mediu.
  */
 function uriDe(chave: string): monaco.Uri {
-  return monaco.Uri.parse(`inmemory://aba/${encodeURIComponent(chave)}`);
+  return monaco.Uri.parse(`${ESQUEMA_DO_MODELO}${encodeURIComponent(chave)}`);
 }
 
 /**
@@ -46,3 +47,4 @@ export function modeloDe(
 export function descartarModelo(chave: string): void {
   monaco.editor.getModel(uriDe(chave))?.dispose();
 }
+

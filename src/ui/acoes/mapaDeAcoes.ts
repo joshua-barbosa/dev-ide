@@ -47,6 +47,8 @@ export interface DepsDoMapa {
   readonly pastaAcoes: PastaAcoes;
   readonly snippetsAcoes: SnippetsAcoes;
   readonly formatacaoAcoes: FormatacaoAcoes;
+  /** Renomear um símbolo em todos os arquivos (T038). */
+  readonly renomearSimbolo: () => Promise<void>;
   readonly novoArquivo: () => void;
   readonly novoTerminalNoPainel: () => void;
   /** Divide o terminal ativo. `horizontal` (lado a lado) é o padrão (T020). */
@@ -71,7 +73,7 @@ export function mapaDeAcoes(deps: DepsDoMapa): Readonly<Record<IdImplementado, (
   const {
     ws, exec, conexoes, dialogs, layout, prefs, nav,
     arquivoAcoes, codigoAcoes, comandosAcoes, conexoesAcoes, pastaAcoes, snippetsAcoes,
-    formatacaoAcoes,
+    formatacaoAcoes, renomearSimbolo,
     novoArquivo, novoTerminalNoPainel, dividirTerminalNoPainel, abrirPorCaminho, irParaArquivo,
     abrirPreferencias, abrirTelaDePreferencias, abrirPaleta, escolherTema, irPara, irParaLinha, executar,
     setPainelLateral, avisar,
@@ -109,6 +111,7 @@ return {
   'edit.beautify': () => avisar(formatacaoAcoes.formatar('beautify')),
   'edit.minify': () => avisar(formatacaoAcoes.formatar('minify')),
   'edit.codeSnap': () => avisar(formatacaoAcoes.foto()),
+  'edit.renameSymbol': () => void renomearSimbolo(),
   'edit.paste': () => avisar(navigator.clipboard.readText().then((t) => {
     document.execCommand('insertText', false, t);
   })),

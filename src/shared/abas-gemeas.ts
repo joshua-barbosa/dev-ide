@@ -74,3 +74,30 @@ export function proximaCopia(ids: readonly string[], id: string): string {
 export function chaveDoModelo(id: string, caminho: string | null): string {
   return caminho === null || caminho === '' ? `aba:${idBaseDe(id)}` : `arquivo:${caminho}`;
 }
+
+/** O prefixo das URIs de modelo. Mora aqui porque a chave também mora. */
+export const ESQUEMA_DO_MODELO = 'inmemory://aba/';
+
+/**
+ * O caminho do arquivo a partir da URI do modelo — o INVERSO de
+ * `chaveDoModelo`.
+ *
+ * O caminho já está dentro da URI, e lê-lo de lá é o que permite aos provedores
+ * de linguagem do Monaco (lote E) saberem de qual arquivo se trata sem
+ * consultar o estado do React — que eles não enxergam, porque rodam dentro do
+ * editor.
+ *
+ * Aba sem arquivo (`aba:…`) devolve `null`: não há o que perguntar ao serviço
+ * de linguagem sobre um texto que não está em lugar nenhum.
+ */
+export function caminhoDaUri(uri: string): string | null {
+  if (!uri.startsWith(ESQUEMA_DO_MODELO)) return null;
+  let chave: string;
+  try {
+    chave = decodeURIComponent(uri.slice(ESQUEMA_DO_MODELO.length));
+  } catch {
+    // URI estragada não pode derrubar o autocomplete.
+    return null;
+  }
+  return chave.startsWith('arquivo:') ? chave.slice('arquivo:'.length) : null;
+}

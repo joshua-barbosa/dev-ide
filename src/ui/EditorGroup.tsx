@@ -13,6 +13,7 @@ import Box from '@mui/material/Box';
 import { TabBar } from './tabs/TabBar';
 import { ZonaDeSoltura } from './ZonaDeSoltura';
 import { EditorHost, type AcaoDeMenuDoEditor, type EditorHandle } from './editor/EditorHost';
+import type { ContextoDeLinguagem } from './editor/provedores';
 import { AbaDeTerminal } from './terminal/AbaDeTerminal';
 import { ResultGrid } from './grid/ResultGrid';
 import { TabelaHost } from './tabela/TabelaHost';
@@ -127,6 +128,10 @@ export interface EditorGroupProps {
   readonly codesnap: React.ReactNode;
   /** Itens próprios no menu de botão direito do editor (spec 077). */
   readonly acoesDeMenu?: readonly AcaoDeMenuDoEditor[];
+  /** O que a inteligência de código precisa saber (lote E). */
+  readonly contextoDeLinguagem?: ContextoDeLinguagem;
+  /** A trilha acima do editor (T075). Montada pelo `App`, que tem os símbolos. */
+  readonly breadcrumb?: React.ReactNode;
 
   registrarEditor(handle: EditorHandle | null): void;
   onFocar(): void;
@@ -145,7 +150,8 @@ export interface EditorGroupProps {
 export function EditorGroup({
   grupo, abas, ativaId, focado, dividido,
   fontSize, tabSize, wordWrap, terminalFontSize, tema, snippets, emmet,
-  grades, formulario, preferencias, requisitos, codesnap, acoesDeMenu, emPreview, conteudoDaAba, onPreview,
+  grades, formulario, preferencias, requisitos, codesnap, acoesDeMenu,
+  contextoDeLinguagem, breadcrumb, emPreview, conteudoDaAba, onPreview,
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
   onReordenarAba,
   onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
@@ -273,12 +279,17 @@ export function EditorGroup({
           abas e aparecia no meio da tela com vários arquivos abertos. */}
       <BarraDoArquivo onPreview={onPreview} emPreview={mostrandoPreview} />
 
+      {/* A trilha (T075). Só com editor à vista: numa grade ou num terminal
+          ela mostraria o caminho do último arquivo aberto ali, que é mentira. */}
+      {mostrarEditor && breadcrumb}
+
       {/* Montado sempre: desmontá-lo ao ficar sem abas perderia a instância e a
           fachada imperativa. Some de vista, não do DOM. */}
       <Box sx={{ flex: 1, display: mostrarEditor ? 'flex' : 'none', minHeight: 0 }}>
         <EditorHost
           ref={registrarEditor}
           acoesDeMenu={acoesDeMenu}
+          contextoDeLinguagem={contextoDeLinguagem}
           onChange={onMudar}
           onCursor={onCursor}
           fontSize={fontSize}

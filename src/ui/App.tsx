@@ -7,7 +7,7 @@
 // em `shared/commands.ts` à função que o executa, e `contexto` diz o que está
 // disponível agora. Menu, paleta e atalhos leem essa mesma dupla — por isso um
 // comando novo entra numa linha e aparece nos três lugares.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
@@ -22,6 +22,8 @@ import { useNaoPerderTrabalho } from './useNaoPerderTrabalho';
 import { useNotificacoes } from './useNotificacoes';
 import { TimelinePanel } from './timeline/TimelinePanel';
 import { useTimeline } from './timeline/useTimeline';
+import { montarBreadcrumb, useContextoDeLinguagem } from './editor/useContextoDeLinguagem';
+import { useRenomearSimbolo } from './acoes/useRenomearSimbolo';
 import { useTerminaisDoPainel } from './terminal/useTerminaisDoPainel';
 import { TelaDeRequisitos } from './ajuda/TelaDeRequisitos';
 import { useTemaAtual } from './useTemaAtual';
@@ -36,7 +38,7 @@ import { ACAO_DO_MONACO } from '../shared/editor/acoes-monaco';
 import type { PublicConnection } from '../shared/contracts';
 import { useConnections } from './connections/useConnections';
 import { VaultDialog } from './connections/VaultDialog';
-import { ConnectionForm } from './connections/ConnectionForm';
+import { FormularioDaAba } from './connections/FormularioDaAba';
 import { TerminalHost } from './terminal/TerminalHost';
 import { BarraDoTerminal } from './terminal/BarraDoTerminal';
 import { TERMINAL_LOCAL } from '../shared/terminal/chaves';
@@ -56,7 +58,8 @@ import { MenuBar } from './MenuBar';
 import { StatusBar } from './StatusBar';
 import { QuickInput } from './QuickInput';
 import { useQuickInput } from './useQuickInput';
-import { comandoDoAtalho, filtrarComandos, formatarAtalho } from '../shared/commands';
+import { filtrarComandos } from '../shared/commands';
+import { useAtalhos } from './acoes/useAtalhos';
 import { BottomPanel } from './BottomPanel';
 import { ResizerHorizontal } from './ResizerHorizontal';
 import { useLayout, ALTURA_PADRAO_PAINEL } from './useLayout';
@@ -134,7 +137,9 @@ export function App() {
   const exec = useExecution(
     ws,
     (mensagem) => problemas.registrar('execução', mensagem),
-    vinculos
+    vinculos,
+    // A saída da execução vira problemas CLICÁVEIS (T008), com arquivo e linha.
+    (saida, arquivo) => problemas.registrarDaSaida('execução', saida, pasta.pasta, arquivo)
   );
   const prefs = usePrefs(falhaDaIde);
   // T013: seguindo o sistema, quem manda é ele — dentro dos dois temas que ele
@@ -372,6 +377,14 @@ export function App() {
    */
   const [versaoDoHistorico, setVersaoDoHistorico] = useState(0);
 
+  const contextoDeLinguagem = useContextoDeLinguagem(pasta.pasta);
+  const renomearSimbolo = useRenomearSimbolo({
+    qi, ws,
+    pastaAtual: () => pasta.pasta,
+    confirmar: dialogs.confirmar,
+    notificar: notificacoes.notificar,
+    onErro: notificacoes.aoFalhar,
+  });
   const timeline = useTimeline(ws, notificacoes);
   const foto = useFotoDoTrecho(ws);
   const formatacaoAcoes = useFormatacaoAcoes({
@@ -399,7 +412,7 @@ export function App() {
   const ACOES = mapaDeAcoes({
     ws, exec, conexoes, dialogs, layout, prefs, nav,
     arquivoAcoes, codigoAcoes, comandosAcoes, conexoesAcoes, pastaAcoes, snippetsAcoes,
-    formatacaoAcoes,
+    formatacaoAcoes, renomearSimbolo,
     novoArquivo, novoTerminalNoPainel, dividirTerminalNoPainel, abrirPorCaminho, irParaArquivo,
     abrirPreferencias, abrirTelaDePreferencias: ws.abrirTelaDePreferencias, abrirPaleta, escolherTema, irPara, irParaLinha, executar,
     setPainelLateral, avisar,
@@ -416,58 +429,10 @@ export function App() {
     (ACOES as Record<string, (() => void) | undefined>)[id]?.();
   };
 
-  /**
-   * Atalhos de teclado, despachados pelo mesmo registro do menu e da paleta.
-   *
-   * O ouvinte é registrado uma vez, mas lê o despacho por `ref`. Sem isso ele
-   * capturaria o `contexto` do primeiro render e passaria a decidir
-   * disponibilidade com estado velho — um Ctrl+S deixaria de funcionar depois
-   * de trocar de aba.
-   */
-  const despacho = useRef<(e: KeyboardEvent) => void>(() => {});
-  despacho.current = (e: KeyboardEvent) => {
-    const cmd = comandoDoAtalho(formatarAtalho(e), contexto);
-    if (cmd === null) return;
-    // Só engole a tecla quando há comando disponível — caso contrário o editor
-    // perderia atalhos que ele próprio trata.
-    e.preventDefault();
-    executarComando(cmd.id);
-  };
+  useAtalhos(contexto, executarComando);
 
-  useEffect(() => {
-    const aoTeclar = (e: KeyboardEvent): void => despacho.current(e);
-    document.addEventListener('keydown', aoTeclar);
-    return () => document.removeEventListener('keydown', aoTeclar);
-  }, []);
 
-  const abaAtual = ws.activeId ?? '';
-
-  /**
-   * O formulário de conexão, montado aqui porque é o `App` que conhece os
-   * drivers. O grupo só decide ONDE ele aparece.
-   */
-  const formularioDeConexao =
-    ws.active?.type !== 'conexao' ? null : (
-      <ConnectionForm
-        // Remonta ao trocar de conexão: o formulário guarda estado próprio, e
-        // reaproveitar a instância misturaria os campos de duas conexões.
-        key={ws.active.id}
-        drivers={[...conexoes.drivers.values()]}
-        gruposConhecidos={conexoes.grupos}
-        conexao={conexoes.acharConexao(ws.active.meta.connectionId)}
-        grupoInicial={
-          typeof ws.active.meta.grupoInicial === 'string' ? ws.active.meta.grupoInicial : ''
-        }
-        onSujar={(sujo) => ws.marcarAbaSuja(abaAtual, sujo)}
-        onCancelar={() => ws.fechar(abaAtual)}
-        onSalvar={async (input, conectar) => {
-          const id = ws.active?.meta.connectionId;
-          await conexoes.salvarConexao(input, typeof id === 'string' ? id : null, conectar);
-          ws.marcarAbaSuja(abaAtual, false);
-          ws.fechar(abaAtual);
-        }}
-      />
-    );
+  const formularioDeConexao = <FormularioDaAba ws={ws} conexoes={conexoes} />;
 
   return (
     <ThemeProvider theme={temaMui}>
@@ -628,6 +593,14 @@ export function App() {
                   formulario={formularioDeConexao}
                   requisitos={<TelaDeRequisitos onErro={falhaDaIde} />}
                   acoesDeMenu={acaoDeMenuDaFoto(() => avisar(formatacaoAcoes.foto()))}
+                  contextoDeLinguagem={contextoDeLinguagem}
+                  breadcrumb={montarBreadcrumb({
+                    caminho: caminhoAtivo,
+                    raiz: pasta.pasta,
+                    simbolos: pasta.simbolos,
+                    linha: ws.cursor.linha,
+                    irParaLinha: (l) => ws.editorRef.current?.goToLine(l),
+                  })}
                   codesnap={
                     <PainelDeCodeSnap
                       {...foto}
@@ -679,6 +652,9 @@ export function App() {
                 linhas={exec.saida}
                 status={exec.status}
                 problemas={problemas.lista}
+                onIrParaProblema={(caminho, linha, coluna) =>
+                  void ws.abrirArquivoEm(caminho, linha, coluna).catch(falhaDaIde)
+                }
                 terminais={terminais}
                 onLimpar={exec.limparSaida}
                 onLimparProblemas={problemas.limpar}

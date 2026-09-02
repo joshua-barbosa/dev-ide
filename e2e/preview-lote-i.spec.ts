@@ -81,8 +81,14 @@ test('um bloco ```mermaid vira DESENHO, e não código', async ({ page }) => {
   await page.locator('[data-barra-do-arquivo]').getByRole('radio', { name: 'Preview' }).click();
   await expect(preview(page)).toBeVisible();
 
-  // SVG, e não um `<pre>` com o texto do diagrama dentro.
-  await expect(preview(page).locator('svg').first()).toBeVisible({ timeout: 20_000 });
+  // O SVG tem de ser o DO DIAGRAMA. `locator('svg')` sozinho casa com qualquer
+  // ícone do preview e passa enquanto o mermaid ainda desenha — e aí a linha
+  // seguinte pega o `<pre>` que ainda não foi substituído. Foi assim que este
+  // teste falhou uma vez na suíte inteira e passou sozinho.
+  const diagrama = preview(page).locator('.mermaid-por-desenhar');
+  await expect(diagrama.locator('svg')).toBeVisible({ timeout: 20_000 });
+  // E o aviso "desenhando…" já saiu: enquanto ele está lá, o desenho não acabou.
+  await expect(diagrama).not.toHaveAttribute('data-mermaid-desenhando', 'true');
   await expect(preview(page).locator('pre code')).toHaveCount(0);
 });
 

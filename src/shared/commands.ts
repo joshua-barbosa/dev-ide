@@ -119,6 +119,11 @@ const DECLARADOS = [
   { id: 'edit.toggleComment', label: 'Toggle Line Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+/' },
   { id: 'edit.toggleBlockComment', label: 'Toggle Block Comment', menu: 'edit', group: 5, keybinding: 'Ctrl+Shift+A' },
   { id: 'edit.snippets', label: 'Snippets…', menu: 'edit', group: 5, keybinding: 'Ctrl+Shift+J' },
+  // Renomear em todos os arquivos (T038). No menu `Edit`, e F2 como no VS Code
+  // — mas o F2 da ÁRVORE continua sendo renomear arquivo: são telas diferentes,
+  // e o foco decide qual responde.
+  { id: 'edit.renameSymbol', label: 'Rename Symbol', menu: 'edit', group: 5,
+    keybinding: 'F2', when: 'temEditor' },
   { id: 'edit.emmet', label: 'Emmet: Expand Abbreviation', menu: 'edit', group: 5, keybinding: 'Tab' },
   // Beautify e Minify (spec 077). Agem no que está SELECIONADO e, sem seleção,
   // no documento inteiro — e por isso o `when` é `temEditor`, e não

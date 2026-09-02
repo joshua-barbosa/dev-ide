@@ -17,13 +17,22 @@ export interface DegrauDaTrilha {
   readonly linha?: number;
 }
 
-/** O que a trilha precisa saber de um símbolo. */
+/**
+ * O que a trilha precisa saber de um símbolo.
+ *
+ * Os NOMES são os do `SymbolInfo` que a IDE já usa (`name`, `kind`, `line`, e
+ * `file`) — a lista do painel de símbolos entra aqui direto, sem tradutor no
+ * meio. Um formato próprio criaria uma segunda verdade sobre o que é um
+ * símbolo.
+ */
 export interface SimboloDaTrilha {
-  readonly nome: string;
-  readonly tipo: string;
-  readonly linha: number;
+  readonly name: string;
+  readonly kind: string;
+  readonly line: number;
+  /** De qual arquivo ele é — a trilha usa só os do arquivo em foco. */
+  readonly file?: string;
   /** A última linha dele. Ausente = a IDE deduz pelo próximo símbolo. */
-  readonly linhaFim?: number;
+  readonly lineEnd?: number;
 }
 
 /**
@@ -61,18 +70,18 @@ export function trilhaDoSimbolo(
   simbolos: readonly SimboloDaTrilha[],
   linha: number
 ): readonly DegrauDaTrilha[] {
-  const ordenados = [...simbolos].sort((a, b) => a.linha - b.linha);
+  const ordenados = [...simbolos].sort((a, b) => a.line - b.line);
   const comFim = ordenados.map((s, i) => ({
     ...s,
-    fim: s.linhaFim ?? (ordenados[i + 1]?.linha ?? Number.MAX_SAFE_INTEGER) - 1,
+    fim: s.lineEnd ?? (ordenados[i + 1]?.line ?? Number.MAX_SAFE_INTEGER) - 1,
   }));
 
-  const contendo = comFim.filter((s) => s.linha <= linha && linha <= s.fim);
+  const contendo = comFim.filter((s) => s.line <= linha && linha <= s.fim);
   // Do mais EXTERNO para o mais interno: o de alcance maior primeiro. Um
   // símbolo que contém o outro sempre começa antes ou na mesma linha.
   return contendo
-    .sort((a, b) => b.fim - b.linha - (a.fim - a.linha))
-    .map((s) => ({ rotulo: s.nome, tipo: s.tipo, linha: s.linha }));
+    .sort((a, b) => b.fim - b.line - (a.fim - a.line))
+    .map((s) => ({ rotulo: s.name, tipo: s.kind, linha: s.line }));
 }
 
 /**
@@ -88,5 +97,9 @@ export function trilha(
   simbolos: readonly SimboloDaTrilha[],
   linha: number
 ): readonly DegrauDaTrilha[] {
-  return [...trilhaDoCaminho(caminho, raiz), ...trilhaDoSimbolo(simbolos, linha)];
+  // **Só os símbolos DESTE arquivo.** A lista do painel é do projeto inteiro, e
+  // sem o filtro a trilha mostraria a classe de outro arquivo qualquer que
+  // tivesse uma linha com o mesmo número.
+  const daqui = simbolos.filter((s) => s.file === undefined || s.file === caminho);
+  return [...trilhaDoCaminho(caminho, raiz), ...trilhaDoSimbolo(daqui, linha)];
 }
