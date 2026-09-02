@@ -54,6 +54,9 @@ export function StatusBar({
   return (
     <Box
       component="footer"
+      // Marca para a comparação de imagem (T098): é a barra onde os botões da
+      // direita entram em fila, e onde "botão fora da tela" apareceria.
+      data-barra-de-status
       sx={{
         display: 'flex', alignItems: 'center', gap: 1.5, px: 1.25, py: 0.4,
         bgcolor: 'background.paper', borderTop: 1, borderColor: 'divider',

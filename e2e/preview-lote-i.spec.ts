@@ -5,7 +5,8 @@
 // desenho: não é ao lado, é um switch na PRÓPRIA aba.
 import { expect, test, type Page } from '@playwright/test';
 import {
-  abrirArquivo, entradaRapida, esperarEditorPronto, esperarIdePronta, menu, painelLateral,
+  abrirArquivo, editor, entradaRapida, esperarEditorPronto, esperarIdePronta, menu,
+  painelLateral,
 } from './fixtures';
 
 /**
@@ -20,11 +21,34 @@ const RODADA = Math.random().toString(36).slice(2, 8);
 let proximo = 0;
 const novoNome = (ext: string): string => `lote-i-${RODADA}-${(proximo += 1)}.${ext}`;
 
+/**
+ * Cria um arquivo digitando no editor e salvando com nome.
+ *
+ * **Clica no editor antes de digitar, e confere que o texto chegou.** Sem isso o
+ * arquivo saía VAZIO de vez em quando: `esperarEditorPronto` garante que o
+ * editor existe, mas não que ele está com o foco — o menu `File` acabou de
+ * fechar, e sob carga o foco chega depois das primeiras teclas.
+ *
+ * Era a causa de QUATRO falhas intermitentes deste arquivo, cada rodada num
+ * teste diferente: a prévia ficava vazia e o diagrama, a fórmula ou o `<pre>`
+ * nunca apareciam. Eu tinha tratado como lentidão e aumentado prazos — o prazo
+ * não era o problema, e um deles nem valia, porque o teste inteiro morre em 30 s
+ * antes de o prazo do localizador contar.
+ */
 async function criarArquivo(page: Page, nome: string, conteudo: string): Promise<void> {
   await menu(page, 'File');
   await page.getByRole('menuitem', { name: 'New Text File' }).click();
   await esperarEditorPronto(page);
+  await editor(page).click();
   await page.keyboard.insertText(conteudo);
+
+  // A PROVA de que o texto entrou. Falhar aqui aponta o defeito real; falhar
+  // trinta segundos depois, num diagrama ausente, aponta o lugar errado.
+  const primeiraLinha = conteudo.split('\n')[0] ?? '';
+  if (primeiraLinha.trim() !== '') {
+    await expect(editor(page)).toContainText(primeiraLinha.trim().slice(0, 20));
+  }
+
   await menu(page, 'File');
   await page.getByRole('menuitem', { name: /^Save/ }).first().click();
   await entradaRapida(page).fill(nome);
@@ -87,9 +111,7 @@ test('um bloco ```mermaid vira DESENHO, e não código', async ({ page }) => {
   // teste falhou uma vez na suíte inteira e passou sozinho.
   const diagrama = preview(page).locator('.mermaid-por-desenhar');
   await expect(diagrama).toBeVisible({ timeout: 20_000 });
-  // Prazo largo pelo mesmo motivo do teste vizinho: na suíte inteira o Mermaid
-  // disputa a máquina, e "lento" não é "quebrado".
-  await expect(diagrama.locator('svg')).toBeVisible({ timeout: 60_000 });
+  await expect(diagrama.locator('svg')).toBeVisible({ timeout: 15_000 });
   // E o aviso "desenhando…" já saiu: enquanto ele está lá, o desenho não acabou.
   await expect(diagrama).not.toHaveAttribute('data-mermaid-desenhando', 'true');
   await expect(preview(page).locator('pre code')).toHaveCount(0);
@@ -98,14 +120,12 @@ test('um bloco ```mermaid vira DESENHO, e não código', async ({ page }) => {
 test('diagrama com erro mostra a MENSAGEM, e não some', async ({ page }) => {
   await criarArquivo(page, novoNome('md'), '```mermaid\nisto não é um diagrama {{{\n```\n');
   await page.locator('[data-barra-do-arquivo]').getByRole('radio', { name: 'Preview' }).click();
-  // Duas esperas, e não uma: primeiro a prova de que o desenho COMEÇOU, depois
-  // o desfecho. Esperar só o desfecho num prazo fixo confunde "lento" com
-  // "quebrado" — e era isso que fazia este teste falhar na suíte inteira, onde o
-  // Mermaid disputa a máquina com quinhentos outros testes, e passar sozinho.
+  // Duas esperas, e não uma: primeiro a prova de que o bloco chegou ao preview,
+  // depois o desfecho. Assim a falha aponta QUAL das duas coisas faltou.
   const bloco = preview(page).locator('.mermaid-por-desenhar');
-  await expect(bloco).toBeVisible({ timeout: 20_000 });
+  await expect(bloco).toBeVisible({ timeout: 15_000 });
   // Um bloco em branco pareceria a IDE quebrada.
-  await expect(preview(page).locator('[data-mermaid-erro]')).toBeVisible({ timeout: 60_000 });
+  await expect(preview(page).locator('[data-mermaid-erro]')).toBeVisible({ timeout: 15_000 });
 });
 
 test('`$x^2$` vira fórmula, e `R$ 10` continua sendo dinheiro', async ({ page }) => {
@@ -113,15 +133,13 @@ test('`$x^2$` vira fórmula, e `R$ 10` continua sendo dinheiro', async ({ page }
   await page.locator('[data-barra-do-arquivo]').getByRole('radio', { name: 'Preview' }).click();
   await expect(preview(page)).toBeVisible();
 
-  // O texto primeiro: prova que o preview desenhou. A fórmula vem DEPOIS, e de
-  // uma biblioteca carregada sob demanda — na suíte inteira ela disputa a
-  // máquina com quinhentos outros testes, e vinte segundos não bastavam. Foi o
-  // terceiro teste DESTE arquivo a falhar por esperar de menos.
+  // O texto primeiro: prova que o preview desenhou. Se ele faltar, o defeito é
+  // o arquivo ter saído vazio — e não a fórmula demorar.
   await expect(preview(page)).toContainText('por metro');
   // Se a CARGA falhar, isto aqui diz por quê em vez de estourar por tempo.
   await expect(preview(page)).not.toHaveAttribute('data-formula-erro', /.*/);
   // O KaTeX marca o que renderizou com a classe `katex`.
-  await expect(preview(page).locator('.katex').first()).toBeVisible({ timeout: 60_000 });
+  await expect(preview(page).locator('.katex').first()).toBeVisible({ timeout: 15_000 });
   // Uma só: o `R$ 10` não pode ter virado matemática.
   await expect(preview(page).locator('.katex')).toHaveCount(1);
   await expect(preview(page)).toContainText('R$ 10');

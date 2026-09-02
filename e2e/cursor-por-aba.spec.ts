@@ -84,6 +84,19 @@ test('voltar para a aba deixa o editor PRONTO para digitar, não travado', async
   await page.locator('[data-tab="utils.ts"]').click();
   await expect.poll(() => cursores(page)).toBe(muitos);
 
+  // O FOCO é o contrato desta correção, então é ele que se afirma primeiro.
+  //
+  // Ele chega um quadro depois do clique — a troca de modelo desfaz um foco
+  // pedido antes dela, e por isso o produto o pede num
+  // `requestAnimationFrame`. Digitar sem esperar por ele testava o relógio: na
+  // suíte inteira a tecla chegava antes, e a falha aparecia como "o texto não
+  // entrou" em vez de "o foco não chegou".
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.activeElement?.closest('.monaco-editor') !== null)
+    )
+    .toBe(true);
+
   // Uma marca ÚNICA por rodada: a suíte compartilha uma pasta de dados, e um
   // texto fixo já estaria no arquivo desde a execução anterior — o teste
   // passaria ou falharia pelo histórico, e não pelo que ele mede.

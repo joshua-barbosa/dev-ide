@@ -53,6 +53,7 @@
     "xml-formatter": "^3.7.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@iconify/json": "^2.2.516",
     "@playwright/test": "^1.62.1",
     "@types/clean-css": "^4.2.11",
