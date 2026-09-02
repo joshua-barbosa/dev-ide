@@ -2,6 +2,33 @@ import type { Tarefa } from '../shared/tarefas';
 import type { Capacidade, ModoDeFormatacao } from '../shared/formatacao';
 import type { EstadoDaFerramenta } from '../shared/ferramentas';
 import type { LinhaDeLog, MetricaDoBanco, RetratoDaEstrutura } from '../shared/sql/manager';
+import type { VersaoComTexto, VersaoLocal } from '../shared/historico-local';
+
+/** Um erro ou aviso do serviço de linguagem (T037). */
+export interface Diagnostico {
+  readonly linha: number;
+  readonly coluna: number;
+  readonly linhaFim: number;
+  readonly colunaFim: number;
+  readonly severidade: 'erro' | 'aviso' | 'nota';
+  readonly mensagem: string;
+  readonly codigo: number;
+}
+
+/** Um lugar que seria trocado ao renomear (T038). */
+export interface TrocaDeNome {
+  readonly caminho: string;
+  readonly linha: number;
+  readonly coluna: number;
+  readonly previa: string;
+}
+
+/** Uma sugestão de completar vinda do serviço (T114). */
+export interface SugestaoDeCodigo {
+  readonly texto: string;
+  readonly tipo: string;
+  readonly detalhe?: string;
+}
 import type { ConfiguracaoDoEmmet } from '../shared/emmet';
 // Cliente da API REST.
 //
@@ -250,6 +277,21 @@ export const Api = {
     }
     return new Uint8Array(await r.arrayBuffer());
   },
+  // Histórico local: o Timeline e o rascunho (T010, T035).
+  historico: (path: string) =>
+    request<readonly VersaoLocal[]>('GET', `/api/history?path=${encodeURIComponent(path)}`),
+  versaoDoHistorico: (path: string, id: string) =>
+    request<VersaoComTexto>(
+      'GET',
+      `/api/history/version?path=${encodeURIComponent(path)}&id=${encodeURIComponent(id)}`
+    ),
+  rascunhosPendentes: () =>
+    request<readonly { path: string; caminho: string; quando: number }[]>(
+      'GET',
+      '/api/history/drafts'
+    ),
+  descartarRascunho: (path: string) =>
+    request<{ path: string }>('DELETE', '/api/history/draft', { path }),
   saveFile: (path: string, content: string) =>
     request<{ path: string; bytes: number }>('POST', '/api/file', { path, content }),
   run: (payload: Record<string, unknown>) => request<RunResult>('POST', '/api/run', payload),
@@ -324,6 +366,26 @@ export const Api = {
     request<{ alvos: Alvo[] }>('POST', '/api/language/type-definition', pergunta),
   references: (pergunta: PerguntaDeCodigo) =>
     request<{ alvos: Alvo[] }>('POST', '/api/language/references', pergunta),
+
+  // ---- inteligência de código (lote E: T037, T038, T114) ----
+  diagnosticos: (pergunta: PerguntaDeCodigo) =>
+    request<{ problemas: readonly Diagnostico[] }>(
+      'POST',
+      '/api/language/diagnostics',
+      pergunta
+    ),
+  lugaresParaRenomear: (pergunta: PerguntaDeCodigo) =>
+    request<{ lugares: readonly TrocaDeNome[] }>(
+      'POST',
+      '/api/language/rename-locations',
+      pergunta
+    ),
+  completar: (pergunta: PerguntaDeCodigo) =>
+    request<{ sugestoes: readonly SugestaoDeCodigo[] }>(
+      'POST',
+      '/api/language/completions',
+      pergunta
+    ),
 
   // ---- espaço de trabalho (spec 012) ----
   browseFolders: (caminho?: string) =>

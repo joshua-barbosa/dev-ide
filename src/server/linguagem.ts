@@ -235,3 +235,160 @@ export function referencias(p: Pergunta): Alvo[] {
   const { estado, posicao } = pronto;
   return coletar(estado, estado.service.getReferencesAtPosition(p.caminho, posicao));
 }
+
+// ---------------------------------------------------------------------------
+// Diagnósticos, renomear e completar (T037, T038, T114)
+//
+// Tudo isto sai do MESMO serviço de TypeScript que já respondia "ir para a
+// definição" — foi o que fez os três itens custarem um arquivo em vez de três.
+// O serviço já conhece o projeto inteiro; só ninguém tinha perguntado.
+// ---------------------------------------------------------------------------
+
+export interface Diagnostico {
+  readonly linha: number;
+  readonly coluna: number;
+  readonly linhaFim: number;
+  readonly colunaFim: number;
+  readonly severidade: 'erro' | 'aviso' | 'nota';
+  readonly mensagem: string;
+  /** O número do erro do TypeScript, ex.: `2304`. Ajuda a procurar. */
+  readonly codigo: number;
+}
+
+/** Onde uma posição em caracteres cai, em linha e coluna 1-based. */
+function linhaEColuna(texto: string, posicao: number): { linha: number; coluna: number } {
+  const antes = texto.slice(0, posicao);
+  const linha = antes.split('\n').length;
+  return { linha, coluna: posicao - (antes.lastIndexOf('\n') + 1) + 1 };
+}
+
+/**
+ * Erros e avisos de um arquivo (T037).
+ *
+ * **Sintaxe e semântica, nesta ordem.** Um arquivo que não fecha uma chave dá
+ * centenas de erros semânticos falsos, todos consequência do primeiro — mostrar
+ * os dois grupos juntos afogaria o erro que importa.
+ */
+export function diagnosticos(p: Pergunta): readonly Diagnostico[] {
+  const pronto = preparar(p);
+  if (pronto === null) return [];
+  const { estado } = pronto;
+  const texto = textoDe(estado, p.caminho);
+  if (texto === null) return [];
+
+  const deSintaxe = estado.service.getSyntacticDiagnostics(p.caminho);
+  const brutos =
+    deSintaxe.length > 0
+      ? deSintaxe
+      : [...estado.service.getSemanticDiagnostics(p.caminho)];
+
+  const saida: Diagnostico[] = [];
+  for (const d of brutos) {
+    const inicio = d.start ?? 0;
+    const fim = inicio + (d.length ?? 1);
+    const a = linhaEColuna(texto, inicio);
+    const b = linhaEColuna(texto, fim);
+    saida.push({
+      linha: a.linha,
+      coluna: a.coluna,
+      linhaFim: b.linha,
+      colunaFim: b.coluna,
+      severidade: severidadeDe(d.category),
+      mensagem: ts.flattenDiagnosticMessageText(d.messageText, ' '),
+      codigo: d.code,
+    });
+  }
+  return saida;
+}
+
+function severidadeDe(categoria: ts.DiagnosticCategory): Diagnostico['severidade'] {
+  if (categoria === ts.DiagnosticCategory.Error) return 'erro';
+  if (categoria === ts.DiagnosticCategory.Warning) return 'aviso';
+  return 'nota';
+}
+
+export interface TrocaDeNome {
+  readonly caminho: string;
+  readonly linha: number;
+  readonly coluna: number;
+  /** O texto da linha, para a tela mostrar o que vai mudar. */
+  readonly previa: string;
+}
+
+/**
+ * Onde um símbolo é usado, para renomeá-lo (T038).
+ *
+ * Devolve os LUGARES, e não aplica nada — a nota dele pede *"mostrando os
+ * arquivos afetados antes de aplicar"*, e é a mesma regra do Structure Sync na
+ * spec 079: quem muda os arquivos dele é ele.
+ *
+ * `providePrefixAndSuffixTextForRename` fica LIGADO: sem ele, renomear `nome`
+ * num objeto `{ nome }` reescreveria a abreviação como `{ novoNome }` e
+ * quebraria a propriedade. Com ele, vira `{ nome: novoNome }`.
+ */
+export function lugaresParaRenomear(p: Pergunta): readonly TrocaDeNome[] {
+  const pronto = preparar(p);
+  if (pronto === null) return [];
+  const { estado, posicao } = pronto;
+
+  const lugares = estado.service.findRenameLocations(p.caminho, posicao, false, false, {
+    providePrefixAndSuffixTextForRename: true,
+  });
+  if (lugares === undefined) return [];
+
+  const saida: TrocaDeNome[] = [];
+  for (const lugar of lugares) {
+    const alvo = paraAlvo(estado, lugar.fileName, lugar.textSpan.start);
+    if (alvo === null) continue;
+    saida.push({
+      caminho: alvo.caminho,
+      linha: alvo.linha,
+      coluna: alvo.coluna,
+      previa: alvo.previa,
+    });
+  }
+  return saida;
+}
+
+export interface Sugestao {
+  readonly texto: string;
+  /** O que é: `função`, `variável`, `classe`… — a tela mostra o ícone certo. */
+  readonly tipo: string;
+  /** A assinatura ou o tipo, quando o serviço sabe. */
+  readonly detalhe?: string;
+}
+
+/** Quantas sugestões voltam. Mais que isto o Monaco filtra sozinho. */
+const MAX_SUGESTOES = 200;
+
+/**
+ * O que completar nesta posição (T114).
+ *
+ * A nota dele: *"TS/JS pelo serviço do TypeScript; nas outras, ao menos as
+ * palavras do arquivo aberto"*. Esta função é a primeira metade — a segunda
+ * mora em `shared/completar-palavras.ts`, roda no navegador e não precisa de
+ * projeto nenhum.
+ */
+export function sugestoes(p: Pergunta): readonly Sugestao[] {
+  const pronto = preparar(p);
+  if (pronto === null) return [];
+  const { estado, posicao } = pronto;
+
+  const lista = estado.service.getCompletionsAtPosition(p.caminho, posicao, {
+    // Importar automaticamente ao aceitar a sugestão é o que torna o
+    // autocomplete útil num projeto de verdade: sem isto, aceitar `useState`
+    // deixa o nome sublinhado de vermelho e a pessoa vai escrever o import à
+    // mão.
+    includeCompletionsForModuleExports: true,
+    includeCompletionsWithInsertText: true,
+  });
+  if (lista === undefined) return [];
+
+  return lista.entries.slice(0, MAX_SUGESTOES).map((e) => ({
+    texto: e.name,
+    tipo: e.kind,
+    ...(e.kindModifiers === undefined || e.kindModifiers === ''
+      ? {}
+      : { detalhe: e.kindModifiers }),
+  }));
+}

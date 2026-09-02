@@ -201,6 +201,12 @@ const ICONES_DA_INTERFACE = [
   'lucide:scroll-text',
   'lucide:git-compare',
   'lucide:circle-help',
+  'lucide:circle-x',
+  'lucide:info',
+  'lucide:corner-down-left',
+  'lucide:bell',
+  'lucide:bell-dot',
+  'lucide:history',
   'lucide:folder-plus',
   'lucide:refresh-cw',
   // `list-collapse`, e não `chevrons-down-up`: os dois chevrons convergindo

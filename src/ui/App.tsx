@@ -18,6 +18,11 @@ import { useSaidaAcoes } from './acoes/useSaidaAcoes';
 import { PainelDeCodeSnap } from './editor/PainelDeCodeSnap';
 import { acaoDeMenuDaFoto, useFotoDoTrecho } from './editor/useFotoDoTrecho';
 import { contextoDeComandos } from './acoes/useContextoDeComandos';
+import { useNaoPerderTrabalho } from './useNaoPerderTrabalho';
+import { useNotificacoes } from './useNotificacoes';
+import { TimelinePanel } from './timeline/TimelinePanel';
+import { useTimeline } from './timeline/useTimeline';
+import { useTerminaisDoPainel } from './terminal/useTerminaisDoPainel';
 import { TelaDeRequisitos } from './ajuda/TelaDeRequisitos';
 import { useTemaAtual } from './useTemaAtual';
 import { temPreview } from '../shared/markdown';
@@ -55,11 +60,9 @@ import { comandoDoAtalho, filtrarComandos, formatarAtalho } from '../shared/comm
 import { BottomPanel } from './BottomPanel';
 import { ResizerHorizontal } from './ResizerHorizontal';
 import { useLayout, ALTURA_PADRAO_PAINEL } from './useLayout';
-import { usePersistido } from './usePersistido';
 import { useProblemas } from './useProblemas';
 import {
-  abrirTerminal as abrirNoPainel, ativarTerminal, dividirTerminal, fecharTerminal,
-  normalizarTerminais, orientacaoDoPar, paneisVisiveis, SEM_TERMINAIS,
+  ativarTerminal, fecharTerminal, orientacaoDoPar, paneisVisiveis,
 } from '../shared/terminais';
 import { useExecution } from './useExecution';
 import { propsDaAbaDeTabela } from './tabela/propsDaAbaDeTabela';
@@ -116,19 +119,6 @@ export function App() {
     // árvore, busca, símbolos e o próprio `Ctrl+P` abrem todos por `abrirArquivo`.
     aoAbrirArquivo: (caminho) => recentesDeArquivo.registrar(caminho),
   });
-  /**
-   * O snippet que a barra do painel mandou, por pane (T087).
-   *
-   * Por pane, e não um só: com quatro terminais lado a lado, um estado
-   * compartilhado mandaria o comando para todos ao mesmo tempo.
-   */
-  const [comandosDoPainel, setComandosDoPainel] = useState<
-    ReadonlyMap<string, { readonly id: number; readonly texto: string }>
-  >(new Map());
-  /** A aparência de cada pane do painel (T086). Vazia = herda tudo. */
-  const [aparenciasDoPainel, setAparenciasDoPainel] = useState<
-    ReadonlyMap<string, AparenciaDoTerminal>
-  >(new Map());
   const conexoes = useConnections({ confirmar: dialogs.confirmar });
   const menu = useContextMenu(falhaDaIde);
   const pasta = usePasta();
@@ -178,10 +168,14 @@ export function App() {
   // cheia, comando curto de shell não.
   // Persistido: os ids precisam sobreviver ao F5 para o servidor reatar as
   // sessões. É o que faz recarregar a página não matar o terminal (spec 023).
-  const [terminais, setTerminais] = usePersistido('terminais', SEM_TERMINAIS, normalizarTerminais);
+  const painelDeTerminais = useTerminaisDoPainel(layout.mostrarPainel);
+  const {
+    terminais, setTerminais, comandosIniciais,
+    comandosDoPainel, setComandosDoPainel,
+    aparenciasDoPainel, setAparenciasDoPainel,
+  } = painelDeTerminais;
   // O comando que cada terminal recém-aberto deve rodar. Fica fora do store de
   // terminais porque é de uso único — some assim que o shell o recebe.
-  const [comandosIniciais, setComandosIniciais] = useState<ReadonlyMap<string, string>>(new Map());
   const [painelLateral, setPainelLateral] = useState('files');
   const [linguagem, setLinguagem] = useState('javascript');
 
@@ -224,6 +218,9 @@ export function App() {
   });
 
   const arquivoAcoes = useArquivoAcoes({
+    // Cada save gera uma versão local no servidor (T010); o contador manda o
+    // Timeline pedir a lista de novo.
+    aoSalvar: () => setVersaoDoHistorico((v) => v + 1),
     qi, ws, pasta, prefs, avisar: dialogs.avisar, confirmar: dialogs.confirmar,
   });
   const codigoAcoes = useCodigoAcoes({ qi, ws, avisar: dialogs.avisar });
@@ -347,25 +344,8 @@ export function App() {
     confirmar: dialogs.confirmar,
   });
 
-  /**
-   * Abre um terminal de shell NO PAINEL (decisão D6).
-   *
-   * O de conexão continua sendo aba do editor — `abrirTerminalDaConexao`.
-   */
-  const novoTerminalNoPainel = (comando?: string): void => {
-    const id = `term-${crypto.randomUUID()}`;
-    if (comando !== undefined) {
-      setComandosIniciais((atual) => new Map(atual).set(id, comando));
-    }
-    setTerminais((atual) => abrirNoPainel(atual, id));
-    layout.mostrarPainel('terminal');
-  };
-
-  /** Abre um terminal AO LADO do ativo, no mesmo par. */
-  const dividirTerminalNoPainel = (orientacao: 'horizontal' | 'vertical' = 'horizontal') => {
-    setTerminais((a) => dividirTerminal(a, `term-${crypto.randomUUID()}`, orientacao));
-    layout.mostrarPainel('terminal');
-  };
+  const novoTerminalNoPainel = painelDeTerminais.abrir;
+  const dividirTerminalNoPainel = painelDeTerminais.dividir;
 
   const saidaAcoes = useSaidaAcoes({ qi, ws, exec, pasta, avisar: dialogs.avisar });
 
@@ -374,6 +354,25 @@ export function App() {
   });
   const snippetsAcoes = useSnippetsAcoes({ qi, ws, snippets, linguagem, avisar: dialogs.avisar });
 
+  // T009 e T035: avisa antes de fechar com arquivo sujo, e manda o rascunho.
+  const notificacoes = useNotificacoes();
+  useNaoPerderTrabalho({
+    ws,
+    conteudoDaAba: ws.conteudoDaAba,
+    confirmar: dialogs.confirmar,
+    notificar: notificacoes.notificar,
+    onErro: notificacoes.aoFalhar,
+  });
+  /**
+   * Muda a cada save, e é o que faz o Timeline se atualizar sozinho (T010).
+   *
+   * Um contador, e não a lista: quem grava é o servidor, e a única coisa que a
+   * tela sabe é QUE gravou — pedir a lista de novo é mais barato que espelhar
+   * aqui o que o disco tem.
+   */
+  const [versaoDoHistorico, setVersaoDoHistorico] = useState(0);
+
+  const timeline = useTimeline(ws, notificacoes);
   const foto = useFotoDoTrecho(ws);
   const formatacaoAcoes = useFormatacaoAcoes({
     ws, tabSize: prefs.prefs['editor.tabSize'],
@@ -509,6 +508,15 @@ export function App() {
           onMenuDoArquivo={pastaAcoes.menuDoItem}
           onMenuDaRaiz={pastaAcoes.menuDaRaiz}
           onMenuDoVazio={pastaAcoes.menuDoVazio}
+          timeline={
+            <TimelinePanel
+              caminho={caminhoAtivo}
+              versao={versaoDoHistorico}
+              onRestaurar={timeline.restaurar}
+              onAbrirParaComparar={timeline.abrirParaComparar}
+              onErro={notificacoes.aoFalhar}
+            />
+          }
           onAcrescentarPasta={() => avisar(pastaAcoes.acrescentarPasta())}
           onRenomearArquivo={(no) => avisar(pastaAcoes.renomearItem(no.path))}
           onExcluirArquivo={(no) => avisar(pastaAcoes.excluirItem(no.path, no.type === 'dir'))}
@@ -742,6 +750,7 @@ export function App() {
         </Box>
       </Box>
 
+      {notificacoes.pilha}
       <StatusBar
         titulo={ws.active?.title ?? null}
         sujo={ws.active?.dirty === true}
@@ -753,6 +762,7 @@ export function App() {
         }
         onIrParaPosicao={contexto.temEditor ? () => avisar(irParaLinha()) : undefined}
         {...propsDeVinculo(linguagem, caminhoAtivo, contexto.temEditor, vinculos, avisar)}
+        sino={notificacoes.sino}
       />
 
       <QuickInput

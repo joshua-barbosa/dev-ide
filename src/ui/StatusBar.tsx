@@ -27,11 +27,13 @@ export interface StatusBarProps {
    */
   readonly vinculo?: Vinculo | null;
   readonly onTrocarVinculo?: () => void;
+  /** O sino de notificações (T107). Montado pelo `App`, que tem o estado. */
+  readonly sino?: React.ReactNode;
 }
 
 export function StatusBar({
   titulo, sujo, linha, coluna, linguagem, onTrocarLinguagem, onIrParaPosicao,
-  vinculo, onTrocarVinculo,
+  vinculo, onTrocarVinculo, sino,
 }: StatusBarProps) {
   const rotulo = rotuloDaLinguagem(linguagem);
 
@@ -109,6 +111,10 @@ export function StatusBar({
       >
         {rotulo}
       </Box>
+
+      {/* O sino do histórico de avisos (T107), no canto direito — é onde toda
+          IDE o põe, e onde o olho já procura. */}
+      {sino}
     </Box>
   );
 }

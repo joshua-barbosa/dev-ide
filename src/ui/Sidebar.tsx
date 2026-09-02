@@ -20,6 +20,7 @@ const PAINEIS = [
   { id: 'files', label: 'Arquivos', icone: 'lucide:files' },
   { id: 'search', label: 'Search', icone: 'lucide:search' },
   { id: 'symbols', label: 'Símbolos', icone: 'lucide:boxes' },
+  { id: 'timeline', label: 'Timeline', icone: 'lucide:history' },
   { id: 'database', label: 'Database', icone: 'database' },
   { id: 'service', label: 'Service', icone: 'lucide:layers' },
 ] as const;
@@ -41,6 +42,8 @@ export interface SidebarProps {
   /** Menu e ação das RAÍZES do espaço de trabalho (T004). */
   readonly onMenuDaRaiz: (pasta: string, e: React.MouseEvent) => void;
   readonly onMenuDoVazio: (e: React.MouseEvent) => void;
+  /** O painel de versões locais (T010). Montado pelo `App`, que tem o arquivo. */
+  readonly timeline: React.ReactNode;
   readonly onAcrescentarPasta: () => void;
   readonly onRenomearArquivo: (no: FileNode) => void;
   readonly onExcluirArquivo: (no: FileNode) => void;
@@ -59,6 +62,7 @@ export function Sidebar({
   onMenuDoArquivo,
   onMenuDaRaiz,
   onMenuDoVazio,
+  timeline,
   onAcrescentarPasta,
   onRenomearArquivo,
   onExcluirArquivo,
@@ -143,6 +147,7 @@ export function Sidebar({
         {ativo === 'symbols' && (
           <SymbolsPanel simbolos={pasta.simbolos} onIr={onIrParaSimbolo} />
         )}
+        {ativo === 'timeline' && <>{timeline}</>}
       </Box>
     </Box>
   );

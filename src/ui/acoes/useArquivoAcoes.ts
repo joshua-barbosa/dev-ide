@@ -22,6 +22,13 @@ export interface ArquivoAcoesDeps {
     rotuloConfirmar?: string;
     destrutivo?: boolean;
   }): Promise<boolean>;
+  /**
+   * Chamado depois de cada gravação bem-sucedida (T010).
+   *
+   * Existe para o Timeline pedir a lista de novo: quem cria a versão é o
+   * servidor, e a tela só sabe QUE gravou.
+   */
+  aoSalvar?(): void;
 }
 
 export interface ArquivoAcoes {
@@ -62,6 +69,7 @@ export function useArquivoAcoes(deps: ArquivoAcoesDeps): ArquivoAcoes {
     if (!(await podeSobrescrever())) return;
     const caminho = await ws.salvar();
     if (caminho !== null) {
+      deps.aoSalvar?.();
       // Salvou o próprio `config.json`? Relê — é o que faz editar a preferência
       // no editor surtir efeito sem recarregar a página.
       if (caminho === prefs.caminho) await prefs.recarregar();

@@ -22,6 +22,7 @@ import { createQueriesRouter } from './routes/queries';
 import { VinculosStore } from './vinculos';
 import { createLinguagemRouter } from './routes/linguagem';
 import { SnippetsStore } from './snippets';
+import { HistoricoStore } from './historico';
 import { pastaPrincipal } from '../shared/estado';
 import { EstadoStore } from './estado';
 import { TerminalRegistry } from './terminal/registry';
@@ -56,6 +57,8 @@ const prefs = new PreferencesStore(PreferencesStore.defaultPath(), () =>
 );
 const comandos = new ComandosStore(ComandosStore.defaultPath());
 const snippets = new SnippetsStore(SnippetsStore.defaultPath(), () => pastaPrincipal(estado.ler()));
+/** Versões locais dos arquivos: o Timeline e o rascunho não salvo (T010, T035). */
+const historico = new HistoricoStore(HistoricoStore.defaultPath());
 
 // ---- Execuções em andamento (para poder parar) ----
 const execucoes = new RegistroDeExecucoes();
@@ -239,7 +242,58 @@ app.post('/api/file', wrap((req, res) => {
   }
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content, 'utf8');
+  // Uma versão local a cada save (T010). O `guardar` decide se vale: texto
+  // idêntico ao da última não vira linha nova no Timeline. Falha aqui NÃO
+  // derruba o save — o arquivo já está no disco, e perder o histórico é menos
+  // grave que devolver erro para quem acabou de salvar com sucesso.
+  try {
+    historico.guardar(filePath, content, 'salvo');
+  } catch {
+    // Ver acima: o save venceu, e é isso que importa.
+  }
   res.json({ success: true, data: { path: filePath, bytes: Buffer.byteLength(content) }, error: null });
+}));
+
+// ---- Histórico local: o Timeline e o rascunho (T010, T035) ----
+
+app.get('/api/history', wrap((req, res) => {
+  const filePath = validateFilePath(requireString(req.query.path, 'path'));
+  res.json({ success: true, data: historico.listar(filePath), error: null });
+}));
+
+app.get('/api/history/version', wrap((req, res) => {
+  const filePath = validateFilePath(requireString(req.query.path, 'path'));
+  const versao = historico.ler(filePath, requireString(req.query.id, 'id'));
+  if (versao === null) throw new Error('Esta versão não está mais no histórico.');
+  res.json({ success: true, data: versao, error: null });
+}));
+
+/**
+ * Guarda o rascunho de um arquivo sujo (T035).
+ *
+ * Chamada no `pagehide`, por `sendBeacon` — e é por isso que ela responde
+ * qualquer coisa rápido: o navegador está indo embora, e uma resposta demorada
+ * seria descartada junto com a página.
+ */
+app.post('/api/history/draft', wrap((req, res) => {
+  const filePath = validateFilePath(requireString(req.body?.path, 'path'));
+  const content = req.body?.content;
+  if (typeof content !== 'string') {
+    throw new Error('Campo obrigatório ausente ou inválido: "content".');
+  }
+  const versao = historico.guardar(filePath, content, 'rascunho');
+  res.json({ success: true, data: versao, error: null });
+}));
+
+/** Os arquivos que ficaram com trabalho não salvo — a pergunta ao abrir. */
+app.get('/api/history/drafts', wrap((_req, res) => {
+  res.json({ success: true, data: historico.arquivosComRascunho(), error: null });
+}));
+
+app.delete('/api/history/draft', wrap((req, res) => {
+  const filePath = validateFilePath(requireString(req.body?.path, 'path'));
+  historico.descartarRascunho(filePath);
+  res.json({ success: true, data: { path: filePath }, error: null });
 }));
 
 // ---- Execução ----
