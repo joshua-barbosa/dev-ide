@@ -203,7 +203,13 @@ export async function listarObjetos(
       // O menu de tabela e o de view são diferentes: numa view não há o que
       // inserir nem o que esvaziar (spec 040, AC-7).
       actions: categoria === 'tables' ? ACOES_DE_TABELA : ACOES_DE_VIEW,
-      meta: { schema, object: linha.TABLE_NAME, category: categoria },
+      meta: {
+        schema, object: linha.TABLE_NAME, category: categoria,
+        // O nó DECLARA que sabe virar diagrama (P4). Adivinhar pelo ícone
+        // repetiria o erro do T064, quando a condição deduzia pela forma do
+        // `meta` e aparecia onde não devia.
+        ...(categoria === 'tables' ? { diagramaDaTabela: true } : {}),
+      },
     }));
   }
 

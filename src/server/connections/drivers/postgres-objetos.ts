@@ -279,7 +279,11 @@ export async function listarObjetos(
     hasChildren: alvo.expande,
     // Spec 040: numa view não há o que inserir nem o que esvaziar (AC-7).
     actions: alvo.acoes,
-    meta: { schema, object: linha.nome, category: categoria },
+    meta: {
+      schema, object: linha.nome, category: categoria,
+      // O nó DECLARA que sabe virar diagrama (P4) — ver a nota no mysql.
+      ...(categoria === 'tables' ? { diagramaDaTabela: true } : {}),
+    },
   }));
 }
 

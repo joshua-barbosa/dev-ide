@@ -9,6 +9,7 @@ import {
   documentoDoDiagrama,
   mermaidDoDiagrama,
   nomeDeEntidade,
+  vizinhanca,
   type DiagramaER,
 } from '../sql/diagrama-er';
 
@@ -82,4 +83,80 @@ test('sem chave estrangeira o documento explica por que está solto', () => {
   const doc = documentoDoDiagrama({ ...BASE, relacoes: [] });
   assert.match(doc, /Nenhuma chave estrangeira declarada/);
   assert.match(doc, /```mermaid/);
+});
+
+// ---------------------------------------------------------------------------
+// A vizinhança de UMA tabela (P4)
+// ---------------------------------------------------------------------------
+
+const TEIA: DiagramaER = {
+  titulo: 'loja',
+  tabelas: [
+    { nome: 'pedidos', colunas: [] },
+    { nome: 'clientes', colunas: [] },
+    { nome: 'itens', colunas: [] },
+    { nome: 'produtos', colunas: [] },
+    { nome: 'longe', colunas: [] },
+  ],
+  relacoes: [
+    { de: 'pedidos', para: 'clientes', coluna: 'cliente_id', obrigatoria: true },
+    { de: 'itens', para: 'pedidos', coluna: 'pedido_id', obrigatoria: true },
+    { de: 'itens', para: 'produtos', coluna: 'produto_id', obrigatoria: true },
+  ],
+  cortadas: 0,
+};
+
+test('vizinho é quem se liga nos DOIS sentidos', () => {
+  // `pedidos` referencia `clientes` E é referenciada por `itens`. Pegar só um
+  // dos lados daria meia resposta — e o lado errado com igual probabilidade.
+  const v = vizinhanca(TEIA, 'pedidos');
+  assert.deepEqual(
+    v.tabelas.map((t) => t.nome).sort(),
+    ['clientes', 'itens', 'pedidos']
+  );
+});
+
+test('a tabela sem ligação nenhuma aparece sozinha, e não vazia', () => {
+  const v = vizinhanca(TEIA, 'longe');
+  assert.deepEqual(v.tabelas.map((t) => t.nome), ['longe']);
+  assert.equal(v.relacoes.length, 0);
+  assert.equal(v.cortadas, 4);
+});
+
+test('seta com uma ponta de fora NÃO entra — apontaria para o nada', () => {
+  const v = vizinhanca(TEIA, 'clientes');
+  assert.deepEqual(v.tabelas.map((t) => t.nome).sort(), ['clientes', 'pedidos']);
+  // `itens → pedidos` fica de fora: `itens` não está desenhada.
+  assert.deepEqual(v.relacoes.map((r) => `${r.de}->${r.para}`), ['pedidos->clientes']);
+});
+
+test('grau 2 alcança o vizinho do vizinho', () => {
+  const v = vizinhanca(TEIA, 'clientes', 2);
+  assert.deepEqual(
+    v.tabelas.map((t) => t.nome).sort(),
+    ['clientes', 'itens', 'pedidos']
+  );
+});
+
+test('grau 1 NÃO alcança o vizinho do vizinho — a fronteira é fotografada antes', () => {
+  // Sem a foto, um vizinho recém-entrado traria os dele na mesma volta e o
+  // `grau` não significaria nada.
+  const v = vizinhanca(TEIA, 'clientes', 1);
+  assert.equal(v.tabelas.some((t) => t.nome === 'itens'), false);
+});
+
+test('grau 0 é tratado como 1: nunca devolve o diagrama vazio de relações', () => {
+  const v = vizinhanca(TEIA, 'pedidos', 0);
+  assert.equal(v.tabelas.length, 3);
+});
+
+test('o título diz de qual tabela é', () => {
+  assert.equal(vizinhanca(TEIA, 'pedidos').titulo, 'pedidos e vizinhos');
+});
+
+test('a vizinhança vira Mermaid como qualquer diagrama', () => {
+  const texto = mermaidDoDiagrama(vizinhanca(TEIA, 'pedidos'));
+  assert.match(texto, /erDiagram/);
+  assert.match(texto, /pedidos/);
+  assert.equal(/produtos/.test(texto), false, 'produtos não é vizinha de pedidos');
 });

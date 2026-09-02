@@ -86,7 +86,10 @@ test('um bloco ```mermaid vira DESENHO, e não código', async ({ page }) => {
   // seguinte pega o `<pre>` que ainda não foi substituído. Foi assim que este
   // teste falhou uma vez na suíte inteira e passou sozinho.
   const diagrama = preview(page).locator('.mermaid-por-desenhar');
-  await expect(diagrama.locator('svg')).toBeVisible({ timeout: 20_000 });
+  await expect(diagrama).toBeVisible({ timeout: 20_000 });
+  // Prazo largo pelo mesmo motivo do teste vizinho: na suíte inteira o Mermaid
+  // disputa a máquina, e "lento" não é "quebrado".
+  await expect(diagrama.locator('svg')).toBeVisible({ timeout: 60_000 });
   // E o aviso "desenhando…" já saiu: enquanto ele está lá, o desenho não acabou.
   await expect(diagrama).not.toHaveAttribute('data-mermaid-desenhando', 'true');
   await expect(preview(page).locator('pre code')).toHaveCount(0);
@@ -95,8 +98,14 @@ test('um bloco ```mermaid vira DESENHO, e não código', async ({ page }) => {
 test('diagrama com erro mostra a MENSAGEM, e não some', async ({ page }) => {
   await criarArquivo(page, novoNome('md'), '```mermaid\nisto não é um diagrama {{{\n```\n');
   await page.locator('[data-barra-do-arquivo]').getByRole('radio', { name: 'Preview' }).click();
+  // Duas esperas, e não uma: primeiro a prova de que o desenho COMEÇOU, depois
+  // o desfecho. Esperar só o desfecho num prazo fixo confunde "lento" com
+  // "quebrado" — e era isso que fazia este teste falhar na suíte inteira, onde o
+  // Mermaid disputa a máquina com quinhentos outros testes, e passar sozinho.
+  const bloco = preview(page).locator('.mermaid-por-desenhar');
+  await expect(bloco).toBeVisible({ timeout: 20_000 });
   // Um bloco em branco pareceria a IDE quebrada.
-  await expect(preview(page).locator('[data-mermaid-erro]')).toBeVisible({ timeout: 20_000 });
+  await expect(preview(page).locator('[data-mermaid-erro]')).toBeVisible({ timeout: 60_000 });
 });
 
 test('`$x^2$` vira fórmula, e `R$ 10` continua sendo dinheiro', async ({ page }) => {

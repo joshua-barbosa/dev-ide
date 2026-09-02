@@ -49,12 +49,25 @@ export interface Rascunho {
  */
 export function idDaLinha(
   colunas: readonly TableColumn[],
-  valores: readonly CellValue[]
+  valores: readonly CellValue[],
+  indice?: number
 ): IdDeLinha {
   const chave: Record<string, CellValue> = {};
   colunas.forEach((c, i) => {
     if (c.chave) chave[c.name] = valores[i] ?? null;
   });
+  // SEM chave nenhuma, a identidade é a POSIÇÃO (P5).
+  //
+  // É o caso do CSV: nada no arquivo distingue duas linhas iguais, e a linha 12
+  // é a linha 12. Sem isto, toda linha teria o id `{}` e editar uma editaria
+  // todas — que é o defeito que a spec 044 evitava exigindo chave primária.
+  //
+  // O índice é opcional porque quem tem chave não precisa dele; quando não há
+  // chave E não há índice, o id continua sendo `{}` e a grade segue sem edição,
+  // que é o comportamento que já existia.
+  if (Object.keys(chave).length === 0 && indice !== undefined) {
+    return JSON.stringify({ '#': indice });
+  }
   return JSON.stringify(chave);
 }
 

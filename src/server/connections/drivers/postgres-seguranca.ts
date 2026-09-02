@@ -12,6 +12,8 @@ import {
   noDeCategoriaDeSeguranca,
   podeCriarNoPostgres,
   sondar,
+  ACOES_DE_USUARIO,
+  ACOES_DA_CATEGORIA_DE_USUARIOS,
 } from './seguranca';
 import { clausulaDeFiltro } from './postgres-objetos';
 import type { TreeNode } from '../types';
@@ -69,6 +71,8 @@ async function listarPapeis(
     detail: marcasDe(linha),
     hasChildren: false,
     meta: { seguranca: true, papel: linha.nome },
+    // Todas COPIAM o SQL; nenhuma executa (P3).
+    actions: ACOES_DE_USUARIO,
   }));
 }
 
@@ -93,12 +97,15 @@ export async function listarSeguranca(
       const n = Number(bruto);
       // Zero é resposta: "nenhum papel" e "não sei quantos" são coisas
       // diferentes, e a spec 045 já paga esse preço em outro lugar.
-      return noDeCategoriaDeSeguranca(
-        categoria,
-        'postgres',
-        podeCriar,
-        Number.isFinite(n) ? n : undefined
-      );
+      return {
+        ...noDeCategoriaDeSeguranca(
+          categoria,
+          'postgres',
+          podeCriar,
+          Number.isFinite(n) ? n : undefined
+        ),
+        ...(categoria.id === 'users' ? { actions: ACOES_DA_CATEGORIA_DE_USUARIOS } : {}),
+      };
     });
   }
   if (resto.length === 1 && (resto[0] === 'users' || resto[0] === 'roles')) {

@@ -45,13 +45,56 @@ export interface ResultadoSalvo {
 }
 
 /**
- * Teto de linhas por resultado guardado.
+ * Teto de um resultado guardado, em BYTES.
  *
- * O caderno é um arquivo que ele versiona no git. Um `SELECT` de 500 linhas com
- * cinquenta colunas viraria um JSON de megabytes por bloco, e o diff deixaria
- * de ser legível — que é metade da razão de o caderno existir.
+ * **O teto anterior era de 200 linhas, e a razão que eu tinha escrito estava
+ * errada.** Eu supunha que o caderno fosse versionado no git e que o diff
+ * precisasse ficar legível. Ele corrigiu em 02/09/2026: *"sqlbook não vai para
+ * git, nem os resultados, essas coisas ficam local, até o momento que fizermos
+ * as sincronizações na nuvem"*.
+ *
+ * Some o argumento do diff, mas não some o motivo de haver teto: um resultado
+ * gigante deixa o caderno lento de abrir, e o arquivo é lido inteiro para a
+ * memória. Só que **linha não é a medida disso** — 200 linhas de uma coluna são
+ * alguns kilobytes, e 200 linhas de cinquenta colunas com texto longo são
+ * megabytes. O que pesa é o tamanho, então é o tamanho que se mede.
+ *
+ * 8 MB por resultado: um `SELECT` de página inteira (500 linhas) cabe folgado,
+ * que é o caso comum de salvar o que se está olhando.
  */
-export const MAX_LINHAS_SALVAS = 200;
+export const MAX_BYTES_SALVOS = 8 * 1024 * 1024;
+
+/**
+ * Teto de linhas, como rede — não como regra.
+ *
+ * Existe só para o caso patológico em que as linhas são minúsculas e o byte
+ * nunca estoura: um `SELECT id FROM tabela` de três milhões de linhas cabe em
+ * poucos megabytes e ainda assim ninguém quer isso dentro de um bloco.
+ */
+export const MAX_LINHAS_SALVAS = 50_000;
+
+/**
+ * Quantas linhas cabem no teto de bytes.
+ *
+ * Mede de verdade, somando linha a linha, e para quando estoura. Estimar pela
+ * primeira linha erraria feio numa tabela em que uma coluna `TEXT` só é grande
+ * em alguns registros — e errar para mais é justamente o que o teto existe para
+ * impedir.
+ */
+export function quantasCabem(
+  linhas: readonly (readonly (string | null)[])[],
+  maxBytes = MAX_BYTES_SALVOS,
+  maxLinhas = MAX_LINHAS_SALVAS
+): number {
+  let bytes = 0;
+  const limite = Math.min(linhas.length, maxLinhas);
+  for (let i = 0; i < limite; i += 1) {
+    // O JSON é o formato em que isto vai para o disco, então é ele que se mede.
+    bytes += JSON.stringify(linhas[i]).length;
+    if (bytes > maxBytes) return i;
+  }
+  return limite;
+}
 
 export interface Celula {
   /** Estável por bloco: é o que o React usa como chave, e o que o foco segue. */
@@ -211,9 +254,10 @@ export function salvarResultado(
   id: string,
   resultado: ResultadoSalvo
 ): Caderno {
-  const cortado = resultado.linhas.length > MAX_LINHAS_SALVAS;
+  const cabem = quantasCabem(resultado.linhas);
+  const cortado = cabem < resultado.linhas.length;
   const guardado: ResultadoSalvo = cortado
-    ? { ...resultado, linhas: resultado.linhas.slice(0, MAX_LINHAS_SALVAS), cortado: true }
+    ? { ...resultado, linhas: resultado.linhas.slice(0, cabem), cortado: true }
     : resultado;
   return {
     celulas: caderno.celulas.map((c) =>

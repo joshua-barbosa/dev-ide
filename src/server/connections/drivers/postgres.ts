@@ -15,8 +15,6 @@ import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import {
   BANCOS_SQL,
   COLUNAS_MODELO_SQL,
-  DDL_COLUNAS_SQL,
-  DDL_PK_SQL,
   PROCESSOS_SQL,
   SCHEMAS_SQL,
 } from './postgres-sql';
@@ -27,11 +25,13 @@ import {
   listarObjetos,
 } from './postgres-objetos';
 import { listarSeguranca, segurancaDisponivel } from './postgres-seguranca';
-import { SECURITY_ID, noDeSeguranca } from './seguranca';
+import { SECURITY_ID, noDeSeguranca, sqlDeAcaoDeUsuario,} from './seguranca';
 import {
   PG_COLUNAS_DO_ER, PG_FKS_DO_ER, montarDiagrama,
   type LinhaDeColuna, type LinhaDeFk,
 } from './er';
+import { vizinhanca } from '../../../shared/sql/diagrama-er';
+import { ddlDe } from './postgres-ddl';
 import {
   PG_COLUNAS_DO_CODEBASE, PG_FUNCOES_INTERNAS, PG_ROTINAS_DO_CODEBASE, montarCodebase,
   type LinhaDeColunaDoCodebase, type LinhaDeRotina,
@@ -349,54 +349,18 @@ async function executar(
  * Extraído da ação `Ver DDL` quando a aba de estrutura (spec 045) passou a
  * precisar do mesmo texto: duas reconstruções do mesmo DDL divergiriam, e a
  * divergência apareceria só num caso de canto.
- */
-export async function ddlDe(
-  client: Client,
-  schema: string,
-  objeto: string,
-  ehView: boolean
-): Promise<string> {
-  const alvo = `${quoteIdentifier(schema, 'double')}.${quoteIdentifier(objeto, 'double')}`;
-  if (ehView) {
-    const { rows } = await client.query<{ def: string }>(
-      'SELECT pg_get_viewdef($1::regclass, true) AS def',
-      [alvo]
-    );
-    return `CREATE OR REPLACE VIEW ${alvo} AS\n${rows[0]?.def ?? ''}`;
-  }
-
-  // O Postgres não tem SHOW CREATE TABLE: o DDL é reconstruído do catálogo.
-  // Cobre colunas, NOT NULL, DEFAULT e chave primária — não índices,
-  // constraints de checagem nem chaves estrangeiras. A aba de estrutura mostra
-  // esses três em listas próprias, que é onde eles ficam legíveis mesmo.
-  const [colunas, pk] = await Promise.all([
-    client.query<{ nome: string; tipo: string; obrigatorio: boolean; padrao: string | null }>(
-      DDL_COLUNAS_SQL, [schema, objeto]
-    ),
-    client.query<{ nome: string }>(DDL_PK_SQL, [schema, objeto]),
-  ]);
-
-  const linhas = colunas.rows.map((coluna) => {
-    const partes = [`  ${quoteIdentifier(coluna.nome, 'double')} ${coluna.tipo}`];
-    if (coluna.padrao !== null) partes.push(`DEFAULT ${coluna.padrao}`);
-    if (coluna.obrigatorio) partes.push('NOT NULL');
-    return partes.join(' ');
-  });
-  if (pk.rows.length > 0) {
-    const cols = pk.rows.map((r) => quoteIdentifier(r.nome, 'double')).join(', ');
-    linhas.push(`  PRIMARY KEY (${cols})`);
-  }
-
-  return (
-    '-- Reconstruído do catálogo: sem índices, FKs e constraints de checagem.\n' +
-    `CREATE TABLE ${alvo} (\n${linhas.join(',\n')}\n);\n`
-  );
-}
-
-
-/** nodePath de um objeto é [server, banco, schema, categoria, objeto]. */
+ *//** nodePath de um objeto é [server, banco, schema, categoria, objeto]. */
 async function acao(clienteDe: ClienteDe, principal: string, request: ActionRequest): Promise<ActionResult> {
   const [, banco, schema, categoria, objeto] = request.nodePath;
+  // O SQL de usuário e permissão sai ANTES da exigência de objeto: a ação de
+  // criar mora na CATEGORIA `users`, que não tem objeto selecionado (P3).
+  if (schema === SECURITY_ID) {
+    const sql = sqlDeAcaoDeUsuario('postgres', request.actionId, {
+      nome: objeto ?? 'novo_usuario',
+    });
+    if (sql !== null) return { kind: 'statement', title: objeto ?? 'papel', content: sql };
+  }
+
   if (schema === undefined || objeto === undefined) {
     throw new Error('Ação exige um objeto selecionado.');
   }
@@ -639,16 +603,24 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       catalogos.set(database, catalogo);
       return catalogo;
     },
-    /** nodePath de um schema é [server, banco, schema]. */
+    /**
+     * nodePath de um schema é [server, banco, schema]; de uma tabela,
+     * [server, banco, schema, categoria, tabela].
+     *
+     * Com a tabela no caminho sai a VIZINHANÇA dela (P4), e não o schema
+     * inteiro. É a mesma consulta ao banco: o recorte é feito depois, em
+     * `vizinhanca`, que é código puro e testado.
+     */
     erDiagram: async (nodePath) => {
-      const [, banco, schema] = nodePath;
+      const [, banco, schema, , tabela] = nodePath;
       if (schema === undefined) throw new Error('O diagrama ER exige um schema selecionado.');
       const client = await clienteDe(banco ?? exibicao.main);
       const [colunas, fks] = await Promise.all([
         client.query<LinhaDeColuna>(PG_COLUNAS_DO_ER, [schema]),
         client.query<LinhaDeFk>(PG_FKS_DO_ER, [schema]),
       ]);
-      return montarDiagrama(`${banco}.${schema}`, colunas.rows, fks.rows);
+      const inteiro = montarDiagrama(`${banco}.${schema}`, colunas.rows, fks.rows);
+      return tabela === undefined ? inteiro : vizinhanca(inteiro, tabela);
     },
     alterCapabilities: () => ({
       dialeto: DIALETOS.postgres.nome,

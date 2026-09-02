@@ -87,6 +87,19 @@ export function useMenusDeConexao(deps: DepsDosMenus): MenusDeConexao {
                 ]
               : []),
 
+            // P4: o diagrama do schema inteiro não responde "e esta aqui?".
+            // *"assim eu consigo ver a tabela que estou olhando"* — 02/09/2026.
+            // O caminho é o mesmo pedido, com a TABELA no fim; quem recorta é o
+            // `vizinhanca`, no servidor.
+            ...(deps.sabeDesenharEr(id) && no.meta?.diagramaDaTabela === true
+              ? [
+                  {
+                    label: 'Diagrama desta tabela',
+                    onClick: () => deps.diagramaEr(id, caminho, `${no.label} e vizinhos`),
+                  },
+                ]
+              : []),
+
             // A categoria `Query` (spec 038) cria ARQUIVO, não objeto de banco.
             // As duas opções aparecem por extenso porque o `+` sozinho não diz
             // o que acrescenta — foi o que o usuário notou depois da spec 048.
@@ -116,6 +129,12 @@ export function useMenusDeConexao(deps: DepsDosMenus): MenusDeConexao {
               danger: acao.danger,
               onClick: async () => {
                 const r = await Api.runAction(id, { nodePath: caminho, actionId: acao.id });
+                if (acao.copiar === true) {
+                  // Vai para o clipboard, e não para uma aba (P3): é texto para
+                  // colar num `.sql` ou `.sqlbook` dele.
+                  copiar(r.content);
+                  return;
+                }
                 // O database vem herdado da subárvore: o menu de contexto
                 // sabe onde clicou, e a aba precisa nascer amarrada.
                 deps.abrirQuery(

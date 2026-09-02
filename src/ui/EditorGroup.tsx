@@ -118,6 +118,8 @@ export interface EditorGroupProps {
   /** Abas mostrando o conteúdo renderizado em vez do texto (spec 024). */
   readonly emPreview: ReadonlySet<string>;
   conteudoDaAba(id: string): string;
+  /** Grava conteúdo novo numa aba e a suja — o CSV editado pela grade (P5). */
+  onConteudoDaAba?: (id: string, texto: string) => void;
   /** Ausente quando a aba ativa não é pré-visualizável. */
   readonly onPreview?: () => void;
   /** O formulário de conexão é montado pelo `App`, que conhece os drivers. */
@@ -151,7 +153,7 @@ export function EditorGroup({
   grupo, abas, ativaId, focado, dividido,
   fontSize, tabSize, wordWrap, terminalFontSize, tema, snippets, emmet,
   grades, formulario, preferencias, requisitos, codesnap, acoesDeMenu,
-  contextoDeLinguagem, breadcrumb, emPreview, conteudoDaAba, onPreview,
+  contextoDeLinguagem, breadcrumb, emPreview, conteudoDaAba, onConteudoDaAba, onPreview,
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
   onReordenarAba,
   onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
@@ -316,6 +318,13 @@ export function EditorGroup({
           tipo={(ativa.meta.visualizador as Visualizador | undefined) ?? 'texto'}
           caminho={String(ativa.meta.path ?? '')}
           conteudo={conteudoDaAba(ativa.id)}
+          // P5: editar CSV pela grade. Escreve na ABA e a suja; quem salva
+          // continua sendo o Ctrl+S.
+          onConteudo={
+            onConteudoDaAba === undefined
+              ? undefined
+              : (texto) => onConteudoDaAba(ativa.id, texto)
+          }
         />
       )}
 

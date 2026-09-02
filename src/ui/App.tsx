@@ -562,6 +562,7 @@ export function App() {
                   grades={exec.grades}
                   emPreview={ws.emPreview}
                   conteudoDaAba={ws.conteudoDaAba}
+                  onConteudoDaAba={ws.mudarCaderno}
                   onPreview={
                     ws.grupoFocado === g && temPreview(ws.linguagemAtiva)
                       ? ws.alternarPreview

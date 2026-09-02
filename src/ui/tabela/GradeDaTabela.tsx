@@ -207,7 +207,9 @@ export function Grade({
         </thead>
         <tbody>
           {linhas.map((linha, i) => {
-            const id = idDaLinha(colunas, linha);
+            // O índice entra para o caso SEM chave: no CSV a identidade é a
+            // posição, e sem ele todas as linhas teriam o mesmo id (P5).
+            const id = idDaLinha(colunas, linha, i);
             const aApagar = rascunho?.remocoes.has(id) === true;
             return (
               <tr key={i}>

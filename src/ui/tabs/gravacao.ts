@@ -66,7 +66,13 @@ export function gravacao(deps: DepsDaGravacao) {
 
     if (meta.path === null) return null;
 
-    if (aba.type === 'caderno') {
+    // Caderno e visualizador guardam o texto no PRÓPRIO `meta`, e não num
+    // editor do Monaco: um deles não tem editor nenhum (o caderno é uma lista
+    // de blocos), e o outro é uma grade (o CSV editado pela grade, P5).
+    //
+    // Sem este ramo, o `Ctrl+S` num CSV editado não fazia nada — a aba ficava
+    // suja para sempre, e a edição só existia na tela.
+    if (aba.type === 'caderno' || aba.type === 'visualizador') {
       await Api.saveFile(meta.path, meta.content);
       store.update(aba.id, { dirty: false, meta: { ...meta, emDisco: meta.content } });
       return meta.path;
@@ -97,7 +103,9 @@ export function gravacao(deps: DepsDaGravacao) {
     const vistos = new Set<string>();
     const sujas = store
       .list()
-      .filter((aba) => aba.dirty && ehEditavel(aba))
+      // O visualizador entra: um CSV editado pela grade é um arquivo sujo como
+      // qualquer outro, e `Save All` que o pula perde trabalho em silêncio.
+      .filter((aba) => aba.dirty && (ehEditavel(aba) || aba.type === 'visualizador'))
       .filter((aba) => {
         const base = idBaseDe(aba.id);
         if (vistos.has(base)) return false;

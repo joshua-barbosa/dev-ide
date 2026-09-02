@@ -141,3 +141,48 @@ export function documentoDoDiagrama(diagrama: DiagramaER): string {
   partes.push('```mermaid', mermaidDoDiagrama(diagrama), '```', '');
   return partes.join('\n');
 }
+
+/**
+ * O diagrama de UMA tabela e a vizinhança dela (P4).
+ *
+ * Pedido dele em 02/09/2026, com a razão junto: *"Seria muito interessante,
+ * porque assim eu consigo ver a tabela que estou olhando"*. O diagrama do
+ * schema inteiro mostra tudo e não responde "e esta aqui?" — num banco de cem
+ * tabelas ela é um retângulo perdido no meio.
+ *
+ * **Vizinho é quem se liga a ela nos DOIS sentidos**: as tabelas que ela
+ * referencia e as que a referenciam. Só um dos lados daria meia resposta — e
+ * seria o lado errado com igual probabilidade.
+ *
+ * `grau` é quantos saltos: 1 são os vizinhos diretos, 2 os vizinhos deles.
+ * Acima disso o desenho volta a ser o schema inteiro em bancos normalizados, e
+ * a pergunta original se perde.
+ */
+export function vizinhanca(
+  diagrama: DiagramaER,
+  tabela: string,
+  grau = 1
+): DiagramaER {
+  const dentro = new Set<string>([tabela]);
+
+  for (let salto = 0; salto < Math.max(1, grau); salto += 1) {
+    // A fronteira desta rodada é fotografada ANTES de crescer: sem isto, um
+    // vizinho recém-entrado já traria os vizinhos DELE na mesma volta, e o
+    // `grau` não significaria nada.
+    const fronteira = new Set(dentro);
+    for (const r of diagrama.relacoes) {
+      if (fronteira.has(r.de)) dentro.add(r.para);
+      if (fronteira.has(r.para)) dentro.add(r.de);
+    }
+  }
+
+  const tabelas = diagrama.tabelas.filter((t) => dentro.has(t.nome));
+  return {
+    titulo: `${tabela} e vizinhos`,
+    tabelas,
+    // Só as relações com AS DUAS PONTAS dentro: uma seta que sai para uma
+    // tabela que não está desenhada aponta para o nada.
+    relacoes: diagrama.relacoes.filter((r) => dentro.has(r.de) && dentro.has(r.para)),
+    cortadas: diagrama.tabelas.length - tabelas.length,
+  };
+}

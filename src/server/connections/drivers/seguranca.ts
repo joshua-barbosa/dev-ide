@@ -8,7 +8,11 @@
 // outro erro continua sendo erro.** Esconder um servidor fora do ar sob "você
 // não tem permissão" seria mentir para quem está tentando entender por que a
 // árvore está vazia.
-import type { NodeIcon, TreeNode } from '../types';
+import type { NodeAction, NodeIcon, TreeNode } from '../types';
+import {
+  apagarUsuario, conceder, criarUsuario, PRIVILEGIOS, revogar,
+  type DialetoDeUsuario, type Usuario,
+} from '../../../shared/sql/usuarios';
 
 /**
  * O caminho do nó de segurança, irmão dos bancos.
@@ -199,4 +203,71 @@ export function noDeCategoriaDeSeguranca(
       template: podeCriar ? TEMPLATES_DE_SEGURANCA[dialeto][categoria.id] : undefined,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// SQL de usuário e permissão — GERADO, nunca executado (P3)
+// ---------------------------------------------------------------------------
+
+/**
+ * As ações que um nó de usuário oferece.
+ *
+ * Todas COPIAM: nenhuma executa, e nenhuma abre aba. É a decisão dele de
+ * 02/09/2026 — o SQL vai para o `.sql` ou o `.sqlbook`, e quem aperta o Run é
+ * ele. O `apagar` fica vermelho pelo `danger`, mas o vermelho aqui avisa sobre
+ * o que o TEXTO faz quando for executado, e não sobre o que o clique faz.
+ */
+export const ACOES_DE_USUARIO: readonly NodeAction[] = [
+  { id: 'usuario-grant', label: 'Copiar SQL de GRANT', copiar: true },
+  { id: 'usuario-revoke', label: 'Copiar SQL de REVOKE', copiar: true },
+  { id: 'usuario-drop', label: 'Copiar SQL para APAGAR', copiar: true, danger: true },
+];
+
+/** As ações da categoria `users`: criar. */
+export const ACOES_DA_CATEGORIA_DE_USUARIOS: readonly NodeAction[] = [
+  { id: 'usuario-create', label: 'Copiar SQL para criar usuário', copiar: true },
+];
+
+/**
+ * Monta o SQL de uma das ações acima.
+ *
+ * `null` quando o `actionId` não é destes — quem chama segue para o próximo
+ * ramo do `switch` em vez de estourar.
+ *
+ * O GRANT e o REVOKE saem com ALVO E PRIVILÉGIO DE EXEMPLO, porque a IDE não
+ * tem como saber quais ele quer: o menu não pergunta, e inventar um padrão
+ * "seguro" que ninguém lê daria um comando errado com cara de certo. O que sai
+ * é um esqueleto com o nome do usuário já correto — que é a parte chata de
+ * escrever à mão, e a que erra.
+ */
+export function sqlDeAcaoDeUsuario(
+  dialeto: DialetoDeUsuario,
+  actionId: string,
+  usuario: Usuario
+): string | null {
+  const exemplo = {
+    usuario,
+    privilegios: ['SELECT'],
+    alvo: { tipo: 'banco', banco: 'NOME_DO_BANCO' },
+  } as const;
+
+  switch (actionId) {
+    case 'usuario-create':
+      return criarUsuario(dialeto, usuario);
+    case 'usuario-drop':
+      return apagarUsuario(dialeto, usuario);
+    case 'usuario-grant':
+      return [
+        '-- Troque o banco e os privilégios antes de executar.',
+        `-- Privilégios possíveis: ${PRIVILEGIOS[dialeto].join(', ')}.`,
+        conceder(dialeto, exemplo),
+      ].join('\n');
+    case 'usuario-revoke':
+      return [
+        '-- Troque o banco e os privilégios antes de executar.',
+        revogar(dialeto, exemplo),
+      ].join('\n');
+    default:
+      return null;
+  }
 }

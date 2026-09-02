@@ -19,6 +19,7 @@ import { tokens } from '../theme';
 import { Icon } from '../Icon';
 import { paraCsv, paraJson } from '../../shared/exportar';
 import { Grade } from '../tabela/GradeDaTabela';
+import type { Rascunho } from '../tabela/useRascunho';
 import { PainelDeAparencia } from '../tabela/PainelDeAparencia';
 import { APARENCIA_PADRAO, type Aparencia } from '../../shared/grade/aparencia';
 import { LINHAS_POR_PAGINA } from '../useExecution';
@@ -33,10 +34,23 @@ export interface ResultGridProps {
   /** Vai para outra página deste resultado (T056). */
   readonly irPara?: (pagina: number) => void;
   readonly pagina?: number;
+  /**
+   * Liga a edição de célula, para o CSV (P5).
+   *
+   * Ausente é o caso normal: um resultado de query não está preso a uma tabela,
+   * e a IDE não sabe qual linha atualizar. Presente, a identidade da linha é a
+   * POSIÇÃO — que é o que um CSV tem no lugar de chave primária.
+   */
+  readonly edicaoDeCsv?: {
+    readonly rascunho: Rascunho;
+    readonly motivoSemEdicao: string | null;
+    aplicar(): void;
+  };
 }
 
 export function ResultGrid({
   resultado, erro = null, carregando = false, rotulo, parar, irPara, pagina = 1,
+  edicaoDeCsv,
 }: ResultGridProps) {
   // Antes de qualquer `return`: gancho não pode viver depois de saída
   // condicional, e os dois abaixo são exatamente isso.
@@ -218,8 +232,11 @@ export function ResultGrid({
           // O tamanho da PÁGINA, e não quantas linhas vieram: a última página
           // costuma vir curta, e numerar por ela faria a página 2 começar em 4.
           primeiraLinha={(pagina - 1) * LINHAS_POR_PAGINA + 1}
+          rascunho={edicaoDeCsv?.rascunho}
           motivoSemEdicao={
-            'Este resultado não está preso a uma tabela: a IDE não sabe qual linha atualizar.'
+            edicaoDeCsv === undefined
+              ? 'Este resultado não está preso a uma tabela: a IDE não sabe qual linha atualizar.'
+              : edicaoDeCsv.motivoSemEdicao
           }
         />
       )}

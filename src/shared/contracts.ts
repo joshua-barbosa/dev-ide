@@ -114,6 +114,15 @@ export interface NodeAction {
   readonly label: string;
   /** Ação destrutiva: a UI confirma antes. */
   readonly danger?: boolean;
+  /**
+   * O resultado vai para a ÁREA DE TRANSFERÊNCIA, e não para uma aba (P3).
+   *
+   * Decisão dele, em 02/09/2026, sobre o SQL de usuário e permissão: *"o melhor
+   * é copiar a query que faz o drop do usuário e ai a pessoa digita no .sql ou
+   * .sqlbook para ser executado"*. Abrir uma aba a mais para um texto de três
+   * linhas que ele vai colar em outro lugar é uma aba a mais para fechar.
+   */
+  readonly copiar?: boolean;
 }
 
 export interface TreeNode {

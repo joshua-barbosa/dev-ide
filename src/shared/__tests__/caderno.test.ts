@@ -14,6 +14,7 @@ import {
   salvarResultado,
   removerResultado,
   MAX_LINHAS_SALVAS,
+  quantasCabem,
 } from '../sql/caderno';
 
 const doJson = (obj: unknown): string => JSON.stringify(obj);
@@ -318,15 +319,58 @@ test('salvar com o MESMO nome substitui, e não acumula', () => {
   assert.deepEqual(dois.celulas[0]?.resultados[0]?.linhas, [['9', '99']]);
 });
 
-test('resultado grande é CORTADO, e o corte é marcado', () => {
-  // O caderno é um arquivo versionado: um JSON de megabytes por bloco tornaria
-  // o diff ilegível, que é metade da razão de ele existir.
+test('resultado com MUITAS linhas é cortado pela rede de linhas', () => {
   const linhas = Array.from({ length: MAX_LINHAS_SALVAS + 50 }, (_, i) => [String(i)]);
   const caderno = { celulas: [{ id: 'c0', linguagem: 'sql', conteudo: 'x', resultados: [] }] };
   const salvo = salvarResultado(caderno, 'c0', { ...RESULTADO, colunas: ['i'], linhas });
   const r = salvo.celulas[0]?.resultados[0];
   assert.equal(r?.linhas.length, MAX_LINHAS_SALVAS);
   assert.equal(r?.cortado, true);
+});
+
+test('o teto é de BYTES: poucas linhas GORDAS também são cortadas', () => {
+  // É o caso que o teto de 200 linhas não via. Dez linhas de 1 MB cada passavam
+  // folgadas por um limite contado em linhas, e são elas que travam a abertura
+  // do caderno.
+  const gorda = 'x'.repeat(1024 * 1024);
+  const linhas = Array.from({ length: 20 }, () => [gorda]);
+  const caderno = { celulas: [{ id: 'c0', linguagem: 'sql', conteudo: 'x', resultados: [] }] };
+  const salvo = salvarResultado(caderno, 'c0', { ...RESULTADO, colunas: ['t'], linhas });
+  const r = salvo.celulas[0]?.resultados[0];
+  assert.equal(r?.cortado, true);
+  assert.ok((r?.linhas.length ?? 0) < 20, 'não cabem as vinte');
+  assert.ok((r?.linhas.length ?? 0) > 0, 'mas alguma cabe');
+});
+
+test('uma página inteira de resultado (500 linhas) cabe sem corte', () => {
+  // É o caso COMUM: ele salva o que está olhando. O teto antigo, de 200,
+  // cortava isso — e a razão que eu tinha escrito para o 200 estava errada.
+  const linhas = Array.from({ length: 500 }, (_, i) => [String(i), `nome ${i}`, 'ativo']);
+  const caderno = { celulas: [{ id: 'c0', linguagem: 'sql', conteudo: 'x', resultados: [] }] };
+  const salvo = salvarResultado(caderno, 'c0', {
+    ...RESULTADO, colunas: ['id', 'nome', 'status'], linhas,
+  });
+  const r = salvo.celulas[0]?.resultados[0];
+  assert.equal(r?.linhas.length, 500);
+  assert.equal(r?.cortado, false);
+});
+
+test('quantasCabem mede de verdade, e não estima pela primeira linha', () => {
+  // Uma coluna TEXT que só é grande em ALGUNS registros faria a estimativa
+  // errar para mais — que é justamente o que o teto existe para impedir.
+  const magra = ['a'];
+  const gorda = ['b'.repeat(900)];
+  const linhas = [magra, magra, gorda, magra];
+  // As duas magras somam 10 bytes; a gorda sozinha passa de 900. Com teto de
+  // 500 ela não entra — e a magra que vem DEPOIS dela também não, porque o
+  // corte é um prefixo: pular a gorda e guardar a seguinte daria um resultado
+  // com buraco no meio, que mente sobre o que veio do banco.
+  assert.equal(quantasCabem(linhas, 500), 2, 'para na linha que estoura');
+  assert.equal(quantasCabem(linhas, 10_000), 4, 'com folga, cabem todas');
+});
+
+test('quantasCabem devolve 0 quando nem a primeira linha cabe', () => {
+  assert.equal(quantasCabem([['x'.repeat(100)]], 10), 0);
 });
 
 test('remover tira só aquele, e deixa os vizinhos', () => {

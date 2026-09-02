@@ -24,7 +24,7 @@ import {
   type ColunaDeModelo,
 } from './modelos';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
-import { SECURITY_ID, noDeSeguranca } from './seguranca';
+import { SECURITY_ID, noDeSeguranca, sqlDeAcaoDeUsuario } from './seguranca';
 import { listarSeguranca, segurancaDisponivel } from './mysql-seguranca';
 import {
   listarBancos, listarCategorias, listarColunas, listarObjetos, type Exibicao,
@@ -33,6 +33,7 @@ import {
   MYSQL_COLUNAS_DO_ER, MYSQL_FKS_DO_ER, montarDiagrama,
   type LinhaDeColuna, type LinhaDeFk,
 } from './er';
+import { vizinhanca } from '../../../shared/sql/diagrama-er';
 import {
   MYSQL_COLUNAS_DO_CODEBASE, MYSQL_ROTINAS_DO_CODEBASE, montarCodebase,
   type LinhaDeColunaDoCodebase, type LinhaDeRotina,
@@ -157,8 +158,30 @@ async function colunasParaModelo(
 }
 
 /** nodePath de um objeto é [server, schema, categoria, objeto]. */
+/**
+ * Separa `nome@host` do id do nó.
+ *
+ * Pelo ÚLTIMO `@`: um usuário do MySQL pode ter `@` no nome, e cortar no
+ * primeiro daria host errado — que no MySQL significa outra conta.
+ */
+function usuarioDoNo(id: string | undefined): { nome: string; host: string } {
+  if (id === undefined) return { nome: 'novo_usuario', host: '%' };
+  const corte = id.lastIndexOf('@');
+  return corte < 0
+    ? { nome: id, host: '%' }
+    : { nome: id.slice(0, corte), host: id.slice(corte + 1) };
+}
+
 async function acao(conn: Connection, request: ActionRequest): Promise<ActionResult> {
   const [, schema, categoria, objeto] = request.nodePath;
+
+  // O SQL de usuário e permissão sai ANTES da exigência de objeto: a ação de
+  // criar mora na CATEGORIA `users`, que não tem objeto selecionado (P3).
+  if (schema === SECURITY_ID) {
+    const sql = sqlDeAcaoDeUsuario('mysql', request.actionId, usuarioDoNo(objeto));
+    if (sql !== null) return { kind: 'statement', title: objeto ?? 'usuário', content: sql };
+  }
+
   if (schema === undefined || objeto === undefined) {
     throw new Error('Ação exige um objeto selecionado.');
   }
@@ -418,9 +441,13 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       catalogos.set(alvo, catalogo);
       return catalogo;
     },
-    /** nodePath de um schema é [server, schema] — no MySQL os dois são um só. */
+    /**
+     * nodePath de um schema é [server, schema] — no MySQL os dois são um só.
+     * Com uma tabela no fim, sai a VIZINHANÇA dela (P4).
+     */
     erDiagram: async (nodePath) => {
       const schema = nodePath[1];
+      const tabela = nodePath[3];
       if (schema === undefined) throw new Error('O diagrama ER exige um banco selecionado.');
       const [colunas, fks] = await Promise.all([
         query<Omit<LinhaDeColuna, 'pk'> & { pk: number }>(conn, MYSQL_COLUNAS_DO_ER, [
@@ -434,11 +461,12 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       // O MySQL devolve booleano como 0/1: sem esta conversão toda coluna
       // viraria chave, porque `0` e `1` são igualmente "truthy" depois de
       // atravessar um `Boolean()` distraído.
-      return montarDiagrama(
+      const inteiro = montarDiagrama(
         schema,
         colunas.map((c) => ({ ...c, pk: Number(c.pk) === 1 })),
         fks.map((f) => ({ ...f, obrigatoria: Number(f.obrigatoria) === 1 }))
       );
+      return tabela === undefined ? inteiro : vizinhanca(inteiro, tabela);
     },
     alterCapabilities: () => ({
       dialeto: DIALETOS.mysql.nome,

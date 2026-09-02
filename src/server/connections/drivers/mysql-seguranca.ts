@@ -13,6 +13,8 @@ import {
   noDeCategoriaDeSeguranca,
   podeCriarNoMysql,
   sondar,
+  ACOES_DE_USUARIO,
+  ACOES_DA_CATEGORIA_DE_USUARIOS,
 } from './seguranca';
 import type { TreeNode } from '../types';
 
@@ -63,9 +65,10 @@ export async function listarSeguranca(
       consulta<{ n: number }>('SELECT COUNT(*) AS n FROM mysql.user'),
     ]);
     const n = Number(contagem[0]?.n);
-    return categoriasDeSeguranca('mysql').map((categoria) =>
-      noDeCategoriaDeSeguranca(categoria, 'mysql', criar, Number.isFinite(n) ? n : undefined)
-    );
+    return categoriasDeSeguranca('mysql').map((categoria) => ({
+      ...noDeCategoriaDeSeguranca(categoria, 'mysql', criar, Number.isFinite(n) ? n : undefined),
+      ...(categoria.id === 'users' ? { actions: ACOES_DA_CATEGORIA_DE_USUARIOS } : {}),
+    }));
   }
   if (resto.length === 1 && resto[0] === 'users') {
     const f = filtro === null || filtro === undefined
@@ -84,6 +87,8 @@ export async function listarSeguranca(
       icon: 'user' as const,
       hasChildren: false,
       meta: { seguranca: true, papel: linha.nome, host: linha.host },
+      // Todas COPIAM o SQL; nenhuma executa (P3).
+      actions: ACOES_DE_USUARIO,
     }));
   }
   return [];
