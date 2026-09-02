@@ -12,3 +12,6 @@ src/ui/generated/
 # Playwright
 e2e-report/
 test-results/
+
+# Os artefatos do empacotamento (T094): centenas de MB por build.
+empacotado/

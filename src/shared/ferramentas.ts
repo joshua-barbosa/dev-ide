@@ -43,6 +43,26 @@ export interface Ferramenta {
  */
 export const FERRAMENTAS: readonly Ferramenta[] = [
   {
+    // Não é um comando no PATH, e por isso a busca não o encontra — a tela o
+    // mostra como ausente, que é o desfecho certo: quem lê fica sabendo que
+    // existe um passo de `sudo` para a versão desktop, e por quê.
+    nome: 'Sandbox do Chromium (só no desktop)',
+    comandos: ['chrome-sandbox'],
+    habilita:
+      'A versão desktop (Electron) com o isolamento do Chromium ligado. O ' +
+      'ajudante precisa ser de root e ter modo 4755 — no Ubuntu 23.10+ o ' +
+      'AppArmor bloqueia o caminho alternativo. Sem isso a janela só abre com ' +
+      '--no-sandbox, que desliga o isolamento. No navegador nada disso vale: ' +
+      'quem isola é o Chrome dele.',
+    instalar:
+      'sudo chown root:root node_modules/electron/dist/chrome-sandbox && ' +
+      'sudo chmod 4755 node_modules/electron/dist/chrome-sandbox',
+    // NÃO é obrigatória: a IDE no navegador não usa nada disso, e o pacote
+    // pronto (AppImage) já traz o ajudante com as permissões certas. Isto vale
+    // só para quem roda a versão desktop a partir do código.
+    obrigatoria: false,
+  },
+  {
     nome: 'Node.js',
     comandos: ['node'],
     habilita: 'A própria IDE: é ele quem roda o servidor.',

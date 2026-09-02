@@ -4,6 +4,7 @@ import * as path from 'path';
 import { registerBuiltinDrivers } from './connections/drivers';
 import { SessionPool } from './connections/pool';
 import { DriverRegistry } from './connections/registry';
+import { pastaDeProjetos } from './paths';
 import { Vault } from './connections/vault';
 import { diasDeLembranca, RememberedKey, restaurarCofre } from './connections/remember';
 import { errorEnvelope, requireString, wrap } from './http/handlers';
@@ -38,7 +39,7 @@ const PORT = Number(process.env.PORT ?? 4321);
 const HOST = '127.0.0.1';
 const IDLE_SWEEP_MS = 60_000;
 const ROOT = path.resolve(__dirname, '..', '..');
-const PROJECTS_DIR = process.env.DEV_IDE_PROJECTS ?? path.join(ROOT, 'projects');
+const PROJECTS_DIR = pastaDeProjetos(ROOT);
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 const store = new ProjectStore(PROJECTS_DIR);
@@ -332,9 +333,17 @@ app.post('/api/run/:id/stop', wrap((req, res) => {
 // ---- Erros ----
 app.use(errorEnvelope);
 
-if (require.main === module) {
-  const server = app.listen(PORT, HOST, () => {
-    console.log(`dev-ide rodando em http://localhost:${PORT} (apenas ${HOST})`);
+/**
+ * Sobe o servidor e devolve quando ele estiver ouvindo.
+ *
+ * Extraído do bloco `require.main === module` para o Electron poder subir o
+ * MESMO servidor dentro do processo dele (T094), sem um segundo `node` para
+ * matar depois. O `npm start` continua entrando por aqui, com a porta de sempre
+ * — o corpo é o mesmo; o que mudou foi ganhar um nome.
+ */
+export function iniciarServidor(porta = PORT): Promise<void> {
+  const server = app.listen(porta, HOST, () => {
+    console.log(`dev-ide rodando em http://localhost:${porta} (apenas ${HOST})`);
     console.log(`Projetos em: ${PROJECTS_DIR}`);
     if (!fs.existsSync(path.join(UI_DIR, 'index.html'))) {
       // Acontece depois de `npm test`, que limpa dist/ e recompila só o servidor.
@@ -378,15 +387,29 @@ if (require.main === module) {
       pool.closeAll().finally(() => server.close(() => process.exit(0)));
     });
   }
-  server.on('error', (err: NodeJS.ErrnoException) => {
-    if (err.code === 'EADDRINUSE') {
-      console.error(
-        `A porta ${PORT} já está em uso (provavelmente outra instância da dev-ide).\n` +
-          `Encerre-a com "fuser -k ${PORT}/tcp" ou inicie em outra porta: "PORT=4322 npm start".`
-      );
-      process.exit(1);
-    }
-    throw err;
+  return new Promise<void>((resolver, rejeitar) => {
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        // No desktop a porta é efêmera, então este caso é do `npm start`: a
+        // mensagem fala a língua de quem está no terminal.
+        rejeitar(
+          new Error(
+            `A porta ${porta} já está em uso (provavelmente outra instância da dev-ide).\n` +
+              `Encerre-a com "fuser -k ${porta}/tcp" ou inicie em outra porta: "PORT=4322 npm start".`
+          )
+        );
+        return;
+      }
+      rejeitar(err);
+    });
+    server.on('listening', () => resolver());
+  });
+}
+
+if (require.main === module) {
+  iniciarServidor().catch((erro: unknown) => {
+    console.error(erro instanceof Error ? erro.message : String(erro));
+    process.exit(1);
   });
 }
 

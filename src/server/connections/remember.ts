@@ -45,6 +45,51 @@ interface Lembranca {
   readonly iv: string;
   readonly tag: string;
   readonly data: string;
+  /**
+   * Quem selou isto (T099).
+   *
+   * Ausente é `maquina` — o formato antigo, e é assim que uma lembrança
+   * gravada antes deste campo continua abrindo.
+   *
+   * O campo existe para o arquivo NÃO ser lido pelo backend errado: um selo do
+   * sistema decifrado com a amarra de máquina daria erro de autenticação, e o
+   * erro apareceria como "chave inválida" em vez de "este arquivo não é seu".
+   */
+  readonly backend?: 'maquina' | 'sistema';
+}
+
+/**
+ * O selo do sistema operacional — o chaveiro (T099).
+ *
+ * Existe porque a amarra de máquina tem um limite claro: ela deriva a chave de
+ * `machine-id` + uid, então **quem lê o disco lê a chave do cofre**. O chaveiro
+ * do sistema exige a sessão do usuário destrancada, que é outra coisa.
+ *
+ * Injetável, e ausente por padrão: no navegador não há chaveiro, e a amarra de
+ * máquina continua sendo o que dá para fazer.
+ */
+export interface SeloDoSistema {
+  disponivel(): boolean;
+  selar(texto: string): Buffer;
+  abrir(dados: Buffer): string;
+}
+
+let seloRegistrado: SeloDoSistema | null = null;
+
+/**
+ * Registra o chaveiro do sistema, antes de o servidor subir.
+ *
+ * Módulo-nível porque o `RememberedKey` é construído na carga do
+ * `server/index.ts`: quem quiser trocar o backend precisa falar antes disso, e o
+ * Electron faz exatamente isso — importa este módulo, registra, e só então
+ * importa o servidor.
+ */
+export function registrarSeloDoSistema(selo: SeloDoSistema | null): void {
+  seloRegistrado = selo;
+}
+
+function seloAtivo(): SeloDoSistema | null {
+  return seloRegistrado !== null && seloRegistrado.disponivel() ? seloRegistrado : null;
 }
 
 /** Lê o identificador da máquina. Injetável para o teste não depender do sistema. */
@@ -124,11 +169,30 @@ export class RememberedKey {
 
   /** Falso quando a máquina não tem identificador — aí só resta a senha. */
   available(): boolean {
-    return this.identidade() !== null;
+    return seloAtivo() !== null || this.identidade() !== null;
   }
 
   /** Grava a chave cifrada. Silenciosamente não faz nada se não houver amarra. */
   save(key: Buffer, dias: number): void {
+    const selo = seloAtivo();
+    if (selo !== null) {
+      // O chaveiro do sistema faz a cifra inteira; os campos de `salt`, `iv` e
+      // `tag` ficam vazios porque não há nada nossa para guardar neles.
+      const expiraEm = new Date(Date.now() + dias * MS_POR_DIA).toISOString();
+      const lembranca: Lembranca = {
+        version: VERSION,
+        expiresAt: expiraEm,
+        backend: 'sistema',
+        salt: '',
+        iv: '',
+        tag: '',
+        data: selo.selar(key.toString('base64')).toString('base64'),
+      };
+      fs.mkdirSync(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
+      fs.writeFileSync(this.filePath, JSON.stringify(lembranca, null, 2), { mode: 0o600 });
+      return;
+    }
+
     const identidade = this.identidade();
     if (identidade === null) return;
 
@@ -159,6 +223,20 @@ export class RememberedKey {
     if (Date.parse(lembranca.expiresAt) <= Date.now()) {
       this.clear();
       return null;
+    }
+
+    if (lembranca.backend === 'sistema') {
+      const selo = seloAtivo();
+      // Sem o chaveiro, este arquivo não é legível — e não é erro: é o cofre
+      // sendo aberto no navegador, ou noutra sessão. Cai para a senha.
+      if (selo === null) return null;
+      try {
+        return Buffer.from(selo.abrir(Buffer.from(lembranca.data, 'base64')), 'base64');
+      } catch {
+        // Selo de outro usuário ou de outra instalação, vindo num backup.
+        this.clear();
+        return null;
+      }
     }
 
     const identidade = this.identidade();

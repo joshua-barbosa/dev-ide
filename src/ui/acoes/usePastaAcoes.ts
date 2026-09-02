@@ -3,6 +3,7 @@
 // Mesmo corte dos outros arquivos daqui: os fluxos de um assunto, com as
 // dependências vindas de fora, para o `App` caber no teto do Artigo IV.
 import { Api } from '../api';
+import { ponteDoDesktop } from '../desktop';
 import { pedirComRetentativa, type QuickInputController } from '../useQuickInput';
 import type { PastaAberta } from '../files/usePasta';
 import type { EntradaMenu } from '../ContextMenu';
@@ -136,8 +137,24 @@ export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
     }
   };
 
+  /**
+   * Escolhe uma pasta: o diálogo do SISTEMA no desktop, o navegador de pastas
+   * da IDE no navegador (T003).
+   *
+   * A nota dele amarrava o T003 ao Electron, e o motivo é este: *"sem ele não
+   * existe caminho de verdade"*. Uma página web não recebe o caminho de uma
+   * pasta — recebe um punhado de arquivos, sem saber de onde vieram. O navegador
+   * de pastas da spec 012 existe por isso, e continua sendo o caminho quando não
+   * há sistema para perguntar.
+   */
+  const escolherPasta = async (titulo: string, verbo: string): Promise<string | null> => {
+    const ponte = ponteDoDesktop();
+    if (ponte !== undefined) return ponte.escolherPasta(titulo);
+    return navegarAtePasta(titulo, verbo);
+  };
+
   const abrirPasta = async (): Promise<void> => {
-    const escolhida = await navegarAtePasta('Abrir pasta', 'Abrir esta pasta');
+    const escolhida = await escolherPasta('Abrir pasta', 'Abrir esta pasta');
     if (escolhida !== null) await pasta.abrir(escolhida);
   };
 
@@ -149,7 +166,7 @@ export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
    * para manter.
    */
   const acrescentarPasta = async (): Promise<void> => {
-    const escolhida = await navegarAtePasta('Adicionar pasta ao espaço', 'Adicionar esta pasta');
+    const escolhida = await escolherPasta('Adicionar pasta ao espaço', 'Adicionar esta pasta');
     if (escolhida !== null) await pasta.acrescentar(escolhida);
   };
 

@@ -3,7 +3,10 @@ import { test } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { RememberedKey, diasDeLembranca, restaurarCofre } from '../connections/remember';
+import * as crypto from 'node:crypto';
+import {
+  RememberedKey, diasDeLembranca, registrarSeloDoSistema, restaurarCofre,
+} from '../connections/remember';
 import { Vault } from '../connections/vault';
 import { homeDeDados } from '../paths';
 
@@ -319,4 +322,97 @@ test('sem prazo informado, restaurar NÃO mexe na lembrança', () => {
 
   restaurarCofre({ exists: () => true, unlockWithKey: () => undefined }, remember);
   assert.equal(remember.validUntil(), antes);
+});
+
+// ---------------------------------------------------------------------------
+// O chaveiro do sistema como selo (T099)
+// ---------------------------------------------------------------------------
+
+/** Um selo de mentira, com a mesma forma do `safeStorage`. */
+function seloFalso(dono = 'ana', disponivel = true) {
+  return {
+    disponivel: () => disponivel,
+    selar: (texto: string) => Buffer.from(`${dono}|${texto}`, 'utf8'),
+    abrir: (dados: Buffer) => {
+      const [quem, ...resto] = dados.toString('utf8').split('|');
+      if (quem !== dono) throw new Error('selo de outro dono');
+      return resto.join('|');
+    },
+  };
+}
+
+test('com chaveiro, a chave é selada por ELE — e não pela amarra de máquina', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'selo-'));
+  const arquivo = path.join(dir, 'session.json');
+  try {
+    registrarSeloDoSistema(seloFalso());
+    const r = new RememberedKey(arquivo, () => 'maquina-1');
+    const chave = crypto.randomBytes(32);
+    r.save(chave, 15);
+
+    const bruto = JSON.parse(fs.readFileSync(arquivo, 'utf8')) as { backend?: string };
+    assert.equal(bruto.backend, 'sistema');
+    assert.deepEqual(r.load(), chave);
+  } finally {
+    registrarSeloDoSistema(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('selo de OUTRO dono não abre, e a lembrança é apagada', () => {
+  // Acontece com um backup restaurado noutra conta: o arquivo veio junto e não
+  // serve. Deixá-lo faria o mesmo tropeço em todo início.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'selo-'));
+  const arquivo = path.join(dir, 'session.json');
+  try {
+    registrarSeloDoSistema(seloFalso('ana'));
+    new RememberedKey(arquivo, () => 'm').save(crypto.randomBytes(32), 15);
+
+    registrarSeloDoSistema(seloFalso('bruno'));
+    assert.equal(new RememberedKey(arquivo, () => 'm').load(), null);
+    assert.equal(fs.existsSync(arquivo), false, 'a lembrança inútil é apagada');
+  } finally {
+    registrarSeloDoSistema(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('lembrança do SISTEMA não é lida sem chaveiro — e não é erro', () => {
+  // É o cofre sendo aberto no navegador, ou noutra sessão. Cai para a senha.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'selo-'));
+  const arquivo = path.join(dir, 'session.json');
+  try {
+    registrarSeloDoSistema(seloFalso());
+    new RememberedKey(arquivo, () => 'm').save(crypto.randomBytes(32), 15);
+    registrarSeloDoSistema(null);
+    assert.equal(new RememberedKey(arquivo, () => 'm').load(), null);
+  } finally {
+    registrarSeloDoSistema(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('chaveiro indisponível cai para a amarra de máquina, sem perder a função', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'selo-'));
+  const arquivo = path.join(dir, 'session.json');
+  try {
+    registrarSeloDoSistema(seloFalso('ana', false));
+    const r = new RememberedKey(arquivo, () => 'maquina-1');
+    const chave = crypto.randomBytes(32);
+    r.save(chave, 15);
+    const bruto = JSON.parse(fs.readFileSync(arquivo, 'utf8')) as { backend?: string };
+    assert.notEqual(bruto.backend, 'sistema');
+    assert.deepEqual(r.load(), chave);
+  } finally {
+    registrarSeloDoSistema(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('sem máquina E sem chaveiro, não há onde lembrar', () => {
+  registrarSeloDoSistema(null);
+  assert.equal(new RememberedKey('/tmp/nao-usado.json', () => '').available(), false);
+  registrarSeloDoSistema(seloFalso());
+  assert.equal(new RememberedKey('/tmp/nao-usado.json', () => '').available(), true);
+  registrarSeloDoSistema(null);
 });
