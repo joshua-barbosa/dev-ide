@@ -20,7 +20,29 @@ export interface ProcessosPanelProps {
   readonly podeMatar: boolean;
   onRecarregar(): void;
   onMatar(processo: ProcessoDoBanco): void;
+  /** Segundos entre atualizações automáticas; `0` = desligada (T069). */
+  readonly intervalo: number;
+  onIntervalo(segundos: number): void;
+  /** Os marcados para o kill em lote (T071). */
+  readonly marcados: ReadonlySet<string>;
+  onMarcar(ids: ReadonlySet<string>): void;
+  onMatarLote(): void;
 }
+
+/**
+ * As cadências oferecidas.
+ *
+ * Começa em 2s, e não em 1s: a lista de processos é uma consulta ao banco DELE,
+ * e a diferença entre um e dois segundos não muda o que se enxerga — mas dobra
+ * o que se pesa no servidor.
+ */
+const CADENCIAS: readonly { readonly valor: number; readonly rotulo: string }[] = [
+  { valor: 0, rotulo: 'desligada' },
+  { valor: 2, rotulo: '2s' },
+  { valor: 5, rotulo: '5s' },
+  { valor: 10, rotulo: '10s' },
+  { valor: 30, rotulo: '30s' },
+];
 
 /** `2h 13m`, `4m 02s`, `37s` — o que se lê de relance. */
 function duracao(segundos: number | null): string {
@@ -33,7 +55,11 @@ function duracao(segundos: number | null): string {
 
 export function ProcessosPanel({
   processos, carregando, erro, podeMatar, onRecarregar, onMatar,
+  intervalo, onIntervalo, marcados, onMarcar, onMatarLote,
 }: ProcessosPanelProps) {
+  /** Os que dá para marcar: a conexão da própria IDE fica de fora. */
+  const matáveis = (processos ?? []).filter((p) => !p.euMesmo);
+  const todosMarcados = matáveis.length > 0 && matáveis.every((p) => marcados.has(p.id));
   return (
     <Box
       sx={{
@@ -64,6 +90,48 @@ export function ProcessosPanel({
           {processos === null ? '' : `${processos.length} processo(s)`}
           {carregando ? ' · carregando…' : ''}
         </Box>
+        {/* A cadência da atualização automática (T069). */}
+        {processos !== null && (
+          <Box
+            component="select"
+            data-cadencia
+            aria-label="Atualizar sozinho"
+            value={String(intervalo)}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+              onIntervalo(Number(e.target.value))
+            }
+            sx={{
+              bgcolor: 'transparent', color: 'inherit', font: 'inherit', fontSize: 11,
+              border: 1, borderColor: 'divider', borderRadius: 0.5, px: 0.5, py: '1px',
+            }}
+          >
+            {CADENCIAS.map((c) => (
+              <option key={c.valor} value={c.valor}>
+                {c.valor === 0 ? 'sem atualizar' : `a cada ${c.rotulo}`}
+              </option>
+            ))}
+          </Box>
+        )}
+
+        {/* O kill em lote (T071). Só aparece com algo marcado — um botão
+            vermelho permanente numa tela de produção é um convite ao acidente. */}
+        {podeMatar && marcados.size > 0 && (
+          <Box
+            component="button"
+            type="button"
+            data-matar-lote
+            onClick={onMatarLote}
+            sx={{
+              border: 1, borderColor: 'error.main', bgcolor: 'transparent',
+              color: 'error.main', font: 'inherit', fontSize: 11, cursor: 'pointer',
+              px: 0.75, py: '1px', borderRadius: 0.5,
+              '&:hover': { bgcolor: 'action.hover' },
+            }}
+          >
+            Matar {marcados.size} marcado(s)
+          </Box>
+        )}
+
         {!podeMatar && processos !== null && (
           <Box component="span" sx={{ ml: 'auto' }}>
             somente-leitura: matar processo está desligado
@@ -78,19 +146,37 @@ export function ProcessosPanel({
       ) : processos.length === 0 ? (
         <Aviso texto="Nenhum processo." />
       ) : (
-        <Grade processos={processos} podeMatar={podeMatar} onMatar={onMatar} />
+        <Grade
+          processos={processos}
+          podeMatar={podeMatar}
+          onMatar={onMatar}
+          marcados={marcados}
+          todosMarcados={todosMarcados}
+          onMarcar={onMarcar}
+          matáveis={matáveis}
+        />
       )}
     </Box>
   );
 }
 
 function Grade({
-  processos, podeMatar, onMatar,
+  processos, podeMatar, onMatar, marcados, todosMarcados, onMarcar, matáveis,
 }: {
   readonly processos: readonly ProcessoDoBanco[];
   readonly podeMatar: boolean;
   onMatar(processo: ProcessoDoBanco): void;
+  readonly marcados: ReadonlySet<string>;
+  readonly todosMarcados: boolean;
+  onMarcar(ids: ReadonlySet<string>): void;
+  readonly matáveis: readonly ProcessoDoBanco[];
 }) {
+  const alternar = (id: string): void => {
+    const proximo = new Set(marcados);
+    if (proximo.has(id)) proximo.delete(id);
+    else proximo.add(id);
+    onMarcar(proximo);
+  };
   return (
     <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
       <Box
@@ -110,6 +196,23 @@ function Grade({
       >
         <thead>
           <tr>
+            {podeMatar && (
+              <th>
+                {/* Marcar todos de uma vez — menos a conexão da própria IDE,
+                    que não é matável e por isso nem entra na conta. */}
+                <Box
+                  component="input"
+                  type="checkbox"
+                  data-marcar-todos
+                  aria-label="Marcar todos os processos"
+                  checked={todosMarcados}
+                  onChange={() =>
+                    onMarcar(todosMarcados ? new Set() : new Set(matáveis.map((p) => p.id)))
+                  }
+                  sx={{ cursor: 'pointer' }}
+                />
+              </th>
+            )}
             {['Id', 'Usuário', 'Banco', 'Comando', 'Estado', 'Tempo', 'SQL'].map((c) => (
               <th key={c}>{c}</th>
             ))}
@@ -127,6 +230,23 @@ function Grade({
               // faria a contagem não bater com o que o banco diz.
               sx={p.euMesmo ? { bgcolor: 'action.selected' } : undefined}
             >
+              {podeMatar && (
+                <td>
+                  {/* A conexão da IDE não ganha caixa: marcá-la para o lote
+                      derrubaria a própria sessão no meio da operação. */}
+                  {p.euMesmo ? null : (
+                    <Box
+                      component="input"
+                      type="checkbox"
+                      data-marcar={p.id}
+                      aria-label={`Marcar o processo ${p.id}`}
+                      checked={marcados.has(p.id)}
+                      onChange={() => alternar(p.id)}
+                      sx={{ cursor: 'pointer' }}
+                    />
+                  )}
+                </td>
+              )}
               <td>{p.id}</td>
               <td>{p.usuario ?? ''}</td>
               <td>{p.banco ?? ''}</td>

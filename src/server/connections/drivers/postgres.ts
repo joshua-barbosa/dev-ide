@@ -39,6 +39,7 @@ import {
 import { estruturaDaTabela } from './postgres-estrutura';
 import { escrever, lerCelula, lerTabela } from './postgres-tabela';
 import { comandoDeCancelamento } from './cancelar';
+import { estruturaDoPostgres, logDoPostgres, metricasDoPostgres } from './postgres-manager';
 import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
 import { modeloSql, type ColunaDeModelo } from './modelos';
 import { CLI_POSTGRES } from '../../../shared/terminal/clientes/postgres';
@@ -590,6 +591,22 @@ async function connect(config: ResolvedConfig): Promise<Session> {
         sql: l.sql_texto,
         euMesmo: l.eu_mesmo,
       }));
+    },
+    /** Dashboard, Log e Structure Sync — tudo leitura (T070). */
+    serverMetrics: async () => {
+      const client = await clienteDe(principal);
+      return metricasDoPostgres(async <T,>(sql: string, valores?: readonly unknown[]) =>
+        (await client.query<T extends object ? T : never>(sql, valores as unknown[])).rows);
+    },
+    serverLog: async (limite) => {
+      const client = await clienteDe(principal);
+      return logDoPostgres(async <T,>(sql: string, valores?: readonly unknown[]) =>
+        (await client.query<T extends object ? T : never>(sql, valores as unknown[])).rows, limite);
+    },
+    structureSnapshot: async (schema) => {
+      const client = await clienteDe(principal);
+      return estruturaDoPostgres(async <T,>(sql: string, valores?: readonly unknown[]) =>
+        (await client.query<T extends object ? T : never>(sql, valores as unknown[])).rows, schema);
     },
     killProcess: async (id) => {
       if (!/^\d+$/.test(id)) throw new Error(`Id de processo inválido: ${id}.`);

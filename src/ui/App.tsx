@@ -607,6 +607,15 @@ export function App() {
                   onReordenarAba={(id, antesDe) => ws.reordenarAba(g, id, antesDe)}
                   onComando={executarComando}
                   abrirMenu={menu.abrir}
+                  // Os bancos vêm do cache da árvore: eles já foram lidos ao
+                  // expandir a conexão, e pedir de novo seria uma ida ao
+                  // servidor por uma lista que a IDE tem na mão.
+                  bancosDaConexao={(id) =>
+                    (conexoes.filhos.get(id) ?? [])
+                      .filter((n) => n.hasChildren)
+                      .map((n) => n.label)
+                  }
+                  onAbrirSql={(titulo, sql) => ws.abrirTexto(`sql:${titulo}`, titulo, sql, 'sql')}
                   confirmar={dialogs.confirmar}
                   formulario={formularioDeConexao}
                   requisitos={<TelaDeRequisitos onErro={falhaDaIde} />}

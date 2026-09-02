@@ -52,6 +52,10 @@ export interface EditorGroupProps {
   readonly qi: QuickInputController;
   /** Abre o menu de botão direito da tabela SFTP (T079). */
   abrirMenu(e: React.MouseEvent, entradas: readonly EntradaMenu[]): void;
+  /** Os bancos de uma conexão, para o Structure Sync (T070). */
+  bancosDaConexao(conexaoId: string): readonly string[];
+  /** Abre um SQL gerado numa aba do editor — quem executa é o usuário (T070). */
+  onAbrirSql(titulo: string, sql: string): void;
   /** Pergunta antes do que não tem volta — kill e excluir remoto (T079, T080). */
   confirmar(o: {
     titulo: string;
@@ -145,7 +149,7 @@ export function EditorGroup({
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
   onReordenarAba,
   onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
-  qi, abrirMenu, confirmar, abrirComando, onErroDaTabela, onMudarCaderno, onRodarBloco, onAbrirArquivo,
+  qi, abrirMenu, bancosDaConexao, onAbrirSql, confirmar, abrirComando, onErroDaTabela, onMudarCaderno, onRodarBloco, onAbrirArquivo,
   capacidadesDe, onAbrirArquivoRemoto, onAbrirTerminalDoServidor,
   onDuplicarTerminal, onConfirmarSnippet,
   onRodarCodigoDoBloco, onPedirLinguagem, vinculoDoCaderno, onTrocarVinculoDoCaderno,
@@ -345,8 +349,13 @@ export function EditorGroup({
           >
             <ProcessosHost
               aba={t}
+              ativa={ativaId === t.id}
+              bancos={bancosDaConexao(
+                String((t.meta as { connectionId?: string }).connectionId ?? '')
+              )}
               somenteLeitura={conexaoSomenteLeitura(t)}
               onConfirmar={onConfirmarEscrita}
+              onAbrirSql={onAbrirSql}
               onErro={onErroDaTabela}
             />
           </Box>

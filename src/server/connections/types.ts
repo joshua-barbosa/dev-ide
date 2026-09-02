@@ -40,6 +40,12 @@ import type {
   TreeNode,
   VaultState,
 } from '../../shared/contracts';
+import type {
+  LinhaDeLog,
+  MetricaDoBanco,
+  RetratoDaEstrutura,
+} from '../../shared/sql/manager';
+export type { LinhaDeLog, MetricaDoBanco, RetratoDaEstrutura } from '../../shared/sql/manager';
 export type {
   TableColumn,
   TablePage,
@@ -378,6 +384,28 @@ export interface Session {
   readonly processList?: () => Promise<readonly ProcessoDoBanco[] | null>;
   /** Mata um processo. Só existe onde `processList` existe. */
   readonly killProcess?: (id: string) => Promise<void>;
+  /**
+   * Os números do servidor, para o Dashboard (T070).
+   *
+   * Opcional como o resto: SQLite é um arquivo e não tem "servidor" para medir,
+   * e declarar isso é melhor que devolver uma lista vazia que parece medição
+   * que deu zero.
+   */
+  readonly serverMetrics?: () => Promise<readonly MetricaDoBanco[]>;
+  /**
+   * As últimas linhas do log do servidor (T070).
+   *
+   * `null` quando o banco não expõe o log por SQL — é o caso comum, e a tela
+   * diz isso em vez de mostrar um painel vazio que parece defeito.
+   */
+  readonly serverLog?: (limite: number) => Promise<readonly LinhaDeLog[] | null>;
+  /**
+   * O retrato da estrutura de um banco, para o Structure Sync (T070).
+   *
+   * Leitura pura: quem compara é `shared/sql/manager.ts`, e quem executa o SQL
+   * gerado é o usuário, no editor. A IDE não aplica o que ela mesma gerou.
+   */
+  readonly structureSnapshot?: (database: string) => Promise<RetratoDaEstrutura>;
   /**
    * Uma linha sobre o que há do outro lado, para a árvore mostrar ao lado do
    * nome da conexão (spec 052, AC-11).

@@ -16,6 +16,7 @@ import {
 import { escrever, lerCelula, lerTabela } from './mysql-tabela';
 import { comandoDeCancelamento } from './cancelar';
 import { estruturaDaTabela } from './mysql-estrutura';
+import { estruturaDoMysql, logDoMysql, metricasDoMysql } from './mysql-manager';
 import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
 import { executar, qualificar, query } from './mysql-base';
 import {
@@ -377,6 +378,19 @@ async function connect(config: ResolvedConfig): Promise<Session> {
         sql: l.sql_texto,
         euMesmo: Number(l.eu_mesmo) === 1,
       }));
+    },
+    /** Dashboard, Log e Structure Sync — tudo leitura (T070). */
+    serverMetrics: async () => {
+      exigirViva();
+      return metricasDoMysql(<T,>(sql: string) => query<T>(conn, sql));
+    },
+    serverLog: async (limite) => {
+      exigirViva();
+      return logDoMysql(<T,>(sql: string) => query<T>(conn, sql), limite);
+    },
+    structureSnapshot: async (database) => {
+      exigirViva();
+      return estruturaDoMysql(<T,>(sql: string) => query<T>(conn, sql), database);
     },
     killProcess: async (id) => {
       exigirViva();

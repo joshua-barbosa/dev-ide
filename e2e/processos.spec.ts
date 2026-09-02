@@ -49,3 +49,53 @@ test('a aba de processos NÃO mostra o ▷ da barra de abas', async ({ page }) =
   await abrirProcessos(page);
   await expect(page.getByRole('button', { name: 'Executar consulta' })).toHaveCount(0);
 });
+
+// ---------------------------------------------------------------------------
+// Lote D: as divisórias, a cadência e o Structure Sync (T069, T070, T071)
+//
+// O SQLite continua sendo o alvo — é o que a suíte tem sem depender de rede. Ele
+// não tem processos nem servidor, e é isso que torna estes testes possíveis:
+// eles provam o que a IDE DIZ quando o banco não oferece o conceito, que é
+// justamente onde este tipo de tela mente.
+// ---------------------------------------------------------------------------
+
+test('a aba tem as duas divisórias: Processos e Manager (T070)', async ({ page }) => {
+  await abrirProcessos(page);
+  await expect(page.locator('[data-divisoria-do-banco="processos"]')).toBeVisible();
+  await expect(page.locator('[data-divisoria-do-banco="manager"]')).toBeVisible();
+});
+
+test('a atualização automática nasce DESLIGADA (T069)', async ({ page }) => {
+  // O padrão é a decisão do item: cada leitura é uma consulta ao banco de
+  // produção dele. Quem está caçando um processo travado liga.
+  await abrirProcessos(page);
+  const cadencia = page.locator('[data-cadencia]');
+  if ((await cadencia.count()) === 0) return; // banco sem o conceito: nada a medir
+  await expect(cadencia).toHaveValue('0');
+  await expect(cadencia.locator('option')).toContainText(['sem atualizar']);
+});
+
+test('o Manager abre nas três divisórias que ele pediu (T070)', async ({ page }) => {
+  await abrirProcessos(page);
+  await page.locator('[data-divisoria-do-banco="manager"]').click();
+  for (const id of ['dashboard', 'log', 'sync']) {
+    await expect(page.locator(`[data-divisoria="${id}"]`)).toBeVisible();
+  }
+});
+
+test('o Structure Sync DIZ que não executa nada (T070)', async ({ page }) => {
+  // É a decisão que define o item, e ela precisa estar na tela — não só no
+  // código. Comparar e aplicar são gestos diferentes.
+  await abrirProcessos(page);
+  await page.locator('[data-divisoria-do-banco="manager"]').click();
+  await page.locator('[data-divisoria="sync"]').click();
+  await expect(page.locator('[data-divisoria="sync"]').locator('..').locator('..'))
+    .toContainText('ela não executa nada');
+});
+
+test('o botão de matar em lote SÓ aparece com algo marcado (T071)', async ({ page }) => {
+  // Um botão vermelho permanente numa tela de produção é um convite ao
+  // acidente.
+  await abrirProcessos(page);
+  await expect(page.locator('[data-matar-lote]')).toHaveCount(0);
+});

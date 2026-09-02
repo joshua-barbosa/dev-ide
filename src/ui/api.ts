@@ -1,6 +1,7 @@
 import type { Tarefa } from '../shared/tarefas';
 import type { Capacidade, ModoDeFormatacao } from '../shared/formatacao';
 import type { EstadoDaFerramenta } from '../shared/ferramentas';
+import type { LinhaDeLog, MetricaDoBanco, RetratoDaEstrutura } from '../shared/sql/manager';
 import type { ConfiguracaoDoEmmet } from '../shared/emmet';
 // Cliente da API REST.
 //
@@ -622,6 +623,19 @@ export const Api = {
     request<TableStructure>('GET', comCaminho(`${conexoes}/${id}/structure`, nodePath)),
   processList: (id: string) =>
     request<ProcessoDoBanco[] | null>('GET', `${conexoes}/${id}/processes`),
+  // A aba Manager (T070). Tudo leitura — o Structure Sync devolve TEXTO.
+  managerMetrics: (id: string) =>
+    request<readonly MetricaDoBanco[]>('GET', `${conexoes}/${id}/manager/metrics`),
+  managerLog: (id: string, limite = 200) =>
+    request<readonly LinhaDeLog[] | null>(
+      'GET',
+      `${conexoes}/${id}/manager/log?limit=${limite}`
+    ),
+  managerStructure: (id: string, database: string) =>
+    request<RetratoDaEstrutura>(
+      'GET',
+      `${conexoes}/${id}/manager/structure?database=${encodeURIComponent(database)}`
+    ),
   killProcess: (id: string, pid: string) =>
     request<{ morto: string }>('POST', `${conexoes}/${id}/processes/${encodeURIComponent(pid)}/kill`),
   /**

@@ -634,6 +634,38 @@ export function createConnectionsRouter(
     res.json(ok(session.alterCapabilities()));
   }));
 
+  // ---- A aba Manager: Dashboard, Log e Structure Sync (T070) ---------------
+  //
+  // As três são LEITURA. O Structure Sync devolve o SQL como TEXTO: quem aplica
+  // é ele, no editor. Gerar e executar no mesmo clique seria a IDE mudando o
+  // banco por conta própria.
+
+  router.get('/:id/manager/metrics', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (session.serverMetrics === undefined) {
+      throw new Error(`A conexão "${req.params.id}" não sabe se medir.`);
+    }
+    res.json(ok(await session.serverMetrics()));
+  }));
+
+  router.get('/:id/manager/log', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (session.serverLog === undefined) {
+      res.json(ok(null));
+      return;
+    }
+    const limite = Number(req.query.limit ?? 200);
+    res.json(ok(await session.serverLog(Number.isFinite(limite) ? limite : 200)));
+  }));
+
+  router.get('/:id/manager/structure', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (session.structureSnapshot === undefined) {
+      throw new Error(`A conexão "${req.params.id}" não sabe ler a própria estrutura.`);
+    }
+    res.json(ok(await session.structureSnapshot(requireString(req.query.database, 'database'))));
+  }));
+
   /** Os processos do servidor (spec 047). `null` = o banco não tem o conceito. */
   router.get('/:id/processes', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
