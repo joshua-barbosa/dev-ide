@@ -106,3 +106,53 @@ test('duas linhas IDÊNTICAS não se confundem: a identidade é a posição (P5)
 
   expect(await lerDoDisco(page, nome)).toBe('valor\nigual\nmudou\n');
 });
+
+// ---------------------------------------------------------------------------
+// O PDF (defeito relatado em 02/09/2026: "PDF não abriu")
+// ---------------------------------------------------------------------------
+
+test('o PDF é servido como PDF, e o quadro NÃO é sandbox', async ({ page }) => {
+  // O `sandbox` do quadro era o que impedia o Chrome de instanciar o próprio
+  // visualizador de PDF. Quem garante a segurança aqui é o SERVIDOR: o tipo sai
+  // de uma tabela nossa e vai com `nosniff`, então um arquivo nunca vira HTML.
+  //
+  // O DESENHO do PDF não dá para afirmar daqui — o Chromium do Playwright não
+  // traz o visualizador. O que se prova é o contrato: os cabeçalhos certos e a
+  // ausência do atributo que quebrava.
+  const nome = novoNome('pdf');
+  // Um PDF mínimo, escrito à mão: não depende de nenhum arquivo de fixture.
+  await page.evaluate(async (n) => {
+    const w = await fetch('/api/workspace');
+    const { pasta } = (await w.json()).data as { pasta: string };
+    await fetch('/api/file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: `${pasta}/${n}`,
+        content: '%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n',
+      }),
+    });
+  }, nome);
+  await abrirArquivo(page, nome);
+
+  const quadro = page.locator('[data-visualizador="pdf"]');
+  await expect(quadro).toBeVisible({ timeout: 10_000 });
+  await expect(quadro).not.toHaveAttribute('sandbox', /.*/);
+
+  const cabecalhos = await page.evaluate(async (n) => {
+    const w = await fetch('/api/workspace');
+    const { pasta } = (await w.json()).data as { pasta: string };
+    const r = await fetch(`/api/file/raw?path=${encodeURIComponent(`${pasta}/${n}`)}`);
+    return {
+      status: r.status,
+      tipo: r.headers.get('content-type'),
+      nosniff: r.headers.get('x-content-type-options'),
+    };
+  }, nome);
+
+  expect(cabecalhos.status).toBe(200);
+  expect(cabecalhos.tipo).toBe('application/pdf');
+  // É ESTE cabeçalho que substitui o sandbox: sem ele, o navegador poderia
+  // adivinhar outro tipo e tratar o arquivo como script.
+  expect(cabecalhos.nosniff).toBe('nosniff');
+});

@@ -57,6 +57,23 @@ export interface ViewState {
   readonly selectionEnd: number;
   readonly scrollTop: number;
   readonly scrollLeft: number;
+  /**
+   * TODAS as seleções, a primária primeiro — em pares `[início, fim]`.
+   *
+   * Nasceu de um defeito que ele reproduziu: *"ele perde o cursor quando eu
+   * clico na aba… cada aba tem a sua posição de cursor e multi-cursor"*.
+   *
+   * A causa era esta estrutura guardar **uma seleção só**: `getSelection()`
+   * devolve a primária, e `setSelection()` colapsa o resto. Trocar de aba
+   * salvava um cursor e restaurava um cursor — os outros morriam na troca, e
+   * não havia como saber que tinham existido.
+   *
+   * Opcional porque **é dado gravado**: a sessão de abas guarda este objeto e
+   * sobrevive ao F5. Ausente é uma aba salva por uma versão anterior, e aí vale
+   * o par `selectionStart`/`selectionEnd` — que continua sendo escrito pelo
+   * mesmo motivo.
+   */
+  readonly selecoes?: readonly (readonly [number, number])[];
 }
 
 export interface EditorHandle {
@@ -557,15 +574,24 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
       getViewState: () => {
         const ed = editor.current;
         const modelo = ed?.getModel();
-        const sel = ed?.getSelection();
-        if (ed === null || modelo === undefined || modelo === null || sel === undefined || sel === null) {
+        // `getSelections`, no plural: com multi-cursor há uma por cursor, e a
+        // versão no singular devolvia só a primária — era o defeito.
+        const todas = ed?.getSelections() ?? null;
+        const sel = todas?.[0];
+        if (ed === null || modelo === undefined || modelo === null || todas === null || sel === undefined) {
           return { selectionStart: 0, selectionEnd: 0, scrollTop: 0, scrollLeft: 0 };
         }
+        const emOffsets = (s: monaco.Selection): readonly [number, number] => [
+          modelo.getOffsetAt(s.getStartPosition()),
+          modelo.getOffsetAt(s.getEndPosition()),
+        ];
         return {
+          // O par continua sendo escrito: é o que uma versão anterior lê.
           selectionStart: modelo.getOffsetAt(sel.getStartPosition()),
           selectionEnd: modelo.getOffsetAt(sel.getEndPosition()),
           scrollTop: ed.getScrollTop(),
           scrollLeft: ed.getScrollLeft(),
+          selecoes: todas.map(emOffsets),
         };
       },
 
@@ -578,9 +604,20 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
           ed.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
           return;
         }
-        const inicio = modelo.getPositionAt(view.selectionStart);
-        const fim = modelo.getPositionAt(view.selectionEnd);
-        ed.setSelection(monaco.Selection.fromPositions(inicio, fim));
+        const par = (a: number, b: number): monaco.Selection =>
+          monaco.Selection.fromPositions(modelo.getPositionAt(a), modelo.getPositionAt(b));
+
+        // `setSelections`, no plural, quando há mais de uma: `setSelection`
+        // colapsaria o multi-cursor para um cursor só.
+        //
+        // A lista pode faltar — aba gravada por uma versão anterior —, e aí
+        // vale o par de sempre. Uma lista VAZIA também cai aqui: restaurar
+        // "nenhuma seleção" deixaria o editor sem cursor nenhum.
+        if (view.selecoes !== undefined && view.selecoes.length > 0) {
+          ed.setSelections(view.selecoes.map(([a, b]) => par(a, b)));
+        } else {
+          ed.setSelection(par(view.selectionStart, view.selectionEnd));
+        }
         ed.setScrollPosition({ scrollTop: view.scrollTop, scrollLeft: view.scrollLeft });
       },
 

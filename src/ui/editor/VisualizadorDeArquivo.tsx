@@ -90,10 +90,23 @@ function Pdf({ caminho }: { readonly caminho: string }) {
       component="iframe"
       src={urlBruta(caminho)}
       title={caminho}
-      // `sandbox` vazio: o PDF é desenhado pelo visualizador do navegador, que
-      // não precisa de script nem de acesso à origem. Um PDF pode conter
-      // JavaScript, e sem isto ele rodaria com as permissões da IDE.
-      sandbox=""
+      // SEM `sandbox`, e a razão é que ele não protegia nada aqui.
+      //
+      // Duas tentativas erradas antes desta. `sandbox=""` não abria o PDF: o
+      // visualizador do Chrome é ele próprio uma página com script, e sem
+      // `allow-scripts` o Chrome não o instancia — aparecia o ícone de
+      // documento quebrado, que foi o que ele viu. E `allow-scripts` sozinho
+      // também não basta: o visualizador precisa de um contexto de mesma
+      // origem. Somar `allow-same-origin` seria pior que não ter sandbox — a
+      // combinação permite ao próprio quadro remover o sandbox.
+      //
+      // **Quem garante a segurança é o servidor, e não este atributo.** O
+      // `/api/file/raw` responde com `Content-Type` vindo de uma TABELA nossa e
+      // com `X-Content-Type-Options: nosniff`: um `.pdf` é servido como PDF e o
+      // navegador não pode adivinhar outra coisa. Um arquivo nunca vira HTML
+      // aqui, e é isso — não o `sandbox` — que impede um script de alcançar a
+      // página. O JavaScript que um PDF possa conter roda dentro do
+      // visualizador do Chrome, que já o isola do documento que o embute.
       sx={{ flex: 1, minHeight: 0, border: 0, bgcolor: tokens.bgEditor }}
     />
   );
