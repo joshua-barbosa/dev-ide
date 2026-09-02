@@ -443,6 +443,36 @@ export function createConnectionsRouter(
     res.json(ok(await session.monitor.sample()));
   }));
 
+  /**
+   * Encerra um processo DA MÁQUINA (T080).
+   *
+   * `/host/processes`, e não `/processes`: este último já é o do BANCO, desde a
+   * spec 047. São dois conceitos diferentes com o mesmo nome — a conexão de um
+   * servidor MySQL tem as duas coisas —, e dois `router.post` no mesmo caminho
+   * fariam o Express atender sempre o primeiro e ignorar o outro, calado.
+   *
+   * `POST`, e não `DELETE`: o sinal faz parte do pedido, e corpo em `DELETE` é
+   * território cinzento que proxy nenhum trata igual.
+   *
+   * A confirmação é da INTERFACE — é o que a nota dele pede, *"com o kill à
+   * vista e confirmação, como o KILL do banco"*. Aqui a fronteira só valida.
+   */
+  router.post('/:id/host/processes/:pid/kill', wrap(async (req, res) => {
+    const session = await pool.acquire(req.params.id);
+    if (session.monitor?.matar === undefined) {
+      throw new Error(`A conexão "${req.params.id}" não sabe encerrar processos.`);
+    }
+    // A mesma regra do kill do banco: matar um processo MUDA o servidor, e o
+    // sentido da marca é "esta conexão não muda nada".
+    if (vault.list().find((c) => c.id === req.params.id)?.readOnly === true) {
+      throw new Error('Esta conexão está marcada como somente-leitura.');
+    }
+    const sinal = req.body?.sinal === 'KILL' ? 'KILL' : 'TERM';
+    const pid = Number(req.params.pid);
+    await session.monitor.matar(pid, sinal);
+    res.json(ok({ pid, sinal }));
+  }));
+
   router.get('/:id/describe', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
     res.json(ok(typeof session.describe === 'function' ? await session.describe() : null));

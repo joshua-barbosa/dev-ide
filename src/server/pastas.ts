@@ -232,7 +232,19 @@ function regrasAte(raiz: string, dir: string): readonly Regra[] {
  */
 export function varrerArquivos(
   raiz: string,
-  opcoes: { readonly extensoes?: ReadonlySet<string>; readonly max?: number } = {}
+  opcoes: {
+    readonly extensoes?: ReadonlySet<string>;
+    readonly max?: number;
+    /**
+     * Traz TUDO, inclusive o que o `.gitignore` esconde (T090).
+     *
+     * Existe para uma coisa só: contar quantos arquivos o filtro tirou, e
+     * dizer o número a quem está subindo uma pasta para o servidor. Filtro
+     * silencioso num upload é o pior desfecho — a pessoa acha que mandou a
+     * pasta inteira.
+     */
+    readonly ignorarGitignore?: boolean;
+  } = {}
 ): { arquivos: string[]; truncated: boolean } {
   const max = opcoes.max ?? MAX_ARQUIVOS_VARRIDOS;
   const rastreados = arquivosRastreados(raiz);
@@ -267,7 +279,15 @@ export function varrerArquivos(
       }
       const full = path.join(dir, entrada.name);
       const relativo = path.relative(raiz, full).split(path.sep).join('/');
-      if (ehIgnorado(relativo, entrada.isDirectory(), regras, rastreados)) continue;
+      if (
+        opcoes.ignorarGitignore !== true &&
+        ehIgnorado(relativo, entrada.isDirectory(), regras, rastreados)
+      ) {
+        continue;
+      }
+      // Mesmo trazendo tudo, `.git` fica de fora: são milhares de objetos que
+      // não servem no destino e que nenhum arraste quis mandar.
+      if (opcoes.ignorarGitignore === true && entrada.name === '.git') continue;
 
       if (entrada.isDirectory()) andar(full, profundidade + 1, regras);
       else if (entrada.isFile()) {

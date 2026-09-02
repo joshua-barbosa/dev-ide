@@ -74,10 +74,14 @@ export interface FieldSpec {
    *
    * O valor é comparado como TEXTO — um `boolean` marcado vira `'true'` —,
    * porque é o único formato em que a condição sobrevive à ida e à volta.
+   *
+   * **`valores` ausente = "quando aquele campo estiver PREENCHIDO"** (T078). O
+   * bastion pediu isto: o host dele é o interruptor do salto, e listar os
+   * valores possíveis de um host seria listar todos os hosts do mundo.
    */
   readonly showIf?: {
     readonly campo: string;
-    readonly valores: readonly string[];
+    readonly valores?: readonly string[];
   };
 }
 
@@ -458,12 +462,15 @@ export interface HostMetrics {
     readonly usadoBytes: number;
     readonly porcentagem: number;
   } | null;
-  readonly disco: {
+  /** Todas as partições; a tela escolhe qual mostrar (T082). */
+  readonly discos: readonly {
     readonly totalBytes: number;
     readonly usadoBytes: number;
     readonly livreBytes: number;
     readonly porcentagem: number;
-  } | null;
+    readonly ponto: string;
+    readonly dispositivo: string;
+  }[];
   readonly uptimeSegundos: number | null;
   readonly carga: readonly number[] | null;
   readonly processos: readonly {

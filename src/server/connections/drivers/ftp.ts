@@ -11,6 +11,7 @@ import { Readable, Writable } from 'stream';
 import { dentroDaRaiz, ehOculto, normalizarRemoto } from '../../../shared/remoto/caminho';
 import { ordenarPorColuna } from '../../../shared/remoto/ordenacao';
 import { entradaDeFtp, type EntradaDeFtp } from './ftp-entradas';
+import { transferenciaAtiva } from './ftp-ativo';
 import { noDeEntrada } from './ssh-arvore';
 import { ICONE_DE_FTP } from '../../../shared/icons';
 import type { FieldSpec } from '../../../shared/contracts';
@@ -56,6 +57,22 @@ export const CAMPOS_FTP: readonly FieldSpec[] = [
     default: TIMEOUT_PADRAO,
   },
   {
+    name: 'mode',
+    label: 'Modo de transferência',
+    type: 'select',
+    default: 'passive',
+    options: [
+      { value: 'passive', label: 'Passivo (padrão)' },
+      { value: 'active', label: 'Ativo (o servidor conecta de volta)' },
+    ],
+    // A ressalva está AQUI, e não num comentário no código: quem escolhe o modo
+    // ativo precisa saber por que ele falha, antes de tentar.
+    help:
+      'No modo ativo é o SERVIDOR que conecta de volta na sua máquina — se ' +
+      'houver NAT ou firewall no caminho, ele falha. Só troque se o servidor ' +
+      'recusar o passivo.',
+  },
+  {
     name: 'encoding',
     label: 'Codificação',
     type: 'select',
@@ -79,6 +96,8 @@ interface ConfigFtp {
   readonly compativel: boolean;
   readonly timeout: number;
   readonly encoding: string;
+  /** `active` liga o `EPRT`/`PORT` (T084). O padrão é o passivo. */
+  readonly modo: 'passive' | 'active';
 }
 
 function lerConfig(campos: ResolvedConfig['fields']): ConfigFtp {
@@ -95,6 +114,7 @@ function lerConfig(campos: ResolvedConfig['fields']): ConfigFtp {
     compativel: campos.compatible === true,
     timeout: Number.isFinite(tempo) ? Math.max(1_000, tempo) : TIMEOUT_PADRAO,
     encoding: campos.encoding === 'latin1' ? 'latin1' : 'utf8',
+    modo: campos.mode === 'active' ? 'active' : 'passive',
   };
 }
 
@@ -122,6 +142,10 @@ async function connect(config: ResolvedConfig): Promise<Session> {
   const client = new Client(ftp.timeout);
   // O `basic-ftp` fala UTF-8 por padrão; servidor Windows antigo não.
   client.ftp.encoding = ftp.encoding === 'latin1' ? 'latin1' : 'utf8';
+  // Modo ativo (T084). O `basic-ftp` não o implementa — o README dele diz
+  // "Active Mode is not supported" —, mas expõe `prepareTransfer` como ponto de
+  // extensão, e é por ele que a nossa entra. Sem trocar a biblioteca.
+  if (ftp.modo === 'active') client.prepareTransfer = transferenciaAtiva;
   if (ftp.compativel) {
     // `MLSD` é a listagem moderna e estruturada; `LIST` é a antiga, texto solto
     // no formato do `ls`. Servidor velho só tem a segunda.

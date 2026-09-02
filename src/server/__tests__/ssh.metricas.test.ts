@@ -4,12 +4,14 @@ import {
   lerCarga,
   lerCpu,
   lerDisco,
+  lerDiscos,
   lerMemoria,
   lerProcessos,
   lerRede,
   lerUptime,
   usoDeCpu,
 } from '../connections/drivers/ssh-metricas';
+import { escolherDisco } from '../../shared/discos';
 
 // Os textos abaixo têm a FORMA do que um Debian 13 devolve — conferida contra
 // um servidor real em 2026-08-24. Os números foram trocados onde faziam conta.
@@ -95,6 +97,48 @@ test('a linha do `df -P -k` vira bytes e porcentagem', () => {
   // referência mostra neste servidor. `usado / total` daria 41,4%, e a IDE
   // discordaria do `df` que o usuário roda no terminal ao lado.
   assert.equal(d?.porcentagem, 43.6);
+});
+
+// --- T082: várias partições ------------------------------------------------
+
+const DF_COMPLETO = [
+  'Filesystem     1024-blocks      Used Available Capacity Mounted on',
+  'udev               8143104         0   8143104       0% /dev',
+  'tmpfs              1638400      2044   1636356       1% /run',
+  '/dev/sda1         97341748  40306880  52043944      44% /',
+  '/dev/sdb1        976284772 812345678 114256000      88% /mnt/dados',
+  'tmpfs              8192000         0   8192000       0% /dev/shm',
+].join('\n');
+
+test('lê TODAS as partições, e joga fora o que não é disco', () => {
+  const discos = lerDiscos(DF_COMPLETO);
+  // `udev` e `tmpfs` ficam de fora: não são disco, e enchê-los é outro assunto.
+  assert.deepEqual(discos.map((d) => d.ponto), ['/', '/mnt/dados']);
+  assert.equal(discos[1]?.dispositivo, '/dev/sdb1');
+  assert.equal(discos[1]?.porcentagem, 87.7);
+});
+
+test('ponto de montagem com espaço no nome não é cortado', () => {
+  const [d] = lerDiscos('/dev/sdc1 100 40 60 40% /mnt/disco de backup');
+  assert.equal(d?.ponto, '/mnt/disco de backup');
+});
+
+test('sem escolha, vale a MAIOR partição — e não a primeira', () => {
+  // `/` costuma ser a partição pequena do sistema; os dados estão no outro
+  // disco, e é ele que a pessoa quer ver ao abrir o Monitor.
+  const escolhido = escolherDisco(lerDiscos(DF_COMPLETO), null);
+  assert.equal(escolhido?.ponto, '/mnt/dados');
+});
+
+test('a escolha dele vence', () => {
+  assert.equal(escolherDisco(lerDiscos(DF_COMPLETO), '/')?.ponto, '/');
+});
+
+test('partição escolhida que sumiu cai na maior, sem quebrar', () => {
+  // Um disco desmontado entre duas amostras não pode deixar o Monitor vazio.
+  assert.equal(escolherDisco(lerDiscos(DF_COMPLETO), '/mnt/foi-embora')?.ponto, '/mnt/dados');
+  // Sem partição nenhuma o cartão fica vazio, e não quebra.
+  assert.equal(escolherDisco(lerDiscos('Filesystem 1024-blocks Used Available Capacity Mounted on'), '/'), null);
 });
 
 test('o cabeçalho do `df` é ignorado', () => {

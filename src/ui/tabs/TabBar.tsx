@@ -96,6 +96,8 @@ export function TabBar({
     const antesDe = alvo.current;
     limpar();
     const carga = decodificarCarga(e.dataTransfer.getData(MIME_DE_ARRASTE));
+    // Pasta não vira aba — ver a nota no `EditorGroup`.
+    if (carga?.tipo === 'arquivo' && carga.pasta === true) return;
     if (carga !== null) onSoltarNaBarra(carga, antesDe);
   };
 

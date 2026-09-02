@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import { Client, type ConnectConfig, type SFTPWrapper } from 'ssh2';
 import { explicarFalhaDeHandshake } from './ssh-diagnostico';
+import { abrirSalto } from './ssh-salto';
 import type { ConfigSsh } from './ssh-campos';
 
 /**
@@ -18,6 +19,14 @@ import type { ConfigSsh } from './ssh-campos';
  * acontecer, acontece no começo.
  */
 const LINHAS_DE_DEPURACAO = 80;
+
+/**
+ * Teto de um comando remoto.
+ *
+ * Quinze segundos é folgado para o que a IDE roda (`ps`, `df`, `cat /proc/*`) e
+ * curto para segurar uma conexão do navegador. Ver a nota em `executar`.
+ */
+const LIMITE_DE_COMANDO_MS = 15_000;
 
 export interface ResultadoDeComando {
   readonly stdout: string;
@@ -92,8 +101,19 @@ export async function conectar(config: ConfigSsh): Promise<ClienteSsh> {
   const ouvintesDeFecho: ((motivo: string) => void)[] = [];
   let pronto = false;
 
+  // O salto pelo bastion, quando houver (T078). Abre ANTES, porque o canal que
+  // ele devolve é o "socket" desta conexão — o tráfego daqui passa cifrado
+  // dentro da sessão com o bastion.
+  const salto = config.salto === undefined
+    ? null
+    : await abrirSalto(config.salto, { host: config.host, port: config.port }, config.timeoutMs);
+
   const opcoes: ConnectConfig = {
     ...opcoesDeConexao(config),
+    // Com `sock`, o `ssh2` usa o canal em vez de abrir um TCP próprio — e aí
+    // `host` e `port` já não descrevem para onde ele disca, mas continuam
+    // valendo para a verificação da chave do servidor.
+    ...(salto === null ? {} : { sock: salto.sock }),
     debug: (linha: string) => {
       depuracao.push(linha);
       if (depuracao.length > LINHAS_DE_DEPURACAO) depuracao.shift();
@@ -122,7 +142,12 @@ export async function conectar(config: ConfigSsh): Promise<ClienteSsh> {
   const avisarFecho = (motivo: string): void => {
     for (const l of ouvintesDeFecho) l(motivo);
   };
-  client.on('close', () => avisarFecho('a conexão SSH foi encerrada'));
+  client.on('close', () => {
+    // O bastion vai junto: manter a sessão de fora viva depois que a de dentro
+    // morreu seria vazar uma conexão por desconexão.
+    salto?.fechar();
+    avisarFecho('a conexão SSH foi encerrada');
+  });
   client.on('error', (erro: Error) => {
     if (pronto) avisarFecho(erro.message);
   });
@@ -137,6 +162,21 @@ export async function conectar(config: ConfigSsh): Promise<ClienteSsh> {
           }
           let stdout = '';
           let stderr = '';
+
+          /**
+           * Um comando não pode durar para sempre.
+           *
+           * Sem este limite, um canal que nunca fecha — servidor pendurado,
+           * rede que engoliu o pacote — deixava a promessa em aberto. E o
+           * Monitor pede métricas UMA VEZ POR SEGUNDO: em seis segundos as
+           * seis conexões que o navegador abre por host estavam todas presas, e
+           * aí nenhuma requisição saía, nem a de desconectar. Era o caso dele:
+           * *"travou, nem consigo dar desconectar"*.
+           */
+          const relogio = setTimeout(() => {
+            canal.close();
+            rejeitar(new Error(`O comando não respondeu em ${LIMITE_DE_COMANDO_MS / 1000}s.`));
+          }, LIMITE_DE_COMANDO_MS);
           // Teto de bytes: um `cat` num arquivo de log de 2 GB não pode virar
           // uma string de 2 GB no processo da IDE.
           const juntar = (atual: string, pedaco: Buffer): string =>
@@ -148,7 +188,10 @@ export async function conectar(config: ConfigSsh): Promise<ClienteSsh> {
           canal.stderr.on('data', (d: Buffer) => {
             stderr = juntar(stderr, d);
           });
-          canal.on('close', (code: number | null) => resolver({ stdout, stderr, code }));
+          canal.on('close', (code: number | null) => {
+            clearTimeout(relogio);
+            resolver({ stdout, stderr, code });
+          });
         });
       }),
 

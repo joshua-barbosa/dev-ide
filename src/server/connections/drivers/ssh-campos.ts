@@ -37,6 +37,34 @@ export interface ConfigSsh {
   readonly shell?: string;
   readonly algoritmos: AlgoritmosSsh;
   readonly timeoutMs: number;
+  /**
+   * O salto por um bastion, quando houver (T078).
+   *
+   * `undefined` = conexão direta, que é o caso comum. A presença deste campo é
+   * o que liga o salto — um interruptor separado seria um estado a mais para
+   * discordar do preenchimento.
+   */
+  readonly salto?: ConfigDeSalto;
+}
+
+/**
+ * O servidor intermediário — o *bastion*, ou *jump host* (T078).
+ *
+ * Uma máquina que se alcança da internet e que alcança as que não se alcançam.
+ * O SSH chama isso de `ProxyJump` (`ssh -J`), e é como quase toda rede séria
+ * expõe o que está atrás dela.
+ *
+ * **Só senha e chave**, e não o agente: o agente do sistema já é oferecido no
+ * salto principal, e duplicá-lo aqui abriria a porta para dois agentes
+ * diferentes na mesma conexão — confusão sem ganho.
+ */
+export interface ConfigDeSalto {
+  readonly host: string;
+  readonly port: number;
+  readonly username: string;
+  readonly password?: string;
+  readonly privateKeyPath?: string;
+  readonly passphrase?: string;
 }
 
 export const PORTA_PADRAO = 22;
@@ -104,11 +132,36 @@ export function lerConfigSsh(campos: Readonly<Record<string, FieldValue>>): Conf
     timeoutMs: Number.isFinite(Number(campos.timeout))
       ? Math.max(1_000, Number(campos.timeout))
       : TIMEOUT_PADRAO,
+    ...(lerSalto(campos) === null ? {} : { salto: lerSalto(campos) as ConfigDeSalto }),
+  };
+}
+
+/**
+ * O salto, ou `null` quando não há.
+ *
+ * O HOST é o que decide: sem ele não há para onde saltar, e os outros campos
+ * preenchidos sozinhos não formam um salto. Isso também é o que faz apagar o
+ * host desligar o bastion sem precisar limpar o resto.
+ */
+function lerSalto(campos: Readonly<Record<string, FieldValue>>): ConfigDeSalto | null {
+  const host = texto(campos.jump_host);
+  if (host === undefined) return null;
+  const porta = Number(campos.jump_port);
+  return {
+    host,
+    port: Number.isFinite(porta) && porta > 0 ? porta : PORTA_PADRAO,
+    // Sem usuário próprio, vale o do destino: é o caso mais comum, e obrigar a
+    // repetir o mesmo nome duas vezes é atrito à toa.
+    username: texto(campos.jump_username) ?? texto(campos.username) ?? 'root',
+    password: texto(campos.jump_password),
+    privateKeyPath: texto(campos.jump_private_key_path),
+    passphrase: texto(campos.jump_passphrase),
   };
 }
 
 const SECAO_AVANCADO = 'Avançado';
 const SECAO_ALGORITMO = 'Algoritmo';
+const SECAO_SALTO = 'SSH Tunnel';
 
 /**
  * A declaração que a tela obedece.
@@ -248,6 +301,60 @@ const CAMPOS_BASE: readonly FieldSpec[] = [
     section: SECAO_ALGORITMO,
     placeholder: 'em branco = o padrão',
     help: 'Servidor antigo costuma exigir ssh-rsa.',
+  },
+
+  // ---- SSH Tunnel: o salto por um bastion (T078) --------------------------
+  //
+  // O host é o interruptor: preenchido, o salto vale; em branco, a conexão é
+  // direta. Por isso os demais campos só aparecem depois dele — um formulário
+  // que pede porta e senha de um bastion que não existe é ruído.
+  {
+    name: 'jump_host',
+    label: 'Host do bastion',
+    type: 'string',
+    section: SECAO_SALTO,
+    placeholder: 'em branco = conexão direta',
+    help: 'A máquina intermediária. É o `ssh -J` / `ProxyJump` do OpenSSH.',
+  },
+  {
+    name: 'jump_port',
+    label: 'Porta do bastion',
+    type: 'number',
+    section: SECAO_SALTO,
+    default: PORTA_PADRAO,
+    showIf: { campo: 'jump_host' },
+  },
+  {
+    name: 'jump_username',
+    label: 'Usuário no bastion',
+    type: 'string',
+    section: SECAO_SALTO,
+    placeholder: 'em branco = o mesmo do destino',
+    showIf: { campo: 'jump_host' },
+  },
+  {
+    name: 'jump_private_key_path',
+    label: 'Chave privada do bastion',
+    type: 'path',
+    section: SECAO_SALTO,
+    placeholder: 'em branco = a mesma do destino',
+    showIf: { campo: 'jump_host' },
+  },
+  {
+    name: 'jump_passphrase',
+    label: 'Passphrase da chave do bastion',
+    type: 'password',
+    secret: true,
+    section: SECAO_SALTO,
+    showIf: { campo: 'jump_host' },
+  },
+  {
+    name: 'jump_password',
+    label: 'Senha no bastion',
+    type: 'password',
+    secret: true,
+    section: SECAO_SALTO,
+    showIf: { campo: 'jump_host' },
   },
 ];
 

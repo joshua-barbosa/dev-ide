@@ -11,7 +11,7 @@
 import {
   lerCarga,
   lerCpu,
-  lerDisco,
+  lerDiscos,
   lerMemoria,
   lerProcessos,
   lerRede,
@@ -35,7 +35,10 @@ const COMANDO = [
   `echo ${SEP}`,
   'cat /proc/meminfo 2>/dev/null | head -5',
   `echo ${SEP}`,
-  'df -P -k / 2>/dev/null',
+  // TODAS as partições (T082), e não só a raiz: num servidor de verdade os
+  // dados quase nunca estão em `/`, e mostrar só ela dizia "o disco está
+  // tranquilo" com o `/mnt` lotado ao lado.
+  'df -P -k 2>/dev/null',
   `echo ${SEP}`,
   'cat /proc/uptime 2>/dev/null',
   `echo ${SEP}`,
@@ -68,12 +71,37 @@ export function criarMonitorRemoto(
         // duas leituras. A tela mostra "—" em vez de um zero convincente.
         cpu,
         memoria: lerMemoria(meminfo),
-        disco: lerDisco(df),
+        discos: lerDiscos(df),
         uptimeSegundos: lerUptime(uptime),
         carga: lerCarga(loadavg),
         processos: lerProcessos(ps),
         rede: lerRede(netdev),
       };
+    },
+
+    /**
+     * `kill` no servidor (T080).
+     *
+     * O PID é conferido como NÚMERO antes de virar comando. Ele vem da lista
+     * que o próprio `ps` devolveu, mas essa lista atravessa a rede e volta pelo
+     * cliente — e um `pid` que chegasse como `1; rm -rf /` seria um comando, e
+     * não um número. É a mesma regra de fronteira do resto do servidor.
+     *
+     * A saída de erro sobe COMO VEIO: `Operation not permitted` diz que falta
+     * permissão, e `No such process` diz que ele já morreu. Trocar as duas por
+     * "não foi possível" apagaria a única informação que resolve.
+     */
+    matar: async (pid: number, sinal: 'TERM' | 'KILL'): Promise<void> => {
+      if (!Number.isInteger(pid) || pid <= 1) {
+        throw new Error(`PID inválido: ${String(pid)}.`);
+      }
+      // Sem `2>&1`: com ele a mensagem iria para o `stdout` e a checagem do
+      // `stderr` abaixo nunca veria nada — o kill falharia em silêncio.
+      const { stderr, code } = await executar(`kill -${sinal} ${pid}`);
+      const saida = stderr.trim();
+      if (code !== 0 || saida !== '') {
+        throw new Error(saida === '' ? `kill -${sinal} ${pid} falhou.` : saida);
+      }
     },
   };
 }

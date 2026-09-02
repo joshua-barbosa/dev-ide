@@ -228,6 +228,27 @@ export const Api = {
     request<SymbolInfo[]>('GET', `/api/projects/${encodeURIComponent(project)}/symbols`),
   readFile: (path: string) =>
     request<{ path: string; content: string }>('GET', `/api/file?path=${encodeURIComponent(path)}`),
+  /**
+   * Um arquivo LOCAL em bytes, pela rota que a imagem e o PDF já usam (T090).
+   *
+   * Serve para arrastar um arquivo da árvore da IDE até o SFTP: em texto, um
+   * `.png` chegaria corrompido ao servidor.
+   */
+  /** Os arquivos de uma pasta local, para subi-la ao servidor (T090). */
+  arquivosDaPasta: (path: string) =>
+    request<{
+      files: { path: string; relative: string; bytes: number }[];
+      ignored: number;
+      truncated: boolean;
+    }>('GET', `/api/workspace/folder-files?path=${encodeURIComponent(path)}`),
+  lerBytesLocais: async (path: string): Promise<Uint8Array> => {
+    const r = await fetch(`/api/file/raw?path=${encodeURIComponent(path)}`);
+    if (!r.ok || (r.headers.get('Content-Type') ?? '').includes('application/json')) {
+      const payload = (await r.json()) as { error: string | null };
+      throw new Error(payload.error ?? `Falha ao ler "${path}".`);
+    }
+    return new Uint8Array(await r.arrayBuffer());
+  },
   saveFile: (path: string, content: string) =>
     request<{ path: string; bytes: number }>('POST', '/api/file', { path, content }),
   run: (payload: Record<string, unknown>) => request<RunResult>('POST', '/api/run', payload),
@@ -443,6 +464,24 @@ export const Api = {
     const payload = (await r.json()) as { success: boolean; error: string | null };
     if (!payload.success) throw new Error(payload.error ?? 'Falha ao enviar.');
   },
+  /**
+   * Os bytes crus de um arquivo remoto (T089).
+   *
+   * Fora do `request` genérico, como o `enviarArquivoRemoto`: aquele espera
+   * JSON, e aqui o corpo é binário. Embrulhá-lo em base64 custaria um terço a
+   * mais de tráfego por arquivo, numa operação que baixa centenas deles.
+   */
+  lerBytesRemotos: async (id: string, caminho: string): Promise<Uint8Array> => {
+    const r = await fetch(
+      `${conexoes}/${id}/files/bytes?path=${encodeURIComponent(caminho)}`
+    );
+    // O erro continua em JSON; quem chama distingue pelo `Content-Type`.
+    if (!r.ok || (r.headers.get('Content-Type') ?? '').includes('application/json')) {
+      const payload = (await r.json()) as { error: string | null };
+      throw new Error(payload.error ?? `Falha ao ler "${caminho}".`);
+    }
+    return new Uint8Array(await r.arrayBuffer());
+  },
   listarRemoto: (id: string, caminho: string) =>
     request<readonly RemoteEntry[]>(
       'GET',
@@ -459,6 +498,12 @@ export const Api = {
     request<{ from: string; to: string }>('POST', `${conexoes}/${id}/files/rename`, {
       from: de,
       to: para,
+    }),
+  /** Troca as permissões de um arquivo remoto (T079). `modo` em octal: "755". */
+  permissoesRemotas: (id: string, caminho: string, modo: string) =>
+    request<{ path: string; mode: string }>('POST', `${conexoes}/${id}/files/chmod`, {
+      path: caminho,
+      mode: modo,
     }),
   apagarRemoto: (id: string, caminho: string) =>
     request<{ path: string }>(
@@ -579,6 +624,18 @@ export const Api = {
     request<ProcessoDoBanco[] | null>('GET', `${conexoes}/${id}/processes`),
   killProcess: (id: string, pid: string) =>
     request<{ morto: string }>('POST', `${conexoes}/${id}/processes/${encodeURIComponent(pid)}/kill`),
+  /**
+   * Mata um processo DA MÁQUINA (T080).
+   *
+   * Nome e caminho distintos do `killProcess`, que é o do BANCO: são dois
+   * conceitos diferentes, e uma conexão MySQL tem os dois.
+   */
+  killHostProcess: (id: string, pid: number, sinal: 'TERM' | 'KILL') =>
+    request<{ pid: number; sinal: string }>(
+      'POST',
+      `${conexoes}/${id}/host/processes/${pid}/kill`,
+      { sinal }
+    ),
   alterStructure: (id: string, payload: AlterRequest) =>
     request<AlterResult>('POST', `${conexoes}/${id}/alter`, payload),
   alterCapabilities: (id: string) =>

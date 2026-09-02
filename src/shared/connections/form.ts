@@ -78,6 +78,9 @@ export function camposVisiveis(
     if (campo.showIf === undefined) return true;
     const atual = valores[campo.showIf.campo];
     if (atual === undefined) return false;
+    // Sem lista de valores, a condição é "está preenchido" (T078): é o que o
+    // host do bastion pede, já que listar todos os hosts possíveis não existe.
+    if (campo.showIf.valores === undefined) return String(atual).trim() !== '';
     return campo.showIf.valores.includes(String(atual));
   });
 }

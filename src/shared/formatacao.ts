@@ -110,6 +110,23 @@ export const CAPACIDADES: Readonly<Record<string, Capacidade>> = {
     minify: false,
     porQueNao: { minify: INDENTACAO_E_SINTAXE },
   },
+  // Twig existe como LINGUAGEM desde o T041 (realce e Emmet), mas não formata.
+  // Não é esquecimento: ele mexe com Laravel, que usa Blade — e Blade formata.
+  // Twig é do Symfony/Drupal, e trazer um plugin a mais para um caso que não
+  // aparece seria peso sem uso. Ligar depois é acrescentar o parser aqui e o
+  // `@zackad/prettier-plugin-twig` às dependências.
+  twig: {
+    beautify: false,
+    minify: false,
+    porQueNao: {
+      beautify:
+        'Esta IDE ainda não formata Twig — falta o plugin do Prettier para ele. ' +
+        'Blade, que é o do Laravel, formata normalmente.',
+      minify:
+        'Minify não existe aqui: Twig é template, e o que colapsasse as tags ' +
+        'colapsaria o HTML em volta delas.',
+    },
+  },
 };
 
 /**

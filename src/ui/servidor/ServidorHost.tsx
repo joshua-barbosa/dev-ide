@@ -16,6 +16,7 @@ import { SftpPanel } from '../sftp/SftpPanel';
 import { MonitorPanel } from '../monitor/MonitorPanel';
 import { PortasPanel } from '../portas/PortasPanel';
 import type { SessionCapabilities } from '../../shared/contracts';
+import type { EntradaMenu } from '../ContextMenu';
 
 export type SubAbaDoServidor = 'monitor' | 'terminal' | 'sftp' | 'portas';
 
@@ -44,11 +45,21 @@ export interface ServidorHostProps {
   onAbrirArquivo(conexaoId: string, caminho: string): Promise<void>;
   /** Abre o terminal daquela conexão numa aba própria (spec 054). */
   onAbrirTerminal(): void;
+  /** Abre o menu de botão direito da tabela SFTP (T079). */
+  abrirMenu(e: React.MouseEvent, entradas: readonly EntradaMenu[]): void;
+  /** Pergunta antes do que não tem volta — kill de processo e excluir (T079, T080). */
+  confirmar(o: {
+    titulo: string;
+    mensagem: string;
+    rotuloConfirmar?: string;
+    destrutivo?: boolean;
+  }): Promise<boolean>;
   onErro(erro: unknown): void;
 }
 
 export function ServidorHost({
-  conexaoId, rotulo, capacidades, somenteLeitura, onAbrirArquivo, onAbrirTerminal, onErro,
+  conexaoId, rotulo, capacidades, somenteLeitura, onAbrirArquivo, onAbrirTerminal, abrirMenu,
+  confirmar, onErro,
 }: ServidorHostProps) {
   const disponiveis = DIVISORIAS.filter(
     (d) => capacidades !== null && capacidades[d.exige] === true
@@ -119,12 +130,16 @@ export function ServidorHost({
               raiz={capacidades?.rootPath ?? '/'}
               somenteLeitura={somenteLeitura}
               onAbrirArquivo={onAbrirArquivo}
+              abrirMenu={abrirMenu}
+              confirmar={confirmar}
               onErro={onErro}
             />
           )}
           {d.id === 'monitor' && (
             <MonitorPanel
               conexaoId={conexaoId}
+              somenteLeitura={somenteLeitura}
+              confirmar={confirmar}
               // Escondido, o monitor PARA de medir: um relógio que sobrevive à
               // troca de aba mediria um servidor que ninguém está olhando.
               ativo={atual === 'monitor'}

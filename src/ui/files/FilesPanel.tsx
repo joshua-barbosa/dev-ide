@@ -177,17 +177,20 @@ export function FilesPanel({
               setSelecionado(no);
               onMenuDoItem(no, e);
             }}
-            aoArrastar={
-              no.type === 'dir'
-                ? undefined
-                : (e) => {
-                    e.dataTransfer.setData(
-                      MIME_DE_ARRASTE,
-                      codificarCarga({ tipo: 'arquivo', caminho: no.path })
-                    );
-                    e.dataTransfer.effectAllowed = 'copyMove';
-                  }
-            }
+            // Pasta também arrasta desde o T090: o destino é o SFTP, que sobe
+            // o conteúdo dela. Quem não sabe o que fazer com pasta — o editor —
+            // olha a marca `pasta` e recusa, em vez de tentar abrir um diretório.
+            aoArrastar={(e) => {
+              e.dataTransfer.setData(
+                MIME_DE_ARRASTE,
+                codificarCarga({
+                  tipo: 'arquivo',
+                  caminho: no.path,
+                  ...(no.type === 'dir' ? { pasta: true } : {}),
+                })
+              );
+              e.dataTransfer.effectAllowed = 'copyMove';
+            }}
           />
           {no.type === 'dir' && aberta && no.children !== undefined
             ? renderizar(no.children, nivel + 1)

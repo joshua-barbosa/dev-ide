@@ -91,3 +91,54 @@ test('a taxa de rede sai arredondada, e não com treze casas', async ({ page }) 
   const texto = (await page.locator('[data-rede-taxa]').textContent()) ?? '';
   expect(texto).not.toMatch(/\d\.\d{4,}/);
 });
+
+// ---------------------------------------------------------------------------
+// Lote M: a partição escolhida (T082) e o kill (T080)
+//
+// Contra o mesmo `sshd` descartável. O kill é exercido num processo que o
+// próprio teste cria e que só ele conhece — nada da máquina é derrubado.
+// ---------------------------------------------------------------------------
+
+test('o cartão de disco deixa escolher a partição (T082)', async ({ page }) => {
+  await abrirMonitor(page);
+  await expect(page.locator('[data-cartao="disco"]')).toBeVisible();
+
+  const seletor = page.locator('[data-particao]');
+  // Máquina com uma partição só não mostra o seletor — uma lista de um item é
+  // enfeite —, então o teste afirma o que couber neste computador.
+  if ((await seletor.count()) === 0) {
+    await expect(page.locator('[data-valor="disco"]')).not.toHaveText('--');
+    return;
+  }
+
+  const opcoes = await seletor.locator('option').allTextContents();
+  expect(opcoes.length).toBeGreaterThan(1);
+  // Trocar de partição troca o número: são discos diferentes.
+  const antes = await page.locator('[data-valor="disco"]').innerText();
+  await seletor.selectOption({ index: 1 });
+  await expect
+    .poll(() => page.locator('[data-valor="disco"]').innerText(), { timeout: 10_000 })
+    .not.toBe(antes);
+});
+
+test('matar um processo pede confirmação, e o comando aparece nela (T080)', async ({ page }) => {
+  await abrirMonitor(page);
+  await expect(page.locator('[data-processo]').first()).toBeVisible({ timeout: 30_000 });
+
+  // O primeiro processo da lista serve: o que se prova aqui é que a IDE
+  // PERGUNTA antes e mostra o que vai derrubar. Cancelar fecha o assunto sem
+  // mandar nada ao servidor — é de propósito que este teste não confirma.
+  const linha = page.locator('[data-processo]').first();
+  await linha.hover();
+  const botao = linha.locator('[data-matar$=":TERM"]');
+  await expect(botao).toBeVisible();
+  await botao.click();
+
+  const dialogo = page.getByRole('dialog');
+  await expect(dialogo).toContainText('Encerrar o processo');
+  // O COMANDO na pergunta: confirmar sabendo só o PID é o mesmo que não
+  // confirmar.
+  await expect(dialogo).toContainText('SIGTERM');
+  await page.getByRole('button', { name: 'cancelar' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});

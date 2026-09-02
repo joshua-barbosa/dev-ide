@@ -25,6 +25,7 @@ import { VisualizadorDeArquivo } from './editor/VisualizadorDeArquivo';
 import { BarraDoArquivo } from './editor/BarraDoArquivo';
 import type { Visualizador } from '../shared/editor/visualizadores';
 import { tokens } from './theme';
+import type { EntradaMenu } from './ContextMenu';
 import type { Tab } from '../shared/tabs';
 import type { NomeDoTema } from '../shared/temas';
 import type { QueryResult, SessionCapabilities } from '../shared/contracts';
@@ -49,6 +50,15 @@ export interface EditorGroupProps {
   readonly conexaoSomenteLeitura: (aba: Tab) => boolean;
   /** A entrada rápida e a abertura de comando, para as alterações (spec 046). */
   readonly qi: QuickInputController;
+  /** Abre o menu de botão direito da tabela SFTP (T079). */
+  abrirMenu(e: React.MouseEvent, entradas: readonly EntradaMenu[]): void;
+  /** Pergunta antes do que não tem volta — kill e excluir remoto (T079, T080). */
+  confirmar(o: {
+    titulo: string;
+    mensagem: string;
+    rotuloConfirmar?: string;
+    destrutivo?: boolean;
+  }): Promise<boolean>;
   readonly abrirComando: (id: string, titulo: string, sql: string) => void;
   readonly onErroDaTabela: (erro: unknown) => void;
   /** O Query Book (spec 048): mudar o conteúdo e rodar um bloco. */
@@ -135,7 +145,7 @@ export function EditorGroup({
   registrarEditor, onFocar, onAtivar, onFechar, onMudar, onCursor, onExecutar, onSoltar,
   onReordenarAba,
   onComando, onExportar, onConfirmarEscrita, conexaoSomenteLeitura,
-  qi, abrirComando, onErroDaTabela, onMudarCaderno, onRodarBloco, onAbrirArquivo,
+  qi, abrirMenu, confirmar, abrirComando, onErroDaTabela, onMudarCaderno, onRodarBloco, onAbrirArquivo,
   capacidadesDe, onAbrirArquivoRemoto, onAbrirTerminalDoServidor,
   onDuplicarTerminal, onConfirmarSnippet,
   onRodarCodigoDoBloco, onPedirLinguagem, vinculoDoCaderno, onTrocarVinculoDoCaderno,
@@ -189,6 +199,10 @@ export function EditorGroup({
     // O conteúdo só pode ser lido no `drop`; durante o `dragover` o navegador
     // entrega apenas os TIPOS. É por isso que o indicador se decide pelo tipo.
     const carga = decodificarCarga(e.dataTransfer.getData(MIME_DE_ARRASTE));
+    // Pasta não abre no editor (T090): ela arrasta porque o SFTP a recebe, e
+    // tentar abrir um diretório aqui daria um erro sem sentido para quem só
+    // errou o alvo.
+    if (carga?.tipo === 'arquivo' && carga.pasta === true) return;
     if (carga !== null && alvo !== null) onSoltar(alvo, carga);
   };
   const ativa = abas.find((t) => t.id === ativaId) ?? null;
@@ -427,6 +441,8 @@ export function EditorGroup({
               somenteLeitura={conexaoSomenteLeitura(t)}
               onAbrirArquivo={onAbrirArquivoRemoto}
               onAbrirTerminal={() => onAbrirTerminalDoServidor(t)}
+              abrirMenu={abrirMenu}
+              confirmar={confirmar}
               onErro={onErroDaTabela}
             />
           </Box>

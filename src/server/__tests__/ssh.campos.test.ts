@@ -36,9 +36,14 @@ test('cada modo de Auth mostra só o que ele usa', () => {
   ]);
 });
 
-test('senha e passphrase são as ÚNICAS secretas', () => {
+test('só as credenciais são secretas — e são estas', () => {
+  // A lista é fechada de propósito: um campo secreto a menos vaza para o
+  // `connections.json` em texto puro, e um a mais some da resposta da API sem
+  // ninguém entender por quê. As do bastion entraram no T078.
   const secretos = CAMPOS_SSH.filter((c) => c.secret === true).map((c) => c.name);
-  assert.deepEqual(secretos.sort(), ['passphrase', 'password']);
+  assert.deepEqual(secretos.sort(), [
+    'jump_passphrase', 'jump_password', 'passphrase', 'password',
+  ]);
 });
 
 test('o caminho da chave NÃO é secreto — caminho não é credencial', () => {
@@ -187,4 +192,63 @@ test('sem raiz, só o `Shell` — e sem `Shell`, só a raiz', () => {
 test('a raiz é CITADA — nome de pasta aceita espaço e cifrão', () => {
   assert.equal(comandoDeAbertura('/srv/meu app'), "cd '/srv/meu app'");
   assert.equal(comandoDeAbertura('/srv/$HOME'), "cd '/srv/$HOME'");
+});
+
+// ---------------------------------------------------------------------------
+// T078 — o salto por um bastion
+// ---------------------------------------------------------------------------
+
+test('sem host de bastion, não há salto', () => {
+  // O host é o interruptor: apagar só ele desliga o bastion, sem precisar
+  // limpar senha, porta e usuário um por um.
+  assert.equal(lerConfigSsh({ host: 'a', jump_port: 2222, jump_username: 'sobrou' }).salto, undefined);
+  assert.equal(lerConfigSsh({ host: 'a', jump_host: '   ' }).salto, undefined);
+});
+
+test('o salto lê host, porta e usuário', () => {
+  const c = lerConfigSsh({
+    host: 'interno', username: 'deploy',
+    jump_host: 'bastion.exemplo', jump_port: 2222, jump_username: 'ponte',
+  });
+  assert.equal(c.salto?.host, 'bastion.exemplo');
+  assert.equal(c.salto?.port, 2222);
+  assert.equal(c.salto?.username, 'ponte');
+});
+
+test('sem usuário próprio, o bastion usa o do destino', () => {
+  // Obrigar a repetir o mesmo nome duas vezes é atrito à toa, e é o caso comum.
+  const c = lerConfigSsh({ host: 'interno', username: 'deploy', jump_host: 'bastion' });
+  assert.equal(c.salto?.username, 'deploy');
+});
+
+test('sem porta, o bastion usa a 22', () => {
+  assert.equal(lerConfigSsh({ host: 'a', jump_host: 'b' }).salto?.port, 22);
+  assert.equal(lerConfigSsh({ host: 'a', jump_host: 'b', jump_port: 0 }).salto?.port, 22);
+});
+
+test('os campos do bastion só aparecem depois do host', () => {
+  const doSalto = CAMPOS_SSH.filter((c) => c.section === 'SSH Tunnel');
+  assert.ok(doSalto.length >= 5, 'a seção existe');
+
+  const host = doSalto.find((c) => c.name === 'jump_host');
+  assert.equal(host?.showIf, undefined, 'o host é o interruptor: aparece sempre');
+
+  for (const campo of doSalto.filter((c) => c.name !== 'jump_host')) {
+    assert.equal(
+      campo.showIf?.campo,
+      'jump_host',
+      `"${campo.name}" deveria depender do host do bastion`
+    );
+    // Sem lista de valores: a condição é "preenchido", e não um valor exato —
+    // listar todos os hosts possíveis não existe.
+    assert.equal(campo.showIf?.valores, undefined);
+  }
+});
+
+test('a senha e a passphrase do bastion são SEGREDO', () => {
+  // Sem a marca elas iriam para o `connections.json` em texto puro, e sairiam
+  // numa resposta de API.
+  for (const nome of ['jump_password', 'jump_passphrase']) {
+    assert.equal(CAMPOS_SSH.find((c) => c.name === nome)?.secret, true, nome);
+  }
 });

@@ -72,7 +72,14 @@ export function zonaDoPonto(r: Retangulo, x: number, y: number): Zona {
 export const MIME_DE_ARRASTE = 'application/x-dev-ide-item';
 
 export type CargaDeArraste =
-  | { readonly tipo: 'arquivo'; readonly caminho: string }
+  /**
+   * Um item da árvore de arquivos.
+   *
+   * `pasta` distingue os dois casos (T090): o editor não abre pasta, e o SFTP
+   * sobe o conteúdo dela. Sem a marca, quem recebe teria de ir perguntar ao
+   * disco o que acabou de receber.
+   */
+  | { readonly tipo: 'arquivo'; readonly caminho: string; readonly pasta?: boolean }
   | { readonly tipo: 'aba'; readonly id: string };
 
 export function codificarCarga(carga: CargaDeArraste): string {
@@ -91,7 +98,7 @@ export function decodificarCarga(bruto: string): CargaDeArraste | null {
 
   const r = json as Record<string, unknown>;
   if (r.tipo === 'arquivo' && typeof r.caminho === 'string' && r.caminho !== '') {
-    return { tipo: 'arquivo', caminho: r.caminho };
+    return { tipo: 'arquivo', caminho: r.caminho, ...(r.pasta === true ? { pasta: true } : {}) };
   }
   if (r.tipo === 'aba' && typeof r.id === 'string' && r.id !== '') {
     return { tipo: 'aba', id: r.id };

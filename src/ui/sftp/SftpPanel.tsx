@@ -14,6 +14,9 @@ import { tokens } from '../theme';
 import { paiDe } from '../../shared/remoto/caminho';
 import { ordenarPorColuna, type ColunaDeOrdem, type Direcao } from '../../shared/remoto/ordenacao';
 import { useUpload } from './useUpload';
+import { useDownloadDePasta } from './useDownloadDePasta';
+import type { EntradaMenu } from '../ContextMenu';
+import { decodificarCarga, MIME_DE_ARRASTE } from '../../shared/arrastar';
 import type { RemoteEntry } from '../../shared/contracts';
 
 interface Coluna {
@@ -68,11 +71,20 @@ export interface SftpPanelProps {
   readonly raiz: string;
   readonly somenteLeitura: boolean;
   onAbrirArquivo(conexaoId: string, caminho: string): Promise<void>;
+  /** Abre o menu de botão direito nas coordenadas do cursor (T079). */
+  abrirMenu(e: React.MouseEvent, entradas: readonly EntradaMenu[]): void;
+  /** Pergunta antes do que não tem volta — apagar no servidor DELE (T079). */
+  confirmar(o: {
+    titulo: string;
+    mensagem: string;
+    rotuloConfirmar?: string;
+    destrutivo?: boolean;
+  }): Promise<boolean>;
   onErro(erro: unknown): void;
 }
 
 export function SftpPanel({
-  conexaoId, raiz, somenteLeitura, onAbrirArquivo, onErro,
+  conexaoId, raiz, somenteLeitura, onAbrirArquivo, abrirMenu, confirmar, onErro,
 }: SftpPanelProps) {
   const [caminho, setCaminho] = useState(raiz);
   const [entradas, setEntradas] = useState<readonly RemoteEntry[] | null>(null);
@@ -108,6 +120,9 @@ export function SftpPanel({
 
   // O arraste de fora (spec 060). Depois de subir, a lista recarrega sozinha —
   // um upload que não aparece parece um upload que não aconteceu.
+  const download = useDownloadDePasta(onErro);
+  /** Andamento do upload de pasta arrastada da IDE (T090). */
+  const [subindoPasta, setSubindoPasta] = useState<{ feitos: number; total: number } | null>(null);
   const upload = useUpload(() => {
     listar(caminho).catch(onErro);
   });
@@ -145,6 +160,17 @@ export function SftpPanel({
         if (somenteLeitura) return;
         e.preventDefault();
         setSobre(false);
+        // Duas origens, e a de DENTRO vem primeiro (T090): um arraste da árvore
+        // da IDE também traz `dataTransfer.files` vazio, e cair no `upload`
+        // não subiria nada e não diria por quê.
+        const carga = decodificarCarga(e.dataTransfer.getData(MIME_DE_ARRASTE));
+        if (carga?.tipo === 'arquivo') {
+          void (carga.pasta === true
+            ? subirPastaDaIde(carga.caminho)
+            : subirDaIde(carga.caminho)
+          ).catch(onErro);
+          return;
+        }
         void upload.soltar(e, conexaoId, caminho).catch(onErro);
       }}
     >
@@ -196,6 +222,65 @@ export function SftpPanel({
         )}
       </Box>
 
+      {/*
+        O andamento do download da pasta (T089), com o cancelar ao lado. Ocupa
+        a largura toda porque o nome do arquivo em curso é longo — espremê-lo na
+        barra de cima deixaria só as reticências à vista.
+      */}
+      {subindoPasta !== null && (
+        <Box
+          data-progresso-upload-pasta
+          sx={{
+            px: 1.25, py: 0.5, borderBottom: 1, borderColor: 'divider',
+            fontSize: 11, color: 'text.secondary',
+          }}
+        >
+          subindo {subindoPasta.feitos} de {subindoPasta.total}…
+        </Box>
+      )}
+      {download.estado.fase !== 'parado' && (
+        <Box
+          data-progresso-download
+          sx={{
+            display: 'flex', alignItems: 'center', gap: 1, px: 1.25, py: 0.5,
+            borderBottom: 1, borderColor: 'divider', fontSize: 11,
+          }}
+        >
+          <Box sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>
+            {download.estado.fase === 'varrendo' && 'procurando arquivos…'}
+            {download.estado.fase === 'baixando' &&
+              `baixando ${download.estado.feitos} de ${download.estado.total}…`}
+            {download.estado.fase === 'compactando' &&
+              `compactando ${download.estado.feitos} de ${download.estado.total}…`}
+          </Box>
+          <Box
+            sx={{
+              flex: 1, minWidth: 0, fontFamily: tokens.fontMono, fontSize: 10,
+              color: 'text.secondary',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              direction: 'rtl', textAlign: 'left',
+            }}
+          >
+            {/* `direction: rtl` corta pela ESQUERDA: num caminho longo o que
+                interessa é o fim, e não `/var/www/htdocs/…` repetido. */}
+            {download.estado.detalhe}
+          </Box>
+          <Box
+            component="button"
+            type="button"
+            data-cancelar-download
+            onClick={download.cancelar}
+            sx={{
+              border: 0, bgcolor: 'transparent', font: 'inherit', fontSize: 10.5,
+              color: 'error.main', cursor: 'pointer', px: 0.5, borderRadius: 0.5,
+              '&:hover': { bgcolor: 'action.hover' },
+            }}
+          >
+            cancelar
+          </Box>
+        </Box>
+      )}
+
       <Box
         sx={{
           display: 'grid', gridTemplateColumns: GRADE, gap: 1, px: 1, py: 0.5,
@@ -233,6 +318,28 @@ export function SftpPanel({
         ))}
       </Box>
 
+      {download.estado.erro !== null && (
+        <Box
+          data-erro-download
+          sx={{
+            px: 1.25, py: 0.5, bgcolor: 'error.main', color: 'background.default',
+            fontSize: 11, display: 'flex', alignItems: 'center', gap: 1,
+          }}
+        >
+          <Box sx={{ flex: 1 }}>{download.estado.erro}</Box>
+          <Box
+            component="button"
+            type="button"
+            onClick={download.limpar}
+            sx={{
+              border: 0, bgcolor: 'transparent', font: 'inherit', fontSize: 11,
+              color: 'inherit', cursor: 'pointer',
+            }}
+          >
+            ✕
+          </Box>
+        </Box>
+      )}
       {upload.estado.erro !== null && (
         <Box
           data-erro-upload
@@ -277,6 +384,7 @@ export function SftpPanel({
               if (e.kind === 'file') void onAbrirArquivo(conexaoId, e.path).catch(onErro);
               else ir(e.path);
             }}
+            onMenu={(evento) => menuDaEntrada(evento, e)}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, overflow: 'hidden' }}>
               <Icon
@@ -309,6 +417,200 @@ export function SftpPanel({
     </Box>
   );
 
+  /**
+   * O menu de botão direito de uma entrada (T079).
+   *
+   * Os itens que ele escolheu, e o que **não** aparece é tão decidido quanto o
+   * que aparece: numa conexão somente-leitura só ficam ler, baixar e copiar o
+   * caminho — o resto muda o servidor.
+   */
+  function menuDaEntrada(evento: React.MouseEvent, entrada: RemoteEntry): void {
+    const ehPasta = entrada.kind === 'folder';
+    abrirMenu(evento, [
+      {
+        label: ehPasta ? 'Abrir' : 'Abrir no editor',
+        onClick: () =>
+          ehPasta ? ir(entrada.path) : onAbrirArquivo(conexaoId, entrada.path).catch(onErro),
+      },
+      {
+        label: ehPasta ? 'Baixar pasta (.zip)' : 'Baixar',
+        onClick: () =>
+          ehPasta
+            ? download.baixar(conexaoId, entrada.path)
+            : baixarUm(entrada),
+      },
+      null,
+      { label: 'Copiar caminho', onClick: () => void copiarTexto(entrada.path) },
+      ...(somenteLeitura
+        ? []
+        : [
+            null,
+            { label: 'Renomear…', onClick: () => renomear(entrada) },
+            { label: 'Permissões…', onClick: () => trocarPermissoes(entrada) },
+            null,
+            {
+              label: 'Excluir',
+              danger: true,
+              onClick: () => excluir(entrada),
+            },
+          ]),
+    ]);
+  }
+
+  /**
+   * Sobe um arquivo arrastado DE DENTRO da IDE (T090).
+   *
+   * O caminho é local, então quem lê o arquivo é o servidor da IDE — e ele já
+   * sabe fazer isso pela rota que o editor usa. Passar o conteúdo pelo
+   * navegador seria descer e subir os mesmos bytes por um motivo nenhum.
+   *
+   * **Em bytes**, e não em texto: arrastar um `.png` para o servidor é o caso
+   * mais provável de todos, e texto o corromperia.
+   */
+  async function subirDaIde(caminhoLocal: string): Promise<void> {
+    const nome = caminhoLocal.split('/').pop() ?? 'arquivo';
+    const alvo = `${caminho === '/' ? '' : caminho}/${nome}`;
+    try {
+      const dados = await Api.lerBytesLocais(caminhoLocal);
+      await Api.enviarArquivoRemoto(conexaoId, alvo, dados.buffer as ArrayBuffer);
+      await listar(caminho);
+    } catch (e) {
+      onErro(e);
+    }
+  }
+
+  /**
+   * Sobe uma PASTA arrastada de dentro da IDE (T090).
+   *
+   * Pergunta antes, com o número de arquivos e o que o `.gitignore` tirou:
+   * é escrita no servidor DELE, e um arraste sem querer não pode virar upload.
+   */
+  async function subirPastaDaIde(pastaLocal: string): Promise<void> {
+    const nome = pastaLocal.split('/').filter((p) => p !== '').pop() ?? 'pasta';
+    let lista: Awaited<ReturnType<typeof Api.arquivosDaPasta>>;
+    try {
+      lista = await Api.arquivosDaPasta(pastaLocal);
+    } catch (e) {
+      onErro(e);
+      return;
+    }
+
+    if (lista.files.length === 0) {
+      await confirmar({
+        titulo: 'Subir pasta',
+        mensagem: `"${nome}" não tem arquivos para subir.`,
+        rotuloConfirmar: 'ok',
+      });
+      return;
+    }
+
+    const mb = lista.files.reduce((soma, f) => soma + f.bytes, 0) / 1024 / 1024;
+    const ok = await confirmar({
+      titulo: 'Subir pasta para o servidor',
+      mensagem:
+        `Subir "${nome}" para ${caminho}?\n\n` +
+        `${lista.files.length} arquivo(s), ${mb.toFixed(1)} MB.` +
+        (lista.ignored > 0
+          ? `\n\n${lista.ignored} arquivo(s) ficam de fora por estarem no .gitignore.`
+          : '') +
+        (lista.truncated ? '\n\nA pasta é grande demais e a lista foi cortada.' : ''),
+      rotuloConfirmar: 'subir',
+    });
+    if (!ok) return;
+
+    setSubindoPasta({ feitos: 0, total: lista.files.length });
+    try {
+      for (const [i, arquivo] of lista.files.entries()) {
+        setSubindoPasta({ feitos: i, total: lista.files.length });
+        const destino = `${caminho === '/' ? '' : caminho}/${nome}/${arquivo.relative}`;
+        const dados = await Api.lerBytesLocais(arquivo.path);
+        // Um de cada vez: o SFTP tem UM canal por sessão. É a mesma nota do
+        // upload de fora, e pelo mesmo motivo.
+        await Api.enviarArquivoRemoto(conexaoId, destino, dados.buffer as ArrayBuffer);
+      }
+      await listar(caminho);
+    } catch (e) {
+      onErro(e);
+    } finally {
+      setSubindoPasta(null);
+    }
+  }
+
+  /** Um arquivo só: sem zip, que seria uma casca em volta de um arquivo. */
+  async function baixarUm(entrada: RemoteEntry): Promise<void> {
+    try {
+      const dados = await Api.lerBytesRemotos(conexaoId, entrada.path);
+      const url = URL.createObjectURL(new Blob([dados as BlobPart]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = entrada.name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (e) {
+      onErro(e);
+    }
+  }
+
+  async function renomear(entrada: RemoteEntry): Promise<void> {
+    const nome = window.prompt('Novo nome', entrada.name);
+    if (nome === null || nome.trim() === '' || nome === entrada.name) return;
+    try {
+      await Api.renomearRemoto(conexaoId, entrada.path, `${paiDe(entrada.path)}/${nome.trim()}`);
+      await listar(caminho);
+    } catch (e) {
+      onErro(e);
+    }
+  }
+
+  async function trocarPermissoes(entrada: RemoteEntry): Promise<void> {
+    // O modo em octal, como no `chmod` — traduzir para caixas de seleção
+    // esconderia o número que quem administra servidor já sabe de cor.
+    const atual = (entrada.mode ?? '').slice(-3);
+    const modo = window.prompt(`Permissões de "${entrada.name}" (ex.: 755)`, atual);
+    if (modo === null || modo.trim() === '') return;
+    try {
+      await Api.permissoesRemotas(conexaoId, entrada.path, modo.trim());
+      await listar(caminho);
+    } catch (e) {
+      onErro(e);
+    }
+  }
+
+  async function excluir(entrada: RemoteEntry): Promise<void> {
+    const ok = await confirmar({
+      titulo: 'Excluir no servidor',
+      mensagem:
+        `Excluir "${entrada.name}" do servidor?\n\n${entrada.path}\n\n` +
+        (entrada.kind === 'folder'
+          ? 'A pasta e tudo que está dentro dela vão junto. Não há lixeira.'
+          : 'Não há lixeira: isto não tem volta.'),
+      rotuloConfirmar: 'excluir',
+      destrutivo: true,
+    });
+    if (!ok) return;
+    try {
+      await Api.apagarRemoto(conexaoId, entrada.path);
+      await listar(caminho);
+    } catch (e) {
+      onErro(e);
+    }
+  }
+
+  /** Copia para a área de transferência, com o caminho do `document` como saída. */
+  async function copiarTexto(texto: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(texto);
+    } catch {
+      // Sem permissão de área de transferência: o caminho velho ainda funciona.
+      const campo = document.createElement('textarea');
+      campo.value = texto;
+      document.body.appendChild(campo);
+      campo.select();
+      document.execCommand('copy');
+      campo.remove();
+    }
+  }
+
   async function criar(tipo: 'pasta' | 'arquivo'): Promise<void> {
     // O nome vem de um `prompt` do navegador de propósito: a entrada rápida da
     // IDE pertence ao `App`, e passá-la por cinco níveis de props só para esta
@@ -328,16 +630,18 @@ export function SftpPanel({
 }
 
 function Linha({
-  children, marca, onDuploClique,
+  children, marca, onDuploClique, onMenu,
 }: {
   readonly children: React.ReactNode;
   readonly marca?: string;
   onDuploClique(): void;
+  onMenu?(e: React.MouseEvent): void;
 }) {
   return (
     <Box
       data-linha-sftp={marca}
       onDoubleClick={onDuploClique}
+      onContextMenu={onMenu}
       sx={{
         display: 'grid', gridTemplateColumns: GRADE, gap: 1, px: 1, py: 0.4,
         fontSize: 12, cursor: 'default', userSelect: 'none',

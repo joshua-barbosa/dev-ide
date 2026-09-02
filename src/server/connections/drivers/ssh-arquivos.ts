@@ -103,6 +103,25 @@ export function criarArquivosRemotos(ctx: ContextoDeArquivos): RemoteFiles {
       return { path: alvo, content: buffer.toString('utf8'), bytes: buffer.byteLength };
     },
 
+    /** Os bytes como estão, sem passar por texto (T089). */
+    readBytes: async (remotePath): Promise<Buffer> => {
+      const alvo = dentroDaCerca(ctx, remotePath);
+      const sftp = await ctx.sftp();
+      const tamanho = await prometer<number>((pronto) =>
+        sftp.stat(alvo, (e, attrs) => pronto(e, attrs?.size ?? 0))
+      );
+      // O MESMO teto de abrir no editor. Baixar uma pasta com um dump de 4 GB
+      // dentro estouraria a memória do navegador, e o erro apareceria como uma
+      // aba que morre sem explicação.
+      if (tamanho > MAX_BYTES_DE_ARQUIVO) {
+        throw new Error(
+          `"${remotePath}" tem ${Math.round(tamanho / 1024 / 1024)} MB, acima do limite de ` +
+            `${MAX_BYTES_DE_ARQUIVO / 1024 / 1024} MB por arquivo.`
+        );
+      }
+      return prometer<Buffer>((pronto) => sftp.readFile(alvo, (e, dados) => pronto(e, dados)));
+    },
+
     writeBytes: async (remotePath, dados) => {
       podeEscrever(ctx);
       const alvo = dentroDaCerca(ctx, remotePath);
@@ -117,6 +136,20 @@ export function criarArquivosRemotos(ctx: ContextoDeArquivos): RemoteFiles {
       await prometer<void>((pronto) =>
         sftp.writeFile(alvo, Buffer.from(content, 'utf8'), (e) => pronto(e, undefined))
       );
+    },
+
+    /** `chmod` pelo SFTP (T079). */
+    chmod: async (remotePath, modo) => {
+      podeEscrever(ctx);
+      const alvo = dentroDaCerca(ctx, remotePath);
+      // O modo vem de fora e vira permissão de arquivo: fora de 0..0777 é
+      // recusado aqui. `4755` (setuid) não passa de propósito — ligar setuid
+      // por engano num gesto de dois cliques é uma porta que não se fecha.
+      if (!Number.isInteger(modo) || modo < 0 || modo > 0o777) {
+        throw new Error(`Permissão inválida: use um valor entre 000 e 777.`);
+      }
+      const sftp = await ctx.sftp();
+      await prometer<void>((pronto) => sftp.chmod(alvo, modo, (e) => pronto(e, undefined)));
     },
 
     mkdir: async (remotePath) => {

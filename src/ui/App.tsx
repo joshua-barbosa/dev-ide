@@ -17,6 +17,7 @@ import { useFormatacaoAcoes } from './acoes/useFormatacaoAcoes';
 import { useSaidaAcoes } from './acoes/useSaidaAcoes';
 import { PainelDeCodeSnap } from './editor/PainelDeCodeSnap';
 import { acaoDeMenuDaFoto, useFotoDoTrecho } from './editor/useFotoDoTrecho';
+import { contextoDeComandos } from './acoes/useContextoDeComandos';
 import { TelaDeRequisitos } from './ajuda/TelaDeRequisitos';
 import { useTemaAtual } from './useTemaAtual';
 import { temPreview } from '../shared/markdown';
@@ -50,10 +51,7 @@ import { MenuBar } from './MenuBar';
 import { StatusBar } from './StatusBar';
 import { QuickInput } from './QuickInput';
 import { useQuickInput } from './useQuickInput';
-import {
-  comandoDoAtalho, filtrarComandos, formatarAtalho,
-  type ContextoDeComandos,
-} from '../shared/commands';
+import { comandoDoAtalho, filtrarComandos, formatarAtalho } from '../shared/commands';
 import { BottomPanel } from './BottomPanel';
 import { ResizerHorizontal } from './ResizerHorizontal';
 import { useLayout, ALTURA_PADRAO_PAINEL } from './useLayout';
@@ -61,7 +59,6 @@ import { usePersistido } from './usePersistido';
 import { useProblemas } from './useProblemas';
 import {
   abrirTerminal as abrirNoPainel, ativarTerminal, dividirTerminal, fecharTerminal,
-  podeDividirTerminal,
   normalizarTerminais, orientacaoDoPar, paneisVisiveis, SEM_TERMINAIS,
 } from '../shared/terminais';
 import { useExecution } from './useExecution';
@@ -389,28 +386,7 @@ export function App() {
   /** Ids dos terminais que dividem a tela com o ativo. */
   const visiveisNoPainel = new Set(paneisVisiveis(terminais).map((t) => t.id));
 
-  const contexto: ContextoDeComandos = {
-    // `tabela` entrou na lista quando a spec 043 encontrou o defeito: o ▷ da
-    // barra de abas aparecia numa aba de tabela e executava o EDITOR do grupo,
-    // que ainda guardava o último arquivo aberto ali. Quem executa numa aba de
-    // tabela é o botão da própria aba.
-    temEditor:
-      ws.active !== null &&
-      !['grid', 'conexao', 'tabela', 'processos', 'caderno'].includes(ws.active.type),
-    podeSalvar:
-      ws.active !== null &&
-      !['grid', 'conexao', 'terminal', 'tabela', 'processos'].includes(ws.active.type),
-    temProjeto: pasta.pasta !== '',
-    abaSuja: ws.active?.dirty === true,
-    temAba: ws.active !== null,
-    temSelecao: true,
-    temConexaoAtiva: exec.conexaoAtiva !== null,
-    cofreDestrancado: conexoes.estado?.vault.unlocked === true,
-    executando: exec.executando,
-    podeVoltar: nav.podeVoltar,
-    podeAvancar: nav.podeAvancar,
-    podeDividirTerminal: podeDividirTerminal(terminais),
-  };
+  const contexto = contextoDeComandos({ ws, pasta, exec, conexoes, nav, terminais });
 
   const avisar = (p: Promise<unknown>): void => {
     void p.catch(falhaDaIde);
@@ -630,6 +606,8 @@ export function App() {
                   onSoltar={(zona, carga) => ws.soltarNoGrupo(g, zona, carga)}
                   onReordenarAba={(id, antesDe) => ws.reordenarAba(g, id, antesDe)}
                   onComando={executarComando}
+                  abrirMenu={menu.abrir}
+                  confirmar={dialogs.confirmar}
                   formulario={formularioDeConexao}
                   requisitos={<TelaDeRequisitos onErro={falhaDaIde} />}
                   acoesDeMenu={acaoDeMenuDaFoto(() => avisar(formatacaoAcoes.foto()))}

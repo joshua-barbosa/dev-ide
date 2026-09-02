@@ -147,10 +147,32 @@ export interface RemoteFiles {
    */
   writeBytes(remotePath: string, dados: Buffer): Promise<void>;
   read(remotePath: string): Promise<RemoteFile>;
+  /**
+   * Lê BYTES (T089).
+   *
+   * O par do `writeBytes`, e pelo mesmo motivo: baixar uma pasta traz `.png`,
+   * `.tgz` e binário, e passá-los por `string` os corrompe em silêncio — a pior
+   * forma de corromper, porque o zip fica com cara de pronto.
+   *
+   * Opcional: um driver que não implementa não baixa pasta, e a interface
+   * esconde o item em vez de oferecer um botão que entrega arquivo estragado.
+   */
+  readBytes?(remotePath: string): Promise<Buffer>;
   write(remotePath: string, content: string): Promise<void>;
   mkdir(remotePath: string): Promise<void>;
   remove(remotePath: string): Promise<void>;
   rename(from: string, to: string): Promise<void>;
+  /**
+   * Troca as permissões (T079).
+   *
+   * `modo` em OCTAL, como `755` — é assim que se fala de permissão no Unix, e
+   * traduzir para caixas de seleção esconderia o número que a pessoa já sabe.
+   *
+   * Opcional: o FTP não tem `chmod` no padrão (só como extensão `SITE CHMOD`,
+   * que nem todo servidor aceita), então o driver declara e a interface esconde
+   * o item — em vez de oferecer o que falharia.
+   */
+  chmod?(remotePath: string, modo: number): Promise<void>;
 }
 
 export interface ShellSize {
@@ -205,12 +227,21 @@ export interface HostMetrics {
     readonly usadoBytes: number;
     readonly porcentagem: number;
   } | null;
-  readonly disco: {
+  /**
+   * TODAS as partições de disco (T082).
+   *
+   * A tela escolhe qual mostrar, e por isso elas vêm inteiras: mandar só a
+   * escolhida obrigaria a sessão a guardar a escolha de cada aba aberta — e
+   * duas abas do mesmo servidor poderiam querer olhar partições diferentes.
+   */
+  readonly discos: readonly {
     readonly totalBytes: number;
     readonly usadoBytes: number;
     readonly livreBytes: number;
     readonly porcentagem: number;
-  } | null;
+    readonly ponto: string;
+    readonly dispositivo: string;
+  }[];
   readonly uptimeSegundos: number | null;
   readonly carga: readonly number[] | null;
   readonly processos: readonly {
@@ -227,6 +258,18 @@ export interface HostMetrics {
 
 export interface HostMonitor {
   sample(): Promise<HostMetrics>;
+  /**
+   * Encerra um processo pelo PID (T080).
+   *
+   * **Opcional de propósito.** É a mesma forma do resto do contrato: um
+   * monitor que sabe medir e não sabe matar declara isso, e a tela esconde o
+   * item em vez de oferecer um botão que falha. Hoje só o SSH implementa.
+   *
+   * O sinal é escolhido por quem chama: `TERM` pede para encerrar, `KILL` não
+   * pede. Oferecer só o segundo transformaria "fechar um processo" em "derrubar
+   * um processo", que perde o que ele não tinha salvado.
+   */
+  matar?(pid: number, sinal: 'TERM' | 'KILL'): Promise<void>;
 }
 
 export interface PortForward {

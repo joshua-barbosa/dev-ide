@@ -195,6 +195,39 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
   }));
 
   /** Navegador de pastas. Sem `path`, começa na pasta pessoal do usuário. */
+  /**
+   * Os arquivos de UMA pasta, para subi-la ao servidor (T090).
+   *
+   * Reusa a mesma varredura do `Ctrl+P`, e por isso **respeita o
+   * `.gitignore`** — subir `node_modules` num arraste seria dezenas de milhares
+   * de arquivos que ninguém quis. O que ficou de fora é CONTADO e devolvido:
+   * filtro silencioso num upload é o pior desfecho, porque o usuário pensa que
+   * mandou a pasta inteira.
+   */
+  router.get('/workspace/folder-files', wrap((req, res) => {
+    const alvo = requireString(req.query.path, 'path');
+    const { raiz } = itemExistente(alvo);
+    if (!fs.statSync(dentroDaPasta(raiz, alvo)).isDirectory()) {
+      throw new Error(`"${alvo}" não é uma pasta.`);
+    }
+    const pasta = dentroDaPasta(raiz, alvo);
+
+    const rastreados = varrerArquivos(pasta);
+    // Tudo, para saber QUANTOS o `.gitignore` tirou. Uma segunda varredura é
+    // barata perto de mandar o usuário descobrir sozinho o que não subiu.
+    const todos = varrerArquivos(pasta, { ignorarGitignore: true });
+
+    res.json(ok({
+      files: rastreados.arquivos.map((caminho) => ({
+        path: caminho,
+        relative: path.relative(pasta, caminho),
+        bytes: fs.statSync(caminho).size,
+      })),
+      ignored: Math.max(0, todos.arquivos.length - rastreados.arquivos.length),
+      truncated: rastreados.truncated,
+    }));
+  }));
+
   router.get('/folders', wrap((req, res) => {
     const bruto = typeof req.query.path === 'string' && req.query.path !== ''
       ? req.query.path

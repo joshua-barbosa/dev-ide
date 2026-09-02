@@ -184,3 +184,84 @@ test('closeAll fecha tudo, mesmo se um close falhar', async () => {
   assert.deepEqual(pool.openIds(), []);
   assert.equal(boa.closed(), true);
 });
+
+// ---------------------------------------------------------------------------
+// Desconectar SEMPRE termina
+//
+// Ele achou usando, com a conexão de produção: *"travou, nem consigo dar
+// desconectar"*. Eram duas travas diferentes, e as duas apareciam do mesmo
+// jeito na tela — o botão não fazia nada.
+// ---------------------------------------------------------------------------
+
+test('desconectar durante a ABERTURA desiste dela, e não deixa a sessão viva', async () => {
+  let liberar: (s: Session) => void = () => undefined;
+  const sessao = sessionFake();
+  const pool = new SessionPool(
+    () => new Promise<Session>((resolver) => { liberar = resolver; })
+  );
+
+  // Alguém pediu a conexão, e ela está pendurada abrindo.
+  const pedido = pool.acquire('producao');
+  const esperado = assert.rejects(() => pedido, /desconectada antes de terminar de abrir/);
+
+  // Antes, isto voltava calado: a sessão não estava no mapa, então não havia o
+  // que fechar — e a abertura seguia em voo.
+  await pool.close('producao');
+
+  // Agora o servidor responde, tarde. A sessão NÃO pode se registrar.
+  liberar(sessao);
+  await esperado;
+  assert.equal(pool.isOpen('producao'), false, 'não ressuscita depois de desistir');
+  assert.equal(sessao.closed(), true, 'e o socket que chegou atrasado é fechado');
+});
+
+test('depois de desistir, pedir de novo abre uma conexão NOVA', async () => {
+  // Sem isto, a segunda tentativa entraria na fila da abertura morta e ficaria
+  // pendurada junto — a conexão nunca mais voltaria sem reiniciar a IDE.
+  const presas: ((s: Session) => void)[] = [];
+  const pool = new SessionPool(
+    () => new Promise<Session>((resolver) => presas.push(resolver))
+  );
+
+  void pool.acquire('producao').catch(() => undefined);
+  await pool.close('producao');
+
+  const segunda = pool.acquire('producao');
+  assert.equal(presas.length, 2, 'a fábrica foi chamada de novo');
+  presas[1]?.(sessionFake());
+  await segunda;
+  assert.equal(pool.isOpen('producao'), true);
+});
+
+test('desconectar não espera para sempre por um close travado', async () => {
+  // `close()` de um socket morto pode não voltar nunca. A entrada já saiu do
+  // mapa, então para a IDE ela está desconectada na hora; o fechamento educado
+  // segue de fundo.
+  const travada: Session = {
+    kind: 'sql',
+    children: async () => [],
+    close: () => new Promise<void>(() => undefined),
+  };
+  const pool = new SessionPool(async () => travada, { closeTimeoutMs: 20 });
+
+  await pool.acquire('producao');
+  const comecou = Date.now();
+  await pool.close('producao');
+
+  assert.ok(Date.now() - comecou < 1_000, 'voltou sem esperar o close travado');
+  assert.equal(pool.isOpen('producao'), false);
+});
+
+test('close que EXPLODE também desconecta', async () => {
+  const explosiva: Session = {
+    kind: 'sql',
+    children: async () => [],
+    close: async () => {
+      throw new Error('socket já morreu');
+    },
+  };
+  const pool = new SessionPool(async () => explosiva);
+  await pool.acquire('producao');
+  await pool.close('producao');
+  assert.equal(pool.isOpen('producao'), false);
+});

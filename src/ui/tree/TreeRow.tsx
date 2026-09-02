@@ -58,8 +58,10 @@ export function TreeRow({
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
-      // Arrastável só quando quem monta a linha diz o que ela carrega. Pasta e
-      // nó de conexão não arrastam — não há para onde soltá-los.
+      // Arrastável só quando quem monta a linha diz o que ela carrega. Nó de
+      // conexão não arrasta — não há para onde soltá-lo. Pasta arrasta desde o
+      // T090, porque o SFTP a recebe; o clique continua abrindo e fechando,
+      // porque arraste é mousedown+mover e clique é mousedown+soltar parado.
       draggable={aoArrastar !== undefined}
       onDragStart={aoArrastar}
       sx={{

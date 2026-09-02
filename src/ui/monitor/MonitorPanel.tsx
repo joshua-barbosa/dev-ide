@@ -11,6 +11,7 @@ import Box from '@mui/material/Box';
 import { Api } from '../api';
 import { tokens } from '../theme';
 import { GraficoDeRede, type PontoDeRede } from './GraficoDeRede';
+import { escolherDisco } from '../../shared/discos';
 import type { HostMetrics } from '../../shared/contracts';
 
 /** De quanto em quanto tempo. Um segundo é o que a ferramenta de referência usa. */
@@ -52,17 +53,46 @@ export interface MonitorPanelProps {
   readonly conexaoId: string;
   /** Está à vista? Escondido, o monitor PARA — ver o cabeçalho. */
   readonly ativo: boolean;
+  /**
+   * Conexão somente-leitura não mata processo (T080).
+   *
+   * A marca existe para o banco desde a spec 040, e vale aqui pelo mesmo
+   * motivo: quem abriu um servidor em modo de leitura não espera um botão que
+   * derruba um serviço.
+   */
+  readonly somenteLeitura: boolean;
+  /** Pergunta antes do que não tem volta — o mesmo diálogo do KILL do banco. */
+  confirmar(o: {
+    titulo: string;
+    mensagem: string;
+    rotuloConfirmar?: string;
+    destrutivo?: boolean;
+  }): Promise<boolean>;
   onErro(erro: unknown): void;
 }
 
-export function MonitorPanel({ conexaoId, ativo, onErro }: MonitorPanelProps) {
+export function MonitorPanel({
+  conexaoId, ativo, somenteLeitura, confirmar, onErro,
+}: MonitorPanelProps) {
   const [metricas, setMetricas] = useState<HostMetrics | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [historico, setHistorico] = useState<readonly PontoDeRede[]>([]);
   const [ordem, setOrdem] = useState<'cpu' | 'mem'>('mem');
+  /**
+   * A partição escolhida (T082). `null` = a maior, que é o padrão.
+   *
+   * Guardada na TELA, e não na sessão: duas abas do mesmo servidor podem estar
+   * olhando partições diferentes, e uma escolha no servidor faria a segunda aba
+   * trocar sozinha quando a primeira mudasse.
+   */
+  const [particao, setParticao] = useState<string | null>(null);
   // O contador anterior de rede: o `/proc/net/dev` conta desde o boot, e o que
   // interessa é a taxa. Num ref porque não desenha nada sozinho.
   const redeAnterior = useRef<{ rx: number; tx: number; quando: number } | null>(null);
+  /** Há uma medição em voo? Ver a nota no `setInterval`. */
+  const emVoo = useRef(false);
+  /** A última função de medir, para o kill poder atualizar a lista na hora. */
+  const medirAgora = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     if (!ativo) return;
@@ -107,8 +137,19 @@ export function MonitorPanel({ conexaoId, ativo, onErro }: MonitorPanelProps) {
       }
     };
 
+    medirAgora.current = medir;
     void medir();
-    const relogio = setInterval(() => void medir(), INTERVALO_MS);
+    // **Uma medição por vez.** Sem esta guarda, um servidor lento acumulava um
+    // pedido por segundo até estourar o limite de conexões do navegador — e aí
+    // a IDE inteira parava, inclusive o desconectar. A amostra atrasada é
+    // pulada, e não enfileirada: a próxima já traz o número de agora.
+    const relogio = setInterval(() => {
+      if (emVoo.current) return;
+      emVoo.current = true;
+      void medir().finally(() => {
+        emVoo.current = false;
+      });
+    }, INTERVALO_MS);
     return () => {
       vivo = false;
       clearInterval(relogio);
@@ -118,6 +159,36 @@ export function MonitorPanel({ conexaoId, ativo, onErro }: MonitorPanelProps) {
   const processos = [...(metricas?.processos ?? [])].sort((a, b) =>
     ordem === 'cpu' ? b.cpu - a.cpu : b.memoria - a.memoria
   );
+
+  const disco = escolherDisco(metricas?.discos ?? [], particao);
+
+  /**
+   * Encerra um processo, perguntando antes (T080).
+   *
+   * A pergunta mostra o COMANDO, e não só o PID: `4242` não diz nada, e
+   * confirmar sem saber o que se está derrubando é o mesmo que não confirmar.
+   */
+  const matar = async (pid: number, comando: string, sinal: 'TERM' | 'KILL'): Promise<void> => {
+    const ok = await confirmar({
+      titulo: sinal === 'KILL' ? 'Derrubar o processo' : 'Encerrar o processo',
+      mensagem:
+        `${sinal === 'KILL' ? 'Derrubar' : 'Encerrar'} o processo ${pid}?\n\n${comando}\n\n` +
+        (sinal === 'KILL'
+          ? 'SIGKILL não pede: o processo morre na hora, sem salvar nada.'
+          : 'SIGTERM pede para ele encerrar. Ele pode ignorar.'),
+      rotuloConfirmar: sinal,
+      destrutivo: true,
+    });
+    if (!ok) return;
+    try {
+      await Api.killHostProcess(conexaoId, pid, sinal);
+      // Mede de novo na hora: esperar o próximo segundo deixaria a linha do
+      // processo morto na tela, e pareceria que o kill não funcionou.
+      await medirAgora.current?.();
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  };
 
   return (
     <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0, p: 1.5, bgcolor: tokens.bgEditor }}>
@@ -164,11 +235,37 @@ export function MonitorPanel({ conexaoId, ativo, onErro }: MonitorPanelProps) {
         <Cartao
           titulo="DISK"
           marca="disco"
-          porcentagem={metricas?.disco?.porcentagem ?? null}
+          porcentagem={disco?.porcentagem ?? null}
           detalhe={
-            metricas?.disco == null
+            disco == null
               ? '--'
-              : `${bytes(metricas.disco.usadoBytes)} / ${bytes(metricas.disco.totalBytes)} · ${bytes(metricas.disco.livreBytes)} livres`
+              : `${bytes(disco.usadoBytes)} / ${bytes(disco.totalBytes)} · ${bytes(disco.livreBytes)} livres`
+          }
+          // A escolha da partição (T082). Com uma só, o seletor não aparece —
+          // uma lista de um item é enfeite.
+          rodape={
+            (metricas?.discos.length ?? 0) < 2 ? null : (
+              <Box
+                component="select"
+                data-particao
+                aria-label="Partição"
+                value={disco?.ponto ?? ''}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                  setParticao(e.target.value)
+                }
+                sx={{
+                  mt: 0.5, width: '100%', fontSize: 10, fontFamily: tokens.fontMono,
+                  bgcolor: 'transparent', color: 'text.secondary',
+                  border: 1, borderColor: 'divider', borderRadius: 0.5, px: 0.5, py: 0.25,
+                }}
+              >
+                {metricas?.discos.map((d) => (
+                  <option key={d.ponto} value={d.ponto}>
+                    {d.ponto} · {d.dispositivo}
+                  </option>
+                ))}
+              </Box>
+            )
           }
         />
       </Box>
@@ -195,7 +292,15 @@ export function MonitorPanel({ conexaoId, ativo, onErro }: MonitorPanelProps) {
         </Box>
       </Painel>
 
-      <Box sx={{ mb: 1.5, border: 1, borderColor: 'divider', borderRadius: 0.5 }}>
+      <Box
+        sx={{
+          mb: 1.5, border: 1, borderColor: 'divider', borderRadius: 0.5,
+          // Os botões de kill só aparecem na linha sob o mouse.
+          '& .acao-do-processo': { opacity: 0, transition: 'opacity 120ms' },
+          '& [data-processo]:hover .acao-do-processo': { opacity: 1 },
+          '& .acao-do-processo:focus-visible': { opacity: 1 },
+        }}
+      >
         <Grade cabecalho />
         {processos.map((p) => (
           <Grade key={p.pid} pid={p.pid}>
@@ -210,6 +315,41 @@ export function MonitorPanel({ conexaoId, ativo, onErro }: MonitorPanelProps) {
             >
               {p.comando}
             </Box>
+            {/*
+              O kill À VISTA, como ele pediu — e não escondido num menu. Aparece
+              ao passar o mouse na linha, para a lista não virar um campo minado
+              de botões vermelhos.
+            */}
+            {somenteLeitura ? (
+              <Box />
+            ) : (
+              <Box sx={{ display: 'flex', gap: 0.25, justifyContent: 'flex-end' }}>
+                {(['TERM', 'KILL'] as const).map((sinal) => (
+                  <Box
+                    key={sinal}
+                    component="button"
+                    type="button"
+                    className="acao-do-processo"
+                    data-matar={`${p.pid}:${sinal}`}
+                    aria-label={`${sinal} no processo ${p.pid}`}
+                    title={
+                      sinal === 'TERM'
+                        ? 'Pede para o processo encerrar (SIGTERM)'
+                        : 'Derruba o processo sem pedir (SIGKILL)'
+                    }
+                    onClick={() => void matar(p.pid, p.comando, sinal)}
+                    sx={{
+                      border: 0, bgcolor: 'transparent', cursor: 'pointer', p: 0.25,
+                      font: 'inherit', fontSize: 9.5, borderRadius: 0.5,
+                      color: sinal === 'KILL' ? 'error.main' : 'text.secondary',
+                      '&:hover': { bgcolor: 'action.hover' },
+                    }}
+                  >
+                    {sinal}
+                  </Box>
+                ))}
+              </Box>
+            )}
           </Grade>
         ))}
         {processos.length === 0 && (
@@ -235,12 +375,14 @@ export function MonitorPanel({ conexaoId, ativo, onErro }: MonitorPanelProps) {
 }
 
 function Cartao({
-  titulo, marca, porcentagem, detalhe,
+  titulo, marca, porcentagem, detalhe, rodape = null,
 }: {
   readonly titulo: string;
   readonly marca: string;
   readonly porcentagem: number | null;
   readonly detalhe: string;
+  /** Espaço embaixo — hoje só o seletor de partição do disco (T082). */
+  readonly rodape?: React.ReactNode;
 }) {
   return (
     <Box
@@ -267,6 +409,7 @@ function Cartao({
         />
       </Box>
       <Box sx={{ mt: 0.75, fontSize: 10.5, color: 'text.secondary' }}>{detalhe}</Box>
+      {rodape}
     </Box>
   );
 }
@@ -285,7 +428,7 @@ function Painel({ titulo, children }: { readonly titulo: string; readonly childr
   );
 }
 
-const COLUNAS_DE_PROCESSO = '90px 150px 60px 60px 90px 1fr';
+const COLUNAS_DE_PROCESSO = '90px 150px 60px 60px 90px 1fr 52px';
 
 function Grade({
   children, cabecalho = false, pid,
@@ -314,6 +457,7 @@ function Grade({
           <Box>MEM%</Box>
           <Box>RSS</Box>
           <Box>COMMAND</Box>
+          <Box />
         </>
       ) : (
         children

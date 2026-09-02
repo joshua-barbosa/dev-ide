@@ -110,11 +110,17 @@ export function lerMemoria(procMeminfo: string): UsoDeMemoria | null {
   };
 }
 
+import { escolherDisco } from '../../../shared/discos';
+
 export interface UsoDeDisco {
   readonly totalBytes: number;
   readonly usadoBytes: number;
   readonly livreBytes: number;
   readonly porcentagem: number;
+  /** Onde ela está montada — `/`, `/home`, `/mnt/dados` (T082). */
+  readonly ponto: string;
+  /** O dispositivo, como o `df` o chama. Desempata dois pontos parecidos. */
+  readonly dispositivo: string;
 }
 
 /**
@@ -124,14 +130,39 @@ export interface UsoDeDisco {
  * linha em duas e as colunas saem trocadas. `-k` fixa a unidade em kB, senão o
  * `df` escolhe sozinho e devolve `39G` como texto.
  */
-export function lerDisco(saidaDoDf: string): UsoDeDisco | null {
-  const linha = saidaDoDf
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l !== '' && !l.startsWith('Filesystem'))
-    .pop();
-  if (linha === undefined) return null;
+/**
+ * TODAS as partições de `df -P -k` (T082).
+ *
+ * Era uma só, e fixa em `/`. A nota dele pedia escolher a partição, e um
+ * servidor de verdade quase sempre tem os dados em outro lugar que não a raiz —
+ * mostrar só `/` dizia "o disco está tranquilo" com o `/mnt` lotado ao lado.
+ *
+ * **O que é sistema de arquivos virtual fica de fora**: `tmpfs`, `devtmpfs`,
+ * `overlay` e afins não são disco, e enchê-los é outro assunto. Sobra o que a
+ * pessoa reconhece como partição.
+ */
+const VIRTUAIS = new Set([
+  'tmpfs', 'devtmpfs', 'devfs', 'overlay', 'squashfs', 'udev', 'none', 'proc', 'sysfs',
+]);
 
+export function lerDiscos(saidaDoDf: string): readonly UsoDeDisco[] {
+  const saida: UsoDeDisco[] = [];
+  for (const bruta of saidaDoDf.split('\n')) {
+    const linha = bruta.trim();
+    if (linha === '' || linha.startsWith('Filesystem')) continue;
+    const um = umaLinhaDeDf(linha);
+    if (um !== null && !VIRTUAIS.has(um.dispositivo)) saida.push(um);
+  }
+  return saida;
+}
+
+/** Compatível com o que existia: a partição de `/`, ou a maior. */
+export function lerDisco(saidaDoDf: string): UsoDeDisco | null {
+  const discos = lerDiscos(saidaDoDf);
+  return discos.find((d) => d.ponto === '/') ?? escolherDisco(discos, null);
+}
+
+function umaLinhaDeDf(linha: string): UsoDeDisco | null {
   const partes = linha.split(/\s+/);
   const total = Number(partes[1]);
   const usado = Number(partes[2]);
@@ -152,6 +183,10 @@ export function lerDisco(saidaDoDf: string): UsoDeDisco | null {
     usadoBytes: usado * 1024,
     livreBytes: disponivel * 1024,
     porcentagem: base <= 0 ? 0 : Math.round((usado / base) * 1000) / 10,
+    // O ponto de montagem é o RESTO da linha: ele pode ter espaço no nome, e
+    // cortar por espaço truncaria `/mnt/disco de backup` no primeiro pedaço.
+    ponto: partes.slice(5).join(' ') || (partes[5] ?? '/'),
+    dispositivo: partes[0] ?? '?',
   };
 }
 

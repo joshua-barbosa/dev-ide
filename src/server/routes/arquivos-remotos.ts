@@ -55,6 +55,26 @@ export function createRemoteFilesRouter(pool: SessionPool): Router {
     res.json(ok(await files.read(requireString(req.query.path, 'path'))));
   }));
 
+  /**
+   * Os bytes crus de um arquivo (T089).
+   *
+   * Fora do envelope `{success, data}` de propósito: o corpo é binário, e
+   * embrulhá-lo em JSON exigiria base64 — um terço a mais de tráfego por
+   * arquivo, numa operação que baixa centenas deles.
+   *
+   * O erro continua em JSON, com status 400: quem chama distingue pelo
+   * `Content-Type`.
+   */
+  router.get('/bytes', wrap(async (req, res) => {
+    const files = await arquivos(req.params.id);
+    if (files.readBytes === undefined) {
+      throw new Error(`A conexão "${req.params.id}" não lê arquivos em bytes.`);
+    }
+    const dados = await files.readBytes(requireString(req.query.path, 'path'));
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.send(dados);
+  }));
+
   router.get('/list', wrap(async (req, res) => {
     const files = await arquivos(req.params.id);
     res.json(ok(await files.list(requireString(req.query.path, 'path'))));
@@ -77,6 +97,21 @@ export function createRemoteFilesRouter(pool: SessionPool): Router {
     const caminho = requireString((req.body ?? {}).path, 'path');
     await files.mkdir(caminho);
     res.json(ok({ path: caminho }));
+  }));
+
+  /** Troca as permissões de um arquivo remoto (T079). */
+  router.post('/chmod', wrap(async (req, res) => {
+    const files = await arquivos(req.params.id);
+    if (files.chmod === undefined) {
+      throw new Error(`A conexão "${req.params.id}" não troca permissões.`);
+    }
+    const caminho = requireString(req.body?.path, 'path');
+    // Em texto e base 8: `"755"` é como se escreve permissão, e receber 755 em
+    // decimal daria 0o1363 — um modo que ninguém pediu.
+    const modo = Number.parseInt(requireString(req.body?.mode, 'mode'), 8);
+    if (Number.isNaN(modo)) throw new Error('Permissão inválida: use algo como 755.');
+    await files.chmod(caminho, modo);
+    res.json(ok({ path: caminho, mode: modo.toString(8).padStart(3, '0') }));
   }));
 
   router.post('/rename', wrap(async (req, res) => {

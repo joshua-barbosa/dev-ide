@@ -123,3 +123,44 @@ test('abrir a aba do servidor SEM ter conectado conecta sozinho', async ({ page 
   await page.locator('[data-sub-aba="sftp"]').click();
   await expect(page.locator('[data-caminho-sftp]')).toContainText('/arvore');
 });
+
+// ---------------------------------------------------------------------------
+// Lote M: o menu de botão direito (T079) e baixar pasta (T089)
+//
+// Contra o `sshd` descartável da suíte. Nada é apagado no servidor: os itens
+// destrutivos são conferidos por EXISTIREM no menu, e o menu é fechado.
+// ---------------------------------------------------------------------------
+
+test('o botão direito na tabela traz os itens do lote M (T079)', async ({ page }) => {
+  await abrirAbaDoServidor(page);
+  await page.locator('[data-linha-sftp]').first().click({ button: 'right' });
+
+  const menuAberto = page.locator('.MuiMenu-paper');
+  await expect(menuAberto).toBeVisible();
+  for (const item of ['Baixar', 'Copiar caminho', 'Renomear', 'Permissões', 'Excluir']) {
+    await expect(menuAberto).toContainText(item);
+  }
+  await page.keyboard.press('Escape');
+});
+
+test('o menu de uma PASTA oferece baixar em zip (T089)', async ({ page }) => {
+  await abrirAbaDoServidor(page);
+  await page.locator('[data-linha-sftp="/aplicacao"]').click({ button: 'right' });
+  await expect(page.locator('.MuiMenu-paper')).toContainText('.zip');
+  await page.keyboard.press('Escape');
+});
+
+test('excluir no servidor PERGUNTA antes, e cancelar não apaga nada', async ({ page }) => {
+  await abrirAbaDoServidor(page);
+  const antes = await page.locator('[data-linha-sftp]').count();
+
+  await page.locator('[data-linha-sftp]').first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Excluir' }).click();
+
+  const dialogo = page.getByRole('dialog');
+  // A pergunta diz que não há lixeira: no servidor dele isto não tem volta.
+  await expect(dialogo).toContainText('lixeira');
+  await page.getByRole('button', { name: 'cancelar' }).click();
+
+  await expect(page.locator('[data-linha-sftp]')).toHaveCount(antes);
+});
