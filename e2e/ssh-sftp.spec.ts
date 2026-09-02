@@ -145,7 +145,10 @@ test('o botão direito na tabela traz os itens do lote M (T079)', async ({ page 
 
 test('o menu de uma PASTA oferece baixar em zip (T089)', async ({ page }) => {
   await abrirAbaDoServidor(page);
-  await page.locator('[data-linha-sftp="/aplicacao"]').click({ button: 'right' });
+  // Pela PASTA, achada pelo nome: a marca é o caminho completo, e ele depende
+  // da raiz da conexão — que o teste não fixa.
+  await page.locator('[data-linha-sftp]').filter({ hasText: 'aplicacao' }).first()
+    .click({ button: 'right' });
   await expect(page.locator('.MuiMenu-paper')).toContainText('.zip');
   await page.keyboard.press('Escape');
 });

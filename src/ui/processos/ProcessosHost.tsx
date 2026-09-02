@@ -199,6 +199,7 @@ export function ProcessosHost({
       <Box sx={{ flex: 1, minHeight: 0, display: divisoria === 'manager' ? 'flex' : 'none' }}>
         <ManagerPanel
           conexaoId={connectionId}
+          ativo={ativa && divisoria === 'manager'}
           bancos={bancos}
           onAbrirSql={onAbrirSql}
           onErro={onErro}

@@ -624,8 +624,9 @@ export const Api = {
   processList: (id: string) =>
     request<ProcessoDoBanco[] | null>('GET', `${conexoes}/${id}/processes`),
   // A aba Manager (T070). Tudo leitura — o Structure Sync devolve TEXTO.
+  /** `null` = este banco não é um servidor (SQLite). Diferente de lista vazia. */
   managerMetrics: (id: string) =>
-    request<readonly MetricaDoBanco[]>('GET', `${conexoes}/${id}/manager/metrics`),
+    request<readonly MetricaDoBanco[] | null>('GET', `${conexoes}/${id}/manager/metrics`),
   managerLog: (id: string, limite = 200) =>
     request<readonly LinhaDeLog[] | null>(
       'GET',

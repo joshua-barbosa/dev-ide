@@ -29,6 +29,14 @@ const DIVISORIAS: readonly { id: DivisoriaDoManager; rotulo: string; icone: stri
 
 export interface ManagerPanelProps {
   readonly conexaoId: string;
+  /**
+   * O painel está à VISTA?
+   *
+   * Ele fica montado quando some (emenda constitucional), e sem esta marca o
+   * Dashboard media na montagem — inclusive numa aba que ninguém abriu. Num
+   * SQLite isso ainda punha um diálogo de erro na frente da tela.
+   */
+  readonly ativo: boolean;
   /** Os bancos desta conexão, para o Structure Sync escolher os dois lados. */
   readonly bancos: readonly string[];
   /** Abre o SQL gerado numa aba do editor — é lá que ele decide se roda. */
@@ -36,7 +44,9 @@ export interface ManagerPanelProps {
   onErro(erro: unknown): void;
 }
 
-export function ManagerPanel({ conexaoId, bancos, onAbrirSql, onErro }: ManagerPanelProps) {
+export function ManagerPanel({
+  conexaoId, ativo, bancos, onAbrirSql, onErro,
+}: ManagerPanelProps) {
   const [ativa, setAtiva] = useState<DivisoriaDoManager>('dashboard');
 
   return (
@@ -74,10 +84,10 @@ export function ManagerPanel({ conexaoId, bancos, onAbrirSql, onErro }: ManagerP
         banco; trocar de divisória não pode jogá-la fora.
       */}
       <Box sx={{ flex: 1, minHeight: 0, display: ativa === 'dashboard' ? 'flex' : 'none' }}>
-        <Dashboard conexaoId={conexaoId} ativo={ativa === 'dashboard'} onErro={onErro} />
+        <Dashboard conexaoId={conexaoId} ativo={ativo && ativa === 'dashboard'} onErro={onErro} />
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, display: ativa === 'log' ? 'flex' : 'none' }}>
-        <Log conexaoId={conexaoId} ativo={ativa === 'log'} onErro={onErro} />
+        <Log conexaoId={conexaoId} ativo={ativo && ativa === 'log'} onErro={onErro} />
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, display: ativa === 'sync' ? 'flex' : 'none' }}>
         <StructureSync
@@ -103,6 +113,8 @@ function Dashboard({
   onErro(erro: unknown): void;
 }) {
   const [metricas, setMetricas] = useState<readonly MetricaDoBanco[]>([]);
+  /** `true` quando o banco não é um servidor — SQLite é um arquivo. */
+  const [semServidor, setSemServidor] = useState(false);
   const [versao, setVersao] = useState(0);
 
   useEffect(() => {
@@ -112,7 +124,9 @@ function Dashboard({
     let vivo = true;
     Api.managerMetrics(conexaoId)
       .then((m) => {
-        if (vivo) setMetricas(m);
+        if (!vivo) return;
+        setSemServidor(m === null);
+        setMetricas(m ?? []);
       })
       .catch(onErro);
     return () => {
@@ -176,8 +190,15 @@ function Dashboard({
         </Box>
       ))}
 
-      {metricas.length === 0 && (
-        <Box sx={{ color: 'text.secondary', fontSize: 12 }}>medindo…</Box>
+      {semServidor ? (
+        <Box sx={{ fontSize: 12, color: 'text.secondary', lineHeight: 1.7, maxWidth: 620 }}>
+          Este banco não é um servidor — é um arquivo. Não há conexões, cache nem
+          uptime para medir.
+        </Box>
+      ) : (
+        metricas.length === 0 && (
+          <Box sx={{ color: 'text.secondary', fontSize: 12 }}>medindo…</Box>
+        )
       )}
     </Box>
   );

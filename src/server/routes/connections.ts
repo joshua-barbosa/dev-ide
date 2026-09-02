@@ -642,8 +642,12 @@ export function createConnectionsRouter(
 
   router.get('/:id/manager/metrics', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
+    // `null`, e não erro: o SQLite é um ARQUIVO, e não tem servidor para medir.
+    // Isso não é falha — é a resposta certa —, e tratá-lo como erro punha um
+    // diálogo na frente da tela toda vez que a aba abria.
     if (session.serverMetrics === undefined) {
-      throw new Error(`A conexão "${req.params.id}" não sabe se medir.`);
+      res.json(ok(null));
+      return;
     }
     res.json(ok(await session.serverMetrics()));
   }));
@@ -660,6 +664,8 @@ export function createConnectionsRouter(
 
   router.get('/:id/manager/structure', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
+    // Aqui o erro FICA: comparar é um gesto que ele pediu, e devolver `null`
+    // silenciosamente faria o botão não fazer nada sem dizer por quê.
     if (session.structureSnapshot === undefined) {
       throw new Error(`A conexão "${req.params.id}" não sabe ler a própria estrutura.`);
     }
