@@ -8,7 +8,7 @@
 // **A regra que este arquivo repete três vezes, porque ela já custou dois
 // defeitos:** editor e terminais ficam MONTADOS e apenas somem de vista.
 // Desmontar perde a instância imperativa, mata o processo e apaga o buffer.
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import { TabBar } from './tabs/TabBar';
 import { ZonaDeSoltura } from './ZonaDeSoltura';
@@ -163,6 +163,30 @@ export function EditorGroup({
   onRodarCodigoDoBloco, onPedirLinguagem, vinculoDoCaderno, onTrocarVinculoDoCaderno,
   onPedirNomeDoResultado, onAbrirResultadoSalvo,
 }: EditorGroupProps) {
+  /**
+   * O editor DESTE grupo, para focá-lo ao clicar numa aba.
+   *
+   * Um ref próprio em vez de subir até o `App`: quem sabe qual editor é o deste
+   * grupo é este componente, e a tela dividida tem dois.
+   */
+  const editorDoGrupo = useRef<EditorHandle | null>(null);
+
+  /**
+   * ESTÁVEL, e não uma arrow inline.
+   *
+   * Uma função nova a cada render faz o React chamar o `ref` com `null` e de
+   * novo com o handle em toda passagem — e o registro do editor entra em ciclo,
+   * derrubando a IDE antes de ela abrir. Foi o que aconteceu na primeira versão
+   * disto.
+   */
+  const guardarEditor = useCallback(
+    (h: EditorHandle | null) => {
+      editorDoGrupo.current = h;
+      registrarEditor(h);
+    },
+    [registrarEditor]
+  );
+
   const caixa = useRef<HTMLDivElement>(null);
   // A zona vive num `ref` E num estado: o `ref` é a verdade que a soltura lê, o
   // estado só desenha o indicador.
@@ -263,7 +287,29 @@ export function EditorGroup({
       <TabBar
         tabs={abas}
         activeId={ativaId}
-        onActivate={onAtivar}
+        onActivate={(id) => {
+          onAtivar(id);
+          // O FOCO vai para o editor — e só neste gesto.
+          //
+          // Clicar numa aba põe o foco no elemento da aba. O Monaco restaura os
+          // cursores mas fica sem foco no DOM, e aí ele nem desenha o cursor
+          // primário nem aceita tecla: os cursores aparecem e o editor parece
+          // travado. Foi o que ele descreveu — *"o cursor está lá, mas está
+          // travado, se eu digito não faz nada"*.
+          //
+          // **Aqui, e não no efeito que restaura a aba.** Ativar uma aba também
+          // acontece ao clicar um arquivo na ÁRVORE, e lá o foco tem de ficar
+          // na árvore: é dele que o `F2` e o `Delete` dependem. Focar em toda
+          // ativação trocaria um defeito por outro.
+          // DEPOIS do commit, e não agora.
+          //
+          // O React agrupa a mudança de estado e só a aplica ao fim do evento:
+          // focar aqui seria focar ANTES de a aba nova carregar o modelo dela, e
+          // a troca de modelo desfaz o foco. Medido — com o `focus()` síncrono o
+          // editor continuava mudo. O `requestAnimationFrame` roda depois do
+          // efeito que restaura a aba.
+          requestAnimationFrame(() => editorDoGrupo.current?.focus());
+        }}
         onClose={onFechar}
         onExecutar={onExecutar}
         ehSql={ativa?.type === 'sql'}
@@ -289,7 +335,7 @@ export function EditorGroup({
           fachada imperativa. Some de vista, não do DOM. */}
       <Box sx={{ flex: 1, display: mostrarEditor ? 'flex' : 'none', minHeight: 0 }}>
         <EditorHost
-          ref={registrarEditor}
+          ref={guardarEditor}
           acoesDeMenu={acoesDeMenu}
           contextoDeLinguagem={contextoDeLinguagem}
           onChange={onMudar}

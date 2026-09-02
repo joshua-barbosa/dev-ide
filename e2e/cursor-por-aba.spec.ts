@@ -65,3 +65,42 @@ test('a POSIÇÃO de um cursor só também volta', async ({ page }) => {
 
   await expect.poll(() => posicao.textContent()).toBe(antes);
 });
+
+test('voltar para a aba deixa o editor PRONTO para digitar, não travado', async ({ page }) => {
+  // O relato dele depois da primeira correção: *"o cursor está lá, mas está
+  // travado, se eu digito não faz nada"*.
+  //
+  // Restaurar as seleções não bastava: clicar numa aba põe o foco no elemento
+  // da ABA, e o Monaco sem foco no DOM nem desenha o cursor primário nem
+  // aceita tecla. Os cursores apareciam e o editor parecia congelado.
+  await abrirArquivo(page, 'utils.ts');
+  await editor(page).click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Shift+Alt+i');
+  const muitos = await cursores(page);
+  expect(muitos).toBeGreaterThan(1);
+
+  await abrirArquivo(page, 'consulta.sql');
+  await page.locator('[data-tab="utils.ts"]').click();
+  await expect.poll(() => cursores(page)).toBe(muitos);
+
+  // Uma marca ÚNICA por rodada: a suíte compartilha uma pasta de dados, e um
+  // texto fixo já estaria no arquivo desde a execução anterior — o teste
+  // passaria ou falharia pelo histórico, e não pelo que ele mede.
+  const marca = `zz${Date.now().toString(36)}`;
+  const lerTexto = (): Promise<string> =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('.view-line')]
+        .map((l) => (l as HTMLElement).innerText)
+        .join('\n')
+    );
+  const antesDeDigitar = await lerTexto();
+
+  // Digita SEM clicar no editor: é exatamente o que estava travado.
+  await page.keyboard.type(marca);
+
+  const depois = await lerTexto();
+  expect(antesDeDigitar.includes(marca)).toBe(false);
+  // Uma marca por cursor: o texto chegou, e chegou em TODOS.
+  expect(depois.match(new RegExp(marca, 'g'))?.length).toBe(muitos);
+});
