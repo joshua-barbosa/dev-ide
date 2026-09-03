@@ -71,6 +71,16 @@ export const CONTAGENS_SQL = `
     (SELECT COUNT(*) FROM pg_proc p
        JOIN pg_namespace pn ON pn.oid = p.pronamespace
       WHERE pn.nspname = $1 AND p.prokind = 'f') AS functions,
+    (SELECT COUNT(*) FROM pg_proc p
+       JOIN pg_namespace pn ON pn.oid = p.pronamespace
+      WHERE pn.nspname = $1 AND p.prokind = 'p') AS procedures,
+    -- tgisinternal marca o gatilho que o proprio banco cria para sustentar uma
+    -- chave estrangeira. Conta-lo faria a categoria dizer um numero que
+    -- ninguem escreveu.
+    (SELECT COUNT(*) FROM pg_trigger tg
+       JOIN pg_class tc ON tc.oid = tg.tgrelid
+       JOIN pg_namespace tn ON tn.oid = tc.relnamespace
+      WHERE tn.nspname = $1 AND NOT tg.tgisinternal) AS triggers,
     (SELECT COUNT(*) FROM pg_type t
        JOIN pg_namespace tn ON tn.oid = t.typnamespace
       WHERE tn.nspname = $1 AND ${TIPOS_DO_USUARIO}) AS types
@@ -134,6 +144,31 @@ export const FUNCOES_SQL = `
     JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname = $1 AND p.prokind = 'f'{FILTRO}
    ORDER BY p.proname
+`;
+
+export const PROCEDIMENTOS_SQL = `
+  SELECT p.proname AS nome, pg_get_function_arguments(p.oid) AS argumentos
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = $1 AND p.prokind = 'p'{FILTRO}
+   ORDER BY p.proname
+`;
+
+/**
+ * Os gatilhos do schema, com a tabela a que pertencem.
+ *
+ * Gatilho não é objeto solto no PostgreSQL: ele pende de uma tabela, e por isso
+ * o detalhe mostra a tabela em vez de um tipo. `NOT tgisinternal` tira os que o
+ * banco cria sozinho para chave estrangeira — contá-los faria a categoria dizer
+ * um número que ninguém escreveu.
+ */
+export const GATILHOS_SQL = `
+  SELECT tg.tgname AS nome, c.relname AS tabela
+    FROM pg_trigger tg
+    JOIN pg_class c ON c.oid = tg.tgrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname = $1 AND NOT tg.tgisinternal{FILTRO}
+   ORDER BY tg.tgname
 `;
 
 export const DDL_COLUNAS_SQL = `

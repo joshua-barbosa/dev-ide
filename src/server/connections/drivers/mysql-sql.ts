@@ -17,7 +17,9 @@ export const CONTAGENS_SQL = `
     (SELECT COUNT(*) FROM information_schema.ROUTINES
       WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'PROCEDURE') AS procedures,
     (SELECT COUNT(*) FROM information_schema.EVENTS
-      WHERE EVENT_SCHEMA = ?) AS events
+      WHERE EVENT_SCHEMA = ?) AS events,
+    (SELECT COUNT(*) FROM information_schema.TRIGGERS
+      WHERE TRIGGER_SCHEMA = ?) AS triggers
 `;
 
 /** Colunas com o que os MODELOS de SQL pedem: chave e auto-incremento. */

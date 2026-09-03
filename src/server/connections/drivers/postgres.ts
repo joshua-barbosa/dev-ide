@@ -19,6 +19,7 @@ import {
   SCHEMAS_SQL,
 } from './postgres-sql';
 import {
+  CAMPOS_DE_ARVORE,
   expandeEmColunas,
   listarCategorias,
   listarColunas,
@@ -54,6 +55,7 @@ import type {
   QueryResult,
   ResolvedConfig,
   Codebase,
+  FieldValue,
   Session,
   TreeNode,
 } from '../types';
@@ -77,6 +79,13 @@ interface Exibicao {
   readonly bancos: VisibilityOptions;
   readonly schemas: VisibilityOptions;
   readonly rowLimit: number;
+  /**
+   * O cadastro cru, para as categorias opcionais.
+   *
+   * Vem inteiro em vez de já peneirado porque quem decide o que cada
+   * interruptor liga é `postgres-objetos.ts`, que declara as categorias.
+   */
+  readonly campos: Readonly<Record<string, FieldValue>>;
 }
 
 
@@ -247,7 +256,7 @@ async function navegar(
   // Do segundo nível em diante, tudo passa pelo cliente daquele banco.
   const client = await clienteDe(nodePath[1]);
   if (nodePath.length === 2) return listarSchemas(client, exibicao);
-  if (nodePath.length === 3) return listarCategorias(client, nodePath[2]);
+  if (nodePath.length === 3) return listarCategorias(client, nodePath[2], exibicao.campos);
   if (nodePath.length === 4) return listarObjetos(client, nodePath[2], nodePath[3], opcoes);
   if (nodePath.length === 5 && expandeEmColunas(nodePath[3])) {
     return listarColunas(client, nodePath[2], nodePath[4]);
@@ -482,6 +491,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       hideSystem: f.hide_system_schemas !== false,
       systemNames: SCHEMAS_SISTEMA,
     },
+    campos: f,
     rowLimit: resolveRowLimit(Number(f.default_row_limit)),
   };
 
@@ -686,6 +696,9 @@ export const postgresDriver: Driver = {
       help: 'Banco da conexão inicial. Expandir outro banco abre uma conexão nova — o Postgres não faz consulta cross-database.',
     },
 
+    // Os interruptores de categoria (03/09/2026, ele). Ficam na mesma seção dos
+    // filtros de banco e schema: tudo aqui responde "o que a árvore mostra".
+    ...CAMPOS_DE_ARVORE,
     {
       name: 'show_databases',
       label: 'Bancos visíveis',

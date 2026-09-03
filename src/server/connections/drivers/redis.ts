@@ -19,6 +19,11 @@ import {
   podeRodarSomenteLeituraComModulos, ramosDoAcumulado,
   type AcumuladoDeRamos,
 } from '../../../shared/sql/redis-modelo';
+import {
+  bancoDoRotulo, bancosVisiveis, lerKeyspace, lerListaDeBancos, lerQuantosBancos,
+  QUANTOS_BANCOS_PADRAO, type BancoDoRedis,
+} from '../../../shared/sql/redis-bancos';
+import { SECAO_DA_ARVORE } from '../../../shared/sql/categorias-visiveis';
 import { colunasDaAmostra, linhasDosDocumentos } from '../../../shared/sql/mongo-modelo';
 
 export const PORTA_PADRAO = 6379;
@@ -77,10 +82,42 @@ const CAMPOS: readonly FieldSpec[] = [
     showIf: { campo: 'modo', valores: ['campos'] } },
   {
     name: 'tls',
-    label: 'Usar TLS',
+    // "SSL" no rótulo porque é o nome que aparece nos painéis de nuvem e o que
+    // ele usou ao pedir (03/09/2026) — TLS é o nome certo, SSL é o procurado.
+    label: 'Usar TLS (SSL)',
     type: 'boolean',
     default: false,
     help: 'Soma com o esquema: `rediss://` já é TLS, e desmarcar aqui não o desliga.',
+  },
+  {
+    name: 'todos_bancos',
+    label: 'Mostrar todos os bancos',
+    type: 'boolean',
+    default: false,
+    section: SECAO_DA_ARVORE,
+    help:
+      'Um servidor Redis tem 16 bancos numerados. Desligado, a árvore mostra só ' +
+      'o banco desta conexão — que é como sempre foi.',
+  },
+  {
+    name: 'bancos_visiveis',
+    label: 'Bancos visíveis',
+    type: 'string',
+    placeholder: 'ex.: 0, 3, db7',
+    section: SECAO_DA_ARVORE,
+    showIf: { campo: 'todos_bancos', valores: ['true'] },
+    help: 'Lista branca. Vazio mostra todos os que o servidor tiver.',
+  },
+  {
+    name: 'modulos',
+    label: 'Usar RedisJSON e RediSearch',
+    type: 'boolean',
+    default: true,
+    section: SECAO_DA_ARVORE,
+    help:
+      'Ligado, a IDE procura índices do RediSearch e abre campo JSON na grade. ' +
+      'Desligue para ver o servidor como Redis puro — e para poupar a consulta ' +
+      'de índices em quem não tem os módulos.',
   },
   {
     name: 'standalone',
@@ -94,6 +131,7 @@ const CAMPOS: readonly FieldSpec[] = [
   },
 ];
 
+const SERVER_ID = '@servidor';
 const CATEGORIA_INDICES = '@indices';
 const CATEGORIA_CHAVES = '@chaves';
 
@@ -103,7 +141,11 @@ const CATEGORIA_CHAVES = '@chaves';
  * `FT._LIST` não existe num Redis sem o módulo, e o erro é "unknown command".
  * Isso NÃO é falha: é um Redis comum, e a categoria simplesmente não nasce.
  */
-async function listarIndices(cliente: Redis): Promise<string[]> {
+async function listarIndices(cliente: Redis, usarModulos: boolean): Promise<string[]> {
+  // Interruptor do cadastro: desligado, nem se pergunta. Poupa uma ida ao
+  // servidor em quem não tem os módulos, e é o que faz "ver como Redis puro"
+  // significar alguma coisa.
+  if (!usarModulos) return [];
   try {
     const r = await cliente.call('FT._LIST');
     return Array.isArray(r) ? r.map((x) => String(x)).sort((a, b) => a.localeCompare(b)) : [];
@@ -168,6 +210,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
   const lido = destinoDaConexao(config.fields as Record<string, unknown>);
   if ('erro' in lido) throw new Error(lido.erro);
   const d = lido.destino;
+  const campos = config.fields as Record<string, unknown>;
 
   const cliente = new Redis({
     host: d.host,
@@ -208,6 +251,44 @@ async function connect(config: ResolvedConfig): Promise<Session> {
    * servidor já fez.
    */
   const varreduras = new Map<string, Varredura>();
+
+  // --- o que o cadastro diz sobre a árvore (03/09/2026, ele) ---
+  const marcado = (v: unknown, padrao: boolean): boolean =>
+    v === undefined || v === '' ? padrao : v === true || v === 'true';
+
+  const usarModulos = marcado(campos.modulos, true);
+  const mostrarBancos = marcado(campos.todos_bancos, false);
+  const escolhidos = lerListaDeBancos(
+    typeof campos.bancos_visiveis === 'string' ? campos.bancos_visiveis : undefined
+  );
+
+  /** O banco em que a conexão está agora — a chave da varredura depende dele. */
+  let bancoAtual = d.banco;
+
+  /**
+   * Os bancos, com quantas chaves cada um tem.
+   *
+   * `CONFIG GET` é recusado por quase todo servidor gerenciado, e `INFO` quase
+   * nunca: por isso um cai no padrão e o outro, quando falha, só deixa a
+   * contagem de fora — a árvore nasce de qualquer jeito.
+   */
+  const listarBancos = async (): Promise<readonly BancoDoRedis[]> => {
+    let quantos = QUANTOS_BANCOS_PADRAO;
+    try {
+      quantos = lerQuantosBancos(await cliente.call('CONFIG', 'GET', 'databases'));
+    } catch {
+      // Servidor que não deixa ler a configuração: 16 é o padrão do Redis.
+    }
+    let contagens: ReadonlyMap<number, number> | undefined;
+    try {
+      contagens = lerKeyspace(String(await cliente.info('keyspace')));
+    } catch {
+      // Sem `INFO`, a árvore mostra os bancos sem dizer quantas chaves têm.
+    }
+    return bancosVisiveis({
+      todos: true, bancoDaConexao: d.banco, quantos, escolhidos, contagens,
+    });
+  };
 
   const executar = async (request: ExecuteRequest): Promise<QueryResult> => {
     const comeco = Date.now();
@@ -261,12 +342,53 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     kind: 'kv',
 
     children: async (nodePath) => {
-      // **A RAIZ tem duas categorias**, e a ordem não é decorativa: ele usa
-      // índices na maioria dos casos, então `Índices` vem primeiro e `Chaves`
-      // depois. Numa base com milhões de chaves, abrir a árvore de prefixos é o
-      // caminho caro; buscar num índice é o barato.
-      if (nodePath.length <= 1) {
-        const indices = await listarIndices(cliente);
+      // A forma da árvore, de fora para dentro:
+      //
+      //     servidor → [db0, db1…] → Índices | Chaves → prefixos → chave
+      //
+      // O nível dos bancos só existe com "todos os bancos" ligado. O nó de
+      // servidor existe SEMPRE, e é ele que faltava: sem um nó na raiz, o
+      // caminho de um filho começava na própria categoria, e o teste de nível
+      // devolvia a raiz de novo — expandir `Chaves` mostrava `Chaves`.
+      if (nodePath.length === 0) {
+        return [{
+          id: SERVER_ID, label: config.label, icon: 'server', hasChildren: true,
+        }];
+      }
+      if (nodePath[0] !== SERVER_ID) return [];
+
+      // Do nó de servidor para dentro, o caminho é relativo a ele.
+      let resto = nodePath.slice(1);
+
+      if (mostrarBancos && resto.length === 0) {
+        const lista = await listarBancos();
+        return lista.map((banco): TreeNode => ({
+          id: banco.rotulo,
+          label: banco.rotulo,
+          icon: 'database',
+          detail: banco.chaves === undefined ? undefined : String(banco.chaves),
+          hasChildren: true,
+          meta: { database: banco.rotulo },
+        }));
+      }
+
+      if (mostrarBancos) {
+        // O `SELECT` do Redis é ESTADO DA CONEXÃO, e não parâmetro do comando:
+        // sem trocar aqui, varrer `db3` leria as chaves do banco anterior, e
+        // leria calado.
+        const numero = bancoDoRotulo(resto[0]);
+        if (numero === null) return [];
+        await cliente.select(numero);
+        bancoAtual = numero;
+        resto = resto.slice(1);
+      }
+
+      // **A raiz do banco tem duas categorias**, e a ordem não é decorativa:
+      // ele usa índices na maioria dos casos, então `Índices` vem primeiro e
+      // `Chaves` depois. Numa base com milhões de chaves, abrir a árvore de
+      // prefixos é o caminho caro; buscar num índice é o barato.
+      if (resto.length === 0) {
+        const indices = await listarIndices(cliente, usarModulos);
         const raiz: TreeNode[] = [];
         if (indices.length > 0) {
           raiz.push({
@@ -288,8 +410,9 @@ async function connect(config: ResolvedConfig): Promise<Session> {
         return raiz;
       }
 
-      if (nodePath[1] === CATEGORIA_INDICES && nodePath.length === 2) {
-        const indices = await listarIndices(cliente);
+      if (resto[0] === CATEGORIA_INDICES) {
+        if (resto.length > 1) return [];
+        const indices = await listarIndices(cliente, usarModulos);
         return indices.map((nome): TreeNode => ({
           id: nome,
           label: nome,
@@ -300,15 +423,17 @@ async function connect(config: ResolvedConfig): Promise<Session> {
         }));
       }
 
-      // Abaixo de `Chaves`: a árvore de prefixos de sempre.
-      const dentroDeChaves = nodePath[1] === CATEGORIA_CHAVES;
-      const prefixo = dentroDeChaves && nodePath.length === 2
-        ? ''
-        : (nodePath[nodePath.length - 1] ?? '');
+      if (resto[0] !== CATEGORIA_CHAVES) return [];
+
+      // Abaixo de `Chaves`: a árvore de prefixos. O último pedaço do caminho JÁ
+      // é o prefixo inteiro — `noDaChave` monta o id assim.
+      const prefixo = resto.length === 1 ? '' : (resto[resto.length - 1] ?? '');
       const padrao = prefixo === '' ? '*' : `${prefixo}*`;
 
-      // Continua de onde parou, se este nó já foi aberto e ficou incompleto.
-      const anterior = varreduras.get(prefixo);
+      // A varredura é guardada por BANCO e prefixo: o mesmo prefixo em db0 e em
+      // db3 são duas varreduras, e misturá-las mostraria chave que não existe.
+      const chaveDaVarredura = `${bancoAtual}\u0000${prefixo}`;
+      const anterior = varreduras.get(chaveDaVarredura);
       const r = await varrer(
         cliente,
         padrao,
@@ -316,7 +441,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
         anterior?.cursor ?? '0',
         anterior?.acumulado ?? new Map()
       );
-      varreduras.set(prefixo, r);
+      varreduras.set(chaveDaVarredura, r);
 
       const nos = ramosDoAcumulado(r.acumulado, prefixo).map((ramo) => noDaChave(prefixo, ramo));
       if (r.completa) return nos;

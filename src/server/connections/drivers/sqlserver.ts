@@ -8,8 +8,12 @@
 import { Connection, Request } from 'tedious';
 import type { Driver, ResolvedConfig, Session, TreeNode } from '../types';
 import type { ExecuteRequest, FieldSpec, QueryResult } from '../../../shared/contracts';
-import { formatCell, quoteIdentifier } from './sql-base';
+import { formatCell } from './sql-base';
 import { PORQUE_SEM_TRAVA, selectDeAmostra } from '../../../shared/sql/sqlserver-modelo';
+import {
+  CAMPOS_DE_ARVORE, CATEGORIAS, colunasSql, contagensSql, expandeEmColunas,
+  nosDeCategoria, objetosSql,
+} from './sqlserver-objetos';
 
 export const PORTA_PADRAO = 1433;
 
@@ -29,6 +33,8 @@ const CAMPOS: readonly FieldSpec[] = [
   { name: 'password', label: 'Senha', type: 'string', secret: true },
   { name: 'main_database', label: 'Banco principal', type: 'string', default: 'master',
     help: 'Vai para o topo da árvore.' },
+  // Os interruptores de categoria (03/09/2026, ele).
+  ...CAMPOS_DE_ARVORE,
   {
     name: 'encrypt',
     label: 'Criptografar a conexão',
@@ -128,11 +134,7 @@ const BANCOS_SQL = `
    WHERE state = 0 AND name NOT IN ('tempdb')
    ORDER BY name`;
 
-const TABELAS_SQL = (banco: string): string => `
-  SELECT s.name AS esquema, t.name AS tabela
-    FROM ${quoteIdentifier(banco, 'bracket')}.sys.tables t
-    JOIN ${quoteIdentifier(banco, 'bracket')}.sys.schemas s ON s.schema_id = t.schema_id
-   ORDER BY s.name, t.name`;
+const SERVER_ID = '@servidor';
 
 async function connect(config: ResolvedConfig): Promise<Session> {
   const conexao = await abrir(config);
@@ -142,38 +144,88 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       ? f.main_database.trim()
       : 'master';
 
+  const bancos = async (): Promise<TreeNode[]> => {
+    const { linhas } = await consultar(conexao, BANCOS_SQL);
+    const nomes = linhas.map((l) => String(l.colunas[0]?.valor ?? ''));
+    const ordenados = [
+      ...nomes.filter((n) => n === principal),
+      ...nomes.filter((n) => n !== principal),
+    ];
+    return ordenados.map((nome): TreeNode => ({
+      id: nome, label: nome, icon: 'database', hasChildren: true,
+      meta: { database: nome },
+    }));
+  };
+
   return {
     kind: 'sql',
 
+    // Servidor → banco → categoria → objeto → coluna, como nos outros três SQL.
     children: async (nodePath) => {
-      if (nodePath.length <= 1) {
-        const { linhas } = await consultar(conexao, BANCOS_SQL);
-        const nomes = linhas.map((l) => String(l.colunas[0]?.valor ?? ''));
-        const ordenados = [
-          ...nomes.filter((n) => n === principal),
-          ...nomes.filter((n) => n !== principal),
-        ];
-        return ordenados.map((nome): TreeNode => ({
-          id: nome, label: nome, icon: 'database', hasChildren: true,
-          meta: { database: nome },
+      if (nodePath.length === 0) {
+        return [{
+          id: SERVER_ID, label: config.label, icon: 'server', hasChildren: true,
+        }];
+      }
+      if (nodePath[0] !== SERVER_ID) return [];
+      if (nodePath.length === 1) return bancos();
+
+      const nomeDoBanco = nodePath[1] ?? principal;
+
+      if (nodePath.length === 2) {
+        const { linhas } = await consultar(conexao, contagensSql(nomeDoBanco));
+        const contagens: Record<string, unknown> = {};
+        for (const coluna of linhas[0]?.colunas ?? []) contagens[coluna.nome] = coluna.valor;
+        return nosDeCategoria(nomeDoBanco, contagens, config.fields);
+      }
+
+      if (nodePath.length === 3) {
+        const categoria = CATEGORIAS.find((c) => c.id === nodePath[2]);
+        if (categoria === undefined) return [];
+        const { linhas } = await consultar(conexao, objetosSql(nomeDoBanco, categoria));
+        return linhas.map((l): TreeNode => {
+          const nome = String(l.colunas[0]?.valor ?? '');
+          const dono = String(l.colunas[1]?.valor ?? '');
+          return {
+            id: dono === '' ? nome : `${dono}.${nome}`,
+            label: nome,
+            // O schema só vira detalhe quando NÃO é o `dbo`: repetir "dbo" em
+            // cada linha de um banco inteiro é ruído. Em `triggers` o detalhe é
+            // a tabela de quem o gatilho pende, e essa sempre importa.
+            detail:
+              categoria.id === 'triggers'
+                ? (dono === '' ? undefined : dono)
+                : (dono === 'dbo' || dono === '' ? undefined : dono),
+            icon: categoria.icon,
+            hasChildren: categoria.expande,
+            meta: {
+              database: nomeDoBanco, schema: dono, object: nome, category: categoria.id,
+            },
+            ...(categoria.expande ? { actions: [{ id: 'select', label: 'Abrir consulta' }] } : {}),
+          };
+        });
+      }
+
+      if (nodePath.length === 4 && expandeEmColunas(nodePath[2])) {
+        const inteiro = nodePath[3] ?? '';
+        const ponto = inteiro.indexOf('.');
+        const schema = ponto === -1 ? 'dbo' : inteiro.slice(0, ponto);
+        const objeto = ponto === -1 ? inteiro : inteiro.slice(ponto + 1);
+        const { linhas } = await consultar(conexao, colunasSql(nomeDoBanco, schema, objeto));
+        return linhas.map((l): TreeNode => ({
+          id: String(l.colunas[0]?.valor ?? ''),
+          label: String(l.colunas[0]?.valor ?? ''),
+          icon: 'column',
+          detail: [
+            String(l.colunas[1]?.valor ?? ''),
+            String(l.colunas[2]?.valor ?? '') === 'NO' ? 'NOT NULL' : null,
+          ].filter((p) => p !== null && p !== '').join(' · '),
+          hasChildren: false,
+          meta: { database: nomeDoBanco, schema, object: objeto },
         }));
       }
 
-      const banco = nodePath[1] ?? principal;
-      const { linhas } = await consultar(conexao, TABELAS_SQL(banco));
-      return linhas.map((l): TreeNode => {
-        const esquema = String(l.colunas[0]?.valor ?? '');
-        const tabela = String(l.colunas[1]?.valor ?? '');
-        return {
-          id: `${esquema}.${tabela}`,
-          label: tabela,
-          detail: esquema === 'dbo' ? undefined : esquema,
-          icon: 'table',
-          hasChildren: false,
-          meta: { database: banco, schema: esquema, object: tabela },
-          actions: [{ id: 'select', label: 'Abrir consulta' }],
-        };
-      });
+      return [];
     },
 
     execute: async (request: ExecuteRequest): Promise<QueryResult> => {

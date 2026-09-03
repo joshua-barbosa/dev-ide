@@ -11,12 +11,17 @@ import { ACOES_DE_TABELA, ACOES_DE_VIEW } from './modelos';
 import { TEMPLATES_MYSQL } from '../../../shared/tree/templates';
 import { applyVisibility, mainFirst, type VisibilityOptions } from './sql-base';
 import type { Criterio } from '../../../shared/tree/filtro-da-arvore';
-import type { OpcoesDeNavegacao, TreeNode } from '../types';
+import type { FieldValue, OpcoesDeNavegacao, TreeNode } from '../types';
+import {
+  camposDeVisibilidade, filtrarCategorias, type CategoriaOpcional,
+} from '../../../shared/sql/categorias-visiveis';
 
 export interface Exibicao {
   readonly main: string;
   readonly visibilidade: VisibilityOptions;
   readonly rowLimit: number;
+  /** O cadastro cru, para as categorias opcionais decidirem quais aparecem. */
+  readonly campos: Readonly<Record<string, FieldValue>>;
 }
 
 interface Categoria {
@@ -40,8 +45,28 @@ const CATEGORIAS: readonly Categoria[] = [
   { id: 'procedures', label: 'Procedures', icon: 'procedure', criterios: ['nome', 'dono'] },
   // Spec 069 (T110). Sequence, type, foreign table e matview NÃO entram aqui:
   // o MySQL não tem nenhum dos quatro, e categoria sempre vazia é ruído.
+  //
+  // (O MariaDB TEM sequence desde a 10.3. Não entra pelo mesmo princípio ao
+  // contrário: declarar aqui a poria na árvore de todo MySQL, onde ela nunca
+  // teria nada. Fica registrado para quando houver driver próprio.)
   { id: 'events', label: 'Events', icon: 'event', criterios: ['nome', 'dono'] },
+  { id: 'triggers', label: 'Triggers', icon: 'trigger', criterios: ['nome', 'dono'] },
 ];
+
+/**
+ * As que ganham interruptor no cadastro (03/09/2026, ele).
+ *
+ * `Events` entra junto: é a categoria que mais aparece vazia — o agendador vem
+ * desligado na maioria dos servidores —, e a razão dele para pedir o
+ * interruptor foi exatamente essa.
+ */
+export const OPCIONAIS: readonly CategoriaOpcional[] = [
+  { id: 'events', label: 'Events', padrao: true },
+  { id: 'triggers', label: 'Triggers', padrao: true },
+];
+
+/** Os campos que o driver soma ao formulário para os interruptores existirem. */
+export const CAMPOS_DE_ARVORE = camposDeVisibilidade(OPCIONAIS);
 
 
 /** Formata bytes como "64.1G", igual ao que a árvore mostra ao lado do banco. */
@@ -100,15 +125,20 @@ export async function listarBancos(conn: Connection, exibicao: Exibicao): Promis
 }
 
 
-export async function listarCategorias(conn: Connection, schema: string): Promise<TreeNode[]> {
+export async function listarCategorias(
+  conn: Connection,
+  schema: string,
+  campos: Readonly<Record<string, FieldValue>> = {}
+): Promise<TreeNode[]> {
   const [contagens = {}] = await query<Record<string, unknown>>(conn, CONTAGENS_SQL, [
     schema,
     schema,
     schema,
     schema,
     schema,
+    schema,
   ]);
-  return CATEGORIAS.map((categoria) => ({
+  return filtrarCategorias(CATEGORIAS, OPCIONAIS, campos).map((categoria) => ({
     id: categoria.id,
     label: categoria.label,
     icon: categoria.icon,
@@ -242,6 +272,39 @@ export async function listarObjetos(
         { id: 'drop-event', label: 'Apagar (DROP)', danger: true },
       ],
       meta: { schema, object: linha.EVENT_NAME, category: categoria },
+    }));
+  }
+
+  if (categoria === 'triggers') {
+    const f = clausulaDeFiltro('TRIGGER_NAME', filtro);
+    const c = condicoesDe(alvo, opcoes, "SUBSTRING_INDEX(DEFINER, '@', 1)");
+    const linhas = await query<{
+      TRIGGER_NAME: string; EVENT_OBJECT_TABLE: string;
+      ACTION_TIMING: string; EVENT_MANIPULATION: string;
+    }>(
+      conn,
+      `SELECT TRIGGER_NAME, EVENT_OBJECT_TABLE, ACTION_TIMING, EVENT_MANIPULATION
+         FROM information_schema.TRIGGERS
+        WHERE TRIGGER_SCHEMA = ?${f.sql}${c.sql}
+        ORDER BY TRIGGER_NAME`,
+      [schema, ...f.params, ...c.params]
+    );
+    return linhas.map((linha) => ({
+      id: linha.TRIGGER_NAME,
+      label: linha.TRIGGER_NAME,
+      icon: 'trigger' as const,
+      // Gatilho pende de uma tabela e dispara num momento: as três coisas
+      // juntas são o que se procura saber ao ver a lista.
+      detail: `${linha.ACTION_TIMING} ${linha.EVENT_MANIPULATION} · ${linha.EVENT_OBJECT_TABLE}`,
+      hasChildren: false,
+      actions: [
+        { id: 'ddl', label: 'Ver DDL' },
+        { id: 'drop-trigger', label: 'Apagar (DROP)', danger: true },
+      ],
+      meta: {
+        schema, object: linha.TRIGGER_NAME,
+        tabela: linha.EVENT_OBJECT_TABLE, category: categoria,
+      },
     }));
   }
 

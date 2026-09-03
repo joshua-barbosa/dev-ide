@@ -15,10 +15,16 @@ import {
   CONTAGENS_SQL,
   COLUNAS_SQL,
   FUNCOES_SQL,
+  GATILHOS_SQL,
+  PROCEDIMENTOS_SQL,
   SEQUENCIAS_SQL,
   TABELAS_SQL,
   TIPOS_SQL,
 } from './postgres-sql';
+import {
+  camposDeVisibilidade, filtrarCategorias, type CategoriaOpcional,
+} from '../../../shared/sql/categorias-visiveis';
+import type { FieldValue } from '../../../shared/contracts';
 import type { OpcoesDeNavegacao, TreeNode } from '../types';
 import type { Criterio } from '../../../shared/tree/filtro-da-arvore';
 
@@ -84,12 +90,47 @@ export const CATEGORIAS: readonly Categoria[] = [
     expande: true, acoes: ACOES_DE_ESTRANGEIRA, criterios: SEM_TAMANHO,
   },
   { id: 'functions', label: 'Functions', icon: 'function', expande: false, criterios: SEM_TAMANHO },
+  // Faltava (03/09/2026, ele): `prokind = 'f'` deixava PROCEDURE de fora, e
+  // procedimento não é função no PostgreSQL desde a 11 — tem `CALL` próprio e
+  // pode fazer `COMMIT` lá dentro.
+  {
+    id: 'procedures', label: 'Procedures', icon: 'procedure',
+    expande: false, criterios: SEM_TAMANHO,
+  },
   {
     id: 'sequences', label: 'Sequences', icon: 'sequence', kinds: ['S'],
     expande: false, acoes: ACOES_DE_SEQUENCIA, criterios: SEM_TAMANHO,
   },
   { id: 'types', label: 'Types', icon: 'type', expande: false, criterios: SEM_TAMANHO },
+  {
+    id: 'triggers', label: 'Triggers', icon: 'trigger',
+    expande: false, criterios: ['nome'],
+  },
 ];
+
+/**
+ * As que ganham interruptor no cadastro (03/09/2026, ele).
+ *
+ * Tables, Views, Functions e Procedures ficam de fora: desligá-las esvaziaria a
+ * árvore, e ninguém liga um banco para não ver as tabelas.
+ *
+ * Padrão `true` nas cinco que já apareciam — ligar o interruptor não pode
+ * apagar da tela o que ele via ontem. `Triggers` nasce hoje e nasce ligada
+ * também, porque foi ele quem pediu a categoria.
+ */
+export const OPCIONAIS: readonly CategoriaOpcional[] = [
+  { id: 'matviews', label: 'Materialized Views', padrao: true },
+  { id: 'foreign', label: 'Foreign Tables', padrao: true },
+  { id: 'sequences', label: 'Sequences', padrao: true },
+  { id: 'types', label: 'Types', padrao: true },
+  {
+    id: 'triggers', label: 'Triggers', padrao: true,
+    ajuda: 'Só os que alguém escreveu — os que o banco cria para chave estrangeira ficam fora.',
+  },
+];
+
+/** Os campos que o driver soma ao formulário para os interruptores existirem. */
+export const CAMPOS_DE_ARVORE = camposDeVisibilidade(OPCIONAIS);
 
 /** A categoria expande em colunas? Quem responde é a tabela acima. */
 export function expandeEmColunas(categoria: string | undefined): boolean {
@@ -101,10 +142,14 @@ function contagem(valor: unknown): string | undefined {
   return Number.isFinite(n) ? String(n) : undefined;
 }
 
-export async function listarCategorias(client: Client, schema: string): Promise<TreeNode[]> {
+export async function listarCategorias(
+  client: Client,
+  schema: string,
+  fields: Readonly<Record<string, FieldValue>> = {}
+): Promise<TreeNode[]> {
   const { rows } = await client.query<Record<string, unknown>>(CONTAGENS_SQL, [schema]);
   const contagens = rows[0] ?? {};
-  return CATEGORIAS.map((categoria) => ({
+  return filtrarCategorias(CATEGORIAS, OPCIONAIS, fields).map((categoria) => ({
     id: categoria.id,
     label: categoria.label,
     icon: categoria.icon,
@@ -205,6 +250,57 @@ async function listarFuncoes(
   }));
 }
 
+async function listarProcedimentos(
+  client: Client,
+  schema: string,
+  categoria: Categoria,
+  opcoes?: OpcoesDeNavegacao
+): Promise<TreeNode[]> {
+  const f = clausulaDeFiltro('p.proname', 2, opcoes?.filtro);
+  const c = condicoes(1 + f.params.length, criteriosDe(categoria, opcoes, 'pg_get_userbyid(p.proowner)'));
+  const { rows } = await client.query<{ nome: string; argumentos: string }>(
+    PROCEDIMENTOS_SQL.replace('{FILTRO}', f.sql + c.sql),
+    [schema, ...f.params, ...c.params]
+  );
+  return rows.map((linha) => ({
+    id: linha.nome,
+    label: linha.nome,
+    icon: 'procedure' as const,
+    // Procedimento não devolve nada — o que distingue dois de mesmo nome são os
+    // argumentos, e é isso que vai no lugar do tipo de retorno.
+    detail: linha.argumentos === '' ? undefined : linha.argumentos,
+    hasChildren: false,
+    meta: { schema, object: linha.nome, category: 'procedures' },
+  }));
+}
+
+/**
+ * Os gatilhos do schema.
+ *
+ * Sem critérios de ordenação além do nome: gatilho não tem dono próprio (herda
+ * o da tabela) nem tamanho, e oferecer o campo devolvendo tudo seria pior que
+ * não oferecer — a mesma regra que já vale para `data` aqui.
+ */
+async function listarGatilhos(
+  client: Client,
+  schema: string,
+  opcoes?: OpcoesDeNavegacao
+): Promise<TreeNode[]> {
+  const f = clausulaDeFiltro('tg.tgname', 2, opcoes?.filtro);
+  const { rows } = await client.query<{ nome: string; tabela: string }>(
+    GATILHOS_SQL.replace('{FILTRO}', f.sql),
+    [schema, ...f.params]
+  );
+  return rows.map((linha) => ({
+    id: `${linha.tabela}.${linha.nome}`,
+    label: linha.nome,
+    icon: 'trigger' as const,
+    detail: linha.tabela,
+    hasChildren: false,
+    meta: { schema, object: linha.nome, tabela: linha.tabela, category: 'triggers' },
+  }));
+}
+
 async function listarTipos(
   client: Client,
   schema: string,
@@ -261,6 +357,8 @@ export async function listarObjetos(
   const alvo = CATEGORIAS.find((c) => c.id === categoria);
   if (alvo === undefined) return [];
   if (categoria === 'functions') return listarFuncoes(client, schema, alvo, opcoes);
+  if (categoria === 'procedures') return listarProcedimentos(client, schema, alvo, opcoes);
+  if (categoria === 'triggers') return listarGatilhos(client, schema, opcoes);
   if (categoria === 'types') return listarTipos(client, schema, alvo, opcoes);
   if (categoria === 'sequences') return listarSequencias(client, schema, alvo, opcoes);
   if (alvo.kinds === undefined) return [];

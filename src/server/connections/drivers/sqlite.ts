@@ -28,7 +28,7 @@ import {
 import { TEMPLATES_SQLITE } from '../../../shared/tree/templates';
 import { montarDiagrama, type LinhaDeColuna, type LinhaDeFk } from './er';
 import { montarCodebase, type LinhaDeColunaDoCodebase } from './codebase';
-import type { Codebase } from '../types';
+import type { Codebase, FieldValue } from '../types';
 import type {
   OpcoesDeNavegacao,
   ActionRequest,
@@ -48,6 +48,9 @@ import type {
   TreeNode,
 } from '../types';
 import { formatCell, quoteIdentifier, resolveRowLimit } from './sql-base';
+import {
+  camposDeVisibilidade, filtrarCategorias, type CategoriaOpcional,
+} from '../../../shared/sql/categorias-visiveis';
 
 const ROOT_ID = 'main';
 
@@ -62,7 +65,25 @@ const CATEGORIAS: readonly Categoria[] = [
   { id: 'tables', label: 'Tables', sqliteType: 'table', icon: 'table' },
   { id: 'views', label: 'Views', sqliteType: 'view', icon: 'view' },
   { id: 'indexes', label: 'Indexes', sqliteType: 'index', icon: 'index' },
+  { id: 'triggers', label: 'Triggers', sqliteType: 'trigger', icon: 'trigger' },
 ];
+
+/**
+ * As que ganham interruptor no cadastro (03/09/2026, ele).
+ *
+ * `Indexes` entra: num banco com muitas tabelas a lista de índices é a mais
+ * longa da árvore e a menos consultada. `Tables` e `Views` não — desligá-las
+ * esvaziaria a árvore.
+ */
+export const OPCIONAIS: readonly CategoriaOpcional[] = [
+  { id: 'indexes', label: 'Indexes', padrao: true },
+  { id: 'triggers', label: 'Triggers', padrao: true },
+];
+
+const CAMPOS_DE_ARVORE = camposDeVisibilidade(OPCIONAIS);
+
+/** O que se pode consultar: dá para contar linhas e para expandir em colunas. */
+const TEM_LINHAS = new Set(['table', 'view']);
 
 function quote(name: string): string {
   return quoteIdentifier(name, 'double');
@@ -134,10 +155,12 @@ function listarObjetos(
     id: linha.name,
     label: linha.name,
     icon: categoria.icon,
-    detail: categoria.sqliteType === 'index' ? undefined : contarLinhas(db, linha.name),
-    hasChildren: categoria.sqliteType !== 'index',
-    // Spec 040. O índice fica com o menu curto: não há o que selecionar nem o
-    // que esvaziar num índice.
+    // Índice e gatilho não SE consultam: `SELECT COUNT(*)` no nome de um deles
+    // é erro de sintaxe, não um número. E nenhum dos dois tem coluna.
+    detail: TEM_LINHAS.has(categoria.sqliteType) ? contarLinhas(db, linha.name) : undefined,
+    hasChildren: TEM_LINHAS.has(categoria.sqliteType),
+    // Spec 040. Índice e gatilho ficam com o menu curto: não há o que
+    // selecionar nem o que esvaziar em nenhum dos dois.
     actions:
       categoria.sqliteType === 'table'
         ? ACOES_DE_TABELA_SQLITE
@@ -152,6 +175,7 @@ function navegar(
   db: DatabaseSync,
   file: string,
   nodePath: readonly string[],
+  campos: Readonly<Record<string, FieldValue>>,
   opcoes?: OpcoesDeNavegacao
 ): TreeNode[] {
   if (nodePath.length === 0) {
@@ -171,7 +195,7 @@ function navegar(
   }
 
   if (nodePath.length === 1 && nodePath[0] === ROOT_ID) {
-    return CATEGORIAS.map((categoria) => ({
+    return filtrarCategorias(CATEGORIAS, OPCIONAIS, campos).map((categoria) => ({
       id: categoria.id,
       label: categoria.label,
       icon: categoria.icon,
@@ -190,7 +214,12 @@ function navegar(
     return categoria === undefined ? [] : listarObjetos(db, categoria, opcoes?.filtro);
   }
 
-  if (nodePath.length === 3 && nodePath[0] === ROOT_ID && nodePath[1] !== 'indexes') {
+  // Índice e gatilho não têm coluna para expandir: o terceiro nível é das
+  // colunas de uma tabela ou view.
+  if (
+    nodePath.length === 3 && nodePath[0] === ROOT_ID
+    && nodePath[1] !== 'indexes' && nodePath[1] !== 'triggers'
+  ) {
     return colunasDe(db, nodePath[2]);
   }
 
@@ -448,7 +477,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
 
   return {
     kind: 'sql',
-    children: async (nodePath, opcoes) => navegar(db, file, nodePath, opcoes),
+    children: async (nodePath, opcoes) => navegar(db, file, nodePath, config.fields, opcoes),
     readTable: async (request) => lerTabela(db, request, DEFAULT_ROW_LIMIT),
     readCell: async (request) => lerCelula(db, request),
     writeTable: (request) => escrever(db, request),
@@ -579,6 +608,8 @@ export const sqliteDriver: Driver = {
       placeholder: '/caminho/do/banco.db',
       help: 'Caminho do arquivo .db/.sqlite na máquina local.',
     },
+    // Os interruptores de categoria (03/09/2026, ele).
+    ...CAMPOS_DE_ARVORE,
   ],
   connect,
 };

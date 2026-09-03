@@ -71,6 +71,24 @@ O botão `Parar` só aparece onde o driver declara `cancelaQuery`. MySQL,
 PostgreSQL e SQL Server cancelam de verdade; Redis e MongoDB derrubam o socket,
 o que para de esperar mas não garante que o servidor interrompa o comando.
 
+### O que a árvore mostra
+
+Cada driver declara quais categorias são **opcionais**, e o cadastro ganha um
+interruptor por categoria na seção `Árvore` — a escolha é por conexão, e todas
+nascem ligadas. A lógica é pura, em `shared/sql/categorias-visiveis.ts`; a tela
+não sabe o que é um gatilho.
+
+| Driver | Opcionais |
+|---|---|
+| PostgreSQL | Materialized Views, Foreign Tables, Sequences, Types, Triggers |
+| MySQL / MariaDB | Events, Triggers |
+| SQLite | Indexes, Triggers |
+| SQL Server | Triggers, Sequences, Types |
+
+No Redis o equivalente são três campos: `Mostrar todos os bancos` (faz nascer o
+nível `db0`, `db1`…), `Bancos visíveis` (lista branca) e `Usar RedisJSON e
+RediSearch`.
+
 ### Serviços suportados
 
 | Tipo | Biblioteca | Somente-leitura imposto por |

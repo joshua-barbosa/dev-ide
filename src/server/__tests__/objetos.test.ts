@@ -6,13 +6,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { CATEGORIAS, expandeEmColunas } from '../connections/drivers/postgres-objetos';
+import { CATEGORIAS, OPCIONAIS, expandeEmColunas } from '../connections/drivers/postgres-objetos';
 
-test('as sete categorias do PostgreSQL, na ordem', () => {
+test('as nove categorias do PostgreSQL, na ordem', () => {
+  // `procedures` nasceu em 03/09/2026: `prokind = 'f'` deixava PROCEDURE de
+  // fora, e ele viu a falta. `triggers` nasceu no mesmo dia, a pedido dele.
   assert.deepEqual(
     CATEGORIAS.map((c) => c.id),
-    ['tables', 'views', 'matviews', 'foreign', 'functions', 'sequences', 'types']
+    [
+      'tables', 'views', 'matviews', 'foreign',
+      'functions', 'procedures', 'sequences', 'types', 'triggers',
+    ]
   );
+});
+
+test('as opcionais são um subconjunto das categorias, e as essenciais não entram', () => {
+  const ids = new Set(CATEGORIAS.map((c) => c.id));
+  assert.ok(OPCIONAIS.every((o) => ids.has(o.id)), 'interruptor sem categoria não liga nada');
+  for (const essencial of ['tables', 'views', 'functions', 'procedures']) {
+    assert.equal(
+      OPCIONAIS.some((o) => o.id === essencial), false,
+      `${essencial} não pode ser desligável: a árvore ficaria vazia`
+    );
+  }
+});
+
+test('toda opcional do PostgreSQL nasce LIGADA', () => {
+  // Interruptor novo não pode apagar da tela o que ele via ontem.
+  assert.ok(OPCIONAIS.every((o) => o.padrao === true));
 });
 
 test('view materializada NÃO é view', () => {

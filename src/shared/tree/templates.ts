@@ -37,6 +37,14 @@ export const TEMPLATES_MYSQL: Readonly<Record<string, string>> = {
   // Spec 069. O agendador precisa estar ligado (`event_scheduler = ON`), e por
   // isso o lembrete vai no próprio esqueleto: um evento criado com ele
   // desligado nasce válido e nunca roda.
+  triggers: [
+    'CREATE TRIGGER `novo_gatilho`',
+    'BEFORE INSERT ON `tabela`',
+    'FOR EACH ROW',
+    'BEGIN',
+    '  SET NEW.`criado_em` = NOW();',
+    'END;',
+  ].join('\n'),
   events: [
     '-- Exige event_scheduler = ON no servidor.',
     'CREATE EVENT `novo_evento`',
@@ -58,11 +66,39 @@ export const TEMPLATES_POSTGRES: Readonly<Record<string, string>> = {
     'CREATE VIEW {schema}.nova_view AS',
     'SELECT 1 AS exemplo;',
   ].join('\n'),
+  // Corpo `plpgsql` com `BEGIN…END`, e não um `LANGUAGE sql` de uma linha: foi
+  // o que ele mostrou em 03/09/2026 como o esqueleto que espera. A diferença
+  // não é estilo — de `sql` não se escreve `IF` nem se declara variável, então
+  // o esqueleto de uma linha obriga a reescrever tudo no primeiro `IF`.
   functions: [
     'CREATE FUNCTION {schema}.nova_funcao(p_valor integer)',
-    'RETURNS integer',
-    'LANGUAGE sql',
-    'AS $$ SELECT p_valor $$;',
+    'RETURNS integer AS $$',
+    'BEGIN',
+    '',
+    '  RETURN p_valor;',
+    'END;',
+    '$$ LANGUAGE plpgsql;',
+  ].join('\n'),
+  procedures: [
+    'CREATE PROCEDURE {schema}.novo_procedimento(p_valor integer)',
+    'LANGUAGE plpgsql AS $$',
+    'BEGIN',
+    '',
+    'END;',
+    '$$;',
+    '-- CALL {schema}.novo_procedimento(1);',
+  ].join('\n'),
+  triggers: [
+    '-- Um gatilho precisa de uma função que devolva `trigger`.',
+    'CREATE FUNCTION {schema}.fn_novo_gatilho() RETURNS trigger AS $$',
+    'BEGIN',
+    '  RETURN NEW;',
+    'END;',
+    '$$ LANGUAGE plpgsql;',
+    '',
+    'CREATE TRIGGER novo_gatilho',
+    'BEFORE INSERT OR UPDATE ON {schema}.tabela',
+    'FOR EACH ROW EXECUTE FUNCTION {schema}.fn_novo_gatilho();',
   ].join('\n'),
   // Spec 069 (T110): as quatro categorias novas do PostgreSQL.
   matviews: [
@@ -100,4 +136,11 @@ export const TEMPLATES_SQLITE: Readonly<Record<string, string>> = {
     'SELECT 1 AS exemplo;',
   ].join('\n'),
   indexes: 'CREATE INDEX idx_nova ON tabela(coluna);',
+  triggers: [
+    'CREATE TRIGGER novo_gatilho',
+    'AFTER INSERT ON tabela',
+    'BEGIN',
+    "  UPDATE tabela SET criado_em = datetime('now') WHERE id = NEW.id;",
+    'END;',
+  ].join('\n'),
 };

@@ -27,6 +27,7 @@ import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import { SECURITY_ID, noDeSeguranca, sqlDeAcaoDeUsuario } from './seguranca';
 import { listarSeguranca, segurancaDisponivel } from './mysql-seguranca';
 import {
+  CAMPOS_DE_ARVORE,
   listarBancos, listarCategorias, listarColunas, listarObjetos, type Exibicao,
 } from './mysql-objetos';
 import {
@@ -91,7 +92,7 @@ async function navegar(
       query<T>(conn, sql, params === undefined ? [] : [...params]);
     return listarSeguranca(consulta, nodePath.slice(2), opcoes?.filtro);
   }
-  if (nodePath.length === 2) return listarCategorias(conn, nodePath[1]);
+  if (nodePath.length === 2) return listarCategorias(conn, nodePath[1], exibicao.campos);
   if (nodePath.length === 3) return listarObjetos(conn, nodePath[1], nodePath[2], opcoes);
   if (nodePath.length === 4 && (nodePath[2] === 'tables' || nodePath[2] === 'views')) {
     return listarColunas(conn, nodePath[1], nodePath[3]);
@@ -286,6 +287,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       hideSystem: f.hide_system_schemas !== false,
       systemNames: SCHEMAS_SISTEMA,
     },
+    campos: f,
     rowLimit: resolveRowLimit(Number(f.default_row_limit)),
   };
 
@@ -537,6 +539,9 @@ export const mysqlDriver: Driver = {
     },
     { name: 'socket_path', label: 'Socket', type: 'path', placeholder: '/var/run/mysqld/mysqld.sock' },
 
+    // Os interruptores de categoria (03/09/2026, ele). Mesma seção dos filtros
+    // de banco: tudo aqui responde "o que a árvore mostra".
+    ...CAMPOS_DE_ARVORE,
     {
       name: 'show_databases',
       label: 'Bancos visíveis',

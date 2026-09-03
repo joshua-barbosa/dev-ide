@@ -59,10 +59,43 @@ test('raiz mostra o banco', async () => {
 test('banco mostra as categorias com contagem', async () => {
   const { session } = await abrir();
   const categorias = await session.children(['main']);
-  assert.deepEqual(categorias.map((n) => n.id), ['tables', 'views', 'indexes']);
+  assert.deepEqual(categorias.map((n) => n.id), ['tables', 'views', 'indexes', 'triggers']);
   assert.equal(categorias[0].detail, '2');
   assert.equal(categorias[1].detail, '1');
   assert.equal(categorias[2].detail, '1');
+  await session.close();
+});
+
+test('o interruptor do cadastro tira a categoria da árvore', async () => {
+  // Ele pediu em 03/09/2026: a escolha é POR CONEXÃO, e não global.
+  const file = bancoDeTeste();
+  const session = await sqliteDriver.connect({
+    id: 'c1', type: 'sqlite', label: 'teste', readOnly: false,
+    fields: { file, ver_indexes: false, ver_triggers: false },
+  });
+  const categorias = await session.children(['main']);
+  assert.deepEqual(categorias.map((n) => n.id), ['tables', 'views']);
+  await session.close();
+});
+
+test('gatilho NÃO é contado como linha nem expande em coluna', async () => {
+  // `SELECT COUNT(*)` no nome de um gatilho é erro de sintaxe, não um número.
+  const file = bancoDeTeste();
+  const db = new DatabaseSync(file);
+  db.exec(
+    'CREATE TRIGGER marca AFTER INSERT ON alunos BEGIN UPDATE alunos SET nome = nome; END'
+  );
+  db.close();
+  const session = await sqliteDriver.connect(config(file));
+  const categorias = await session.children(['main']);
+  const gatilhos = categorias.find((c) => c.id === 'triggers');
+  assert.equal(gatilhos?.detail, '1');
+
+  const lista = await session.children(['main', 'triggers']);
+  assert.deepEqual(lista.map((n) => n.label), ['marca']);
+  assert.equal(lista[0].hasChildren, false, 'gatilho não tem coluna');
+  assert.equal(lista[0].detail, undefined, 'gatilho não tem linha para contar');
+  assert.equal(lista[0].icon, 'trigger');
   await session.close();
 });
 
