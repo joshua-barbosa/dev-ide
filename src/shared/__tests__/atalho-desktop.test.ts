@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   conteudoDoAtalho, escaparCampo, escaparExec, nomeDoExecutavel, precisaDeNoSandbox,
+  TIPOS_ACEITOS,
 } from '../atalho-desktop';
 
 const base = {
@@ -86,4 +87,35 @@ test('sem ajudante nenhum, precisa', () => {
 test('nomeDoExecutavel tira a pasta', () => {
   assert.equal(nomeDoExecutavel('/a/b/braytech-code'), 'braytech-code');
   assert.equal(nomeDoExecutavel('braytech-code'), 'braytech-code');
+});
+
+// ---------------------------------------------------------------------------
+// "Abrir com…" (pedido dele em 03/09/2026)
+// ---------------------------------------------------------------------------
+
+test('o MimeType existe — é dele que o menu "Abrir com" é montado', () => {
+  // Sem esta linha o aplicativo não aparece no menu, por mais que saiba abrir
+  // o arquivo.
+  assert.match(conteudoDoAtalho(base), /^MimeType=.+;$/m);
+});
+
+test('PASTA está na lista, e é o caso mais útil', () => {
+  // Ele: "não só o arquivo, mas uma pasta também".
+  assert.ok(TIPOS_ACEITOS.includes('inode/directory'));
+  assert.equal(TIPOS_ACEITOS[0], 'inode/directory', 'e vem primeiro');
+});
+
+test('a lista NÃO é `all/all`', () => {
+  // Seria mais curto e poria a IDE no menu de imagens e vídeos, onde ela não
+  // serve.
+  assert.equal(TIPOS_ACEITOS.includes('all/all'), false);
+  assert.equal(TIPOS_ACEITOS.some((t) => t.startsWith('image/')), false);
+});
+
+test('os tipos com classificação própria estão listados', () => {
+  // Sem eles, um `.json` ou um `.php` não ofereceria o Braytech, e a ausência
+  // pareceria defeito.
+  for (const t of ['application/json', 'text/x-php', 'text/x-shellscript', 'text/markdown']) {
+    assert.ok(TIPOS_ACEITOS.includes(t), `faltou ${t}`);
+  }
 });

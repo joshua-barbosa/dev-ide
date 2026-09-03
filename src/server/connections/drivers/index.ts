@@ -8,8 +8,16 @@ import { postgresDriver } from './postgres';
 import { sqliteDriver } from './sqlite';
 import { sshDriver } from './ssh';
 import { ftpDriver } from './ftp';
+import { redisDriver } from './redis';
+import { mongodbDriver } from './mongodb';
+import { sqlserverDriver } from './sqlserver';
+import { pineconeDriver } from './pinecone';
 
-export const DRIVERS = [mysqlDriver, postgresDriver, sqliteDriver, sshDriver, ftpDriver] as const;
+export const DRIVERS = [
+  mysqlDriver, postgresDriver, sqlserverDriver, sqliteDriver,
+  redisDriver, mongodbDriver, pineconeDriver,
+  sshDriver, ftpDriver,
+] as const;
 
 export function registerBuiltinDrivers(registry: DriverRegistry): DriverRegistry {
   for (const driver of DRIVERS) {

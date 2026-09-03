@@ -5,7 +5,7 @@
 // nenhum banco de pé.
 import type { CellValue } from '../types';
 
-export type QuoteStyle = 'backtick' | 'double';
+export type QuoteStyle = 'backtick' | 'double' | 'bracket';
 
 export const DEFAULT_ROW_LIMIT = 500;
 export const MAX_ROW_LIMIT = 50_000;
@@ -14,7 +14,18 @@ export const MAX_TIMEOUT_MS = 120_000;
 /** Teto de caracteres por célula: BLOB e JSON grandes travariam o grid. */
 export const MAX_CELL_CHARS = 2048;
 
-const QUOTES: Record<QuoteStyle, string> = { backtick: '`', double: '"' };
+/**
+ * O par de delimitadores de cada dialeto.
+ *
+ * `bracket` entrou com o SQL Server, e ele é o único em que **abre e fecha são
+ * caracteres DIFERENTES** — por isso o par, e não um caractere só. A regra de
+ * escape também muda: dentro de colchetes, só o `]` precisa ser dobrado.
+ */
+const QUOTES: Record<QuoteStyle, readonly [string, string]> = {
+  backtick: ['`', '`'],
+  double: ['"', '"'],
+  bracket: ['[', ']'],
+};
 
 /**
  * Cita um identificador (schema, tabela, coluna) dobrando a aspa interna.
@@ -27,8 +38,10 @@ export function quoteIdentifier(name: string, style: QuoteStyle): string {
   if (name.length === 0 || name.includes('\0')) {
     throw new Error(`Identificador inválido: ${JSON.stringify(name)}.`);
   }
-  const quote = QUOTES[style];
-  return quote + name.split(quote).join(quote + quote) + quote;
+  const [abre, fecha] = QUOTES[style];
+  // Dobra o caractere de FECHAMENTO, que é o que termina o identificador. Nos
+  // dialetos em que abre e fecha são iguais, isto é a regra de sempre.
+  return abre + name.split(fecha).join(fecha + fecha) + fecha;
 }
 
 function truncate(text: string): string {

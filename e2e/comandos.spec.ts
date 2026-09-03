@@ -228,5 +228,7 @@ test('Help → Documentation abre o README da IDE', async ({ page }) => {
   await page.getByRole('menuitem', { name: 'Documentation' }).click();
 
   await expect(page.locator('[data-tab="README.md"]')).toBeVisible();
-  await expect.poll(() => textoDoEditor(page)).toMatch(/dev-ide/);
+  // O NOME do produto, e não o do repositório: o teste quebrou quando a IDE
+  // virou Braytech Code, e quebrou pelo motivo certo — o README mudou de dono.
+  await expect.poll(() => textoDoEditor(page)).toMatch(/Braytech Code/);
 });

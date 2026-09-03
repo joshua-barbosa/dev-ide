@@ -59,9 +59,14 @@ os arquivos de uma vez.
 
 ### Falar com bancos de dados
 
-MySQL, PostgreSQL e SQLite. A árvore desce até a coluna, e o resultado abre numa
-grade que **edita** — com chave primária, o `UPDATE` é montado para você
-conferir antes.
+**MySQL, PostgreSQL, SQL Server e SQLite** — a árvore desce até a coluna, e o
+resultado abre numa grade que **edita**: com chave primária, o `UPDATE` é montado
+para você conferir antes.
+
+E mais três que não são tabelas: **Redis** (chaves numa árvore por prefixo,
+comandos numa grade), **MongoDB** (documentos achatados em colunas, com o JSON
+cru ao lado) e **Pinecone** (índices, namespaces e busca por proximidade, com a
+nota de cada acerto).
 
 ![A árvore de um banco, com tabelas e views](docs/imagens/03-conexoes.png)
 
@@ -127,7 +132,7 @@ inclusive das recusadas — ficam em `specs/`, que **não é versionada**: ela c
 nomes de servidores e bancos reais.
 
 ```
-1814 testes de unidade  ·  568 de ponta a ponta
+1914 testes de unidade  ·  568 de ponta a ponta
 ```
 
 Além dos de sempre, a suíte tem comparação de imagem, verificação de

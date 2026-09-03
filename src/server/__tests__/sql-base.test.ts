@@ -172,3 +172,24 @@ test('lista branca vence, e combina com as demais regras', () => {
     ['servidor-2', 'mysql']
   );
 });
+
+// ---------------------------------------------------------------------------
+// Colchetes do SQL Server
+// ---------------------------------------------------------------------------
+
+test('o SQL Server usa colchetes, e abre é DIFERENTE de fecha', () => {
+  assert.equal(quoteIdentifier('tabela', 'bracket'), '[tabela]');
+  assert.equal(quoteIdentifier('com espaço', 'bracket'), '[com espaço]');
+});
+
+test('dentro de colchetes, só o FECHA é dobrado', () => {
+  // `[a]b]` terminaria o identificador no primeiro `]`; `[a]]b]` é o certo. E o
+  // `[` de abertura não precisa de nada — dobrá-lo criaria outro nome.
+  assert.equal(quoteIdentifier('a]b', 'bracket'), '[a]]b]');
+  assert.equal(quoteIdentifier('a[b', 'bracket'), '[a[b]');
+});
+
+test('os outros dialetos continuam dobrando o próprio delimitador', () => {
+  assert.equal(quoteIdentifier('a`b', 'backtick'), '`a``b`');
+  assert.equal(quoteIdentifier('a"b', 'double'), '"a""b"');
+});

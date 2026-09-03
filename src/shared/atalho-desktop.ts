@@ -79,6 +79,44 @@ export function nomeDoExecutavel(caminho: string): string {
   return caminho.slice(caminho.lastIndexOf('/') + 1);
 }
 
+/**
+ * Os tipos que o Braytech Code aceita no "Abrir com…" (pedido dele).
+ *
+ * **`inode/directory` é o primeiro da lista de propósito**: ele pediu que
+ * valesse "não só o arquivo, mas uma pasta também", e é o caso mais útil — abrir
+ * um projeto pelo gerenciador de arquivos.
+ *
+ * `text/plain` cobre a maior parte do que se edita; os demais estão aqui porque
+ * o sistema os classifica com tipo próprio e NÃO os trata como texto — sem
+ * listá-los, um `.json` ou um `.php` não ofereceria o Braytech no menu, e a
+ * ausência pareceria defeito.
+ *
+ * A lista é longa e chata por natureza. É preferível a alternativa — declarar
+ * `all/all`, que poria a IDE no menu de imagens e vídeos, onde ela não serve.
+ */
+export const TIPOS_ACEITOS: readonly string[] = [
+  'inode/directory',
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+  'text/x-python',
+  'text/x-php',
+  'text/x-csrc',
+  'text/x-chdr',
+  'text/x-csharp',
+  'text/x-shellscript',
+  'text/x-sql',
+  'text/html',
+  'text/css',
+  'text/xml',
+  'application/json',
+  'application/xml',
+  'application/javascript',
+  'application/x-yaml',
+  'application/sql',
+  'application/x-shellscript',
+];
+
 export function conteudoDoAtalho(d: DadosDoAtalho): string {
   if (!d.executavel.startsWith('/')) {
     // Caminho relativo num `.desktop` é ignorado em silêncio: o atalho aparece
@@ -100,6 +138,9 @@ export function conteudoDoAtalho(d: DadosDoAtalho): string {
     'Categories=Development;IDE;',
     'StartupNotify=true',
     `StartupWMClass=${escaparCampo(d.classeDaJanela ?? nomeDoExecutavel(d.executavel))}`,
+    // Sem `MimeType`, o aplicativo não aparece no "Abrir com…" — o menu é
+    // montado a partir desta linha, e não do que o programa sabe fazer.
+    `MimeType=${TIPOS_ACEITOS.join(';')};`,
   ];
   // Sem ícone, a linha NÃO entra: um `Icon=` vazio faz alguns ambientes
   // desenharem um quadrado quebrado, que é pior que o ícone padrão.

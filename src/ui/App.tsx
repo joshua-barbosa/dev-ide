@@ -35,6 +35,7 @@ import { useWorkspace } from './useWorkspace';
 import { EditorGroup } from './EditorGroup';
 import { EditorGrid } from './EditorGrid';
 import { ACAO_DO_MONACO } from '../shared/editor/acoes-monaco';
+import { esquecerPedido, pedidoDaUrl } from './aberturaPelaUrl';
 import type { PublicConnection } from '../shared/contracts';
 import { useConnections } from './connections/useConnections';
 import { VaultDialog } from './connections/VaultDialog';
@@ -141,6 +142,25 @@ export function App() {
     // A saída da execução vira problemas CLICÁVEIS (T008), com arquivo e linha.
     (saida, arquivo) => problemas.registrarDaSaida('execução', saida, pasta.pasta, arquivo)
   );
+  /**
+   * O que o "Abrir com…" do sistema pediu (03/09/2026).
+   *
+   * Roda UMA VEZ, e a URL é limpa em seguida: sem isso, todo `F5` reabriria a
+   * pasta do primeiro lançamento e desfaria qualquer troca de projeto feita
+   * depois — um defeito que só apareceria depois de meia hora de uso.
+   */
+  useEffect(() => {
+    const pedido = pedidoDaUrl(window.location.search);
+    if (pedido === null) return;
+    esquecerPedido();
+    void (async () => {
+      await pasta.abrir(pedido.pasta);
+      if (pedido.arquivo !== undefined) await ws.abrirArquivo(pedido.arquivo);
+    })().catch(falhaDaIde);
+    // Só na montagem: é um pedido de lançamento, e não um estado que muda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const prefs = usePrefs(falhaDaIde);
   // T013: seguindo o sistema, quem manda é ele — dentro dos dois temas que ele
   // mesmo declarou. Ver `useTemaAtual`.

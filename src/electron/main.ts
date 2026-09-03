@@ -11,6 +11,8 @@ import { app, BrowserWindow, dialog, ipcMain, safeStorage, screen, shell } from 
 import * as net from 'node:net';
 import * as path from 'node:path';
 import { ehDaPropriaIde, enderecoDaJanela, ondeAbrir, type Retangulo } from './janela';
+import { aberturaPedida, caminhoParaAbrir } from './argumentos';
+import * as fs from 'node:fs';
 
 /** Uma porta que o sistema diz estar livre agora. */
 async function portaLivre(): Promise<number> {
@@ -75,7 +77,26 @@ async function criarJanela(porta: number): Promise<void> {
     janela = null;
   });
 
-  await janela.loadURL(enderecoDaJanela(porta));
+  // O "Abrir com…" do gerenciador de arquivos entrega o caminho no `argv`
+  // (pedido dele). Ele vai para a interface na URL — que é o único canal que já
+  // existe entre os dois e que sobrevive ao recarregar a página.
+  const bruto = caminhoParaAbrir(process.argv, !app.isPackaged);
+  let extra = '';
+  if (bruto !== null) {
+    try {
+      const pedido = aberturaPedida(bruto, fs.statSync(bruto).isDirectory());
+      const partes = [`abrirPasta=${encodeURIComponent(pedido.pasta)}`];
+      if (pedido.arquivo !== undefined) {
+        partes.push(`abrirArquivo=${encodeURIComponent(pedido.arquivo)}`);
+      }
+      extra = `?${partes.join('&')}`;
+    } catch {
+      // Caminho que não existe mais — o gerenciador pode entregar um atalho
+      // quebrado. Abrir a janela vazia é melhor que não abrir.
+    }
+  }
+
+  await janela.loadURL(`${enderecoDaJanela(porta)}${extra}`);
 }
 
 /** O diálogo NATIVO de pasta (T003) — o que o navegador não consegue dar. */
