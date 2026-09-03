@@ -122,8 +122,13 @@ test('diagrama com erro mostra a MENSAGEM, e não some', async ({ page }) => {
   await page.locator('[data-barra-do-arquivo]').getByRole('radio', { name: 'Preview' }).click();
   // Duas esperas, e não uma: primeiro a prova de que o bloco chegou ao preview,
   // depois o desfecho. Assim a falha aponta QUAL das duas coisas faltou.
+  //
+  // `toBeAttached`, e não `toBeVisible`: até o mermaid desenhar, o bloco está
+  // VAZIO — e um div vazio não tem altura, então "visível" é falso por um
+  // motivo que não interessa a este teste. Com a máquina carregada essa janela
+  // se alarga e o teste falhava sozinho.
   const bloco = preview(page).locator('.mermaid-por-desenhar');
-  await expect(bloco).toBeVisible({ timeout: 15_000 });
+  await expect(bloco).toBeAttached({ timeout: 15_000 });
   // Um bloco em branco pareceria a IDE quebrada.
   await expect(preview(page).locator('[data-mermaid-erro]')).toBeVisible({ timeout: 15_000 });
 });

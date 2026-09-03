@@ -7,6 +7,15 @@ import Box from '@mui/material/Box';
 import { Icon } from '../Icon';
 import { tokens } from '../theme';
 
+/**
+ * O quanto o DETALHE cede antes do nome.
+ *
+ * Flexbox reparte a falta de espaço em PROPORÇÃO a este número — não há
+ * "ordem de prioridade" nativa. Um peso muito maior que o do rótulo (que é 1) é
+ * o jeito de dizer "tire deste primeiro" com o que o CSS oferece.
+ */
+const PESO_DE_ENCOLHER = 1000;
+
 export interface TreeRowProps {
   readonly nivel: number;
   readonly rotulo: string;
@@ -104,7 +113,27 @@ export function TreeRow({
         )}
       </Box>
 
-      <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{rotulo}</Box>
+      {/*
+        * **O NOME é a identidade da linha, e cede por último.**
+        *
+        * Antes o detalhe tinha `flexShrink: 0` e o rótulo não: quando o detalhe
+        * era longo — os argumentos de um procedimento, por exemplo — quem
+        * encolhia era o nome, até desaparecer. A linha então mostrava só a
+        * descrição de uma coisa sem dizer que coisa era. Ele viu em 03/09/2026.
+        *
+        * O `flexShrink` dos dois abaixo é o que ordena a prioridade: o detalhe
+        * absorve praticamente toda a falta de espaço antes de o nome perder um
+        * pixel. `minWidth: 0` existe porque item de flex não encolhe abaixo do
+        * próprio conteúdo sem ele — é o que fazia o detalhe empurrar o nome.
+        */}
+      <Box
+        sx={{
+          minWidth: 0, flexShrink: 1,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}
+      >
+        {rotulo}
+      </Box>
 
       {acoes !== undefined && (
         <Box
@@ -122,7 +151,25 @@ export function TreeRow({
       )}
 
       {detalhe !== undefined && detalhe !== '' && (
-        <Box sx={{ ml: acoes === undefined ? 'auto' : 0, pl: 1, color: 'text.secondary', fontSize: 10, flexShrink: 0 }}>
+        <Box
+          // `title` porque o detalhe é o que se corta: cortado, ainda dá para
+          // ler parando o cursor em cima.
+          title={detalhe}
+          sx={{
+            ml: acoes === undefined ? 'auto' : 0,
+            pl: 1,
+            color: 'text.secondary',
+            fontSize: 10,
+            // Cede primeiro, e nunca passa de metade da linha: um detalhe longo
+            // não pode virar o assunto da linha.
+            flexShrink: PESO_DE_ENCOLHER,
+            minWidth: 0,
+            maxWidth: '50%',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
           {detalhe}
         </Box>
       )}

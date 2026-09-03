@@ -108,3 +108,47 @@ test('desmarcar o interruptor tira a categoria daquela conexão', async ({ page 
 
   await apagar(page, 'sem-gatilho');
 });
+
+test('nome longo de detalhe NÃO come o nome da linha', async ({ page }) => {
+  // Ele viu em 03/09/2026: nos `Procedures` do PostgreSQL, cujo detalhe são os
+  // argumentos, a linha mostrava só a descrição — sem dizer de que coisa era.
+  //
+  // Aqui o detalhe é forjado na própria linha renderizada, porque o defeito é
+  // do layout e não do driver: é a MESMA linha que os dois painéis usam.
+  await criar(page, 'medida', []);
+  await expandir(page, 'ACME', 'Bancos');
+  await expandir(page, 'medida', 'loja.db');
+  await expandir(page, 'Tables');
+
+  const linha = linhaArvore(page, 'pedidos');
+  await expect(linha).toBeVisible();
+
+  const medida = await linha.evaluate((el) => {
+    const caixas = [...el.children] as HTMLElement[];
+    // O rótulo é a caixa cujo texto é o nome; o detalhe é a última.
+    const rotulo = caixas.find((c) => c.textContent?.trim() === 'pedidos');
+    const detalhe = caixas[caixas.length - 1];
+    if (rotulo === undefined) return null;
+
+    // Espreme a linha e alonga o detalhe: é o estado em que o defeito aparecia.
+    (el as HTMLElement).style.width = '220px';
+    detalhe.textContent = 'IN hypertable regclass, IN after "any", IN chunk regclass';
+
+    return {
+      larguraDoRotulo: rotulo.getBoundingClientRect().width,
+      textoCabe: rotulo.scrollWidth <= rotulo.clientWidth,
+      larguraDoDetalhe: detalhe.getBoundingClientRect().width,
+      larguraDaLinha: el.getBoundingClientRect().width,
+    };
+  });
+
+  expect(medida, 'a caixa do rótulo tem de existir na linha').not.toBeNull();
+  expect(medida!.larguraDoRotulo, 'o nome não pode desaparecer').toBeGreaterThan(0);
+  expect(medida!.textoCabe, 'o nome curto não pode ser cortado por causa do detalhe').toBe(true);
+  expect(
+    medida!.larguraDoDetalhe,
+    'o detalhe não pode passar de metade da linha'
+  ).toBeLessThanOrEqual(medida!.larguraDaLinha / 2 + 1);
+
+  await apagar(page, 'medida');
+});
