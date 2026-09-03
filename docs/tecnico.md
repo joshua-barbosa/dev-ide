@@ -10,7 +10,7 @@ src/server/       # Express + API REST, drivers de conexão, cofre, runner
 src/shared/       # lógica PURA, testável sem navegador: contratos, ícones, abas, formatação
 src/ui/           # interface em React (Vite compila para dist/ui)
 src/electron/     # a casca de desktop: janela, ponte e chaveiro
-specs/            # a fonte da verdade: uma pasta por entrega, com as decisões numeradas
+specs/            # as decisões, uma pasta por entrega — NÃO versionada (cita nomes reais)
 e2e/              # Playwright
 ```
 
@@ -19,8 +19,9 @@ e2e/              # Playwright
 chaveiro e o orçamento de desempenho ficam lá, e não junto da tela — são as
 partes que erram, e erram calado.
 
-A pasta `specs/` é a fonte da verdade do desenvolvimento; veja `specs/structure.md`
-para o mapa completo.
+A pasta `specs/` é a fonte da verdade do desenvolvimento — e fica **fora do
+repositório**, porque cita nomes de servidores e bancos reais. Quem tem o clone
+não a recebe; veja `specs/structure.md` na máquina onde ela existe.
 
 ### API REST
 

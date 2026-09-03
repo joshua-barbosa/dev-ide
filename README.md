@@ -122,8 +122,9 @@ salvo, aviso ao fechar e histórico de notificações.
 
 - [`docs/tecnico.md`](docs/tecnico.md) — arquitetura, API REST, drivers, o cofre
   e o modelo de segurança.
-- `specs/` — a fonte da verdade. Uma pasta por entrega, com as decisões
-  numeradas e o **porquê** de cada uma, inclusive das recusadas.
+As decisões de projeto — uma pasta por entrega, com o **porquê** de cada uma,
+inclusive das recusadas — ficam em `specs/`, que **não é versionada**: ela cita
+nomes de servidores e bancos reais.
 
 ```
 1814 testes de unidade  ·  568 de ponta a ponta

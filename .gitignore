@@ -15,3 +15,7 @@ test-results/
 
 # Os artefatos do empacotamento (T094): centenas de MB por build.
 empacotado/
+
+# As specs ficam LOCAIS: elas citam nomes de servidores e bancos reais,
+# e trechos de conversa. Decisão dele em 03/09/2026.
+specs/
