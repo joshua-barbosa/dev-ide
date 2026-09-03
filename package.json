@@ -19,7 +19,9 @@
     "electron": "npm run build:electron && electron dist/electron/main.js",
     "empacotar": "npm run build && npm run build:electron && electron-builder --linux",
     "electron:sem-sandbox": "npm run build:electron && electron --no-sandbox dist/electron/main.js",
-    "instalar-atalho": "npm run build:electron && node scripts/instalar-atalho.mjs"
+    "instalar-atalho": "npm run build:electron && node scripts/instalar-atalho.mjs",
+    "instalar": "npm run empacotar && npm run instalar-atalho",
+    "empacotar:win": "npm run build && npm run build:electron && electron-builder --win"
   },
   "license": "MIT",
   "dependencies": {
@@ -81,6 +83,7 @@
     "productName": "dev-ide",
     "files": [
       "dist/**/*",
+      "recursos/icone.png",
       "package.json"
     ],
     "directories": {
@@ -91,7 +94,8 @@
         "AppImage",
         "tar.gz"
       ],
-      "category": "Development"
+      "category": "Development",
+      "icon": "recursos/icone.png"
     },
     "electronDownload": {
       "cache": "node_modules/.cache/electron"

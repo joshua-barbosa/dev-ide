@@ -45,6 +45,10 @@ async function criarJanela(porta: number): Promise<void> {
     // janela ainda sem tamanho vira aquele editor de cinco por cinco pixels.
     show: false,
     backgroundColor: '#1e1e1e',
+    // O ícone da JANELA, que no Linux é separado do ícone do atalho: sem ele a
+    // barra de tarefas mostra o losango genérico do Electron enquanto o app
+    // está aberto, mesmo com o `.desktop` certo.
+    icon: path.join(__dirname, '..', '..', 'recursos', 'icone.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

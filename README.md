@@ -1,58 +1,116 @@
 # dev-ide
 
-IDE de desenvolvimento própria, construída com **Node.js + TypeScript** no servidor e **React + Vite** na interface — sem extensões nem plugins. Editor com realce próprio, painel de símbolos, execução de código e conexão a bancos de dados.
+IDE própria, construída do zero com **Node.js + TypeScript** no servidor e
+**React + Vite + Monaco** na interface. Roda no navegador **ou como aplicativo de
+desktop** (Electron), com o mesmo servidor e o mesmo bundle nos dois modos.
 
-Pensada para futuramente ser integrada a uma engine de criação de ambientes 3D com three.js: a engine pode consumir a mesma API REST (arquivos, símbolos, execução) ou ser embutida como painel adicional.
+Nasceu para substituir uma extensão comercial de cliente de banco, e cresceu para
+o que falta em volta dela: editor com diagnósticos e renomeação, terminal,
+arquivos remotos por SSH/SFTP/FTP, cadernos de SQL e um cofre de credenciais.
+
+> **O nome é provisório.** `dev-ide` é descrição, não nome — trocar está na fila.
 
 ## Como rodar
 
 ```bash
 npm install
-npm start          # compila tudo e sobe em http://localhost:4321
-npm run dev        # servidor de desenvolvimento da interface (exige o npm start em outro terminal)
-npm test           # roda a suíte
+npm start                  # compila tudo e sobe em http://localhost:4321
+npm run dev                # Vite em modo desenvolvimento (exige o npm start noutro terminal)
+npm test                   # a suíte de unidade
+npx playwright test        # a suíte de ponta a ponta
 ```
 
-O `npm test` compila só o servidor, sem passar pelo build da interface — a suíte
-não paga o custo do Vite. Se você rodar `npm test` e depois `node dist/server/index.js`
-direto, a interface não estará compilada; use `npm start` ou `npm run build:ui`.
+Porta em `PORT`; pasta dos projetos em `DEV_IDE_PROJECTS` (padrão `./projects`).
 
-Porta configurável via `PORT`; pasta raiz dos projetos via `DEV_IDE_PROJECTS` (padrão: `./projects`).
+⚠️ **`npm test` roda `clean` e apaga o `dist/`** — que é de onde o servidor serve
+a interface. Depois de testar, rode `npm run build` antes de subir o servidor,
+senão a página não carrega.
 
-## Funcionalidades
+### Como aplicativo
 
-- **Projetos** — crie pastas de projeto com nome próprio (botão "＋ projeto"); os arquivos ficam em `projects/<nome>/`.
-- **Abrir / salvar / criar arquivos** — pela árvore lateral, por caminho absoluto ("abrir") ou "novo" (Ctrl+S salva).
-- **Tipo de arquivo** — seletor que troca o highlight (JavaScript, TypeScript, Python, PHP, C, C#, JSON, HTML, CSS, texto). Cada tipo tem paleta de cores própria para classes, funções, constantes, variáveis etc. (as cores por tipo ficam em `src/ui/theme.ts` e no tokenizador).
-- **Execução**:
-  - **▶ arquivo** — executa o arquivo inteiro (Ctrl+Enter). Se houver alterações não salvas, executa o conteúdo do editor.
-  - **▶ seleção** — executa apenas o bloco de código selecionado.
-  - **▶ função** — executa uma função específica do arquivo (detectada automaticamente), com argumentos passados como array JSON; o valor de retorno aparece como `[retorno] ...`.
-  - Timeout de 15s (30s para compilação) e limite de saída de 512 KB.
+```bash
+npm run electron           # abre a janela a partir do código
+npm run empacotar          # gera AppImage e tar.gz em empacotado/
+npm run instalar-atalho    # põe o ícone no menu do sistema
+npm run instalar           # empacota e instala o atalho, num comando
+```
 
-  | Linguagem | Runtime | arquivo | seleção | função |
-  |---|---|---|---|---|
-  | JavaScript / TypeScript | Node (TS transpilado automaticamente) | ✅ | ✅ | ✅ |
-  | PHP | `php` CLI | ✅ | ✅ (adiciona `<?php` se faltar) | ✅ |
-  | C | `gcc` (compila e roda) | ✅ | ✅ (embrulha em `main()` com includes comuns) | ❌ |
-  | C# | `dotnet` SDK 10+ (`dotnet run arquivo.cs`) | ✅ | ✅ (top-level statements) | ❌ |
-  | Python | — (ainda não suportado) | ❌ | ❌ | ❌ |
+A versão desktop sobe **o mesmo servidor**, numa porta efêmera (fixar 4321 faria
+brigar com um `npm start` esquecido), e carrega a mesma interface numa janela com
+isolamento de contexto — a página não tem `require` nem `process`. O que ela
+ganha é o que o navegador não dá: **diálogo nativo de pasta** e **chaveiro do
+sistema** para o cofre.
 
-  Se o runtime não estiver instalado, a saída mostra uma mensagem clara indicando o que instalar.
-- **Painel de símbolos** — lista variáveis, constantes, objetos, classes, métodos, interfaces, enums e funções de todos os arquivos salvos do projeto (AST do TypeScript para `.ts/.js`; regex para `.py`, `.php`, `.c/.h` e `.cs`). Clicar em um símbolo abre o arquivo na linha correspondente.
+**No Linux, o sandbox do Chromium** exige `chrome-sandbox` de root com modo 4755,
+e no Ubuntu 23.10+ o AppArmor fecha o caminho alternativo. Sem isso use
+`npm run electron:sem-sandbox`; com um `sudo` uma única vez, o normal funciona:
+
+```bash
+sudo chown root:root node_modules/electron/dist/chrome-sandbox
+sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+```
+
+**O AppImage precisa de FUSE.** Sem `libfuse2` ele não abre e diz isso; use o
+`tar.gz`, que roda descompactando.
+
+**Windows ainda não.** O empacotamento existe (`npm run empacotar:win`), mas há
+quatro pontos do código que assumem Unix: o terminal cai em `/bin/bash`, a busca
+de ferramentas não tenta `.exe`, o executor chama `python3` pelo nome nu, e o
+`node-pty` precisa de ConPTY. É um lote pequeno, e ainda não foi feito.
+
+## O que ela faz
+
+- **Editor** — Monaco, com diagnósticos de TypeScript e JavaScript, renomear
+  símbolo em todos os arquivos, `Ctrl+clique` para a definição, *peek*,
+  autocompletar, trilha de navegação e Emmet.
+- **Execução** — arquivo, seleção ou função, em JavaScript, TypeScript, Python,
+  PHP, C e C#. A saída vira **problemas clicáveis** que levam ao arquivo e à
+  linha.
+- **Bancos** — MySQL, PostgreSQL e SQLite: árvore de objetos, grade de
+  resultados com edição, DDL, diagrama ER (do schema inteiro ou de uma tabela e
+  seus vizinhos), gerenciador com métricas, e SQL de usuário e permissão
+  **gerado, nunca executado**.
+- **Cadernos** (`.sqlbook`) — blocos de SQL e markdown, com resultados que você
+  escolhe guardar.
+- **Servidores remotos** — SSH com terminal, SFTP e FTP, salto por bastion,
+  monitor de processos e download de pasta como zip.
+- **Terminais** locais e remotos, divididos em painéis.
+- **Arquivos** — árvore com `.gitignore`, busca com regex, preview de markdown
+  (com Mermaid e KaTeX), imagem, PDF e CSV editável pela grade.
+- **Não perder trabalho** — Timeline de versões locais, rascunho automático,
+  aviso ao fechar e histórico de notificações.
+
+## Testes
+
+```
+1771 testes de unidade  ·  564 de ponta a ponta
+```
+
+Além dos de sempre, a suíte tem uma **rede de proteção** para a classe de defeito
+que asserção de DOM não pega: comparação de imagem por região, verificação de
+acessibilidade e orçamento de peso e de tempo. Os três **provam que funcionam** —
+há um teste que planta um botão sem nome e cobra que o verificador o encontre.
 
 ## Arquitetura
 
 ```
 src/server/       # Express + API REST, drivers de conexão, cofre, runner
-src/shared/       # lógica pura testável em node: abas, ícones, contratos, tokenizador
+src/shared/       # lógica PURA, testável sem navegador: contratos, ícones, abas, formatação
 src/ui/           # interface em React (Vite compila para dist/ui)
+src/electron/     # a casca de desktop: janela, ponte e chaveiro
+specs/            # a fonte da verdade: uma pasta por entrega, com as decisões numeradas
+e2e/              # Playwright
 ```
+
+**A regra que governa o código:** o que dá para testar sem navegador mora em
+`shared/`. É por isso que a conta de renomear, o colapso de SQL, a política do
+chaveiro e o orçamento de desempenho ficam lá, e não junto da tela — são as
+partes que erram, e erram calado.
 
 A pasta `specs/` é a fonte da verdade do desenvolvimento; veja `specs/structure.md`
 para o mapa completo.
 
-### API REST (para integração com a engine 3D)
+### API REST
 
 | Método | Rota | Descrição |
 |---|---|---|
@@ -132,7 +190,17 @@ a árvore de grupos renderiza com o cofre trancado, e só conectar exige a senha
 numa resposta da API. Caminho configurável via `DEV_IDE_VAULT`.
 
 **Lembrar o destrancamento.** Marcar "lembrar neste computador" ao destrancar guarda a *chave*
-derivada — nunca a senha — em `~/.dev-ide/session.json` (600), cifrada e com prazo. Enquanto vale,
+derivada — nunca a senha — em `~/.dev-ide/session.json` (600), cifrada e com prazo.
+
+No **aplicativo de desktop**, quem cifra essa chave é o **chaveiro do sistema**
+(`safeStorage`), e não a amarra de máquina descrita abaixo — a diferença é real:
+a amarra deriva a cifra de `machine-id` + uid, então quem lê o disco lê a chave,
+enquanto o chaveiro exige a sessão do usuário destrancada. O chaveiro é um
+**atalho, nunca a única porta**: se ele não existir, o sistema recusar, ou a
+chave não abrir mais o cofre, a senha mestra continua valendo — e a chave velha é
+esquecida, para não repetir o mesmo tropeço em toda inicialização.
+
+No navegador nada disso existe, e vale o parágrafo seguinte. Enquanto vale,
 a IDE sobe já destrancada. Prazo em `DEV_IDE_VAULT_REMEMBER_DAYS` (padrão **15 dias**, contados a
 partir do destrancamento e sem renovação por uso); caminho em `DEV_IDE_SESSION`.
 
