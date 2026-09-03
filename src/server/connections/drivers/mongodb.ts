@@ -82,6 +82,9 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     // Falhar RÁPIDO: o padrão espera 30 s procurando servidor, e a IDE ficaria
     // dizendo "conectando…" sem nada na tela.
     serverSelectionTimeoutMS: 10_000,
+    // Uma consulta que não volta não pode esperar para sempre — ver
+    // `shared/prazo.ts`. Este é o limite do próprio driver, abaixo do da rota.
+    socketTimeoutMS: 45_000,
     ...(lido.destino.direto ? { directConnection: true } : {}),
   });
   await cliente.connect();
@@ -176,6 +179,21 @@ async function connect(config: ResolvedConfig): Promise<Session> {
         // — sem isso, uma aba em branco não diz o que escrever.
         content: `${banco}.${colecao}\n{}\n`,
       };
+    },
+
+    /**
+     * Interrompe a consulta em andamento.
+     *
+     * O driver do Mongo não cancela uma operação já enviada; o que ele tem é
+     * `close(true)`, que derruba os sockets e faz as operações em voo falharem.
+     * A consulta pode continuar rodando NO SERVIDOR até terminar — e é honesto
+     * dizer isso: o que o botão garante é que a IDE para de esperar.
+     *
+     * `connect()` em seguida devolve a sessão ao ar.
+     */
+    cancelQuery: async () => {
+      await cliente.close(true);
+      await cliente.connect();
     },
 
     serverInfo: async () => {

@@ -4,7 +4,11 @@
 // O teste PRECISA de um laço de verdade — com um script curto, `Stop` chegaria
 // depois do fim e o teste passaria sem provar nada.
 import { expect, test } from '@playwright/test';
-import { esperarEditorPronto, menu, saida, statusDaExecucao, esperarIdePronta } from './fixtures';
+import {
+  esperarEditorPronto, esperarIdePronta, expandir, garantirCofreAberto, linhaArvore, menu,
+  painelLateral, saida, statusDaExecucao,
+} from './fixtures';
+import { SENHA_MESTRA } from './global-setup';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -39,4 +43,24 @@ test('um laço infinito é interrompido pelo Stop, com o parcial na tela', async
   // de 15 s nem chegou perto.
   await expect(statusDaExecucao(page)).toContainText('cancelado', { timeout: 10_000 });
   await expect(saida(page)).toContainText('comecei-o-laco');
+});
+
+test('o Parar NÃO aparece onde o serviço não sabe cancelar (03/09/2026)', async ({ page }) => {
+  // Ele: "o botão Parar de uma execução não está funcionando, eu cliquei várias
+  // vezes e está travada ali na tela".
+  //
+  // A capacidade `cancelaQuery` JÁ existia e a interface não a usava: o botão
+  // aparecia em toda grade, e só MySQL e PostgreSQL sabiam cancelar. No SQLite
+  // — que é o do projeto de teste — o clique não fazia nada.
+  await painelLateral(page, 'Database').click();
+  await expandir(page, 'ACME', 'Bancos');
+  await linhaArvore(page, 'escola').click();
+  await garantirCofreAberto(page, SENHA_MESTRA);
+  await expandir(page, 'escola.db', 'Tables');
+  await linhaArvore(page, 'alunos').dblclick();
+  await page.getByRole('button', { name: /^Executar (consulta|arquivo)$/ }).click();
+  await expect(page.locator('table')).toBeVisible({ timeout: 20_000 });
+
+  // O SQLite não sabe interromper — então o botão não existe.
+  await expect(page.getByRole('button', { name: 'Parar esta consulta' })).toHaveCount(0);
 });

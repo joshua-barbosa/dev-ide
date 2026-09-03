@@ -149,6 +149,13 @@ export type AoFalharExecucao = (mensagem: string) => void;
 export interface DepsDeVinculoNaExecucao {
   vinculoDe(caminho: string | null): Vinculo | null;
   garantir(caminho: string | null): Promise<Vinculo | null>;
+  /**
+   * Se aquele serviço sabe interromper uma consulta.
+   *
+   * Ausente = não sabe, e o botão `Parar` não nasce. É o padrão seguro: um
+   * botão que não faz nada é pior que botão nenhum.
+   */
+  sabeCancelar?(connectionId: string): boolean;
 }
 
 export function useExecution(
@@ -228,6 +235,34 @@ export function useExecution(
    */
   const proximaAba = useRef(0);
 
+  /**
+   * O `parar` de uma consulta — ou `undefined` quando o serviço não sabe.
+   *
+   * `undefined` faz o botão NÃO aparecer, que é o certo: um botão que não faz
+   * nada é pior que botão nenhum, e foi exatamente o que ele encontrou.
+   *
+   * Quando existe e falha, o erro vai para a GRADE e a carga para. Antes um dos
+   * caminhos engolia a falha com um `catch` vazio, e a tela ficava carregando
+   * para sempre sem dizer por quê.
+   */
+  const pararDaConexao = (
+    connectionId: string,
+    gridId: string,
+    rotulo: string
+  ): (() => void) | undefined => {
+    if (vinculos.sabeCancelar?.(connectionId) !== true) return undefined;
+    return () => {
+      void Api.cancelQuery(connectionId).catch((e: Error) => {
+        atualizarGrade(gridId, {
+          resultado: null,
+          erro: `Não deu para interromper: ${e.message}`,
+          carregando: false,
+          rotulo,
+        });
+      });
+    };
+  };
+
   const executarStatement = useCallback(
     async (
       modo: ModoDeStatement,
@@ -264,25 +299,21 @@ export function useExecution(
 
       if (modo !== 'json') {
         ws.store.open({ id: gridId, type: 'grid', title: 'Resultado', meta: {} });
-        // O `Parar` nasce junto com o "executando…", e some com ele: perguntar
-        // as capacidades aqui atrasaria a query por uma ida ao servidor que o
-        // usuário não pediu. Se o banco não souber cancelar, o próprio servidor
-        // responde dizendo isso, e a mensagem aparece na grade.
+        // **O `Parar` só nasce onde há o que chamar.**
+        //
+        // Antes ele aparecia sempre, e só MySQL e PostgreSQL sabiam cancelar:
+        // no SQLite e nos serviços novos o clique não fazia nada, e a grade
+        // ficava carregando para sempre. Foi o que ele relatou.
+        //
+        // A capacidade já está em mãos — veio do `connect` —, então perguntar
+        // não custa ida ao servidor nenhuma. Era essa a objeção do comentário
+        // antigo, e ela estava errada.
         atualizarGrade(gridId, {
           resultado: null,
           erro: null,
           carregando: true,
           rotulo,
-          parar: () => {
-            void Api.cancelQuery(vinculo.connectionId).catch((e: Error) => {
-              atualizarGrade(gridId, {
-                resultado: null,
-                erro: e.message,
-                carregando: false,
-                rotulo,
-              });
-            });
-          },
+          parar: pararDaConexao(vinculo.connectionId, gridId, rotulo),
         });
       }
 
@@ -290,7 +321,10 @@ export function useExecution(
       const rodarPagina = async (pagina: number): Promise<void> => {
         atualizarGrade(gridId, {
           resultado: null, erro: null, carregando: true, rotulo, pagina,
-          parar: () => void Api.cancelQuery(vinculo.connectionId).catch(() => undefined),
+          // O MESMO `parar` da primeira página. Antes aqui havia um
+          // `catch(() => undefined)`, e um botão que engole o próprio erro é a
+          // pior versão de um botão que não funciona.
+          parar: pararDaConexao(vinculo.connectionId, gridId, rotulo),
         });
         try {
           const r = await Api.execute(vinculo.connectionId, {

@@ -109,7 +109,14 @@ function criarPool(base: ClientConfig, config: ResolvedConfig, startupSql: strin
   let rodando: number | null = null;
 
   const abrir = async (banco: string): Promise<Client> => {
-    const client = new Client({ ...base, database: banco });
+    const client = new Client({
+      ...base,
+      database: banco,
+      // Ver a nota do MySQL: sem keepalive, uma conexão perdida deixa o socket
+      // meio-aberto e a consulta espera para sempre.
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 20_000,
+    });
 
     // Mesmo motivo do MySQL: um Client do pg é EventEmitter, e erro sem ouvinte
     // derruba o processo. O cliente morto sai do mapa para não ser reentregue.

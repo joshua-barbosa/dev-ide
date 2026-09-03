@@ -6,8 +6,10 @@
 // servidor, chega a ver o valor decifrado.
 import { Router } from 'express';
 import {
-  lerArquivoDeConexoes, planoDeImportacao,
-} from '../../shared/importar-conexoes';
+  comPrazo, mensagemDePrazo, PrazoEsgotado,
+  FOLGA_SOBRE_O_DRIVER_MS, PRAZO_DE_CONSULTA_MS,
+} from '../../shared/prazo';
+import { criarRotasDeTransferencia } from './conexoes-transferencia';
 import { applyGroupRename, buildGroupTree, normalizeGroupPath } from '../connections/groups';
 import type { DriverRegistry } from '../connections/registry';
 import type { SessionPool } from '../connections/pool';
@@ -275,85 +277,9 @@ export function createConnectionsRouter(
     res.json(ok({ campos: vault.camposSecretos(req.params.id) }));
   }));
 
-  /**
-   * TODAS as conexões, com as senhas, em JSON claro (N001).
-   *
-   * Ele escolheu claro, sabendo o que é: um arquivo com credencial de produção
-   * legível. A IDE não decide onde ele fica — quem baixa é o navegador dele.
-   */
-  router.post('/export-all', wrap(async (_req, res) => {
-    const conexoes = vault.list().map((c) => {
-      const campos: Record<string, unknown> = { ...c.fields };
-      for (const campo of vault.camposSecretos(c.id)) {
-        campos[campo] = vault.revelar(c.id, campo);
-      }
-      return {
-        type: c.type, label: c.label, group: c.group, readOnly: c.readOnly, fields: campos,
-      };
-    });
-    res.json(ok({
-      exportadoEm: new Date().toISOString(),
-      aviso: 'Este arquivo contém SENHAS EM CLARO.',
-      conexoes,
-    }));
-  }));
-
-  /**
-   * IMPORTA conexões do arquivo que a exportação gera (N001).
-   *
-   * Recebe a lista já lida do arquivo; a validação e o plano moram em
-   * `shared/importar-conexoes.ts`, testados sem cofre nenhum. Aqui só se aplica,
-   * e aplicar é a parte que não tem volta.
-   *
-   * Exige o cofre destrancado, como tudo que grava segredo.
-   */
-  router.post('/import', wrap((req, res) => {
-    const corpo = req.body as { conexoes?: unknown; politica?: unknown };
-    const politica =
-      corpo.politica === 'substituir' || corpo.politica === 'pular'
-        ? corpo.politica
-        : 'manter-as-duas';
-
-    // Revalida no SERVIDOR, e não confia no que a tela mandou: a rota é
-    // alcançável sem passar por ela.
-    const lido = lerArquivoDeConexoes(
-      JSON.stringify({ conexoes: corpo.conexoes }),
-      registry.list().map((d) => d.type)
-    );
-    if ('erro' in lido) throw new Error(lido.erro);
-
-    const plano = planoDeImportacao(
-      vault.list().map((c) => ({ id: c.id, label: c.label, group: c.group })),
-      lido.conexoes,
-      politica
-    );
-
-    let criadas = 0;
-    let substituidas = 0;
-    let puladas = 0;
-    for (const destino of plano) {
-      const { conexao } = destino;
-      const entrada = {
-        type: conexao.type,
-        label: conexao.label,
-        group: conexao.group,
-        readOnly: conexao.readOnly,
-        fields: conexao.fields as Record<string, FieldValue>,
-      };
-      const secretos = registry.secretFields(conexao.type);
-      if (destino.acao === 'pular') {
-        puladas += 1;
-      } else if (destino.acao === 'substituir' && destino.idExistente !== undefined) {
-        vault.update(destino.idExistente, entrada, secretos);
-        substituidas += 1;
-      } else {
-        vault.add(entrada, secretos);
-        criadas += 1;
-      }
-    }
-
-    res.json(ok({ criadas, substituidas, puladas }));
-  }));
+  // Exportar/importar conexões mora em `conexoes-transferencia.ts` — ver a
+  // nota de lá sobre por que a senha sai em claro exatamente nessas duas.
+  router.use(criarRotasDeTransferencia(registry, vault));
 
   /** Onde os snippets de terminal moram, para o `{}` abrir no editor (T085). */
   router.get('/terminal-snippets/file', wrap(async (_req, res) => {
@@ -762,15 +688,38 @@ export function createConnectionsRouter(
       throw new Error(`A conexão "${req.params.id}" não executa comandos.`);
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const resultado = await session.execute({
-      statement: requireString(body.statement, 'statement'),
-      database: typeof body.database === 'string' && body.database !== '' ? body.database : undefined,
-      nodePath: Array.isArray(body.nodePath) ? body.nodePath.map(String) : undefined,
-      rowLimit: typeof body.rowLimit === 'number' ? body.rowLimit : undefined,
-      // Paginação do resultado (T056). Negativo e fracionário são aparados no
-      // driver; aqui só se repassa a forma.
-      offset: typeof body.offset === 'number' ? body.offset : undefined,
-      timeoutMs: typeof body.timeoutMs === 'number' ? body.timeoutMs : undefined,
+    // O prazo da ROTA fica acima do prazo do DRIVER de propósito: quando o
+    // driver sabe parar sozinho, o erro dele é melhor — diz o que o banco
+    // respondeu. Este aqui é a rede embaixo, para o caso do driver também ficar
+    // preso num socket morto.
+    const doPedido = typeof body.timeoutMs === 'number' && body.timeoutMs > 0
+      ? body.timeoutMs + FOLGA_SOBRE_O_DRIVER_MS
+      : PRAZO_DE_CONSULTA_MS;
+
+    const resultado = await comPrazo(
+      session.execute({
+        statement: requireString(body.statement, 'statement'),
+        database: typeof body.database === 'string' && body.database !== '' ? body.database : undefined,
+        nodePath: Array.isArray(body.nodePath) ? body.nodePath.map(String) : undefined,
+        rowLimit: typeof body.rowLimit === 'number' ? body.rowLimit : undefined,
+        // Paginação do resultado (T056). Negativo e fracionário são aparados no
+        // driver; aqui só se repassa a forma.
+        offset: typeof body.offset === 'number' ? body.offset : undefined,
+        timeoutMs: typeof body.timeoutMs === 'number' ? body.timeoutMs : undefined,
+      }),
+      doPedido,
+      mensagemDePrazo(Math.round(doPedido / 1000))
+    ).catch(async (erro: unknown) => {
+      // **Conexão perdida raramente vira erro** — o socket fica meio-aberto e a
+      // espera não acaba. Foi o que travou a tela dele em 03/09/2026.
+      //
+      // Descartar a sessão é o que faz a PRÓXIMA consulta reconectar em vez de
+      // bater no mesmo socket morto. Sem isso, o prazo salvaria uma consulta e a
+      // seguinte travaria de novo.
+      if (erro instanceof PrazoEsgotado) {
+        await pool.close(req.params.id).catch(() => undefined);
+      }
+      throw erro;
     });
     res.json(ok(resultado));
   }));

@@ -138,7 +138,11 @@ export function App() {
   const exec = useExecution(
     ws,
     (mensagem) => problemas.registrar('execução', mensagem),
-    vinculos,
+    {
+      ...vinculos,
+      // O `Parar` só nasce onde o serviço sabe cancelar — ver `pararDaConexao`.
+      sabeCancelar: (id: string) => conexoes.capacidadesDe(id)?.cancelaQuery === true,
+    },
     // A saída da execução vira problemas CLICÁVEIS (T008), com arquivo e linha.
     (saida, arquivo) => problemas.registrarDaSaida('execução', saida, pasta.pasta, arquivo)
   );

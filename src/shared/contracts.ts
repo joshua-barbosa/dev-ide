@@ -519,6 +519,16 @@ export interface SessionCapabilities {
    * processo inteiro está parado nela — não há segundo instante para mandar um
    * `KILL`. A interface não desenha o botão onde isto é `false`.
    */
+  /**
+   * Se este serviço sabe INTERROMPER uma consulta em andamento.
+   *
+   * **Este campo já existia, e a interface não o usava** — o botão `Parar`
+   * aparecia em toda grade. Só MySQL e PostgreSQL sabiam cancelar; nos outros o
+   * clique não fazia nada e a tela ficava carregando para sempre. Foi o que ele
+   * relatou em 03/09/2026: *"cliquei várias vezes e está travada ali na tela"*.
+   *
+   * Declarar não bastou: alguém tinha que obedecer.
+   */
   readonly cancelaQuery: boolean;
   /** Sabe desenhar o diagrama ER de um schema (T064). */
   readonly diagramaEr: boolean;

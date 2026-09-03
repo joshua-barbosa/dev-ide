@@ -15,13 +15,29 @@ import type { Driver, ResolvedConfig, Session, TreeNode } from '../types';
 import type { ExecuteRequest, FieldSpec, QueryResult } from '../../../shared/contracts';
 import {
   destinoDaConexao, lerComando, linhasDaResposta, modoDeConexao,
-  podeRodarSomenteLeitura, ramosDe,
+  abrirCampoJson, acumularRamos, lerRespostaDeBusca,
+  podeRodarSomenteLeituraComModulos, ramosDoAcumulado,
+  type AcumuladoDeRamos,
 } from '../../../shared/sql/redis-modelo';
+import { colunasDaAmostra, linhasDosDocumentos } from '../../../shared/sql/mongo-modelo';
 
 export const PORTA_PADRAO = 6379;
 
-/** Teto de chaves varridas por abertura de nó. */
-const MAX_CHAVES = 5_000;
+/**
+ * Quanto tempo uma abertura de nó pode levar antes de mostrar o que já tem.
+ *
+ * **Não há teto de CHAVES.** A primeira versão parava em 5 000 e truncava a
+ * árvore — ele tem muitas chaves, e a árvore mentia sem dizer. Agora o limite é
+ * de TEMPO: a varredura vai até o fim, e se demorar mais que isto ela devolve o
+ * que contou e guarda o cursor para continuar.
+ *
+ * A memória não é o problema: só o CONTADOR por segmento é guardado, e ele tem o
+ * tamanho do número de nomes distintos — dezenas, não milhões.
+ */
+const ORCAMENTO_MS = 4_000;
+
+/** Quantas chaves o servidor tenta devolver por rodada de `SCAN`. */
+const POR_RODADA = 1_000;
 
 const CAMPOS: readonly FieldSpec[] = [
   {
@@ -78,6 +94,24 @@ const CAMPOS: readonly FieldSpec[] = [
   },
 ];
 
+const CATEGORIA_INDICES = '@indices';
+const CATEGORIA_CHAVES = '@chaves';
+
+/**
+ * Os índices do RediSearch, ou vazio quando o módulo não está instalado.
+ *
+ * `FT._LIST` não existe num Redis sem o módulo, e o erro é "unknown command".
+ * Isso NÃO é falha: é um Redis comum, e a categoria simplesmente não nasce.
+ */
+async function listarIndices(cliente: Redis): Promise<string[]> {
+  try {
+    const r = await cliente.call('FT._LIST');
+    return Array.isArray(r) ? r.map((x) => String(x)).sort((a, b) => a.localeCompare(b)) : [];
+  } catch {
+    return [];
+  }
+}
+
 /** O nó de um ramo ou de uma chave. */
 function noDaChave(
   prefixo: string,
@@ -94,15 +128,40 @@ function noDaChave(
   };
 }
 
-async function varrer(cliente: Redis, padrao: string): Promise<string[]> {
-  const achadas: string[] = [];
-  let cursor = '0';
+interface Varredura {
+  readonly acumulado: AcumuladoDeRamos;
+  /** `'0'` quando acabou; qualquer outro valor é de onde continuar. */
+  readonly cursor: string;
+  readonly completa: boolean;
+  readonly chavesVistas: number;
+}
+
+/**
+ * Varre o espaço de chaves somando ao acumulado, sem guardar as chaves.
+ *
+ * `MATCH` é aplicado pelo SERVIDOR, então o filtro não custa tráfego. `COUNT` é
+ * uma dica de quantas olhar por rodada — não um limite —, e subi-la troca
+ * viagens de rede por trabalho do servidor em cada uma.
+ */
+async function varrer(
+  cliente: Redis,
+  padrao: string,
+  prefixo: string,
+  cursorInicial: string,
+  acumulado: AcumuladoDeRamos
+): Promise<Varredura> {
+  const limite = Date.now() + ORCAMENTO_MS;
+  let cursor = cursorInicial;
+  let vistas = 0;
+
   do {
-    const [proximo, lote] = await cliente.scan(cursor, 'MATCH', padrao, 'COUNT', 500);
-    achadas.push(...lote);
+    const [proximo, lote] = await cliente.scan(cursor, 'MATCH', padrao, 'COUNT', POR_RODADA);
+    acumularRamos(acumulado, lote, prefixo);
+    vistas += lote.length;
     cursor = proximo;
-  } while (cursor !== '0' && achadas.length < MAX_CHAVES);
-  return achadas;
+  } while (cursor !== '0' && Date.now() < limite);
+
+  return { acumulado, cursor, completa: cursor === '0', chavesVistas: vistas };
 }
 
 async function connect(config: ResolvedConfig): Promise<Session> {
@@ -124,6 +183,8 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     retryStrategy: () => null,
     lazyConnect: true,
     connectTimeout: 10_000,
+    // Descobre o par morto em dezenas de segundos, e não em horas.
+    keepAlive: 20_000,
   });
 
   await cliente.connect();
@@ -139,12 +200,21 @@ async function connect(config: ResolvedConfig): Promise<Session> {
   }
   const modo = modoDeConexao(d.standalone, clusterHabilitado);
 
+  /**
+   * Onde cada nó parou de varrer.
+   *
+   * Guardado por PREFIXO, e não por nó da árvore: o mesmo prefixo aberto duas
+   * vezes é a mesma varredura, e recomeçar do zero refaria trabalho que o
+   * servidor já fez.
+   */
+  const varreduras = new Map<string, Varredura>();
+
   const executar = async (request: ExecuteRequest): Promise<QueryResult> => {
     const comeco = Date.now();
     const comando = lerComando(request.statement);
     if (comando === null) throw new Error('Digite um comando — por exemplo `GET minha-chave`.');
 
-    if (config.readOnly && !podeRodarSomenteLeitura(comando.nome)) {
+    if (config.readOnly && !podeRodarSomenteLeituraComModulos(comando.nome)) {
       throw new Error(
         `Esta conexão está em somente-leitura, e "${comando.nome}" não é um comando de ` +
           'leitura. O Redis não tem trava de sessão como os bancos SQL, então a IDE usa ' +
@@ -156,6 +226,27 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       comando.nome,
       ...(comando.argumentos as string[])
     );
+
+    // `FT.SEARCH` não devolve uma lista de valores: devolve documentos. Mostrá-los
+    // com o achatamento do Mongo é o que faz duas linhas serem comparáveis — que
+    // é o ponto de uma grade.
+    if (comando.nome.toLowerCase() === 'ft.search') {
+      const busca = lerRespostaDeBusca(resposta);
+      const docs = busca.acertos.map((a) => ({
+        _chave: a.chave,
+        ...abrirCampoJson(a.campos),
+      }));
+      const colunasDoc = colunasDaAmostra(docs);
+      return {
+        columns: colunasDoc.map((name) => ({ name, type: 'redis' })),
+        rows: linhasDosDocumentos(docs, colunasDoc).map((l) => [...l]),
+        rowCount: docs.length,
+        durationMs: Date.now() - comeco,
+        // O índice pode ter mais acertos do que o `LIMIT` trouxe.
+        truncated: busca.total > docs.length,
+      };
+    }
+
     const { colunas, linhas } = linhasDaResposta(resposta);
     return {
       columns: colunas.map((name) => ({ name, type: 'redis' })),
@@ -170,13 +261,110 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     kind: 'kv',
 
     children: async (nodePath) => {
-      // A raiz lista o primeiro nível; cada nível abaixo usa o prefixo do nó.
-      const prefixo = nodePath.length <= 1 ? '' : (nodePath[nodePath.length - 1] ?? '');
-      const chaves = await varrer(cliente, prefixo === '' ? '*' : `${prefixo}*`);
-      return ramosDe(chaves, prefixo).map((r) => noDaChave(prefixo, r));
+      // **A RAIZ tem duas categorias**, e a ordem não é decorativa: ele usa
+      // índices na maioria dos casos, então `Índices` vem primeiro e `Chaves`
+      // depois. Numa base com milhões de chaves, abrir a árvore de prefixos é o
+      // caminho caro; buscar num índice é o barato.
+      if (nodePath.length <= 1) {
+        const indices = await listarIndices(cliente);
+        const raiz: TreeNode[] = [];
+        if (indices.length > 0) {
+          raiz.push({
+            id: CATEGORIA_INDICES,
+            label: 'Índices',
+            icon: 'search',
+            detail: String(indices.length),
+            hasChildren: true,
+            meta: { categoria: 'indices' },
+          });
+        }
+        raiz.push({
+          id: CATEGORIA_CHAVES,
+          label: 'Chaves',
+          icon: 'folder',
+          hasChildren: true,
+          meta: { categoria: 'chaves' },
+        });
+        return raiz;
+      }
+
+      if (nodePath[1] === CATEGORIA_INDICES && nodePath.length === 2) {
+        const indices = await listarIndices(cliente);
+        return indices.map((nome): TreeNode => ({
+          id: nome,
+          label: nome,
+          icon: 'search',
+          hasChildren: false,
+          meta: { indice: nome },
+          actions: [{ id: 'redis-buscar', label: 'Abrir busca' }],
+        }));
+      }
+
+      // Abaixo de `Chaves`: a árvore de prefixos de sempre.
+      const dentroDeChaves = nodePath[1] === CATEGORIA_CHAVES;
+      const prefixo = dentroDeChaves && nodePath.length === 2
+        ? ''
+        : (nodePath[nodePath.length - 1] ?? '');
+      const padrao = prefixo === '' ? '*' : `${prefixo}*`;
+
+      // Continua de onde parou, se este nó já foi aberto e ficou incompleto.
+      const anterior = varreduras.get(prefixo);
+      const r = await varrer(
+        cliente,
+        padrao,
+        prefixo,
+        anterior?.cursor ?? '0',
+        anterior?.acumulado ?? new Map()
+      );
+      varreduras.set(prefixo, r);
+
+      const nos = ramosDoAcumulado(r.acumulado, prefixo).map((ramo) => noDaChave(prefixo, ramo));
+      if (r.completa) return nos;
+
+      // **A árvore diz que ainda não acabou**, em vez de truncar em silêncio.
+      // Recarregar o nó continua da mesma posição — e é por isso que o cursor
+      // fica guardado por prefixo.
+      return [
+        ...nos,
+        {
+          id: `${prefixo}\u0000continuar`,
+          label: `… ainda varrendo (${r.chavesVistas.toLocaleString('pt-BR')} chaves até aqui)`,
+          icon: 'clock',
+          hasChildren: false,
+          detail: 'recarregue este nó para continuar',
+          meta: { parcial: true },
+        },
+      ];
     },
 
     execute: executar,
+
+    runAction: async (request) => {
+      const indice = request.nodePath[request.nodePath.length - 1] ?? '';
+      return {
+        kind: 'statement',
+        title: indice,
+        // `*` é "tudo" no RediSearch. O esqueleto já traz o `LIMIT`, porque um
+        // índice grande sem limite devolve o servidor inteiro para a grade.
+        content: `FT.SEARCH ${indice} "*" LIMIT 0 50`,
+      };
+    },
+
+    /**
+     * Interrompe o comando em andamento.
+     *
+     * **O Redis não tem cancelamento por comando**, e não adianta fingir: o
+     * protocolo é uma fila, e o servidor já está executando o que recebeu. O que
+     * existe é derrubar a conexão — o comando termina no servidor, mas a IDE
+     * para de esperar e a tela destrava, que é o que o botão promete.
+     *
+     * `connect()` em seguida devolve a sessão ao ar sem o usuário reabrir a
+     * conexão. Sem isso, parar uma consulta mataria a conexão inteira.
+     */
+    cancelQuery: async () => {
+      cliente.disconnect();
+      await cliente.connect();
+    },
 
     serverInfo: async () => {
       const info = await cliente.info('server');

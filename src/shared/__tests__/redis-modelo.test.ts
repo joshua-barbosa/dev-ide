@@ -2,8 +2,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  destinoDaConexao, lerComando, lerUrlDeRedis, linhasDaResposta, modoDeConexao,
-  podeRodarSomenteLeitura, ramosDe,
+  acumularRamos, destinoDaConexao, lerComando, lerUrlDeRedis, linhasDaResposta,
+  modoDeConexao, podeRodarSomenteLeitura, podeRodarSomenteLeituraComModulos,
+  ramosDe, ramosDoAcumulado, abrirCampoJson, lerRespostaDeBusca,
 } from '../sql/redis-modelo';
 
 // ---------------------------------------------------------------------------
@@ -253,4 +254,130 @@ test('a MARCA vence a detecção de cluster', () => {
 test('sem a marca, o servidor decide', () => {
   assert.equal(modoDeConexao(false, true), 'cluster');
   assert.equal(modoDeConexao(false, false), 'standalone');
+});
+
+// ---------------------------------------------------------------------------
+// Varredura sem teto (03/09/2026)
+// ---------------------------------------------------------------------------
+
+test('o acumulado guarda o CONTADOR, e nunca as chaves', () => {
+  // Ele: "a ideia seria não truncar, porque realmente tenho várias chaves".
+  // A primeira versão juntava tudo numa lista antes de agrupar, e por isso
+  // precisava de um teto — que truncava a árvore dele.
+  const acc = new Map();
+  for (let lote = 0; lote < 100; lote += 1) {
+    acumularRamos(acc, Array.from({ length: 1000 }, (_, i) => `cache:${lote}-${i}`));
+  }
+  // Cem mil chaves entraram, e a memória tem UM nome.
+  assert.equal(acc.size, 1);
+  assert.equal(acc.get('cache')?.quantas, 100_000);
+});
+
+test('somar em lotes dá o mesmo que somar de uma vez', () => {
+  // É o que permite varrer em rodadas e continuar depois sem recomeçar.
+  const deUmaVez = ramosDe(['a:1', 'a:2', 'b:1']);
+
+  const acc = new Map();
+  acumularRamos(acc, ['a:1']);
+  acumularRamos(acc, ['a:2', 'b:1']);
+  assert.deepEqual(ramosDoAcumulado(acc), deUmaVez);
+});
+
+test('continuar de um acumulado NÃO recomeça a contagem', () => {
+  const acc = new Map();
+  acumularRamos(acc, ['x:1'], '');
+  acumularRamos(acc, ['x:2'], '');
+  assert.equal(acc.get('x')?.quantas, 2, 'somou, e não substituiu');
+});
+
+test('o prefixo continua filtrando dentro do lote', () => {
+  const acc = new Map();
+  acumularRamos(acc, ['cache:a:1', 'sessao:b'], 'cache:');
+  assert.deepEqual([...acc.keys()], ['a']);
+});
+
+// ---------------------------------------------------------------------------
+// RediSearch e RedisJSON (ele usa índices na maioria dos casos)
+// ---------------------------------------------------------------------------
+
+test('a resposta do FT.SEARCH não é lista de documentos: é PLANA', () => {
+  // `[total, chave, [campo, valor…], chave, [campo, valor…]]`. Ler errado
+  // desloca tudo por um, e o resultado fica plausível — cada documento
+  // mostrando o conteúdo do vizinho.
+  const r = lerRespostaDeBusca([
+    2,
+    'produto:1', ['nome', 'caneta', 'preco', '3.50'],
+    'produto:2', ['nome', 'lápis', 'preco', '1.20'],
+  ]);
+  assert.equal(r.total, 2);
+  assert.deepEqual(r.acertos.map((a) => a.chave), ['produto:1', 'produto:2']);
+  assert.equal(r.acertos[0]?.campos.nome, 'caneta');
+  assert.equal(r.acertos[1]?.campos.preco, '1.20');
+});
+
+test('NOCONTENT devolve só as chaves, e não confunde com campos', () => {
+  const r = lerRespostaDeBusca([3, 'a:1', 'a:2', 'a:3']);
+  assert.equal(r.total, 3);
+  assert.deepEqual(r.acertos.map((a) => a.chave), ['a:1', 'a:2', 'a:3']);
+  assert.deepEqual(r.acertos[0]?.campos, {});
+});
+
+test('resposta vazia não estoura', () => {
+  assert.deepEqual(lerRespostaDeBusca([0]), { total: 0, acertos: [] });
+  assert.deepEqual(lerRespostaDeBusca(null), { total: 0, acertos: [] });
+});
+
+test('total que não é número cai para a contagem real', () => {
+  assert.equal(lerRespostaDeBusca(['x', 'a:1']).total, 1);
+});
+
+// ---------------------------------------------------------------------------
+// RedisJSON dentro da busca
+// ---------------------------------------------------------------------------
+
+test('o documento JSON vem no campo `$`, e é ABERTO em colunas', () => {
+  // Deixá-lo como texto mostraria o documento sem deixar comparar nada entre
+  // linhas — que é o ponto de uma grade.
+  const r = abrirCampoJson({ $: '{"nome":"ana","idade":30}' });
+  assert.deepEqual(r, { nome: 'ana', idade: 30 });
+});
+
+test('o embrulho de lista de um item é desfeito', () => {
+  // Alguns servidores devolvem `[{…}]`, e mostrar isso seria mostrar o embrulho.
+  assert.deepEqual(abrirCampoJson({ $: '[{"a":1}]' }), { a: 1 });
+});
+
+test('caminho JSON declarado no índice (`$.dados`) também abre', () => {
+  assert.deepEqual(abrirCampoJson({ '$.dados': '{"x":1}' }), { x: 1 });
+});
+
+test('campo que NÃO é JSON fica como veio, em vez de sumir', () => {
+  assert.deepEqual(abrirCampoJson({ $: 'isto não é json' }), { $: 'isto não é json' });
+});
+
+test('campos normais convivem com o documento JSON', () => {
+  const r = abrirCampoJson({ score: '0.9', $: '{"nome":"ana"}' });
+  assert.equal(r.score, '0.9');
+  assert.equal(r.nome, 'ana');
+});
+
+test('sem campo JSON, nada muda', () => {
+  const campos = { nome: 'ana', preco: '3' };
+  assert.deepEqual(abrirCampoJson(campos), campos);
+});
+
+// ---------------------------------------------------------------------------
+// A trava, agora com os módulos
+// ---------------------------------------------------------------------------
+
+test('os comandos de leitura dos MÓDULOS passam na trava', () => {
+  for (const c of ['FT.SEARCH', 'ft.info', 'FT._LIST', 'json.get', 'JSON.MGET']) {
+    assert.equal(podeRodarSomenteLeituraComModulos(c), true, c);
+  }
+});
+
+test('os de ESCRITA dos módulos continuam recusados', () => {
+  for (const c of ['FT.CREATE', 'FT.DROPINDEX', 'JSON.SET', 'JSON.DEL', 'FT.ALTER']) {
+    assert.equal(podeRodarSomenteLeituraComModulos(c), false, c);
+  }
 });

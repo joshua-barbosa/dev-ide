@@ -291,6 +291,11 @@ async function connect(config: ResolvedConfig): Promise<Session> {
 
   const socket = String(f.socket_path ?? '');
   const conn = mysql.createConnection({
+    // **Keepalive.** Sem ele, uma conexão perdida — VPN que cai, servidor
+    // reiniciado — deixa o socket MEIO-ABERTO, e o sistema espera horas antes
+    // de desistir. Com ele, o par morto é descoberto em dezenas de segundos.
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 20_000,
     ...(socket === '' ? { host: String(f.host), port: Number(f.port) } : { socketPath: socket }),
     user: String(f.user),
     password: f.password === undefined ? undefined : String(f.password),

@@ -55,6 +55,22 @@ Todas as respostas usam o envelope `{success, data, error}`.
 | POST | `/api/connections/:id/execute` | executa `{statement, nodePath?, rowLimit?, timeoutMs?}` |
 | POST | `/api/connections/:id/action` | roda uma ação do menu `{nodePath, actionId}` — ex.: ver DDL |
 
+#### Consulta que não volta
+
+`execute` tem prazo: **60 s** por padrão, ou o `timeoutMs` do pedido mais 5 s de
+folga — a folga existe para o erro do driver chegar antes do nosso, já que ele
+diz o que o banco respondeu.
+
+Estourado o prazo, a sessão **sai do pool**. É o que faz a consulta seguinte
+reconectar em vez de bater no mesmo socket meio-aberto. Os sockets de MySQL,
+PostgreSQL e Redis têm keepalive (primeiro sinal em 20 s) e o do MongoDB tem
+`socketTimeoutMS` de 45 s: sem isso, uma VPN que cai deixa a espera correr por
+horas antes de o sistema desistir.
+
+O botão `Parar` só aparece onde o driver declara `cancelaQuery`. MySQL,
+PostgreSQL e SQL Server cancelam de verdade; Redis e MongoDB derrubam o socket,
+o que para de esperar mas não garante que o servidor interrompa o comando.
+
 ### Serviços suportados
 
 | Tipo | Biblioteca | Somente-leitura imposto por |

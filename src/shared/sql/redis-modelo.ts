@@ -33,31 +33,50 @@ export const SEPARADOR = ':';
  * ser uma chave e, ao mesmo tempo, o começo de `sessao:1234`. Esconder uma das
  * duas mentiria sobre o que está no banco.
  */
-export function ramosDe(
+export type AcumuladoDeRamos = Map<string, { quantas: number; ehChave: boolean }>;
+
+/**
+ * Soma um LOTE de chaves ao que já foi contado.
+ *
+ * **Nada de guardar as chaves.** Ele disse que tem muitas chaves no Redis, e a
+ * primeira versão disto acumulava tudo numa lista antes de agrupar — o que
+ * obrigava a um teto, e o teto truncava a árvore dele.
+ *
+ * Aqui só o RESULTADO é guardado: um contador por segmento. A memória fica do
+ * tamanho do número de nomes distintos naquele nível — dezenas, não milhões —,
+ * independentemente de quantas chaves o servidor tenha.
+ */
+export function acumularRamos(
+  acumulado: AcumuladoDeRamos,
   chaves: readonly string[],
   prefixo = ''
-): readonly RamoDeChaves[] {
+): AcumuladoDeRamos {
   const corte = prefixo === '' ? 0 : prefixo.length;
-  const porNome = new Map<string, { quantas: number; ehChave: boolean }>();
 
   for (const chave of chaves) {
     if (prefixo !== '' && !chave.startsWith(prefixo)) continue;
     const resto = chave.slice(corte);
-    if (resto === '') {
-      // A própria chave `prefixo` existe. Ela não é um ramo daqui.
-      continue;
-    }
+    // A própria chave `prefixo` existe. Ela não é um ramo daqui.
+    if (resto === '') continue;
+
     const fim = resto.indexOf(SEPARADOR);
     const nome = fim === -1 ? resto : resto.slice(0, fim);
-    const atual = porNome.get(nome) ?? { quantas: 0, ehChave: false };
-    porNome.set(nome, {
+    const atual = acumulado.get(nome) ?? { quantas: 0, ehChave: false };
+    acumulado.set(nome, {
       quantas: atual.quantas + 1,
       // É chave de verdade quando NÃO há nada depois do nome.
       ehChave: atual.ehChave || fim === -1,
     });
   }
+  return acumulado;
+}
 
-  return [...porNome.entries()]
+/** Os ramos, na ordem em que a árvore os mostra. */
+export function ramosDoAcumulado(
+  acumulado: AcumuladoDeRamos,
+  prefixo = ''
+): readonly RamoDeChaves[] {
+  return [...acumulado.entries()]
     .map(([nome, d]) => ({
       nome,
       prefixo: `${prefixo}${nome}${SEPARADOR}`,
@@ -65,6 +84,14 @@ export function ramosDe(
       ehChave: d.ehChave,
     }))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+/** Atalho de uma passada só — o que os testes usam. */
+export function ramosDe(
+  chaves: readonly string[],
+  prefixo = ''
+): readonly RamoDeChaves[] {
+  return ramosDoAcumulado(acumularRamos(new Map(), chaves, prefixo), prefixo);
 }
 
 /**
@@ -368,4 +395,121 @@ export function modoDeConexao(
 ): 'standalone' | 'cluster' {
   if (forcado) return 'standalone';
   return clusterHabilitado ? 'cluster' : 'standalone';
+}
+
+// ---------------------------------------------------------------------------
+// RediSearch e RedisJSON
+// ---------------------------------------------------------------------------
+//
+// Ele: *"em sua maioria eu uso indexações, então tenho RedisJSON e
+// RedisSearch"*. Isso muda o peso das coisas: navegar por prefixo vira o caso
+// SECUNDÁRIO, e o principal é buscar num índice.
+//
+// **A resposta do `FT.SEARCH` é a parte que erra**, porque não é uma lista de
+// documentos: é uma lista PLANA em que o total vem primeiro e depois se
+// alternam chave e conteúdo. Ler isso errado desloca tudo por um, e o resultado
+// fica plausível — cada documento mostrando o conteúdo do vizinho.
+
+/** Comandos de leitura dos módulos, somados à lista branca. */
+export const COMANDOS_DE_MODULO: ReadonlySet<string> = new Set([
+  'ft.search', 'ft.aggregate', 'ft.info', 'ft._list', 'ft.explain', 'ft.explaincli',
+  'ft.tagvals', 'ft.spellcheck', 'ft.syndump', 'ft.cursor',
+  'json.get', 'json.mget', 'json.type', 'json.objkeys', 'json.objlen',
+  'json.arrlen', 'json.arrindex', 'json.strlen', 'json.resp', 'json.debug',
+]);
+
+export interface AcertoDaBusca {
+  readonly chave: string;
+  readonly campos: Record<string, unknown>;
+}
+
+export interface RespostaDeBusca {
+  readonly total: number;
+  readonly acertos: readonly AcertoDaBusca[];
+}
+
+/**
+ * Lê a resposta do `FT.SEARCH`.
+ *
+ * O formato é `[total, chave1, [campo, valor, …], chave2, [campo, valor, …]]`.
+ * Com `NOCONTENT` as listas somem e sobram só as chaves: `[total, chave1,
+ * chave2]`. As duas formas chegam pelo mesmo caminho, e distinguir é olhar se o
+ * item seguinte é uma lista.
+ *
+ * **Um documento do RedisJSON vem como um campo só, chamado `$`**, com o JSON
+ * inteiro dentro — e é isso que faz um resultado de busca parecer ter uma coluna
+ * só quando ele tem vinte.
+ */
+export function lerRespostaDeBusca(resposta: unknown): RespostaDeBusca {
+  if (!Array.isArray(resposta) || resposta.length === 0) {
+    return { total: 0, acertos: [] };
+  }
+
+  const total = Number(resposta[0]);
+  const acertos: AcertoDaBusca[] = [];
+
+  for (let i = 1; i < resposta.length; i += 1) {
+    const chave = String(resposta[i]);
+    const seguinte = resposta[i + 1];
+
+    if (!Array.isArray(seguinte)) {
+      // `NOCONTENT`: só a chave.
+      acertos.push({ chave, campos: {} });
+      continue;
+    }
+
+    const campos: Record<string, unknown> = {};
+    for (let j = 0; j + 1 < seguinte.length; j += 2) {
+      campos[String(seguinte[j])] = seguinte[j + 1];
+    }
+    acertos.push({ chave, campos });
+    i += 1;
+  }
+
+  return { total: Number.isFinite(total) ? total : acertos.length, acertos };
+}
+
+/**
+ * Se o campo é um documento JSON inteiro, devolve-o já aberto.
+ *
+ * O RediSearch entrega o RedisJSON num campo `$` (ou `$.algo`, quando o índice
+ * declara um caminho). Deixar isso como uma coluna de texto com o JSON dentro
+ * seria mostrar o documento e não deixar comparar nada entre linhas.
+ */
+export function abrirCampoJson(campos: Record<string, unknown>): Record<string, unknown> {
+  const caminhos = Object.keys(campos).filter((k) => k === '$' || k.startsWith('$.'));
+  if (caminhos.length === 0) return campos;
+
+  const saida: Record<string, unknown> = {};
+  for (const [chave, valor] of Object.entries(campos)) {
+    if (!caminhos.includes(chave)) {
+      saida[chave] = valor;
+      continue;
+    }
+    if (typeof valor !== 'string') {
+      saida[chave] = valor;
+      continue;
+    }
+    try {
+      const lido = JSON.parse(valor) as unknown;
+      // `$` num índice JSON devolve o documento; alguns servidores o embrulham
+      // numa lista de um item, e mostrar `[{…}]` seria mostrar o embrulho.
+      const doc = Array.isArray(lido) && lido.length === 1 ? lido[0] : lido;
+      if (doc !== null && typeof doc === 'object' && !Array.isArray(doc)) {
+        Object.assign(saida, doc as Record<string, unknown>);
+      } else {
+        saida[chave] = doc;
+      }
+    } catch {
+      // Não era JSON: fica como veio, em vez de sumir.
+      saida[chave] = valor;
+    }
+  }
+  return saida;
+}
+
+/** Se o comando é de leitura, contando os módulos. */
+export function podeRodarSomenteLeituraComModulos(nome: string): boolean {
+  const n = nome.toLowerCase();
+  return COMANDOS_DE_LEITURA.has(n) || COMANDOS_DE_MODULO.has(n);
 }

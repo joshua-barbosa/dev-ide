@@ -198,6 +198,17 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       };
     },
 
+    /**
+     * Interrompe a consulta em andamento.
+     *
+     * O `tedious` sabe fazer isso de verdade: manda um pacote de ATENÇÃO ao
+     * servidor, que aborta o comando e mantém a conexão viva. É o único dos
+     * quatro serviços novos com cancelamento nativo.
+     */
+    cancelQuery: async () => {
+      conexao.cancel();
+    },
+
     runAction: async (request) => {
       const [, , alvo] = request.nodePath;
       const [esquema = 'dbo', tabela = ''] = String(alvo ?? '').split('.');
