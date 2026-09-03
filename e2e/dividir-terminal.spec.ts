@@ -5,7 +5,7 @@
 // GRUPO (cada lado com sua barra de abas), e o terminal divide por PAR (a lista
 // lateral continua uma só, com os panes recuados dentro do item).
 import { expect, test, type Page } from '@playwright/test';
-import { menu, esperarIdePronta } from './fixtures';
+import { menu, esperarIdePronta, fecharTodosOsTerminais,} from './fixtures';
 
 const paneis = (page: Page) => page.locator('[data-pane-terminal]:visible');
 
@@ -33,6 +33,12 @@ async function dividir(page: Page): Promise<void> {
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await esperarIdePronta(page);
+});
+
+// Os terminais sobrevivem ao teste, e o servidor tem teto de 12: sem esta
+// limpeza o teto é atingido no meio da rodada e um arquivo VIZINHO falha.
+test.afterEach(async ({ page }) => {
+  await fecharTodosOsTerminais(page);
 });
 
 test('Split Terminal deixou de ser promessa', async ({ page }) => {

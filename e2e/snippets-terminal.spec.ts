@@ -6,8 +6,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { CONEXAO_SSH, SENHA_MESTRA } from './global-setup';
 import {
-  destrancarCofre, entradaRapida, esperarIdePronta, expandir, linhaArvore, painelLateral,
-} from './fixtures';
+  destrancarCofre, entradaRapida, esperarIdePronta, expandir, linhaArvore, painelLateral, fecharTodosOsTerminais,} from './fixtures';
 
 // `exact: true` em `Snippets`: a spec 066 acrescentou
 // `Editar o arquivo de snippets (todas as conexões)` na MESMA barra, e sem o
@@ -54,6 +53,12 @@ async function criarSnippet(page: Page, nome: string, comando: string): Promise<
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await esperarIdePronta(page);
+});
+
+// Os terminais sobrevivem ao teste, e o servidor tem teto de 12: sem esta
+// limpeza o teto é atingido no meio da rodada e um arquivo VIZINHO falha.
+test.afterEach(async ({ page }) => {
+  await fecharTodosOsTerminais(page);
 });
 
 test('a aba de terminal tem barra, e a barra tem Snippets', async ({ page }) => {

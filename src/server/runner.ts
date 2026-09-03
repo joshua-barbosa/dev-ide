@@ -4,9 +4,11 @@ import * as os from 'os';
 import * as path from 'path';
 import ts from 'typescript';
 import type { RegistroDeExecucoes } from './execucoes';
+import { ambienteDeNode } from '../shared/execucao-node';
 
 export type RunMode = 'file' | 'block' | 'function';
-export type RunLanguage = 'javascript' | 'typescript' | 'php' | 'c' | 'csharp' | 'python';
+export type RunLanguage =
+  | 'javascript' | 'typescript' | 'php' | 'c' | 'csharp' | 'python' | 'shell';
 
 export interface RunRequest {
   mode: RunMode;
@@ -55,6 +57,9 @@ const EXT_LANG: Record<string, RunLanguage> = {
   '.py': 'python',
   '.c': 'c', '.h': 'c',
   '.cs': 'csharp',
+  // Ele tentou rodar um `.sh` em 03/09/2026 e a IDE o executou como JavaScript,
+  // porque extensão desconhecida caía nesse padrão. Agora shell é shell.
+  '.sh': 'shell', '.bash': 'shell',
 };
 
 export async function runCode(
@@ -94,7 +99,7 @@ interface Controle {
  * essa porta: acrescentar à união sem acrescentar aqui não compila.
  */
 const EXECUTAVEIS = [
-  'javascript', 'typescript', 'php', 'c', 'csharp', 'python',
+  'javascript', 'typescript', 'php', 'c', 'csharp', 'python', 'shell',
 ] as const satisfies readonly RunLanguage[];
 
 function resolveLanguage(req: RunRequest): RunLanguage {
@@ -103,7 +108,21 @@ function resolveLanguage(req: RunRequest): RunLanguage {
     return explicit;
   }
   const ext = req.filePath ? path.extname(req.filePath).toLowerCase() : '';
-  return EXT_LANG[ext] ?? 'javascript';
+  const achada = EXT_LANG[ext];
+  if (achada !== undefined) return achada;
+
+  // **Sem arquivo, JavaScript.** É o caso de rodar um trecho digitado numa aba
+  // sem título, e ali o padrão é razoável.
+  if (ext === '') return 'javascript';
+
+  // **Com arquivo de extensão desconhecida, RECUSA.** O padrão antigo executava
+  // qualquer coisa como JavaScript: um `.sh` virava erro de sintaxe do Node, e
+  // a mensagem não tinha relação nenhuma com o que a pessoa pediu.
+  throw new Error(
+    `Não sei executar "${ext}". Sei executar: ` +
+      `${[...new Set(Object.values(EXT_LANG))].sort().join(', ')} ` +
+      `(pelas extensões ${Object.keys(EXT_LANG).sort().join(', ')}).`
+  );
 }
 
 // ---- Montagem do código-fonte por modo/linguagem ----
@@ -237,7 +256,20 @@ async function execute(
       const js = lang === 'typescript' ? transpile(source) : source;
       const file = path.join(runDir, 'main.cjs');
       fs.writeFileSync(file, js, 'utf8');
-      return execProcess(process.execPath, [file], cwd, RUN_TIMEOUT_MS, { controle });
+      // Ver `shared/execucao-node.ts`: dentro do Electron, `process.execPath` é
+      // o PRÓPRIO aplicativo, e chamá-lo assim lançava uma segunda cópia dele.
+      const node = ambienteDeNode(process.execPath, process.versions.electron, process.env);
+      return execProcess(node.binario, [file], cwd, RUN_TIMEOUT_MS, {
+        controle,
+        env: node.env,
+      });
+    }
+    case 'shell': {
+      const file = path.join(runDir, 'main.sh');
+      fs.writeFileSync(file, source, { encoding: 'utf8', mode: 0o700 });
+      // `bash`, e não o `SHELL` dele: o script foi escrito para bash, e rodá-lo
+      // no fish ou no zsh daria erro de sintaxe em coisa que está certa.
+      return execProcess('bash', [file], cwd, RUN_TIMEOUT_MS, { controle });
     }
     case 'php': {
       const file = path.join(runDir, 'main.php');
@@ -299,7 +331,17 @@ function execProcess(
   args: string[],
   cwd: string,
   timeoutMs: number,
-  options?: { missingHint?: string; controle?: Controle }
+  options?: {
+    missingHint?: string;
+    controle?: Controle;
+    /**
+     * O ambiente do filho. Ausente = o do servidor.
+     *
+     * Existe para o executor de JavaScript poder acrescentar
+     * `ELECTRON_RUN_AS_NODE` — ver `shared/execucao-node.ts`.
+     */
+    env?: Readonly<Record<string, string>>;
+  }
 ): Promise<RunResult> {
   return new Promise((resolve) => {
     const start = Date.now();
@@ -313,7 +355,11 @@ function execProcess(
     // esgotado: `dotnet run` e `gcc` lançam subprocessos, e `child.kill()`
     // atingia só o pai — a IDE anunciava "tempo esgotado" com o neto vivo,
     // segurando CPU.
-    const child = spawn(command, args, { cwd, env: process.env, detached: true });
+    const child = spawn(command, args, {
+      cwd,
+      env: options?.env ?? process.env,
+      detached: true,
+    });
 
     const encerrar = (): void => {
       try {

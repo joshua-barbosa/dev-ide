@@ -21,7 +21,8 @@
     "electron:sem-sandbox": "npm run build:electron && electron --no-sandbox dist/electron/main.js",
     "instalar-atalho": "npm run build:electron && node scripts/instalar-atalho.mjs",
     "instalar": "npm run empacotar && npm run instalar-atalho",
-    "empacotar:win": "npm run build && electron-builder --win"
+    "empacotar:win": "npm run build && electron-builder --win",
+    "prints": "playwright test --config=playwright.prints.ts"
   },
   "license": "MIT",
   "dependencies": {

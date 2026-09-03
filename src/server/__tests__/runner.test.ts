@@ -264,3 +264,44 @@ test('função que não existe no arquivo Python diz isso, e não estoura', asyn
   assert.notEqual(result.exitCode, 0);
   assert.match(result.stderr, /não é uma função/);
 });
+
+// ---------------------------------------------------------------------------
+// Extensão desconhecida e shell (03/09/2026)
+// ---------------------------------------------------------------------------
+
+test('um .sh é executado como SHELL, e não como JavaScript', async () => {
+  // Ele tentou rodar um `.sh` e a IDE o executou como JavaScript, porque
+  // extensão desconhecida caía nesse padrão.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'runner-sh-'));
+  const arquivo = path.join(dir, 'oi.sh');
+  fs.writeFileSync(arquivo, 'echo "veio do shell"\n');
+  try {
+    const r = await runCode({ mode: 'file', filePath: arquivo });
+    assert.equal(r.exitCode, 0, r.stderr);
+    assert.match(r.stdout, /veio do shell/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('extensão que a IDE não executa é RECUSADA, dizendo quais ela executa', async () => {
+  // O padrão antigo rodava qualquer coisa como JavaScript, e o erro de sintaxe
+  // do Node não tinha relação com o que a pessoa pediu.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'runner-x-'));
+  const arquivo = path.join(dir, 'coisa.rb');
+  fs.writeFileSync(arquivo, 'puts 1\n');
+  try {
+    await assert.rejects(
+      () => runCode({ mode: 'file', filePath: arquivo }),
+      /Não sei executar "\.rb".*shell/s
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('sem arquivo, o padrão continua sendo JavaScript', async () => {
+  // É o caso de rodar um trecho digitado numa aba sem título.
+  const r = await runCode({ mode: 'block', code: 'console.log(1 + 1)' });
+  assert.match(r.stdout, /2/);
+});

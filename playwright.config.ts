@@ -28,6 +28,14 @@ process.env.E2E_DATA = DADOS;
 
 export default defineConfig({
   testDir: './e2e',
+  /**
+   * Os capturadores de print da documentação ficam FORA da suíte.
+   *
+   * Eles não afirmam nada — só desenham a tela e salvam a imagem. Deixá-los na
+   * suíte a deixaria mais lenta sem proteger nada, e um print que "falha" não
+   * quer dizer que a IDE quebrou. Rodam sozinhos: `npm run prints`.
+   */
+  testIgnore: '**/*.prints.ts',
   // A suíte compartilha uma instância da IDE, e trancar o cofre é estado global
   // do servidor: em paralelo, um teste derrubaria o outro de forma intermitente.
   // Falha intermitente mina a confiança na suíte inteira; lento não.

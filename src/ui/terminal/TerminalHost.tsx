@@ -10,6 +10,8 @@
 // natureza, e reconciliar isso a cada render seria pior de todas as formas.
 import { useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
 import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
@@ -17,6 +19,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import { tokens } from '../theme';
 import { pareceProntoParaComando } from '../../shared/terminal/prompt';
+import { acaoDoTerminal, textoParaCopiar } from '../../shared/terminal-copiar';
 import { escapaDoTerminal, formatarAtalho } from '../../shared/commands';
 import { paletaDe, type NomeDoTema } from '../../shared/temas';
 import { resolverAparencia, type AparenciaDoTerminal } from '../../shared/terminal/aparencia';
@@ -92,6 +95,14 @@ export function TerminalHost({
   comandoInicial = null, comandoParaEnviar = null, sessaoId, aparencia = {},
 }: TerminalHostProps) {
   const caixa = useRef<HTMLDivElement>(null);
+  /**
+   * O emulador, para o MENU poder ler a seleção.
+   *
+   * O menu de botão direito existe porque atalho não se descobre: quem nunca
+   * usou `Ctrl+Shift+C` num terminal não vai adivinhá-lo, e foi assim que ele
+   * ficou sem conseguir copiar.
+   */
+  const emulador = useRef<{ getSelection(): string } | null>(null);
   // O que de fato vai para o emulador: o da aba, com o `config.json` atrás.
   const visual = resolverAparencia(aparencia, { fontSize });
   const aoFim = useRef(onFim);
@@ -129,6 +140,7 @@ export function TerminalHost({
   } | null>(null);
   /** A barra de busca do terminal (T108). `null` = fechada. */
   const [procurando, setProcurando] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; selecao: string | null } | null>(null);
   const [semResultado, setSemResultado] = useState(false);
 
   // Ao voltar para a aba: refaz a medida e devolve o foco. Enquanto escondida a
@@ -209,6 +221,27 @@ export function TerminalHost({
     // nova linha — o painel nunca se escondia.
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true;
+
+      // Copiar e colar (03/09/2026). O emulador desenha o texto ele mesmo, e a
+      // seleção NÃO é seleção do DOM — então o `Ctrl+C` do navegador não tem o
+      // que copiar. E o `Ctrl+C` do terminal é o SIGINT, que não se toma
+      // emprestado. Ver `shared/terminal-copiar.ts`.
+      const acao = acaoDoTerminal(e);
+      if (acao === 'copiar') {
+        e.preventDefault();
+        const texto = textoParaCopiar(term.getSelection());
+        if (texto !== null) void navigator.clipboard.writeText(texto);
+        return false;
+      }
+      if (acao === 'colar') {
+        e.preventDefault();
+        void navigator.clipboard.readText().then(
+          (t) => enviarRef.current?.({ tipo: 'dados', dados: t }),
+          () => undefined
+        );
+        return false;
+      }
+
       // `Ctrl+F` abre a busca em vez de virar byte no shell (T108). No shell,
       // `Ctrl+F` é "avançar um caractere" no modo emacs do readline — quase
       // ninguém usa, e quem usa tem a seta.
@@ -220,6 +253,7 @@ export function TerminalHost({
       return !escapaDoTerminal(formatarAtalho(e));
     });
 
+    emulador.current = term;
     term.open(alvo);
     fit.fit();
 
@@ -388,6 +422,11 @@ export function TerminalHost({
       <Box
         ref={caixa}
         data-terminal={connectionId ?? 'shell'}
+        onContextMenu={(e: React.MouseEvent) => {
+          e.preventDefault();
+          const selecao = textoParaCopiar(emulador.current?.getSelection() ?? '');
+          setMenu({ x: e.clientX, y: e.clientY, selecao });
+        }}
         sx={{
           flex: 1,
           minHeight: 0,
@@ -397,6 +436,38 @@ export function TerminalHost({
           '& .xterm': { height: '100%' },
         }}
       />
+
+      {/* O menu de botão direito: copiar e colar sem precisar saber o atalho.
+          `Ctrl+Shift+C` é o costume dos terminais de Linux há décadas, mas quem
+          nunca o usou não o adivinha — e foi assim que ele ficou sem conseguir
+          copiar. */}
+      <Menu
+        open={menu !== null}
+        onClose={() => setMenu(null)}
+        anchorReference="anchorPosition"
+        anchorPosition={menu === null ? undefined : { top: menu.y, left: menu.x }}
+      >
+        <MenuItem
+          disabled={menu?.selecao == null}
+          onClick={() => {
+            if (menu?.selecao != null) void navigator.clipboard.writeText(menu.selecao);
+            setMenu(null);
+          }}
+        >
+          Copiar (Ctrl+Shift+C)
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setMenu(null);
+            void navigator.clipboard.readText().then(
+              (t) => enviarRef.current?.({ tipo: 'dados', dados: t }),
+              () => undefined
+            );
+          }}
+        >
+          Colar (Ctrl+Shift+V)
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }

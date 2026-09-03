@@ -191,3 +191,24 @@ export async function esperarEditorPronto(page: Page): Promise<void> {
 export function cursores(page: Page): Locator {
   return editor(page).locator('.cursor');
 }
+
+/**
+ * Fecha TODOS os terminais abertos.
+ *
+ * O servidor tem teto de 12 terminais, e TRÊS arquivos da suíte os abrem
+ * (`terminal`, `dividir-terminal`, `snippets-terminal`). Como eles sobrevivem ao
+ * teste e ao F5, o teto era atingido no meio da rodada — e quem falhava era um
+ * arquivo VIZINHO, com "Limite de 12 terminais abertos atingido" no lugar do
+ * prompt.
+ *
+ * Um teste que suja é um teste que faz o outro mentir. Por isso a limpeza mora
+ * aqui, e os três chamam no `afterEach`.
+ */
+export async function fecharTodosOsTerminais(page: Page): Promise<void> {
+  const fechar = page.getByRole('button', { name: 'Fechar terminal' });
+  for (let i = 0; i < 15; i += 1) {
+    if (!(await fechar.isVisible().catch(() => false))) return;
+    await fechar.click();
+    await page.waitForTimeout(150);
+  }
+}

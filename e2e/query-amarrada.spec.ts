@@ -156,7 +156,12 @@ test('aba de query nascida da árvore NÃO pergunta a conexão', async ({ page }
 
   await linhaArvore(page, 'alunos').dblclick();
   await esperarEditorPronto(page);
-  await page.getByRole('button', { name: /consulta|arquivo/ }).first().click();
+  // O nome INTEIRO, ancorado. Com `/consulta|arquivo/` solto, este clique caiu
+  // no botão "Importar conexões de um arquivo" da lateral assim que ele passou a
+  // existir — ele casa com `arquivo` e vem antes no DOM. O teste executava a
+  // importação achando que executava a consulta, e falhava na grade ausente,
+  // trinta linhas depois do erro de verdade.
+  await page.getByRole('button', { name: /^Executar (consulta|arquivo)$/ }).click();
 
   // Sem diálogo no caminho, e a grade com os dados.
   await expect(page.getByText('Executar contra qual conexão?')).toHaveCount(0);
