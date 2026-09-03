@@ -15,6 +15,18 @@ export interface DadosDoAtalho {
   /** Caminho absoluto do `.png`, ou vazio enquanto não houver ícone. */
   readonly icone: string;
   /**
+   * A classe da janela, para o `StartupWMClass`.
+   *
+   * **Não é o nome bonito.** O Electron usa o nome do EXECUTÁVEL como
+   * `WM_CLASS`, então um produto chamado "Braytech Code" abre uma janela de
+   * classe `braytech-code`. Pôr o nome com espaço e maiúscula aqui faria o
+   * ambiente não reconhecer a janela — e o sintoma é o mesmo de sempre: um
+   * segundo ícone, genérico, ao lado do atalho.
+   *
+   * Ausente, deriva do executável, que é o que quase sempre está certo.
+   */
+  readonly classeDaJanela?: string;
+  /**
    * O `--no-sandbox` é necessário nesta máquina.
    *
    * Quem decide isto é quem conhece o estado do `chrome-sandbox` — ver
@@ -62,6 +74,11 @@ export function precisaDeNoSandbox(
  * `StartupWMClass` é o que amarra a JANELA ao ícone: sem ele, o ambiente abre um
  * segundo lugar na barra de tarefas, com ícone genérico, ao lado do atalho.
  */
+/** O nome do arquivo executável, sem a pasta. */
+export function nomeDoExecutavel(caminho: string): string {
+  return caminho.slice(caminho.lastIndexOf('/') + 1);
+}
+
 export function conteudoDoAtalho(d: DadosDoAtalho): string {
   if (!d.executavel.startsWith('/')) {
     // Caminho relativo num `.desktop` é ignorado em silêncio: o atalho aparece
@@ -82,7 +99,7 @@ export function conteudoDoAtalho(d: DadosDoAtalho): string {
     'Terminal=false',
     'Categories=Development;IDE;',
     'StartupNotify=true',
-    `StartupWMClass=${escaparCampo(d.nome)}`,
+    `StartupWMClass=${escaparCampo(d.classeDaJanela ?? nomeDoExecutavel(d.executavel))}`,
   ];
   // Sem ícone, a linha NÃO entra: um `Icon=` vazio faz alguns ambientes
   // desenharem um quadrado quebrado, que é pior que o ícone padrão.

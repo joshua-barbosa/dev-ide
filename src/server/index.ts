@@ -343,7 +343,7 @@ app.use(errorEnvelope);
  */
 export function iniciarServidor(porta = PORT): Promise<void> {
   const server = app.listen(porta, HOST, () => {
-    console.log(`dev-ide rodando em http://localhost:${porta} (apenas ${HOST})`);
+    console.log(`Braytech Code rodando em http://localhost:${porta} (apenas ${HOST})`);
     console.log(`Projetos em: ${PROJECTS_DIR}`);
     if (!fs.existsSync(path.join(UI_DIR, 'index.html'))) {
       // Acontece depois de `npm test`, que limpa dist/ e recompila só o servidor.
@@ -394,7 +394,7 @@ export function iniciarServidor(porta = PORT): Promise<void> {
         // mensagem fala a língua de quem está no terminal.
         rejeitar(
           new Error(
-            `A porta ${porta} já está em uso (provavelmente outra instância da dev-ide).\n` +
+            `A porta ${porta} já está em uso (provavelmente outra instância do Braytech Code).\n` +
               `Encerre-a com "fuser -k ${porta}/tcp" ou inicie em outra porta: "PORT=4322 npm start".`
           )
         );

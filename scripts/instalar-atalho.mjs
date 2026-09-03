@@ -18,7 +18,10 @@ const RAIZ = path.resolve(import.meta.dirname, '..');
  * código — que pode nem estar compilada quando ele clicar.
  */
 function acharExecutavel() {
-  const empacotado = path.join(RAIZ, 'empacotado', 'linux-unpacked', 'dev-ide');
+  // O nome do binário vem do `package.json`: renomear o produto não pode
+  // exigir lembrar de mudar este script também.
+  const pacote = JSON.parse(fs.readFileSync(path.join(RAIZ, 'package.json'), 'utf8'));
+  const empacotado = path.join(RAIZ, 'empacotado', 'linux-unpacked', pacote.name);
   if (fs.existsSync(empacotado)) return empacotado;
   console.error(
     'Não achei o aplicativo empacotado. Rode "npm run empacotar" antes — o ' +
@@ -47,11 +50,19 @@ const executavel = acharExecutavel();
 const semSandbox = precisaDeNoSandbox(olharAjudante(executavel));
 const icone = acharIcone();
 
-const destino = path.join(os.homedir(), '.local', 'share', 'applications', 'dev-ide.desktop');
+const pacote = JSON.parse(fs.readFileSync(path.join(RAIZ, 'package.json'), 'utf8'));
+const destino = path.join(
+  os.homedir(), '.local', 'share', 'applications', `${pacote.name}.desktop`
+);
 fs.mkdirSync(path.dirname(destino), { recursive: true });
 fs.writeFileSync(
   destino,
-  conteudoDoAtalho({ nome: 'dev-ide', executavel, icone, semSandbox }),
+  conteudoDoAtalho({
+    nome: pacote.build?.productName ?? pacote.name,
+    executavel,
+    icone,
+    semSandbox,
+  }),
   { mode: 0o644 }
 );
 

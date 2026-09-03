@@ -5,6 +5,9 @@
 // devolve `PublicConnection` (sem os campos secretos) e só o pool, do lado do
 // servidor, chega a ver o valor decifrado.
 import { Router } from 'express';
+import {
+  lerArquivoDeConexoes, planoDeImportacao,
+} from '../../shared/importar-conexoes';
 import { applyGroupRename, buildGroupTree, normalizeGroupPath } from '../connections/groups';
 import type { DriverRegistry } from '../connections/registry';
 import type { SessionPool } from '../connections/pool';
@@ -293,6 +296,63 @@ export function createConnectionsRouter(
       aviso: 'Este arquivo contém SENHAS EM CLARO.',
       conexoes,
     }));
+  }));
+
+  /**
+   * IMPORTA conexões do arquivo que a exportação gera (N001).
+   *
+   * Recebe a lista já lida do arquivo; a validação e o plano moram em
+   * `shared/importar-conexoes.ts`, testados sem cofre nenhum. Aqui só se aplica,
+   * e aplicar é a parte que não tem volta.
+   *
+   * Exige o cofre destrancado, como tudo que grava segredo.
+   */
+  router.post('/import', wrap((req, res) => {
+    const corpo = req.body as { conexoes?: unknown; politica?: unknown };
+    const politica =
+      corpo.politica === 'substituir' || corpo.politica === 'pular'
+        ? corpo.politica
+        : 'manter-as-duas';
+
+    // Revalida no SERVIDOR, e não confia no que a tela mandou: a rota é
+    // alcançável sem passar por ela.
+    const lido = lerArquivoDeConexoes(
+      JSON.stringify({ conexoes: corpo.conexoes }),
+      registry.list().map((d) => d.type)
+    );
+    if ('erro' in lido) throw new Error(lido.erro);
+
+    const plano = planoDeImportacao(
+      vault.list().map((c) => ({ id: c.id, label: c.label, group: c.group })),
+      lido.conexoes,
+      politica
+    );
+
+    let criadas = 0;
+    let substituidas = 0;
+    let puladas = 0;
+    for (const destino of plano) {
+      const { conexao } = destino;
+      const entrada = {
+        type: conexao.type,
+        label: conexao.label,
+        group: conexao.group,
+        readOnly: conexao.readOnly,
+        fields: conexao.fields as Record<string, FieldValue>,
+      };
+      const secretos = registry.secretFields(conexao.type);
+      if (destino.acao === 'pular') {
+        puladas += 1;
+      } else if (destino.acao === 'substituir' && destino.idExistente !== undefined) {
+        vault.update(destino.idExistente, entrada, secretos);
+        substituidas += 1;
+      } else {
+        vault.add(entrada, secretos);
+        criadas += 1;
+      }
+    }
+
+    res.json(ok({ criadas, substituidas, puladas }));
   }));
 
   /** Onde os snippets de terminal moram, para o `{}` abrir no editor (T085). */

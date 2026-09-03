@@ -13,6 +13,8 @@ import { Api } from '../api';
 import { noRemotoDe, type NoRemoto as NoRemotoDaLinha } from '../acoes/useAcoesRemotas';
 import type { Vinculo } from '../../shared/sql/vinculo';
 import { Icon } from '../Icon';
+import { AcaoDoImportar } from './AcaoDoImportar';
+import { AcaoDoPainel } from './AcaoDoPainel';
 import { TreeRow } from '../tree/TreeRow';
 import { DialogoDeFiltro, type PedidoDeFiltro } from './DialogoDeFiltro';
 import { DialogoDeCriacao, type PedidoDeCriacao } from './DialogoDeCriacao';
@@ -68,6 +70,13 @@ export interface ConnectionsPanelProps {
   readonly onRenomearQuery: (vinculo: Vinculo | null, no: TreeNode) => Promise<void>;
   readonly onApagarQuery: (vinculo: Vinculo | null, no: TreeNode) => Promise<void>;
   readonly onErro: (erro: unknown) => void;
+  /** Pergunta antes de aplicar — a importação mostra o plano primeiro (N001). */
+  readonly confirmar: (o: {
+    titulo: string;
+    mensagem: string;
+    rotuloConfirmar?: string;
+  }) => Promise<boolean>;
+  readonly avisar: (mensagem: string, titulo?: string) => Promise<void>;
 }
 
 /** O vínculo do nó `Query`, que carrega o database no `meta`. */
@@ -86,34 +95,6 @@ function vinculoDoNo(connectionId: string, no: TreeNode): Vinculo | null {
 function vinculoDaPasta(connectionId: string, caminho: readonly string[]): Vinculo | null {
   const database = caminho[caminho.length - 2];
   return database === undefined ? null : { connectionId, database };
-}
-
-/** Botão de ação do cabeçalho: só ícone, com dica. */
-function AcaoDoPainel({
-  icone, rotulo, onClick, desabilitada = false,
-}: {
-  readonly icone: string;
-  readonly rotulo: string;
-  readonly onClick: () => void;
-  readonly desabilitada?: boolean;
-}) {
-  return (
-    <Tooltip title={rotulo} placement="bottom">
-      {/* O `span` existe porque um botão desabilitado não dispara eventos, e sem
-          ele a dica sumiria justo quando explica por que a ação não está ativa. */}
-      <Box component="span" sx={{ display: 'flex' }}>
-        <IconButton
-          size="small"
-          disabled={desabilitada}
-          onClick={onClick}
-          aria-label={rotulo}
-          sx={{ p: 0.5, borderRadius: 0.5 }}
-        >
-          <Icon name={icone} size={13} />
-        </IconButton>
-      </Box>
-    </Tooltip>
-  );
 }
 
 /** Ação que aparece na linha da árvore ao passar o mouse. */
@@ -189,8 +170,7 @@ export function ConnectionsPanel({
   onNovaQuery,
   onRenomearQuery,
   onApagarQuery,
-  onErro,
-}: ConnectionsPanelProps) {
+  onErro, confirmar, avisar,}: ConnectionsPanelProps) {
   // O diálogo do filtro mora AQUI, e não no `App`: a lateral não é desmontada
   // ao trocar de painel (a emenda do `display: none`), então ele sobrevive ao
   // mesmo gesto que o diálogo do cofre precisou sair de dentro para sobreviver.
@@ -601,6 +581,7 @@ export function ConnectionsPanel({
           desabilitada={!vault.unlocked}
           onClick={comErro(ctrl.trocarSenha)}
         />
+        <AcaoDoImportar ctrl={ctrl} confirmar={confirmar} avisar={avisar} onErro={onErro} />
         <AcaoDoPainel
           icone="lucide:hard-drive-download"
           rotulo="Exportar conexões COM as senhas"

@@ -508,6 +508,8 @@ export function App() {
           caminhoAtivo={caminhoAtivo}
           conexoes={{
             ctrl: conexoes,
+            confirmar: dialogs.confirmar,
+            avisar: dialogs.avisar,
             onAbrirQuery: conexoesAcoes.abrirQueryDoNo,
             onAbrirArquivoRemoto: ws.abrirArquivoRemoto,
             onAbrirServidor: (conexao: PublicConnection) => {

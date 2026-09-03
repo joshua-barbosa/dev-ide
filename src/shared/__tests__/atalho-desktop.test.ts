@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  conteudoDoAtalho, escaparCampo, escaparExec, precisaDeNoSandbox,
+  conteudoDoAtalho, escaparCampo, escaparExec, nomeDoExecutavel, precisaDeNoSandbox,
 } from '../atalho-desktop';
 
 const base = {
@@ -37,9 +37,23 @@ test('sem ícone, a linha Icon NÃO existe', () => {
   assert.match(conteudoDoAtalho(base), /^Icon=\/apps\/dev-ide\/icone\.png$/m);
 });
 
-test('StartupWMClass existe — é o que amarra a JANELA ao ícone', () => {
-  // Sem ele, o ambiente abre um segundo lugar na barra, com ícone genérico.
-  assert.match(conteudoDoAtalho(base), /^StartupWMClass=dev-ide$/m);
+test('StartupWMClass vem do EXECUTÁVEL, e não do nome bonito', () => {
+  // O Electron usa o nome do executável como WM_CLASS: "Braytech Code" abre uma
+  // janela de classe `braytech-code`. Pôr o nome com espaço aqui faria o
+  // ambiente não reconhecer a janela — e o sintoma é o de sempre: um segundo
+  // ícone, genérico, ao lado do atalho.
+  const t = conteudoDoAtalho({
+    ...base,
+    nome: 'Braytech Code',
+    executavel: '/apps/braytech-code/braytech-code',
+  });
+  assert.match(t, /^Name=Braytech Code$/m);
+  assert.match(t, /^StartupWMClass=braytech-code$/m);
+});
+
+test('a classe pode ser dita à mão quando o executável não bate', () => {
+  const t = conteudoDoAtalho({ ...base, classeDaJanela: 'outra-coisa' });
+  assert.match(t, /^StartupWMClass=outra-coisa$/m);
 });
 
 test('quebra de linha no nome não parte o arquivo em duas chaves', () => {
@@ -67,4 +81,9 @@ test('dono que não é root não serve', () => {
 test('sem ajudante nenhum, precisa', () => {
   assert.equal(precisaDeNoSandbox(null), true);
   assert.equal(precisaDeNoSandbox({ existe: false, dono: 0, modo: 0o4755 }), true);
+});
+
+test('nomeDoExecutavel tira a pasta', () => {
+  assert.equal(nomeDoExecutavel('/a/b/braytech-code'), 'braytech-code');
+  assert.equal(nomeDoExecutavel('braytech-code'), 'braytech-code');
 });

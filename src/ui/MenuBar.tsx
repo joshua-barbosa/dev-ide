@@ -61,7 +61,7 @@ export function MenuBar({
       }}
     >
       <Box sx={{ fontFamily: tokens.fontMono, fontWeight: 700, color: 'primary.main', mr: 1.5, fontSize: 12 }}>
-        dev-ide
+        Braytech Code
       </Box>
 
       {MENUS.map(([id, rotulo]) => (

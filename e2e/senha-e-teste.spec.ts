@@ -7,6 +7,13 @@ import { expect, test, type Page } from '@playwright/test';
 import { CONEXAO, SENHA_MESTRA } from './global-setup';
 import { destrancarCofre, expandir, linhaArvore, painelLateral, esperarIdePronta } from './fixtures';
 
+/** Deixa o cofre destrancado, venha ele trancado ou não. */
+async function comCofreAberto(page: Page): Promise<void> {
+  await painelLateral(page, 'Database').click();
+  const senha = page.getByLabel('Senha mestra', { exact: true });
+  if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
+}
+
 async function abrirEdicao(page: Page): Promise<void> {
   await painelLateral(page, 'Database').click();
   await expandir(page, 'ACME', 'Bancos');
@@ -325,4 +332,100 @@ test('a confirmação que não bate é recusada ANTES de tocar no cofre', async 
   // Um erro de digitação aqui trancaria o cofre com uma senha que ninguém sabe
   // qual é. Por isso a conferência é na TELA, antes de chamar o servidor.
   await expect(page.getByText(/não batem/)).toBeVisible();
+});
+
+// ---------------------------------------------------------------------------
+// Importar de volta o que foi exportado (N001)
+// ---------------------------------------------------------------------------
+
+test('o que foi exportado volta pela importação, com a senha (N001)', async ({ page }) => {
+  // A ida e a volta num teste só: exportar sem conseguir importar serve para
+  // arquivar, e não para levar as conexões ao outro computador.
+  //
+  // O teste CRIA a conexão com segredo de que precisa: as do projeto de teste
+  // são SQLite e SSH por chave, e nenhuma delas guarda senha no cofre.
+  await comCofreAberto(page);
+
+  const r = await page.evaluate(async () => {
+    const marca = `n001-${Date.now().toString(36)}`;
+    const post = async (rota: string, corpo: unknown): Promise<unknown> => {
+      const resp = await fetch(rota, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corpo),
+      });
+      const env = (await resp.json()) as { data: unknown; error?: string };
+      // Falhar aqui com a mensagem do servidor: um `null` silencioso viraria
+      // "cannot read property of null" trinta linhas depois.
+      if (env.error != null) throw new Error(`${rota}: ${env.error}`);
+      return env.data;
+    };
+
+    const criada = (await post('/api/connections', {
+      type: 'mysql',
+      label: marca,
+      group: 'N001',
+      readOnly: true,
+      fields: { host: '127.0.0.1', port: 3306, user: 'ana', password: 'segredo-do-n001' },
+    })) as { id: string; secretFields: string[] };
+
+    // Exporta e traz de volta SÓ a que acabou de nascer, com outro rótulo.
+    const arquivo = (await post('/api/connections/export-all', {})) as {
+      conexoes: { label: string }[];
+    };
+    const dela = arquivo.conexoes.filter((c) => c.label === marca);
+    const importado = (await post('/api/connections/import', {
+      conexoes: dela.map((c) => ({ ...c, label: `${marca}-copia` })),
+      politica: 'manter-as-duas',
+    })) as { criadas: number };
+
+    // Acha a cópia andando pela árvore de grupos, que é o que a rota devolve.
+    const lista = await fetch('/api/connections');
+    const { tree } = (await lista.json()).data as { tree: unknown };
+    const todas: { id: string; label: string; secretFields: string[] }[] = [];
+    const anda = (g: { connections?: unknown[]; groups?: unknown[] }): void => {
+      for (const c of g.connections ?? []) todas.push(c as never);
+      for (const f of g.groups ?? []) anda(f as never);
+    };
+    anda(tree as never);
+    const copia = todas.find((c) => c.label === `${marca}-copia`);
+
+    const ler = async (id: string): Promise<string> => {
+      const s = await fetch(`/api/connections/${id}/secret/password`);
+      return ((await s.json()).data as { valor: string }).valor;
+    };
+    const senhaDaCopia = copia === undefined ? null : await ler(copia.id);
+
+    // Limpa: a suíte compartilha o cofre, e sobra vira ruído no teste vizinho.
+    for (const id of [criada.id, copia?.id]) {
+      if (id !== undefined) await fetch(`/api/connections/${id}`, { method: 'DELETE' });
+    }
+
+    return {
+      criadas: importado.criadas,
+      // O segredo NÃO volta para o teste: só se compara aqui dentro.
+      senhaBate: senhaDaCopia === 'segredo-do-n001',
+      copiaTemSegredo: (copia?.secretFields ?? []).includes('password'),
+      // A exportação NÃO pode ter trazido a senha como campo público.
+      listagemSemSenha: todas.every((c) => !('password' in (c as never))),
+    };
+  });
+
+  expect(r.criadas).toBe(1);
+  expect(r.copiaTemSegredo, 'a cópia tem de guardar a senha COMO SEGREDO').toBe(true);
+  expect(r.senhaBate, 'a senha importada tem de ser a mesma').toBe(true);
+  expect(r.listagemSemSenha, 'a listagem continua sem senha').toBe(true);
+});
+
+test('arquivo que NÃO é do formato é recusado com texto que se entende (N001)', async ({ page }) => {
+  await comCofreAberto(page);
+  const erro = await page.evaluate(async () => {
+    const r = await fetch('/api/connections/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conexoes: 'isto não é uma lista' }),
+    });
+    return ((await r.json()) as { error: string }).error;
+  });
+  expect(erro).toContain('Exportar conexões COM as senhas');
 });

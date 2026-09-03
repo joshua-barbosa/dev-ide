@@ -132,8 +132,8 @@ app.whenReady().then(iniciar).catch((erro: unknown) => {
   // No TERMINAL também, e não só no diálogo: quem roda o pacote pela linha de
   // comando para investigar não vê caixa de diálogo nenhuma, e ficaria com uma
   // janela que some sem dizer por quê.
-  console.error('[dev-ide] falha ao iniciar:', mensagem);
-  dialog.showErrorBox('A dev-ide não subiu', mensagem);
+  console.error('[braytech-code] falha ao iniciar:', mensagem);
+  dialog.showErrorBox('O Braytech Code não subiu', mensagem);
   app.quit();
 });
 

@@ -172,6 +172,7 @@ const ICONES_DA_INTERFACE = [
   'lucide:plug-zap',
   // Exportar as conexões COM as senhas (N001).
   'lucide:hard-drive-download',
+  'lucide:hard-drive-upload',
   // Aparência de UM terminal (T086).
   'lucide:sliders-horizontal',
   // `Abrir Query` num database (spec 038). Ficou de fora na entrega e saía como

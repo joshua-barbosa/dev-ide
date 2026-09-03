@@ -661,6 +661,13 @@ export const Api = {
       readonly aviso: string;
       readonly conexoes: readonly unknown[];
     }>('POST', `${conexoes}/export-all`),
+  /** Importa conexões do arquivo exportado (N001). */
+  importarConexoes: (lista: readonly unknown[], politica: string) =>
+    request<{ readonly criadas: number; readonly substituidas: number; readonly puladas: number }>(
+      'POST',
+      `${conexoes}/import`,
+      { conexoes: lista, politica }
+    ),
   /** Varre a tabela inteira para exportar (T058). Filtros e ordem vão junto. */
   exportTable: (
     id: string,
