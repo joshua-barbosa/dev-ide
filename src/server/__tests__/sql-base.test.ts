@@ -84,7 +84,7 @@ test('timeout cai no padrão e respeita o teto', () => {
 
 test('aceita lista separada por vírgula, quebra de linha ou ponto e vírgula', () => {
   assert.deepEqual(parseNameList('servidor-2, servidor-1'), ['servidor-2', 'servidor-1']);
-  assert.deepEqual(parseNameList('servidor-2\netapa'), ['servidor-2', 'servidor-1']);
+  assert.deepEqual(parseNameList('servidor-2\nservidor-1'), ['servidor-2', 'servidor-1']);
   assert.deepEqual(parseNameList('servidor-2;servidor-1'), ['servidor-2', 'servidor-1']);
   assert.deepEqual(parseNameList('  servidor-2 ,, \n servidor-1  '), ['servidor-2', 'servidor-1']);
 });
@@ -108,8 +108,8 @@ test('com filtro, só o que está na lista aparece', () => {
 });
 
 test('o filtro ignora diferença de maiúsculas', () => {
-  assert.equal(isVisible('servidor-2', ['servidor-2']), true);
-  assert.equal(isVisible('servidor-2', ['servidor-2']), true);
+  assert.equal(isVisible('Servidor-2', ['servidor-2']), true);
+  assert.equal(isVisible('servidor-2', ['SERVIDOR-2']), true);
 });
 
 test('o banco principal vai para o topo, o resto mantém a ordem', () => {

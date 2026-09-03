@@ -24,7 +24,7 @@ interface Estado {
  * Liga zoom, arrasto e a barra de controles num nó de diagrama já desenhado.
  *
  * **Nasce em 100%, e não enquadrado.** A primeira versão abria em `ajustar`, e
- * com o `banco-grande` dele — 105 tabelas SEM chave estrangeira — o mermaid
+ * com um banco dele — 105 tabelas SEM chave estrangeira — o mermaid
  * enfileira tudo numa linha só: caber na largura dava uma tarja de 2% de
  * tamanho, ilegível. Cem por cento é o único tamanho que se garante legível; a
  * visão geral virou o botão `ajustar`, que é onde ela cabe.
@@ -107,7 +107,7 @@ export function ligarZoom(no: HTMLElement): void {
       // Ctrl aproxima; sem ele a roda NAVEGA o desenho.
       //
       // A primeira versão deixava a roda rolar a página, e isso só funciona
-      // para um diagrama pequeno. O `banco-grande` dele tem 47 mil pixels de
+      // para um diagrama pequeno. Um banco dele tem 47 mil pixels de
       // largura — 105 tabelas soltas, que o mermaid enfileira numa linha só —
       // e atravessá-lo arrastando é sofrimento. Shift move na horizontal, que
       // é a convenção de qualquer tela que rola para o lado.

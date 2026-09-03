@@ -1,6 +1,6 @@
 // `Security` do MySQL: `Users` (N003, spec 069).
 //
-// É aqui que a feature nasceu. O servidor `banco-grande` dele responde
+// É aqui que a feature nasceu. Um dos servidores dele responde
 // `SELECT command denied … for table 'user'` — e a reclamação foi exatamente
 // essa: *"seria bom nem aparecer se eu não tenho permissão"*.
 //

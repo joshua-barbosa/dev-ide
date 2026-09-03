@@ -47,7 +47,7 @@ export interface DiagramaER {
 /**
  * Teto de tabelas por diagrama — proteção do navegador, não critério de gosto.
  *
- * O `banco-grande` dele tem 105 tabelas e agora entra inteiro.
+ * Um banco dele, com 105 tabelas, agora entra inteiro.
  */
 export const MAX_TABELAS_NO_DIAGRAMA = 150;
 

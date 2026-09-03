@@ -48,12 +48,12 @@ test('aninha subgrupos e preenche o caminho completo', () => {
     conexao('fila', 'ACME/Servidores'),
   ]);
 
-  const servidor-1 = arvore.groups[0];
-  assert.equal(servidor-1.name, 'ACME');
-  assert.equal(servidor-1.path, 'ACME');
-  assert.deepEqual(servidor-1.groups.map((g) => g.name), ['Bancos', 'Servidores']);
-  assert.equal(servidor-1.groups[0].path, 'ACME/Bancos');
-  assert.deepEqual(servidor-1.connections, [], 'ACME não tem conexão própria');
+  const grupo = arvore.groups[0];
+  assert.equal(grupo.name, 'ACME');
+  assert.equal(grupo.path, 'ACME');
+  assert.deepEqual(grupo.groups.map((g) => g.name), ['Bancos', 'Servidores']);
+  assert.equal(grupo.groups[0].path, 'ACME/Bancos');
+  assert.deepEqual(grupo.connections, [], 'ACME não tem conexão própria');
 });
 
 test('cria grupos intermediários que não têm conexão própria', () => {
@@ -83,7 +83,7 @@ test('conexões do mesmo grupo saem ordenadas por label', () => {
   ]);
   assert.deepEqual(
     arvore.groups[0].connections.map((c) => c.label),
-    ['servidor-3', 'servidor-2', 'servidor-4']
+    ['servidor-2', 'servidor-3', 'servidor-4']
   );
 });
 

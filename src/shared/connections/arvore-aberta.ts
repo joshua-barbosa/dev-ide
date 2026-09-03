@@ -42,7 +42,7 @@ export function expansoesSemAConexao(
  * O cache de filhos sem o que é desta conexão.
  *
  * **A comparação é por prefixo COM o separador**, e não `startsWith(id)`: duas
- * conexões chamadas `servidor-1` e `etapa2` compartilhariam prefixo, e desconectar a
+ * conexões chamadas `servidor-1` e `servidor-1b` compartilhariam prefixo, e desconectar a
  * primeira apagaria a árvore da segunda — o mesmo defeito de novo, menor e mais
  * difícil de ver.
  */

@@ -36,23 +36,23 @@ test('os filhos da conexão saem, e os das outras ficam', () => {
 });
 
 test('conexão de NOME PARECIDO não é afetada', () => {
-  // `servidor-1` e `etapa2` compartilham prefixo: sem o separador na comparação,
+  // `servidor-1` e `servidor-1b` compartilham prefixo: sem o separador na comparação,
   // desconectar a primeira apagaria a árvore da segunda — o mesmo defeito de
   // novo, menor e mais difícil de ver.
   const filhos = new Map([
     [chaveDoNo('servidor-1', ['x']), 1],
-    [chaveDoNo('etapa2', ['x']), 2],
-    ['etapa2', 3],
+    [chaveDoNo('servidor-1b', ['x']), 2],
+    ['servidor-1b', 3],
   ]);
   assert.deepEqual([...filhosSemAConexao(filhos, 'servidor-1').keys()].sort(), [
-    'etapa2',
-    chaveDoNo('etapa2', ['x']),
+    'servidor-1b',
+    chaveDoNo('servidor-1b', ['x']),
   ].sort());
 
-  const abertos = new Set(['conn:servidor-1', 'conn:etapa2', `no:${chaveDoNo('etapa2', ['x'])}`]);
+  const abertos = new Set(['conn:servidor-1', 'conn:servidor-1b', `no:${chaveDoNo('servidor-1b', ['x'])}`]);
   assert.deepEqual(
     [...expansoesSemAConexao(abertos, 'servidor-1')].sort(),
-    ['conn:etapa2', `no:${chaveDoNo('etapa2', ['x'])}`].sort()
+    ['conn:servidor-1b', `no:${chaveDoNo('servidor-1b', ['x'])}`].sort()
   );
 });
 
