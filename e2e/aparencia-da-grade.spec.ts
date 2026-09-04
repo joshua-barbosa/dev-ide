@@ -47,7 +47,11 @@ test('o padrão da grade é régua horizontal, não moldura', async ({ page }) =
   await abrirTabela(page);
   // A borda era `Todas` — um retângulo em volta de CADA célula. Ele pediu
   // "densidade e respiro" e "cores e contraste" por escrito (spec 097).
-  await expect(page.locator('[data-grade] tbody tr').first().locator('td').first()).toContainText('1');
+  // A PRIMEIRA célula de dado é o número da linha; a seta que abre a linha vem
+  // antes dela, e é controle, não dado.
+  await expect(
+    page.locator('[data-grade] tbody tr').first().locator('td').nth(1)
+  ).toContainText('1');
   await abrirOlho(page);
   await expect(painel(page).getByRole('switch', { name: 'Número da linha' })).toHaveAttribute('aria-checked', 'true');
   await expect(painel(page).getByRole('radio', { name: 'Alinhamento: Auto' })).toHaveAttribute('aria-checked', 'true');
@@ -88,24 +92,28 @@ test('desligar o número da linha tira a coluna, e não só a esconde', async ({
 
 test('o alinhamento à direita vale para toda coluna, e o auto só para número', async ({ page }) => {
   await abrirTabela(page);
-  const alinhamentoDe = (coluna: number) =>
+  // Pela COLUNA, e não pela posição: as colunas de controle da esquerda mudam,
+  // e contar `td` fazia este teste falhar sem dizer o que tinha mudado.
+  const alinhamentoDe = (coluna: string) =>
     page.evaluate(
       (c) =>
         getComputedStyle(
-          document.querySelectorAll('[data-grade] tbody tr:first-child td')[c] as HTMLElement
+          document.querySelector(
+            `[data-grade] tbody tr:first-child [data-celula-da-coluna="${c}"]`
+          ) as HTMLElement
         ).textAlign,
       coluna
     );
 
   // `auto`: `id` é INTEGER e vai à direita; `nome` é TEXT e fica à esquerda.
   // É o que casa a vírgula decimal na vertical, e o que toda planilha faz.
-  expect(await alinhamentoDe(2)).toBe('right');
-  expect(await alinhamentoDe(3)).toBe('left');
+  expect(await alinhamentoDe('id')).toBe('right');
+  expect(await alinhamentoDe('nome')).toBe('left');
 
   await abrirOlho(page);
   await painel(page).getByRole('radio', { name: 'Alinhamento: Centro' }).click();
-  await expect.poll(() => alinhamentoDe(3)).toBe('center');
-  await expect.poll(() => alinhamentoDe(2)).toBe('center');
+  await expect.poll(() => alinhamentoDe('nome')).toBe('center');
+  await expect.poll(() => alinhamentoDe('id')).toBe('center');
 });
 
 test('tirar a borda tira a borda; voltar ao padrão devolve tudo', async ({ page }) => {

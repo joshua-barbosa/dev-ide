@@ -109,7 +109,12 @@ test('salvar no visor alimenta o RASCUNHO, e não grava no banco', async ({ page
 
 test('a chave primária abre só para leitura, e diz por quê', async ({ page }) => {
   await abrirTabela(page);
-  const celula = page.locator('[data-grade] tbody tr').first().locator('td').nth(2);
+  // A coluna `id` é a chave primária desta tabela. Apontada pelo NOME: contar
+  // `td` quebrava a cada coluna de controle nova, e sem dizer por quê.
+  const celula = page
+    .locator('[data-grade] tbody tr')
+    .first()
+    .locator('[data-celula-da-coluna="id"]');
   await celula.hover();
   await celula.getByRole('button', { name: 'Ver o valor inteiro' }).click();
 

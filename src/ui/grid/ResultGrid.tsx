@@ -14,6 +14,7 @@
 // parada e paginação do resultado. O desenho das células é da `Grade`.
 import { useState } from 'react';
 import Box from '@mui/material/Box';
+import InputBase from '@mui/material/InputBase';
 import type { QueryResult, TableColumn } from '../../shared/contracts';
 import { tokens } from '../theme';
 import { Icon } from '../Icon';
@@ -24,6 +25,7 @@ import { PainelDeAparencia } from '../tabela/PainelDeAparencia';
 import { APARENCIA_PADRAO, type Aparencia } from '../../shared/grade/aparencia';
 import { LINHAS_POR_PAGINA } from '../../shared/sql/pedido-de-execucao';
 import { baixarArquivo as entregarArquivo } from '../arquivos/transferencia';
+import { linhasQueCasam, TERMO_VAZIO } from '../../shared/grade/busca-nas-linhas';
 
 export interface ResultGridProps {
   readonly resultado: QueryResult | null;
@@ -57,6 +59,8 @@ export function ResultGrid({
   // condicional, e os dois abaixo são exatamente isso.
   const [aparencia, setAparencia] = useState<Aparencia>(APARENCIA_PADRAO);
   const [olho, setOlho] = useState<HTMLElement | null>(null);
+  /** O que ele digitou na busca do resultado. Só filtra o que já está aqui. */
+  const [procura, setProcura] = useState(TERMO_VAZIO);
 
   /**
    * As colunas do resultado no formato da grade.
@@ -106,6 +110,10 @@ export function ResultGrid({
   if (resultado === null) return <Mensagem texto="Execute uma consulta para ver o resultado." />;
 
   const { columns, rows, rowCount, durationMs, truncated, message } = resultado;
+  // A busca olha só o que JÁ veio. Não reescreve SQL, e por isso existe também
+  // aqui, onde ordenar e filtrar por coluna não existem: quem escreveu o SELECT
+  // à mão continua podendo achar uma linha no meio das 500.
+  const visiveis = linhasQueCasam(rows, procura);
 
   return (
     // `minWidth: 0` pelo mesmo motivo da aba de tabela — ver a nota na spec 062.
@@ -133,8 +141,33 @@ export function ResultGrid({
       >
         <span>
           {rotulo === undefined ? '' : `${rotulo} · `}
-          {rowCount} linha(s) · {durationMs}ms
+          {procura.trim() === TERMO_VAZIO
+            ? `${rowCount} linha(s)`
+            : `${visiveis.length} de ${rowCount} linha(s)`}{' '}
+          · {durationMs}ms
         </span>
+
+        {/* Buscar no que está na tela (spec 102).
+            Some quando não há coluna nenhuma: um campo de busca sobre "Comando
+            executado." não teria o que procurar. */}
+        {columns.length > 0 && (
+          <InputBase
+            value={procura}
+            placeholder="buscar no resultado…"
+            onChange={(e) => setProcura(e.target.value)}
+            inputProps={{ 'aria-label': 'Buscar no resultado' }}
+            data-busca-no-resultado
+            startAdornment={
+              <Box sx={{ display: 'flex', mr: 0.5, opacity: 0.6 }}>
+                <Icon name="lucide:search" size={11} />
+              </Box>
+            }
+            sx={{
+              fontSize: 11, border: 1, borderColor: 'divider', borderRadius: 0.5,
+              px: 0.75, py: 0, bgcolor: tokens.bgEditor, width: 190,
+            }}
+          />
+        )}
 
         {/* Exportar o RESULTADO inteiro (T058).
             A grade de resultado não pagina: o que está aqui é tudo que a query
@@ -228,7 +261,7 @@ export function ResultGrid({
         // é desenhado: são capacidades, não modos.
         <Grade
           colunas={colunas}
-          linhas={rows}
+          linhas={visiveis}
           aparencia={aparencia}
           // O tamanho da PÁGINA, e não quantas linhas vieram: a última página
           // costuma vir curta, e numerar por ela faria a página 2 começar em 4.

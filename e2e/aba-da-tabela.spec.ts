@@ -64,9 +64,12 @@ test('paginar traz a outra linha, e o SQL mostra o OFFSET', async ({ page }) => 
 
 test('ordenar pela coluna inverte a ordem na tela', async ({ page }) => {
   await abrirTabela(page);
-  // `nth(3)`, e não `nth(2)`: numa tabela editável (spec 044) a grade tem uma
-  // coluna a mais na frente, com a caixa de marcar para apagar.
-  const primeira = () => page.locator('tbody tr').first().locator('td').nth(3);
+  // Pela COLUNA, e não pela posição. Contar `td` obrigava a lembrar de cada
+  // coluna de controle à esquerda — a de marcar para apagar, o número da linha,
+  // a seta que abre a linha — e quebrava, sem dizer por quê, toda vez que uma
+  // delas nascia.
+  const primeira = () =>
+    page.locator('tbody tr').first().locator('[data-celula-da-coluna="nome"]');
 
   await page.getByLabel('Ordenar por nome').click();
   await expect(primeira()).toHaveText('joshua');

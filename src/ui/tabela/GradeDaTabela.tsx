@@ -15,7 +15,7 @@
 // quem chama. Ordenar e filtrar por coluna exigem reescrever o SQL, e só a aba
 // de tabela sabe fazê-lo; quem não passa a capacidade não ganha o controle — e
 // não ganha um botão que não faz nada, que é pior que botão ausente.
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import InputBase from '@mui/material/InputBase';
 import { Icon } from '../Icon';
@@ -43,6 +43,8 @@ const POR_CARACTERE = 12 * 0.6;
 /** A coluna do número da linha e a da caixa de apagar: fixas, não se arrastam. */
 const LARGURA_DO_NUMERO = 44;
 const LARGURA_DA_MARCA = 30;
+/** A coluna da seta que abre a linha. Cabe o `›` e nada mais. */
+const LARGURA_DA_SETA = 22;
 
 /** Ordenar pelo cabeçalho. Ausente: o cabeçalho não vira botão. */
 export interface OrdenacaoDaGrade {
@@ -119,6 +121,15 @@ export function Grade({
 
   // Qual célula está no visor. Guarda o ID DA LINHA e o nome da coluna, e não a
   // posição: ordenar ou paginar com o visor aberto trocaria a linha embaixo dele.
+  /**
+   * A linha ABERTA, se houver uma.
+   *
+   * Uma por vez, e não um conjunto: a linha aberta serve para LER uma linha
+   * larga sem rolar a tabela de lado, e várias abertas ao mesmo tempo voltam a
+   * empurrar o resto para longe — que é o problema que ela resolve.
+   */
+  const [aberta, setAberta] = useState<string | null>(null);
+
   const [naLupa, setNaLupa] = useState<{
     readonly id: string;
     readonly coluna: string;
@@ -158,8 +169,11 @@ export function Grade({
           // A altura é da LINHA, e não da célula: pôr no `td` deixaria o
           // cabeçalho de fora, e ele tem duas linhas (nome e tipo).
           '& tbody td': { height: aparencia.alturaDaLinha, py: 0 },
+          // Mais respiro no cabeçalho: ele comparou com a ferramenta que a
+          // Braytech Code substitui e o nosso era o mais apertado dos dois. O
+          // custo é vertical, e o cabeçalho é uma linha só na tela inteira.
           '& thead th': {
-            py: '5px',
+            py: '8px',
             position: 'sticky', top: 0, bgcolor: 'background.paper', zIndex: 1,
           },
         }}
@@ -172,6 +186,7 @@ export function Grade({
             mexia no cabeçalho sem mexer no corpo. O `colgroup` declara a largura
             da COLUNA, e não de uma célula, e vale para os dois. */}
         <colgroup>
+          <col style={{ width: LARGURA_DA_SETA }} />
           {aparencia.numeroDaLinha && <col style={{ width: LARGURA_DO_NUMERO }} />}
           {marcas && <col style={{ width: LARGURA_DA_MARCA }} />}
           {colunas.map((coluna) => (
@@ -180,6 +195,7 @@ export function Grade({
         </colgroup>
         <thead>
           <tr>
+            <Box component="th" sx={{ bgcolor: 'background.paper' }} />
             {aparencia.numeroDaLinha && <Box component="th" sx={{ bgcolor: 'background.paper' }} />}
             {marcas && <Box component="th" sx={{ bgcolor: 'background.paper' }} />}
             {colunas.map((coluna, j) => (
@@ -210,7 +226,29 @@ export function Grade({
             const id = idDaLinha(colunas, linha, i);
             const aApagar = rascunho?.remocoes.has(id) === true;
             return (
-              <tr key={i}>
+              <Fragment key={i}>
+              <tr data-linha-da-grade={id}>
+                <Box
+                  component="td"
+                  sx={{ bgcolor: 'background.paper', textAlign: 'center', p: 0 }}
+                >
+                  <Box
+                    component="button"
+                    type="button"
+                    data-abrir-linha={id}
+                    aria-label={aberta === id ? 'Fechar a linha' : 'Abrir a linha'}
+                    aria-expanded={aberta === id}
+                    onClick={() => setAberta((atual) => (atual === id ? null : id))}
+                    sx={{
+                      border: 0, bgcolor: 'transparent', color: 'text.secondary',
+                      font: 'inherit', p: 0, width: '100%', cursor: 'pointer',
+                      lineHeight: 1, opacity: 0.75,
+                      '&:hover': { opacity: 1, color: 'text.primary' },
+                    }}
+                  >
+                    {aberta === id ? '⌄' : '›'}
+                  </Box>
+                </Box>
                 {aparencia.numeroDaLinha && (
                   <Box
                     component="td"
@@ -241,6 +279,7 @@ export function Grade({
                   return (
                     <Celula
                       key={j}
+                      nomeDaColuna={coluna.name}
                       valor={mostrado}
                       // A chave NÃO se edita: trocá-la aqui mudaria a linha que
                       // o `WHERE` usa para achar a própria linha.
@@ -262,6 +301,59 @@ export function Grade({
                   );
                 })}
               </tr>
+              {aberta === id && (
+                <tr data-linha-aberta={id}>
+                  <Box
+                    component="td"
+                    colSpan={
+                      1 +
+                      (aparencia.numeroDaLinha ? 1 : 0) +
+                      (marcas ? 1 : 0) +
+                      colunas.length
+                    }
+                    sx={{
+                      // `whiteSpace: normal` e `overflow: visible` desfazem o
+                      // corte que vale para as CÉLULAS: aqui o ponto é
+                      // justamente ver o valor inteiro.
+                      whiteSpace: 'normal !important',
+                      overflow: 'visible !important',
+                      textOverflow: 'clip !important',
+                      height: 'auto !important',
+                      bgcolor: 'background.paper', p: '8px 12px !important',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: 'max-content 1fr',
+                        columnGap: 1.5, rowGap: 0.35,
+                        fontFamily: tokens.fontMono, fontSize: 11.5,
+                      }}
+                    >
+                      {colunas.map((c, j) => (
+                        <Fragment key={c.name}>
+                          <Box sx={{ color: 'text.secondary', textAlign: 'right' }}>
+                            {c.name}
+                          </Box>
+                          <Box
+                            sx={{
+                              wordBreak: 'break-word',
+                              ...(linha[j] === null || linha[j] === undefined
+                                ? { color: 'text.secondary', fontStyle: 'italic' }
+                                : {}),
+                            }}
+                          >
+                            {linha[j] === null || linha[j] === undefined
+                              ? '(NULL)'
+                              : String(linha[j])}
+                          </Box>
+                        </Fragment>
+                      ))}
+                    </Box>
+                  </Box>
+                </tr>
+              )}
+              </Fragment>
             );
           })}
           {rascunho?.novas.map((nova) => (
@@ -526,6 +618,10 @@ function LinhaNovaTr({
 }) {
   return (
     <Box component="tr" data-linha-nova sx={{ bgcolor: 'action.selected' }}>
+      {/* A coluna da seta existe em TODA linha, inclusive na que está sendo
+          criada: sem esta célula vazia a linha nova nasceria deslocada uma
+          coluna para a esquerda. */}
+      <Box component="td" sx={{ bgcolor: 'background.paper' }} />
       {comNumero && (
         <Box component="td" sx={{ textAlign: 'center', userSelect: 'none' }}>
           <Box
@@ -557,7 +653,7 @@ function LinhaNovaTr({
 
 function Celula({
   valor, editavel = false, mexida = false, riscada = false, titulo, rotulo, onEditar, onAbrir,
-  alinhamento = 'left',
+  alinhamento = 'left', nomeDaColuna,
 }: {
   readonly valor: CellValue;
   readonly editavel?: boolean;
@@ -569,6 +665,14 @@ function Celula({
   /** Abre o visor. Ausente na linha nova, que ainda não tem valor guardado. */
   readonly onAbrir?: () => void;
   readonly alinhamento?: 'left' | 'center' | 'right';
+  /**
+   * A coluna a que esta célula pertence, escrita no DOM.
+   *
+   * Sem ela, quem lê a grade — inclusive os testes — só consegue apontar uma
+   * célula pela POSIÇÃO. Acrescentar uma coluna de controle à esquerda
+   * quebrava tudo que fazia isso, e a quebra não dizia o que tinha mudado.
+   */
+  readonly nomeDaColuna?: string;
 }) {
   const nulo = valor === null;
   const [editando, setEditando] = useState(false);
@@ -614,7 +718,8 @@ function Celula({
   return (
     <Box
       component="td"
-      title={titulo ?? (nulo ? 'NULL' : String(valor))}
+      {...(nomeDaColuna === undefined ? {} : { 'data-celula-da-coluna': nomeDaColuna })}
+      title={titulo ?? (nulo ? '(NULL)' : String(valor))}
       onDoubleClick={editavel ? () => setEditando(true) : undefined}
       // Clicar copia: o caso mais comum é levar um id para a próxima consulta.
       // Editar é DUPLO clique, para não brigar com isso.
@@ -637,7 +742,11 @@ function Celula({
         '&:hover [data-lupa]': { opacity: 1 },
       }}
     >
-      {nulo ? 'NULL' : String(valor)}
+      {/* `(NULL)` com parênteses, como na ferramenta que ele usava. Os
+          parênteses fazem o trabalho que o itálico sozinho não fazia: dizer que
+          aquilo é a AUSÊNCIA de valor, e não uma célula cujo texto é "NULL" —
+          que é uma coisa que existe e que a grade precisa saber distinguir. */}
+      {nulo ? '(NULL)' : String(valor)}
       {onAbrir !== undefined && (
         <Box
           component="button"

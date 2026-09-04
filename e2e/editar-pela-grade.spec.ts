@@ -39,7 +39,7 @@ async function abrirTabela(page: Page): Promise<void> {
 
 /** Edita a célula `nome` da primeira linha. */
 async function editarPrimeiroNome(page: Page, valor: string): Promise<void> {
-  await page.locator('tbody tr').first().locator('td').nth(3).dblclick();
+  await page.locator('tbody tr').first().locator('[data-celula-da-coluna="nome"]').dblclick();
   await page.getByLabel('Valor da célula').fill(valor);
   await page.keyboard.press('Enter');
 }
@@ -126,7 +126,7 @@ test('confirmando, a alteração vai para o banco e sobrevive ao recarregar', as
 test('a coluna de CHAVE não é editável', async ({ page }) => {
   // Trocá-la mudaria a linha que o `WHERE` usa para achar a própria linha.
   await abrirTabela(page);
-  const celulaId = page.locator('tbody tr').first().locator('td').nth(2);
+  const celulaId = page.locator('tbody tr').first().locator('[data-celula-da-coluna="id"]');
   await celulaId.dblclick();
   await expect(page.getByLabel('Valor da célula')).toHaveCount(0);
 });
@@ -137,7 +137,7 @@ test('em SQL livre a edição some, e a aba diz por quê', async ({ page }) => {
   await page.keyboard.press('Control+Enter');
 
   await expect(page.locator('[data-modo-livre]')).toBeVisible();
-  await page.locator('tbody tr').first().locator('td').nth(1).dblclick();
+  await page.locator('tbody tr').first().locator('[data-celula-da-coluna="um"]').dblclick();
   await expect(page.getByLabel('Valor da célula')).toHaveCount(0);
 });
 
