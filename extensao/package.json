@@ -58,6 +58,11 @@
       {
         "command": "braytech.destrancarCofre",
         "title": "Braytech: Destrancar o cofre"
+      },
+      {
+        "command": "braytech.novaConexao",
+        "title": "Braytech Code: Nova conexão",
+        "icon": "$(add)"
       }
     ],
     "menus": {

@@ -9,14 +9,12 @@
 // Aqui rodam `ConnectionsPanel`, `useConnections`, `useMenusDeConexao`,
 // `useContextMenu` e `useDialogs` — os originais. O que cruza para o VS Code é
 // só ABRIR: query, tabela, chave, terminal. Ver `ponte.ts`.
-import { StrictMode, useCallback, useState } from 'react';
+import { StrictMode, useCallback, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
 import type { PublicConnection, TreeNode } from '../../shared/contracts';
 import { definirBaseDaApi } from '../api-http';
-import Dialog from '@mui/material/Dialog';
-import { ConnectionForm } from '../connections/ConnectionForm';
 import { ConnectionsPanel } from '../connections/ConnectionsPanel';
 import { useConnections } from '../connections/useConnections';
 import { useContextMenu } from '../ContextMenu';
@@ -27,7 +25,7 @@ import { useAcoesRemotas } from '../acoes/useAcoesRemotas';
 import {
   abrirDiagramaEr, escreverNaSaida, mostrarSaida, novaQuery, pedirTexto, renomearQuery,
 } from './acoes';
-import { aindaNao, ligarPonte, pedirAoHost } from './ponte';
+import { aindaNao, ligarPonte, pedirAoHost, quandoOHostPedirRecarga } from './ponte';
 import { Api } from '../api';
 import type { Vinculo } from '../../shared/sql/vinculo';
 
@@ -98,16 +96,31 @@ function Painel() {
     somenteLeitura: (id) => ctrl.acharConexao(id)?.readOnly === true,
   });
 
-  /** O formulário de conexão. Aberto num diálogo: aqui não há abas. */
-  const [formulario, setFormulario] = useState<
-    { readonly conexao: PublicConnection | null; readonly grupo: string } | null
-  >(null);
+  /**
+   * O cadastro vai para uma ABA do editor, não para uma caixa aqui dentro.
+   *
+   * Ele viu o formulário espremido nesta coluna, com rolagem dentro de rolagem,
+   * e disse que ficava horrível — e estava certo: um driver como o MySQL declara
+   * treze campos em quatro seções.
+   */
+  const abrirFormulario = useCallback((conexao: PublicConnection | null, grupo: string) => {
+    pedirAoHost({
+      tipo: 'abrirFormulario',
+      conexaoId: conexao?.id ?? null,
+      grupo,
+      rotulo: conexao?.label ?? '',
+    });
+  }, []);
+
+  // A aba do formulário grava e avisa; quem redesenha a árvore é este painel.
+  const recarregar = ctrl.recarregar;
+  useEffect(() => quandoOHostPedirRecarga(() => void recarregar()), [recarregar]);
 
   const menus = useMenusDeConexao({
     abrir: menu.abrir,
     copiar,
     abrirQuery,
-    abrirFormulario: (conexao: PublicConnection) => setFormulario({ conexao, grupo: '' }),
+    abrirFormulario: (conexao: PublicConnection) => abrirFormulario(conexao, ''),
     excluir: (conexao: PublicConnection) => ctrl.excluir(conexao),
     abrirTerminalDaConexao: async (conexao: PublicConnection) => {
       pedirAoHost({ tipo: 'abrirTerminal', connectionId: conexao.id, rotulo: conexao.label });
@@ -181,7 +194,7 @@ function Painel() {
         onAbrirTerminal={(conexao) => {
           pedirAoHost({ tipo: 'abrirTerminal', connectionId: conexao.id, rotulo: conexao.label });
         }}
-        onNovaConexao={(grupo?: string) => setFormulario({ conexao: null, grupo: grupo ?? '' })}
+        onNovaConexao={(grupo?: string) => abrirFormulario(null, grupo ?? '')}
         onRenomearGrupo={async (caminho: string) => {
           const novo = await pedirTexto({ titulo: 'Novo nome do grupo', valorInicial: caminho });
           if (novo === null || novo.trim() === '' || novo.trim() === caminho) return;
@@ -224,30 +237,6 @@ function Painel() {
       />
       {menu.elemento}
       {dialogs.elemento}
-      <Dialog
-        open={formulario !== null}
-        onClose={() => setFormulario(null)}
-        maxWidth="md"
-        fullWidth
-      >
-        {formulario !== null && (
-          <ConnectionForm
-            // Remonta ao trocar de conexão: o formulário guarda estado próprio,
-            // e reaproveitar a instância misturaria os campos de duas conexões.
-            key={formulario.conexao?.id ?? 'nova'}
-            drivers={[...ctrl.drivers.values()]}
-            gruposConhecidos={ctrl.grupos}
-            conexao={formulario.conexao}
-            grupoInicial={formulario.grupo}
-            onSujar={() => undefined}
-            onCancelar={() => setFormulario(null)}
-            onSalvar={async (input, conectar) => {
-              await ctrl.salvarConexao(input, formulario.conexao?.id ?? null, conectar);
-              setFormulario(null);
-            }}
-          />
-        )}
-      </Dialog>
     </>
   );
 }

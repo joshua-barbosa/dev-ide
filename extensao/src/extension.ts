@@ -17,7 +17,9 @@ import * as vscode from 'vscode';
 import { ArquivosRemotos } from './arquivosRemotos';
 import { mostrarResultado, type ResultadoDoMotor } from './grade';
 import { ligarMotor, type Motor } from './motor';
+import { abrirFormularioDeConexao } from './formularioAba';
 import { PainelDeConexoes } from './painelWebview';
+import type { DepsDoPainel } from './ponteDoHost';
 import type { Painel } from './paineis';
 
 /** A conexão em que o Ctrl+Enter executa. Vem do painel. */
@@ -134,6 +136,20 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
     }
   };
 
+  // Uma só dependência para os dois painéis e para a aba do formulário: eles
+  // abrem as mesmas coisas, e duplicar isso daria gestos que funcionam num
+  // lugar e não no outro — que foi exatamente o que ele encontrou antes.
+  const deps: DepsDoPainel = {
+    motor,
+    extensionUri: contexto.extensionUri,
+    abrirTabela,
+    abrirQuery,
+    definirConexaoAtiva,
+    abrirFormulario: (conexaoId, grupo, rotulo) =>
+      abrirFormularioDeConexao(deps, conexaoId, grupo, rotulo),
+    recarregarPaineis: () => PainelDeConexoes.recarregarTodos(),
+  };
+
   for (const [painel, view] of [
     ['database', 'braytech.databases'],
     ['service', 'braytech.servicos'],
@@ -141,13 +157,7 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
     contexto.subscriptions.push(
       vscode.window.registerWebviewViewProvider(
         view,
-        new PainelDeConexoes(painel as Painel, {
-          motor,
-          extensionUri: contexto.extensionUri,
-          abrirTabela,
-          abrirQuery,
-          definirConexaoAtiva,
-        }),
+        new PainelDeConexoes(painel as Painel, deps),
         // O painel guarda o que está expandido; redesenhar do zero a cada troca
         // de aba da barra lateral recolheria a árvore inteira.
         { webviewOptions: { retainContextWhenHidden: true } }
@@ -179,6 +189,10 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       if (ok === null) return;
       void vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
       void vscode.window.showInformationMessage('Braytech Code: cofre destrancado.');
+    }),
+
+    vscode.commands.registerCommand('braytech.novaConexao', () => {
+      abrirFormularioDeConexao(deps, null, '', '');
     }),
 
     vscode.commands.registerCommand('braytech.novaConsulta', async () => {

@@ -41,6 +41,17 @@ export type PedidoAoHost =
     }
   | { readonly tipo: 'abrirChave'; readonly connectionId: string; readonly chave: string }
   | { readonly tipo: 'abrirTerminal'; readonly connectionId: string; readonly rotulo: string }
+  | {
+      // O cadastro é ABA do editor, não caixa na barra lateral: um driver como
+      // o MySQL declara treze campos em quatro seções, e isso não cabe numa
+      // coluna de 300 px sem rolagem dentro de rolagem.
+      readonly tipo: 'abrirFormulario';
+      readonly conexaoId: string | null;
+      readonly grupo: string;
+      readonly rotulo: string;
+    }
+  | { readonly tipo: 'fecharFormulario' }
+  | { readonly tipo: 'conexoesMudaram' }
   | { readonly tipo: 'copiar'; readonly texto: string }
   | { readonly tipo: 'avisar'; readonly mensagem: string }
   | { readonly tipo: 'erro'; readonly mensagem: string }
@@ -96,6 +107,21 @@ export function ligarPonte(): void {
 
 export function pedirAoHost(pedido: PedidoAoHost): void {
   canal?.postMessage(pedido);
+}
+
+/**
+ * O host pedindo que esta webview releia o cofre.
+ *
+ * Salvar acontece na ABA do formulário, que é outra webview com outro estado.
+ * Sem este aviso a barra lateral seguiria mostrando a árvore de antes, e ele
+ * teria de apertar Recarregar para ver a conexão que acabou de criar.
+ */
+export function quandoOHostPedirRecarga(recarregar: () => void): () => void {
+  const ouvir = (e: MessageEvent): void => {
+    if ((e.data as { tipo?: string })?.tipo === 'recarregar') recarregar();
+  };
+  window.addEventListener('message', ouvir);
+  return () => window.removeEventListener('message', ouvir);
 }
 
 /**

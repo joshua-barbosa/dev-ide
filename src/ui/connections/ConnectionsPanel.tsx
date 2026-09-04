@@ -579,7 +579,9 @@ export function ConnectionsPanel({
           icone="lucide:plus"
           rotulo="Nova conexão"
           desabilitada={!vault.unlocked}
-          onClick={onNovaConexao}
+          // Sem a seta, o `onClick` entrega o EVENTO do mouse no lugar do grupo:
+          // na extensão isso chegava ao campo "Grupo" como `[object Object]`.
+          onClick={() => onNovaConexao()}
         />
         {/* Exportar TUDO com as senhas (N001). Só com o cofre destrancado,
             como tudo que decifra. Ele escolheu JSON em claro, sabendo o que é —
