@@ -1,0 +1,72 @@
+{
+  "name": "braytech-code",
+  "displayName": "Braytech Code",
+  "description": "Bancos de dados e serviços remotos dentro do VS Code e do Cursor — o mesmo motor da IDE Braytech Code.",
+  "version": "0.1.0",
+  "publisher": "braytech",
+  "private": true,
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Other"],
+  "main": "./dist/extension.js",
+  "activationEvents": ["onView:braytech.conexoes"],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "braytech",
+          "title": "Braytech Code",
+          "icon": "recursos/barra.svg"
+        }
+      ]
+    },
+    "views": {
+      "braytech": [
+        { "id": "braytech.conexoes", "name": "Conexões" }
+      ]
+    },
+    "commands": [
+      { "command": "braytech.recarregar", "title": "Braytech: Recarregar conexões", "icon": "$(refresh)" },
+      { "command": "braytech.executar", "title": "Braytech: Executar consulta", "icon": "$(play)" },
+      { "command": "braytech.novaConsulta", "title": "Braytech: Nova consulta" },
+      { "command": "braytech.destrancarCofre", "title": "Braytech: Destrancar o cofre" },
+      { "command": "braytech.escolher", "title": "Braytech: Usar esta conexão" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "braytech.recarregar", "when": "view == braytech.conexoes", "group": "navigation" }
+      ],
+      "editor/title": [
+        { "command": "braytech.executar", "when": "resourceLangId == sql", "group": "navigation" }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "braytech.executar",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "editorTextFocus && resourceLangId == sql"
+      }
+    ],
+    "configuration": {
+      "title": "Braytech Code",
+      "properties": {
+        "braytech.porta": {
+          "type": "number",
+          "default": 4321,
+          "description": "Porta do motor. Se já houver um Braytech Code de pé nela, a extensão usa o mesmo, em vez de subir outro."
+        },
+        "braytech.motor": {
+          "type": "string",
+          "default": "",
+          "description": "Caminho para o `dist/server/index.js` do motor. Vazio usa o que vem junto com a extensão."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0"
+  }
+}

@@ -1,5 +1,7 @@
 node_modules/
 dist/
+extensao/node_modules/
+extensao/dist/
 
 # Projetos do usuário são dados, não código
 projects/

@@ -16,7 +16,16 @@ import * as path from 'node:path';
 // raiz. O alvo é o CÓDIGO-FONTE: varrer `dist/` não pegaria nada, porque o `tsc`
 // já teria transformado o byte cru na saída.
 const RAIZ = path.resolve(__dirname, '..', '..', '..');
-const ALVOS = ['src', 'e2e', 'scripts'].map((d) => path.join(RAIZ, d));
+const ALVOS = ['src', 'e2e', 'scripts', 'extensao'].map((d) => path.join(RAIZ, d));
+
+/**
+ * Pastas que a varredura NÃO desce.
+ *
+ * `extensao/` entrou nos alvos com a prova de conceito (spec 092), e ela tem
+ * `node_modules` e `dist` próprios. Sem isto, o teto de 800 linhas reprovaria o
+ * `vscode.d.ts` — código de outra pessoa, que não é nosso para encurtar.
+ */
+const NAO_DESCER = new Set(['node_modules', 'dist']);
 const EXTENSOES = new Set(['.ts', '.tsx', '.js', '.mjs', '.json', '.html', '.css', '.md']);
 
 /** Tudo abaixo de 0x20 exceto tab, LF e CR — o que torna o arquivo "binário". */
@@ -31,7 +40,10 @@ function bytesDeControle(conteudo: Buffer): readonly number[] {
 function* arquivos(dir: string): Generator<string> {
   for (const entrada of fs.readdirSync(dir, { withFileTypes: true })) {
     const caminho = path.join(dir, entrada.name);
-    if (entrada.isDirectory()) yield* arquivos(caminho);
+    if (entrada.isDirectory()) {
+      if (NAO_DESCER.has(entrada.name)) continue;
+      yield* arquivos(caminho);
+    }
     else if (EXTENSOES.has(path.extname(entrada.name))) yield caminho;
   }
 }
