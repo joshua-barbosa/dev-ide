@@ -20,6 +20,8 @@ const alvos = {
     arquivo: 'formulario.js',
   },
   dialogo: { entrada: 'extensao/dialogo.tsx', nome: 'BraytechDialogo', arquivo: 'dialogo.js' },
+  aba: { entrada: 'extensao/aba.tsx', nome: 'BraytechAba', arquivo: 'aba.js' },
+  caderno: { entrada: 'extensao/caderno.tsx', nome: 'BraytechCaderno', arquivo: 'caderno.js' },
   diagrama: {
     entrada: 'extensao/diagrama.tsx',
     nome: 'BraytechDiagrama',
@@ -38,8 +40,10 @@ export default defineConfig({
     // Só o primeiro build limpa: o segundo apagaria o pacote do primeiro.
     emptyOutDir: alvo.arquivo === 'painel.js',
     lib: { entry: alvo.entrada, formats: ['iife'], name: alvo.nome, fileName: () => alvo.arquivo },
-    // O pacote do diagrama arrasta o CSS do KaTeX (com as fontes embutidas).
-    // Sem nome fixo ele sai chamado pelo pacote, e o HTML não teria o que ligar.
-    rollupOptions: { output: { assetFileNames: 'estilos.css' } },
+    // Um CSS por pacote, com o nome dele. Com um nome só, cada build
+    // sobrescrevia o do anterior e as páginas ficavam com a folha errada.
+    rollupOptions: {
+      output: { assetFileNames: alvo.arquivo.replace(/\.js$/, '.css') },
+    },
   },
 });

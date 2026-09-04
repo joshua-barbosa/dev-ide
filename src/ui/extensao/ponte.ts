@@ -38,8 +38,28 @@ export type PedidoAoHost =
       readonly connectionId: string;
       readonly nodePath: readonly string[];
       readonly titulo: string;
+      readonly database: string | null;
+      readonly somenteLeitura: boolean;
     }
-  | { readonly tipo: 'abrirChave'; readonly connectionId: string; readonly chave: string }
+  | {
+      readonly tipo: 'abrirChave';
+      readonly connectionId: string;
+      readonly chave: string;
+      readonly somenteLeitura: boolean;
+    }
+  | { readonly tipo: 'fecharArquivo'; readonly caminho: string }
+  | {
+      // Uma aba com a GRADE da IDE, e não uma <table> desenhada à mão.
+      readonly tipo: 'abrirResultado';
+      readonly titulo: string;
+      readonly resultado: unknown;
+    }
+  | {
+      readonly tipo: 'abrirCaderno';
+      readonly caminho: string;
+      readonly connectionId: string | null;
+      readonly database: string | null;
+    }
   | { readonly tipo: 'abrirTerminal'; readonly connectionId: string; readonly rotulo: string }
   | {
       // O cadastro é ABA do editor, não caixa na barra lateral: um driver como
@@ -65,6 +85,11 @@ export type PedidoAoHost =
       readonly caminho?: readonly string[];
       /** Presente só quando a aba de filtro devolve a escolha dele. */
       readonly filtro?: unknown;
+    }
+  | {
+      readonly tipo: 'abrirSemTitulo';
+      readonly conteudo: string;
+      readonly linguagem: string;
     }
   | { readonly tipo: 'copiar'; readonly texto: string }
   | { readonly tipo: 'avisar'; readonly mensagem: string }

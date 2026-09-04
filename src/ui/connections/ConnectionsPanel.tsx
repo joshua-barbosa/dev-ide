@@ -67,7 +67,12 @@ export interface ConnectionsPanelProps {
     titulo: string,
     database: string | null
   ) => Promise<void>;
-  readonly onAbrirArquivoDeQuery: (no: TreeNode) => Promise<void>;
+  /**
+   * O vínculo vai junto porque o NÓ do arquivo não o carrega: quem carrega é a
+   * pasta `Query` acima dele. Sem isso, um `.sqlbook` aberto fora da IDE não
+   * sabe contra qual conexão rodar.
+   */
+  readonly onAbrirArquivoDeQuery: (no: TreeNode, vinculo: Vinculo | null) => Promise<void>;
   readonly onNovaQuery: (vinculo: Vinculo | null) => Promise<void>;
   readonly onRenomearQuery: (vinculo: Vinculo | null, no: TreeNode) => Promise<void>;
   readonly onApagarQuery: (vinculo: Vinculo | null, no: TreeNode) => Promise<void>;
@@ -269,7 +274,7 @@ export function ConnectionsPanel({
             onClick={
               // O arquivo de query abre no editor; o resto segue como antes.
               no.meta?.arquivoDeQuery === true
-                ? comErro(() => onAbrirArquivoDeQuery(no))
+                ? comErro(() => onAbrirArquivoDeQuery(no, vinculoDaPasta(id, filho)))
                 : no.hasChildren
                   ? comErro(() => ctrl.alternarNo(id, filho, no))
                   : typeof no.meta?.remotePath === 'string'

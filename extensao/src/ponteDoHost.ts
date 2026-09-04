@@ -10,6 +10,7 @@
 //  - `hostChamada` → o que só o editor sabe fazer, respondido com `hostResposta`;
 //  - o resto       → ABRIR coisas, sem resposta.
 
+import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import { uriRemota } from './arquivosRemotos';
 import type { Motor } from './motor';
@@ -34,8 +35,23 @@ export type PedidoDoPainel =
       readonly connectionId: string;
       readonly nodePath: readonly string[];
       readonly titulo: string;
+      readonly database: string | null;
+      readonly somenteLeitura: boolean;
     }
-  | { readonly tipo: 'abrirChave'; readonly connectionId: string; readonly chave: string }
+  | {
+      readonly tipo: 'abrirChave';
+      readonly connectionId: string;
+      readonly chave: string;
+      readonly somenteLeitura: boolean;
+    }
+  | { readonly tipo: 'fecharArquivo'; readonly caminho: string }
+  | { readonly tipo: 'abrirResultado'; readonly titulo: string; readonly resultado: unknown }
+  | {
+      readonly tipo: 'abrirCaderno';
+      readonly caminho: string;
+      readonly connectionId: string | null;
+      readonly database: string | null;
+    }
   | { readonly tipo: 'abrirTerminal'; readonly connectionId: string; readonly rotulo: string }
   | {
       // O formulário é ABA, não caixa. Ver `formularioAba.ts`.
@@ -62,6 +78,11 @@ export type PedidoDoPainel =
       /** Presente só quando a aba de filtro devolve a escolha dele. */
       readonly filtro?: unknown;
     }
+  | {
+      readonly tipo: 'abrirSemTitulo';
+      readonly conteudo: string;
+      readonly linguagem: string;
+    }
   | { readonly tipo: 'copiar'; readonly texto: string }
   | { readonly tipo: 'avisar'; readonly mensagem: string }
   | { readonly tipo: 'erro'; readonly mensagem: string }
@@ -85,8 +106,6 @@ interface PedidoDeApi {
 export interface DepsDoPainel {
   readonly motor: Motor;
   readonly extensionUri: vscode.Uri;
-  /** Abre a grade de uma tabela. */
-  abrirTabela(connectionId: string, nodePath: readonly string[], titulo: string): Promise<void>;
   /** Abre um arquivo de query, criando-o se ainda não existir. */
   abrirQuery(
     connectionId: string,
@@ -102,6 +121,14 @@ export interface DepsDoPainel {
   abrirDialogo(dialogo: 'criacao' | 'filtro', pedido: unknown): void;
   /** Abre o diagrama ER desenhado, em aba própria. */
   abrirDiagrama(titulo: string, markdown: string): void;
+  /**
+   * Abre uma aba da IDE — tabela, chave, resultado, caderno.
+   *
+   * São os painéis ORIGINAIS. A `<table>` que eu desenhava à mão no host não
+   * tinha ordenação, paginação, visor de célula nem a sub-aba de estrutura, e
+   * ele viu isso na primeira olhada.
+   */
+  abrirAbaDaIde(tipo: string, titulo: string, dados: Record<string, unknown>): void;
   /** Manda todo painel vivo reler o cofre — depois de salvar ou excluir. */
   recarregarPaineis(
     conexaoId?: string,
@@ -251,18 +278,6 @@ export class PonteDoHost {
         return escolha?.valor ?? null;
       }
 
-      case 'abrirMarkdown': {
-        const doc = await vscode.workspace.openTextDocument({
-          language: 'markdown',
-          content: String(a.conteudo ?? ''),
-        });
-        await vscode.window.showTextDocument(doc, { preview: false });
-        // O VS Code desenha Mermaid na pré-visualização desde a 1.87, então o
-        // diagrama sai desenhado sem carregar biblioteca nenhuma.
-        await vscode.commands.executeCommand('markdown.showPreviewToSide');
-        return null;
-      }
-
       case 'escreverNaSaida':
         saida().appendLine(String(a.texto ?? ''));
         if (a.erro === true) saida().show(true);
@@ -298,15 +313,18 @@ export class PonteDoHost {
     try {
       switch (p.tipo) {
         case 'abrirArquivo': {
+          if (p.caminho.endsWith('.sqlbook')) {
+            // O caderno é DESENHADO, com os blocos da IDE. Abri-lo como texto
+            // mostrava o JSON cru — foi o print que ele mandou.
+            this.deps.abrirAbaDaIde('caderno', p.caminho.split('/').pop() ?? 'Caderno', {
+              caminho: p.caminho,
+              connectionId: null,
+              database: null,
+            });
+            return;
+          }
           const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(p.caminho));
           await vscode.window.showTextDocument(doc);
-          if (p.caminho.endsWith('.sqlbook')) {
-            // Dito antes de ele descobrir: o caderno abre como TEXTO. Desenhá-lo
-            // pede a API de Notebook do editor, que ainda não foi feita.
-            void vscode.window.showInformationMessage(
-              'O .sqlbook abre como texto por enquanto — o caderno ainda não é desenhado aqui.'
-            );
-          }
           return;
         }
         case 'abrirArquivoRemoto': {
@@ -322,7 +340,15 @@ export class PonteDoHost {
           return;
         case 'abrirTabela':
           this.deps.definirConexaoAtiva(p.connectionId);
-          await this.deps.abrirTabela(p.connectionId, p.nodePath, p.titulo);
+          // A grade da IDE, com ordenação, paginação, visor de célula e a
+          // sub-aba de estrutura. A <table> que eu montava aqui não tinha nada
+          // disso, e ele viu na primeira olhada.
+          this.deps.abrirAbaDaIde('tabela', p.titulo, {
+            connectionId: p.connectionId,
+            nodePath: p.nodePath,
+            database: p.database,
+            somenteLeitura: p.somenteLeitura,
+          });
           return;
         case 'abrirFormulario':
           this.deps.abrirFormulario(p.conexaoId, p.grupo, p.rotulo);
@@ -346,10 +372,43 @@ export class PonteDoHost {
           );
           return;
         case 'abrirChave':
-          void vscode.window.showInformationMessage(
-            `Visualizador de chave (${p.chave}): ainda não ligado no VS Code.`
-          );
+          this.deps.definirConexaoAtiva(p.connectionId);
+          this.deps.abrirAbaDaIde('chave', p.chave, {
+            conexaoId: p.connectionId,
+            chave: p.chave,
+            somenteLeitura: p.somenteLeitura,
+          });
           return;
+        case 'abrirResultado':
+          this.deps.abrirAbaDaIde('resultado', p.titulo, { resultado: p.resultado });
+          return;
+        case 'abrirCaderno':
+          this.deps.abrirAbaDaIde('caderno', p.caminho.split('/').pop() ?? 'Caderno', {
+            caminho: p.caminho,
+            connectionId: p.connectionId,
+            database: p.database,
+          });
+          return;
+        case 'abrirSemTitulo': {
+          const doc = await vscode.workspace.openTextDocument({
+            language: p.linguagem,
+            content: p.conteudo,
+          });
+          await vscode.window.showTextDocument(doc);
+          return;
+        }
+        case 'fecharArquivo': {
+          // A aba do arquivo apagado tem de ir junto: deixá-la aberta
+          // apontando para o que não existe mais é pior que não abrir.
+          const alvo = vscode.Uri.file(p.caminho).toString();
+          for (const grupo of vscode.window.tabGroups.all) {
+            for (const aba of grupo.tabs) {
+              const entrada = aba.input as { uri?: vscode.Uri } | undefined;
+              if (entrada?.uri?.toString() === alvo) void vscode.window.tabGroups.close(aba);
+            }
+          }
+          return;
+        }
         case 'copiar':
           await vscode.env.clipboard.writeText(p.texto);
           void vscode.window.setStatusBarMessage('Braytech Code: copiado.', 2000);
@@ -393,20 +452,19 @@ export class PonteDoHost {
 export function htmlDaWebview(
   web: vscode.Webview,
   extensionUri: vscode.Uri,
-  arquivo: 'painel.js' | 'formulario.js' | 'dialogo.js' | 'diagrama.js',
+  arquivo: 'painel.js' | 'formulario.js' | 'dialogo.js' | 'diagrama.js' | 'aba.js' | 'caderno.js',
   config: Record<string, unknown>
 ): string {
   const script = web.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'webview', arquivo));
   const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
-  // Só o diagrama tem folha de estilo própria: é o KaTeX, com as fontes
-  // embutidas. Ligá-la nas outras páginas custaria 1,4 MB por nada.
-  const estilo =
-    arquivo === 'diagrama.js'
-      ? `<link rel="stylesheet" href="${web
-          .asWebviewUri(vscode.Uri.joinPath(extensionUri, 'webview', 'estilos.css'))
-          .toString()}">`
-      : '';
+  // Cada pacote tem a folha DELE, e nem todos têm uma. Perguntar ao disco é o
+  // que evita ligar um arquivo que não existe — ou, pior, o de outro pacote.
+  const nomeDoCss = arquivo.replace(/\.js$/, '.css');
+  const caminhoDoCss = vscode.Uri.joinPath(extensionUri, 'webview', nomeDoCss);
+  const estilo = fs.existsSync(caminhoDoCss.fsPath)
+    ? `<link rel="stylesheet" href="${web.asWebviewUri(caminhoDoCss).toString()}">`
+    : '';
 
   return `<!doctype html>
 <html lang="pt-BR"><head>

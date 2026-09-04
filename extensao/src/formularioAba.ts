@@ -23,7 +23,7 @@ function aba(
   deps: DepsDoPainel,
   chave: string,
   titulo: string,
-  arquivo: 'formulario.js' | 'dialogo.js' | 'diagrama.js',
+  arquivo: 'formulario.js' | 'dialogo.js' | 'diagrama.js' | 'aba.js' | 'caderno.js',
   config: Record<string, unknown>
 ): void {
   const jaAberta = abertas.get(chave);
@@ -99,4 +99,44 @@ export function abrirDiagramaEmAba(
   markdown: string
 ): void {
   aba(deps, `diagrama:${titulo}`, titulo, 'diagrama.js', { markdown });
+}
+
+/**
+ * Uma aba da IDE dentro do editor: tabela, chave, resultado, caderno.
+ *
+ * O tema, o tamanho da fonte e o tab do EDITOR vão junto — os painéis da IDE
+ * pedem isso para colorir SQL, e usar os meus valores faria a aba discordar do
+ * resto da janela.
+ */
+export function abrirAbaDaIde(
+  deps: DepsDoPainel,
+  tipo: string,
+  titulo: string,
+  dados: Record<string, unknown>
+): void {
+  const editor = vscode.workspace.getConfiguration('editor');
+  const claro =
+    vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Light ||
+    vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrastLight;
+
+  const comum = {
+    tipo,
+    titulo,
+    tema: claro ? 'claro' : 'escuro',
+    fontSize: editor.get<number>('fontSize') ?? 13,
+    tabSize: editor.get<number>('tabSize') ?? 2,
+  };
+
+  if (tipo === 'caderno') {
+    aba(deps, `caderno:${String(dados.caminho)}`, titulo, 'caderno.js', {
+      ...comum,
+      ...dados,
+      // O conteúdo é lido pelo HOST: o `file://` do disco não é acessível de
+      // dentro da webview, e o motor já tem a rota.
+      conteudo: dados.conteudo ?? '',
+    });
+    return;
+  }
+
+  aba(deps, `${tipo}:${titulo}`, titulo, 'aba.js', { ...comum, dados });
 }

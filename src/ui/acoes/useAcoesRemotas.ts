@@ -38,6 +38,14 @@ export interface DepsDasAcoesRemotas {
   recarregarNo(id: string, caminho: readonly string[]): Promise<void>;
   avisar(p: Promise<unknown>): void;
   somenteLeitura(conexaoId: string): boolean;
+  /**
+   * Onde o arquivo baixado vai parar.
+   *
+   * Ausente, é o download do navegador — que é o que a IDE em aba tem. Dentro
+   * do VS Code isso simplesmente não acontece (a webview não baixa nada), e
+   * quem sabe salvar é o host, com o diálogo nativo.
+   */
+  baixarPeloHost?(conexaoId: string, caminho: string): Promise<void>;
 }
 
 /** O que um nó remoto carrega no `meta`. */
@@ -85,6 +93,10 @@ export function useAcoesRemotas(deps: DepsDasAcoesRemotas): AcoesRemotas {
   };
 
   const baixar = async (conexaoId: string, remoto: NoRemoto): Promise<void> => {
+    if (deps.baixarPeloHost !== undefined) {
+      await deps.baixarPeloHost(conexaoId, remoto.remotePath);
+      return;
+    }
     const { content } = await Api.lerArquivoRemoto(conexaoId, remoto.remotePath);
     // O navegador não escolhe pasta: ele baixa para a de sempre. É a única
     // forma que uma IDE em aba tem — e é o que o usuário já conhece.

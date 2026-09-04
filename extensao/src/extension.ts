@@ -15,10 +15,9 @@
 
 import * as vscode from 'vscode';
 import { ArquivosRemotos } from './arquivosRemotos';
-import { mostrarResultado, type ResultadoDoMotor } from './grade';
 import { ligarMotor, type Motor } from './motor';
 import {
-  abrirDiagramaEmAba, abrirDialogoEmAba, abrirFormularioDeConexao,
+  abrirAbaDaIde, abrirDiagramaEmAba, abrirDialogoEmAba, abrirFormularioDeConexao,
 } from './formularioAba';
 import { PainelDeConexoes } from './painelWebview';
 import type { DepsDoPainel } from './ponteDoHost';
@@ -30,14 +29,6 @@ let barra: vscode.StatusBarItem | null = null;
 
 /** Linhas por página na prévia de uma tabela. */
 const POR_PAGINA = 200;
-
-/** `TablePage` do motor. */
-interface PaginaDeTabela {
-  readonly resultado: ResultadoDoMotor;
-  readonly total: number | null;
-  readonly totalEstimado: number | null;
-  readonly sql: string;
-}
 
 export async function activate(contexto: vscode.ExtensionContext): Promise<void> {
   const conf = vscode.workspace.getConfiguration('braytech');
@@ -81,31 +72,6 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
     atualizarBarra();
   };
 
-  /** A grade de uma tabela — `/table` traz o total real junto com a página. */
-  const abrirTabela = async (
-    connectionId: string,
-    nodePath: readonly string[],
-    titulo: string
-  ): Promise<void> => {
-    await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Window, title: `Braytech Code: ${titulo}…` },
-      async () => {
-        const r = await pedir<PaginaDeTabela>(
-          'POST',
-          `/api/connections/${encodeURIComponent(connectionId)}/table`,
-          { nodePath, pagina: 1, porPagina: POR_PAGINA }
-        );
-        if (r !== null) {
-          mostrarResultado(r.resultado, titulo, {
-            total: r.total,
-            totalEstimado: r.totalEstimado,
-            sql: r.sql,
-          });
-        }
-      }
-    );
-  };
-
   /**
    * Abre um arquivo de query da conexão.
    *
@@ -144,13 +110,27 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
   const deps: DepsDoPainel = {
     motor,
     extensionUri: contexto.extensionUri,
-    abrirTabela,
     abrirQuery,
     definirConexaoAtiva,
     abrirFormulario: (conexaoId, grupo, rotulo) =>
       abrirFormularioDeConexao(deps, conexaoId, grupo, rotulo),
     abrirDialogo: (dialogo, pedido) => abrirDialogoEmAba(deps, dialogo, pedido),
     abrirDiagrama: (titulo, markdown) => abrirDiagramaEmAba(deps, titulo, markdown),
+    abrirAbaDaIde: (tipo, titulo, dados) => {
+      if (tipo !== 'caderno') {
+        abrirAbaDaIde(deps, tipo, titulo, dados);
+        return;
+      }
+      // O caderno precisa do conteúdo do arquivo, e quem sabe ler é o motor.
+      void (async () => {
+        const r = await pedir<{ content: string }>(
+          'GET',
+          `/api/file?path=${encodeURIComponent(String(dados.caminho))}`
+        );
+        if (r === null) return;
+        abrirAbaDaIde(deps, tipo, titulo, { ...dados, conteudo: r.content });
+      })();
+    },
     recarregarPaineis: (conexaoId, caminho, filtro) =>
       PainelDeConexoes.recarregarTodos(conexaoId, caminho, filtro),
   };
@@ -224,12 +204,13 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: 'Braytech Code: executando…' },
         async () => {
-          const r = await pedir<ResultadoDoMotor>(
+          const r = await pedir<unknown>(
             'POST',
             `/api/connections/${encodeURIComponent(alvo)}/execute`,
             { statement: sql }
           );
-          if (r !== null) mostrarResultado(r, alvo);
+          // A grade da IDE, e não uma tabela de HTML montada à mão.
+          if (r !== null) abrirAbaDaIde(deps, 'resultado', alvo, { resultado: r });
         }
       );
     })

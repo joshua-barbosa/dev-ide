@@ -20,8 +20,8 @@ import { dialogosNativos } from './dialogos';
 import { useMenusDeConexao } from '../acoes/useMenusDeConexao';
 import { useAcoesRemotas } from '../acoes/useAcoesRemotas';
 import {
-  abrirDiagramaEr, escolherSimNao, escreverNaSaida, mostrarSaida, novaQuery, pedirSenha,
-  pedirTexto, renomearQuery,
+  abrirDiagramaEr, baixarRemoto, escolherSimNao, escreverNaSaida, mostrarSaida, novaQuery,
+  pedirSenha, pedirTexto, renomearQuery,
 } from './acoes';
 import { ComTemaDoEditor } from './ComTemaDoEditor';
 import { aindaNao, ligarPonte, pedirAoHost, quandoOHostPedirRecarga } from './ponte';
@@ -86,7 +86,7 @@ function Painel() {
     confirmarScript: async (nome, conteudo) =>
       dialogs.confirmar({
         titulo: `Executar ${nome}?`,
-        mensagem: conteudo.slice(0, 2000),
+        mensagem: conteudo.slice(0, 4000),
         rotuloConfirmar: 'Executar',
         destrutivo: true,
       }),
@@ -95,6 +95,9 @@ function Painel() {
     recarregarNo: (id, caminho) => ctrl.recarregarNo(id, caminho),
     avisar: (p) => { void p.catch(falha); },
     somenteLeitura: (id) => ctrl.acharConexao(id)?.readOnly === true,
+    // O `<a download>` do navegador não baixa nada dentro de uma webview do VS
+    // Code. Quem salva é o host, com o diálogo nativo de "salvar como".
+    baixarPeloHost: baixarRemoto,
   });
 
   /**
@@ -185,8 +188,10 @@ function Painel() {
     abrirTerminalDaConexao: async (conexao: PublicConnection) => {
       pedirAoHost({ tipo: 'abrirTerminal', connectionId: conexao.id, rotulo: conexao.label });
     },
+    // `recarregarMetadados` LIMPA o cache inteiro; `recarregarNo(id, [])` só
+    // rebusca a raiz e deixa as subárvores expandidas com dados velhos.
     recarregarMetadados: async (id: string) => {
-      await ctrl.recarregarNo(id, []);
+      await ctrl.recarregarMetadados(id);
     },
     abrirProcessos: () => aindaNao('Lista de processos'),
     // O `+` do cabeçalho e o do menu abrem o MESMO formulário.
@@ -230,17 +235,34 @@ function Painel() {
             conteudo: `SELECT * FROM ${alvo} LIMIT 100;`,
           });
         }}
-        onAbrirTabela={async (connectionId, nodePath, titulo) => {
-          pedirAoHost({ tipo: 'abrirTabela', connectionId, nodePath, titulo });
+        onAbrirTabela={async (connectionId, nodePath, titulo, database) => {
+          pedirAoHost({ tipo: 'abrirTabela', connectionId, nodePath, titulo, database,
+            somenteLeitura: ctrl.acharConexao(connectionId)?.readOnly === true });
         }}
         onAbrirChave={(connectionId, chave) => {
-          pedirAoHost({ tipo: 'abrirChave', connectionId, chave });
+          pedirAoHost({
+            tipo: 'abrirChave', connectionId, chave,
+            // Sem isto o visor de chave nasce EDITÁVEL numa conexão marcada
+            // somente-leitura.
+            somenteLeitura: ctrl.acharConexao(connectionId)?.readOnly === true,
+          });
         }}
-        onAbrirArquivoDeQuery={async (no: TreeNode) => {
+        onAbrirArquivoDeQuery={async (no: TreeNode, vinculo) => {
           // A chave é `caminho`, não `path`: eu tinha lido a errada, e por isso
           // clicar num .sql ou .sqlbook da árvore não abria nada.
           const caminho = typeof no.meta?.caminho === 'string' ? no.meta.caminho : null;
           if (caminho === null) return;
+          if (caminho.endsWith('.sqlbook')) {
+            // O caderno nasce AMARRADO: o vínculo vem da árvore, e sem ele o
+            // bloco de SQL não teria contra quem rodar.
+            pedirAoHost({
+              tipo: 'abrirCaderno',
+              caminho,
+              connectionId: vinculo?.connectionId ?? null,
+              database: vinculo?.database ?? null,
+            });
+            return;
+          }
           pedirAoHost({ tipo: 'abrirArquivo', caminho });
         }}
         onAbrirQueryDoDatabase={async (connectionId, no) => {
@@ -274,7 +296,9 @@ function Painel() {
             tipo: 'abrirQuery', connectionId: id, database,
             titulo: `${nomeBase}.sql`, conteudo: sql,
           });
-          void caminho;
+          // O ramo onde o objeto vai nascer recarrega: sem isto, criar e não
+          // ver é indistinguível de criar e falhar.
+          void ctrl.recarregarNo(id, caminho);
         }}
         onNovaQuery={async (vinculo: Vinculo | null) => {
           if (vinculo === null) return;
@@ -283,19 +307,26 @@ function Painel() {
         }}
         onRenomearQuery={async (vinculo: Vinculo | null, no: TreeNode) => {
           if (vinculo === null) return;
-          if (await renomearQuery(vinculo, no.label)) {
+          // O NOME do arquivo está no `meta`; o `label` vem sem o `.sql`.
+          const nome = typeof no.meta?.nome === 'string' ? no.meta.nome : no.label;
+          if (await renomearQuery(vinculo, nome)) {
             await ctrl.recarregarNo(vinculo.connectionId, []);
           }
         }}
         onApagarQuery={async (vinculo: Vinculo | null, no: TreeNode) => {
           if (vinculo === null) return;
+          const nome = typeof no.meta?.nome === 'string' ? no.meta.nome : no.label;
           const ok = await dialogs.confirmar({
             titulo: 'Apagar query',
-            mensagem: `Apagar "${no.label}"? Isto não tem volta.`,
+            mensagem: `Apagar "${nome}"? O arquivo sai do disco.`,
             rotuloConfirmar: 'Apagar',
           });
           if (!ok) return;
-          await Api.deleteQuery(vinculo, no.label);
+          await Api.deleteQuery(vinculo, nome);
+          // A aba do arquivo apagado tem de fechar junto: deixá-la aberta
+          // apontando para o que não existe mais é pior que não abrir.
+          const caminho = typeof no.meta?.caminho === 'string' ? no.meta.caminho : null;
+          if (caminho !== null) pedirAoHost({ tipo: 'fecharArquivo', caminho });
           await ctrl.recarregarNo(vinculo.connectionId, []);
         }}
         onErro={falha}
