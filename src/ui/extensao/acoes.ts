@@ -23,6 +23,26 @@ export function pedirTexto(o: {
   return chamarHost<string | null>('pedirTexto', o);
 }
 
+/** Pergunta uma senha na caixa nativa: não fica no DOM nem em captura de tela. */
+export function pedirSenha(titulo: string, prompt?: string): Promise<string | null> {
+  return chamarHost<string | null>('pedirSenha', {
+    titulo,
+    ...(prompt === undefined ? {} : { prompt }),
+  });
+}
+
+/** Um sim/não pela lista nativa — usado onde a IDE tem uma caixa de marcar. */
+export async function escolherSimNao(titulo: string): Promise<boolean> {
+  const r = await chamarHost<string | null>('escolher', {
+    titulo,
+    opcoes: [
+      { valor: 'sim', rotulo: 'Sim' },
+      { valor: 'nao', rotulo: 'Não' },
+    ],
+  });
+  return r === 'sim';
+}
+
 /** Escreve no canal de saída do VS Code — o par do painel `Output` da IDE. */
 export function escreverNaSaida(texto: string, erro: boolean): void {
   void chamarHost('escreverNaSaida', { texto, erro });
@@ -33,11 +53,12 @@ export function mostrarSaida(): void {
 }
 
 /**
- * O diagrama ER, aberto como Markdown com o bloco Mermaid.
+ * O diagrama ER, DESENHADO, numa aba própria.
  *
- * O VS Code desenha Mermaid na pré-visualização de Markdown desde a 1.87, então
- * o diagrama sai desenhado sem a extensão carregar biblioteca nenhuma — e o
- * texto continua atrás, para ele poder gravar no repositório como documentação.
+ * Eu tinha aberto isto como markdown e chamado a pré-visualização do editor,
+ * afirmando num comentário que ela desenha Mermaid nativamente. Não desenha —
+ * isso vem de extensão de terceiro, e o que ele viu foi o `erDiagram` cru.
+ * Agora quem desenha é o `MarkdownPreview` da IDE, que traz o Mermaid junto.
  */
 export async function abrirDiagramaEr(
   id: string,
@@ -48,9 +69,10 @@ export async function abrirDiagramaEr(
   // Mermaid e a legenda. Gerar outro aqui daria dois diagramas diferentes para
   // o mesmo banco.
   const diagrama = await Api.erDiagram(id, caminho);
-  await chamarHost('abrirMarkdown', {
-    titulo: `${rotulo}.md`,
-    conteudo: documentoDoDiagrama(diagrama),
+  pedirAoHost({
+    tipo: 'abrirDiagrama',
+    titulo: `Diagrama ER — ${rotulo}`,
+    markdown: documentoDoDiagrama(diagrama),
   });
 }
 

@@ -19,6 +19,12 @@ const alvos = {
     nome: 'BraytechFormulario',
     arquivo: 'formulario.js',
   },
+  dialogo: { entrada: 'extensao/dialogo.tsx', nome: 'BraytechDialogo', arquivo: 'dialogo.js' },
+  diagrama: {
+    entrada: 'extensao/diagrama.tsx',
+    nome: 'BraytechDiagrama',
+    arquivo: 'diagrama.js',
+  },
 } as const;
 
 const alvo = alvos[(process.env.BRAYTECH_ALVO ?? 'painel') as keyof typeof alvos];
@@ -32,5 +38,8 @@ export default defineConfig({
     // Só o primeiro build limpa: o segundo apagaria o pacote do primeiro.
     emptyOutDir: alvo.arquivo === 'painel.js',
     lib: { entry: alvo.entrada, formats: ['iife'], name: alvo.nome, fileName: () => alvo.arquivo },
+    // O pacote do diagrama arrasta o CSS do KaTeX (com as fontes embutidas).
+    // Sem nome fixo ele sai chamado pelo pacote, e o HTML não teria o que ligar.
+    rollupOptions: { output: { assetFileNames: 'estilos.css' } },
   },
 });

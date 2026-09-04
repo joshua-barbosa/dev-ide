@@ -9,22 +9,21 @@
 // Aqui rodam `ConnectionsPanel`, `useConnections`, `useMenusDeConexao`,
 // `useContextMenu` e `useDialogs` — os originais. O que cruza para o VS Code é
 // só ABRIR: query, tabela, chave, terminal. Ver `ponte.ts`.
-import { StrictMode, useCallback, useEffect } from 'react';
+import { StrictMode, useCallback, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import CssBaseline from '@mui/material/CssBaseline';
-import { ThemeProvider } from '@mui/material/styles';
 import type { PublicConnection, TreeNode } from '../../shared/contracts';
 import { definirBaseDaApi } from '../api-http';
 import { ConnectionsPanel } from '../connections/ConnectionsPanel';
 import { useConnections } from '../connections/useConnections';
 import { useContextMenu } from '../ContextMenu';
-import { useDialogs } from '../useDialogs';
+import { dialogosNativos } from './dialogos';
 import { useMenusDeConexao } from '../acoes/useMenusDeConexao';
-import { criarTema } from '../theme';
 import { useAcoesRemotas } from '../acoes/useAcoesRemotas';
 import {
-  abrirDiagramaEr, escreverNaSaida, mostrarSaida, novaQuery, pedirTexto, renomearQuery,
+  abrirDiagramaEr, escolherSimNao, escreverNaSaida, mostrarSaida, novaQuery, pedirSenha,
+  pedirTexto, renomearQuery,
 } from './acoes';
+import { ComTemaDoEditor } from './ComTemaDoEditor';
 import { aindaNao, ligarPonte, pedirAoHost, quandoOHostPedirRecarga } from './ponte';
 import { Api } from '../api';
 import type { Vinculo } from '../../shared/sql/vinculo';
@@ -36,7 +35,9 @@ declare const BRAYTECH: {
 };
 
 function Painel() {
-  const dialogs = useDialogs();
+  // As perguntas vão para a caixa do PRÓPRIO editor. Desenhá-las aqui dentro
+  // daria o que ele fotografou: um diálogo espremido numa coluna de 300 px.
+  const dialogs = useMemo(() => dialogosNativos(), []);
   const falha = useCallback((erro: unknown) => {
     pedirAoHost({
       tipo: 'erro',
@@ -112,9 +113,68 @@ function Painel() {
     });
   }, []);
 
-  // A aba do formulário grava e avisa; quem redesenha a árvore é este painel.
-  const recarregar = ctrl.recarregar;
-  useEffect(() => quandoOHostPedirRecarga(() => void recarregar()), [recarregar]);
+  // As abas gravam e avisam; quem redesenha a árvore é este painel. O aviso
+  // pode mirar um ramo, para a árvore inteira não se recolher a cada gravação.
+  const ctrlRef = useRef(ctrl);
+  ctrlRef.current = ctrl;
+  useEffect(
+    () =>
+      quandoOHostPedirRecarga((pedido) => {
+        const c = ctrlRef.current;
+        if (pedido.filtro !== undefined && pedido.conexaoId !== undefined) {
+          void c.definirFiltro(
+            pedido.conexaoId,
+            pedido.caminho ?? [],
+            pedido.filtro as Parameters<typeof c.definirFiltro>[2]
+          );
+          return;
+        }
+        if (pedido.conexaoId !== undefined) {
+          void c.recarregarNo(pedido.conexaoId, pedido.caminho ?? []);
+          return;
+        }
+        void c.recarregar();
+      }),
+    []
+  );
+
+  // O cofre pede a senha pela caixa nativa, com `password: true`.
+  //
+  // Antes disto NÃO havia nada: o `VaultDialog` mora no `App` da IDE, que não
+  // existe aqui, então clicar no cadeado marcava o pedido e ficava parado para
+  // sempre. Um botão que não faz nada é pior que um botão ausente.
+  const pedido = ctrl.pedidoDeSenha;
+  useEffect(() => {
+    if (pedido === null) return;
+    const c = ctrlRef.current;
+    void (async () => {
+      const titulos = {
+        criar: 'Criar o cofre — escolha a senha-mestra',
+        destrancar: 'Destrancar o cofre',
+        trocar: 'Trocar a senha-mestra — senha ATUAL',
+      };
+      const senha = await pedirSenha(titulos[pedido.modo]);
+      if (senha === null || senha === '') {
+        c.cancelarSenha();
+        return;
+      }
+      if (pedido.modo === 'trocar') {
+        const nova = await pedirSenha('Trocar a senha-mestra — senha NOVA');
+        if (nova === null || nova === '') {
+          c.cancelarSenha();
+          return;
+        }
+        await c.responderSenha(senha, false, nova);
+        return;
+      }
+      // Lembrar é escolha dele, e o cofre diz se pode ser oferecida.
+      const podeLembrar = c.estado?.vault.canRemember !== false;
+      const lembrar =
+        podeLembrar &&
+        (await escolherSimNao('Lembrar o destrancamento neste computador?'));
+      await c.responderSenha(senha, lembrar);
+    })().catch(falha);
+  }, [pedido, falha]);
 
   const menus = useMenusDeConexao({
     abrir: menu.abrir,
@@ -177,7 +237,9 @@ function Painel() {
           pedirAoHost({ tipo: 'abrirChave', connectionId, chave });
         }}
         onAbrirArquivoDeQuery={async (no: TreeNode) => {
-          const caminho = typeof no.meta?.path === 'string' ? no.meta.path : null;
+          // A chave é `caminho`, não `path`: eu tinha lido a errada, e por isso
+          // clicar num .sql ou .sqlbook da árvore não abria nada.
+          const caminho = typeof no.meta?.caminho === 'string' ? no.meta.caminho : null;
           if (caminho === null) return;
           pedirAoHost({ tipo: 'abrirArquivo', caminho });
         }}
@@ -195,6 +257,11 @@ function Painel() {
           pedirAoHost({ tipo: 'abrirTerminal', connectionId: conexao.id, rotulo: conexao.label });
         }}
         onNovaConexao={(grupo?: string) => abrirFormulario(null, grupo ?? '')}
+        // Os dois diálogos ricos do painel também vão para a área do editor:
+        // são formulários, e formulário numa coluna de 300 px vira o que ele
+        // fotografou.
+        onPedirCriacao={(p) => pedirAoHost({ tipo: 'abrirDialogo', dialogo: 'criacao', pedido: p })}
+        onPedirFiltro={(p) => pedirAoHost({ tipo: 'abrirDialogo', dialogo: 'filtro', pedido: p })}
         onRenomearGrupo={async (caminho: string) => {
           const novo = await pedirTexto({ titulo: 'Novo nome do grupo', valorInicial: caminho });
           if (novo === null || novo.trim() === '' || novo.trim() === caminho) return;
@@ -250,10 +317,9 @@ const raiz = document.getElementById('raiz');
 if (raiz !== null) {
   createRoot(raiz).render(
     <StrictMode>
-      <ThemeProvider theme={criarTema('escuro')}>
-        <CssBaseline />
+      <ComTemaDoEditor>
         <Painel />
-      </ThemeProvider>
+      </ComTemaDoEditor>
     </StrictMode>
   );
 }

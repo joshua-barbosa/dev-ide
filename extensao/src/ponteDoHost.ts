@@ -46,7 +46,22 @@ export type PedidoDoPainel =
       readonly rotulo: string;
     }
   | { readonly tipo: 'fecharFormulario' }
-  | { readonly tipo: 'conexoesMudaram' }
+  | { readonly tipo: 'abrirDiagrama'; readonly titulo: string; readonly markdown: string }
+  | {
+      // Os diálogos ricos (criar objeto, filtrar) também saem da coluna: são
+      // formulários, e formulário aqui é aba.
+      readonly tipo: 'abrirDialogo';
+      readonly dialogo: 'criacao' | 'filtro';
+      readonly pedido: unknown;
+    }
+  | {
+      readonly tipo: 'conexoesMudaram';
+      /** Quando vem, recarrega SÓ aquele ramo — a árvore não se recolhe. */
+      readonly conexaoId?: string;
+      readonly caminho?: readonly string[];
+      /** Presente só quando a aba de filtro devolve a escolha dele. */
+      readonly filtro?: unknown;
+    }
   | { readonly tipo: 'copiar'; readonly texto: string }
   | { readonly tipo: 'avisar'; readonly mensagem: string }
   | { readonly tipo: 'erro'; readonly mensagem: string }
@@ -83,8 +98,16 @@ export interface DepsDoPainel {
   definirConexaoAtiva(id: string): void;
   /** Abre o formulário de conexão como aba do editor. */
   abrirFormulario(conexaoId: string | null, grupo: string, rotulo: string): void;
+  /** Abre um diálogo rico como aba do editor. */
+  abrirDialogo(dialogo: 'criacao' | 'filtro', pedido: unknown): void;
+  /** Abre o diagrama ER desenhado, em aba própria. */
+  abrirDiagrama(titulo: string, markdown: string): void;
   /** Manda todo painel vivo reler o cofre — depois de salvar ou excluir. */
-  recarregarPaineis(): void;
+  recarregarPaineis(
+    conexaoId?: string,
+    caminho?: readonly string[],
+    filtro?: unknown
+  ): void;
 }
 
 /** Um canal de saída para a extensão inteira, e não um por webview. */
@@ -171,6 +194,45 @@ export class PonteDoHost {
             value: typeof a.valorInicial === 'string' ? a.valorInicial : '',
             ...(typeof a.placeholder === 'string' ? { placeHolder: a.placeholder } : {}),
             ignoreFocusOut: true,
+          })) ?? null
+        );
+
+      case 'confirmar': {
+        // O diálogo do PRÓPRIO editor: centralizado na janela inteira, com
+        // teclado e tema dele. A caixa desenhada dentro do painel ficava numa
+        // coluna de 300 px, cinza sobre cinza — foi o print que ele mandou.
+        const rotulo = String(a.rotuloConfirmar ?? 'OK');
+        const escolha = await vscode.window.showWarningMessage(
+          String(a.titulo ?? '') === '' ? String(a.mensagem ?? '') : String(a.titulo),
+          {
+            modal: true,
+            ...(String(a.titulo ?? '') === '' ? {} : { detail: String(a.mensagem ?? '') }),
+          },
+          rotulo
+        );
+        // Esc e "Cancelar" devolvem `undefined`: recusar é o padrão seguro.
+        return escolha === rotulo;
+      }
+
+      case 'avisar':
+        await vscode.window.showInformationMessage(
+          String(a.titulo ?? '') === '' ? String(a.mensagem ?? '') : String(a.titulo),
+          {
+            modal: true,
+            ...(String(a.titulo ?? '') === '' ? {} : { detail: String(a.mensagem ?? '') }),
+          }
+        );
+        return null;
+
+      case 'pedirSenha':
+        // Senha vai na caixa nativa, com `password: true`: ela não fica no DOM
+        // da webview nem aparece em captura de tela.
+        return (
+          (await vscode.window.showInputBox({
+            title: String(a.titulo ?? ''),
+            password: true,
+            ignoreFocusOut: true,
+            ...(typeof a.prompt === 'string' ? { prompt: a.prompt } : {}),
           })) ?? null
         );
 
@@ -268,8 +330,14 @@ export class PonteDoHost {
         case 'fecharFormulario':
           this.aoFechar?.();
           return;
+        case 'abrirDialogo':
+          this.deps.abrirDialogo(p.dialogo, p.pedido);
+          return;
+        case 'abrirDiagrama':
+          this.deps.abrirDiagrama(p.titulo, p.markdown);
+          return;
         case 'conexoesMudaram':
-          this.deps.recarregarPaineis();
+          this.deps.recarregarPaineis(p.conexaoId, p.caminho, p.filtro);
           return;
         case 'abrirTerminal':
           this.deps.definirConexaoAtiva(p.connectionId);
@@ -325,11 +393,20 @@ export class PonteDoHost {
 export function htmlDaWebview(
   web: vscode.Webview,
   extensionUri: vscode.Uri,
-  arquivo: 'painel.js' | 'formulario.js',
+  arquivo: 'painel.js' | 'formulario.js' | 'dialogo.js' | 'diagrama.js',
   config: Record<string, unknown>
 ): string {
   const script = web.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'webview', arquivo));
   const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+  // Só o diagrama tem folha de estilo própria: é o KaTeX, com as fontes
+  // embutidas. Ligá-la nas outras páginas custaria 1,4 MB por nada.
+  const estilo =
+    arquivo === 'diagrama.js'
+      ? `<link rel="stylesheet" href="${web
+          .asWebviewUri(vscode.Uri.joinPath(extensionUri, 'webview', 'estilos.css'))
+          .toString()}">`
+      : '';
 
   return `<!doctype html>
 <html lang="pt-BR"><head>
@@ -340,6 +417,7 @@ export function htmlDaWebview(
   #raiz { height: 100%; display: flex; flex-direction: column; }
   #raiz > * { flex: 1 1 auto; min-height: 0; }
 </style>
+${estilo}
 </head><body>
 <div id="raiz"></div>
 <script nonce="${nonce}">window.BRAYTECH=${JSON.stringify(config)};</script>

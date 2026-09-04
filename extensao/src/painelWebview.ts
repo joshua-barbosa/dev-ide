@@ -26,8 +26,14 @@ export class PainelDeConexoes implements vscode.WebviewViewProvider {
    * este aviso a barra lateral seguiria mostrando a árvore de antes, e ele teria
    * de apertar Recarregar para ver o que acabou de criar.
    */
-  static recarregarTodos(): void {
-    for (const web of PainelDeConexoes.vivas) void web.postMessage({ tipo: 'recarregar' });
+  static recarregarTodos(
+    conexaoId?: string,
+    caminho?: readonly string[],
+    filtro?: unknown
+  ): void {
+    for (const web of PainelDeConexoes.vivas) {
+      void web.postMessage({ tipo: 'recarregar', conexaoId, caminho, filtro });
+    }
   }
 
   constructor(

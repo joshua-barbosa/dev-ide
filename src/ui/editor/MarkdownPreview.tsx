@@ -8,6 +8,7 @@
 // com as cargas reais; é lá que a garantia mora, não neste arquivo.
 import { useEffect, useMemo, useRef } from 'react';
 import Box from '@mui/material/Box';
+import { useTheme } from '@mui/material/styles';
 import { CLASSE_DO_MERMAID, renderizarMarkdown } from '../../shared/markdown';
 import { acharFormulas } from '../../shared/matematica';
 import { ligarZoom } from './zoomDeDiagrama';
@@ -25,6 +26,9 @@ function mensagemDoErro(erro: unknown): string {
 export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
   // Renderizar a cada tecla seria refazer o documento inteiro por caractere.
   const html = useMemo(() => renderizarMarkdown(fonte), [fonte]);
+  // O Mermaid pinta o diagrama com paleta PRÓPRIA, e ela estava fixa em escuro:
+  // num tema claro o diagrama saía numa caixa preta no meio da página branca.
+  const modoDoMermaid = useTheme().palette.mode === 'dark' ? 'dark' : 'default';
   const caixa = useRef<HTMLDivElement>(null);
 
   // Mermaid e KaTeX depois de o HTML estar no DOM (T026).
@@ -60,7 +64,7 @@ export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
           // decisão do renderizador de markdown: nada que veio do arquivo
           // chega ao DOM como marcação.
           securityLevel: 'strict',
-          theme: 'dark',
+          theme: modoDoMermaid,
         });
         const atuais = [...alvo.querySelectorAll<HTMLElement>(`.${CLASSE_DO_MERMAID}`)];
         for (const [i, no] of atuais.entries()) {
@@ -119,7 +123,7 @@ export function MarkdownPreview({ fonte }: MarkdownPreviewProps) {
         });
     }
 
-  }, [html, fonte]);
+  }, [html, fonte, modoDoMermaid]);
 
   return (
     <Box

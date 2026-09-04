@@ -79,6 +79,16 @@ export interface ConnectionsPanelProps {
     rotuloConfirmar?: string;
   }) => Promise<boolean>;
   readonly avisar: (mensagem: string, titulo?: string) => Promise<void>;
+  /**
+   * Desvio dos diálogos ricos para fora do painel.
+   *
+   * Na IDE eles são caixas por cima do editor e ficam ótimos. Dentro do VS Code
+   * o painel é uma coluna de 300 px, e uma caixa desenhada aí vira rolagem
+   * dentro de rolagem — foi o que ele viu no cadastro e no excluir. Quando estes
+   * ganchos existem, quem abre a janela é o hospedeiro, na área do editor.
+   */
+  readonly onPedirFiltro?: (pedido: PedidoDeFiltro) => void;
+  readonly onPedirCriacao?: (pedido: PedidoDeCriacao) => void;
 }
 
 /** O vínculo do nó `Query`, que carrega o database no `meta`. */
@@ -159,6 +169,8 @@ export function ConnectionsPanel({
   onAbrirQuery,
   onAbrirChave,
   onNovaConexao,
+  onPedirFiltro,
+  onPedirCriacao,
   onRenomearGrupo,
   onAbrirTerminal,
   onDiagramaEr,
@@ -179,6 +191,10 @@ export function ConnectionsPanel({
   // mesmo gesto que o diálogo do cofre precisou sair de dentro para sobreviver.
   const [pedidoDeFiltro, setPedidoDeFiltro] = useState<PedidoDeFiltro | null>(null);
   const [pedidoDeCriacao, setPedidoDeCriacao] = useState<PedidoDeCriacao | null>(null);
+
+  // Sem gancho, a caixa é aqui mesmo — que é como a IDE sempre foi.
+  const pedirFiltro = onPedirFiltro ?? setPedidoDeFiltro;
+  const pedirCriacao = onPedirCriacao ?? setPedidoDeCriacao;
 
   const aceita = (tipo: string): boolean => {
     const driver = ctrl.drivers.get(tipo);
@@ -387,7 +403,7 @@ export function ConnectionsPanel({
                     // Os critérios vêm do NÓ: `Tables` filtra por tamanho e
                     // `Types` não, e a interface não precisa saber por quê.
                     onClick={() =>
-                      setPedidoDeFiltro({
+                      pedirFiltro({
                         id,
                         caminho: filho,
                         rotulo: no.label,
@@ -403,7 +419,7 @@ export function ConnectionsPanel({
                       // T113: o `+` abre a janela com o esqueleto, e de lá
                       // saem os DOIS caminhos — executar ou abrir no editor.
                       onClick={() =>
-                        setPedidoDeCriacao({
+                        pedirCriacao({
                           id,
                           caminho: filho,
                           rotulo: no.label,

@@ -17,7 +17,9 @@ import * as vscode from 'vscode';
 import { ArquivosRemotos } from './arquivosRemotos';
 import { mostrarResultado, type ResultadoDoMotor } from './grade';
 import { ligarMotor, type Motor } from './motor';
-import { abrirFormularioDeConexao } from './formularioAba';
+import {
+  abrirDiagramaEmAba, abrirDialogoEmAba, abrirFormularioDeConexao,
+} from './formularioAba';
 import { PainelDeConexoes } from './painelWebview';
 import type { DepsDoPainel } from './ponteDoHost';
 import type { Painel } from './paineis';
@@ -147,7 +149,10 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
     definirConexaoAtiva,
     abrirFormulario: (conexaoId, grupo, rotulo) =>
       abrirFormularioDeConexao(deps, conexaoId, grupo, rotulo),
-    recarregarPaineis: () => PainelDeConexoes.recarregarTodos(),
+    abrirDialogo: (dialogo, pedido) => abrirDialogoEmAba(deps, dialogo, pedido),
+    abrirDiagrama: (titulo, markdown) => abrirDiagramaEmAba(deps, titulo, markdown),
+    recarregarPaineis: (conexaoId, caminho, filtro) =>
+      PainelDeConexoes.recarregarTodos(conexaoId, caminho, filtro),
   };
 
   for (const [painel, view] of [

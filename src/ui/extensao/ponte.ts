@@ -51,7 +51,21 @@ export type PedidoAoHost =
       readonly rotulo: string;
     }
   | { readonly tipo: 'fecharFormulario' }
-  | { readonly tipo: 'conexoesMudaram' }
+  | { readonly tipo: 'abrirDiagrama'; readonly titulo: string; readonly markdown: string }
+  | {
+      // Os diálogos ricos (criar objeto, filtrar) também saem da coluna.
+      readonly tipo: 'abrirDialogo';
+      readonly dialogo: 'criacao' | 'filtro';
+      readonly pedido: unknown;
+    }
+  | {
+      readonly tipo: 'conexoesMudaram';
+      /** Quando vem, recarrega SÓ aquele ramo — a árvore não se recolhe. */
+      readonly conexaoId?: string;
+      readonly caminho?: readonly string[];
+      /** Presente só quando a aba de filtro devolve a escolha dele. */
+      readonly filtro?: unknown;
+    }
   | { readonly tipo: 'copiar'; readonly texto: string }
   | { readonly tipo: 'avisar'; readonly mensagem: string }
   | { readonly tipo: 'erro'; readonly mensagem: string }
@@ -116,9 +130,18 @@ export function pedirAoHost(pedido: PedidoAoHost): void {
  * Sem este aviso a barra lateral seguiria mostrando a árvore de antes, e ele
  * teria de apertar Recarregar para ver a conexão que acabou de criar.
  */
-export function quandoOHostPedirRecarga(recarregar: () => void): () => void {
+export interface PedidoDeRecarga {
+  readonly conexaoId?: string;
+  readonly caminho?: readonly string[];
+  readonly filtro?: unknown;
+}
+
+export function quandoOHostPedirRecarga(
+  recarregar: (pedido: PedidoDeRecarga) => void
+): () => void {
   const ouvir = (e: MessageEvent): void => {
-    if ((e.data as { tipo?: string })?.tipo === 'recarregar') recarregar();
+    const m = e.data as { tipo?: string } & PedidoDeRecarga;
+    if (m?.tipo === 'recarregar') recarregar(m);
   };
   window.addEventListener('message', ouvir);
   return () => window.removeEventListener('message', ouvir);

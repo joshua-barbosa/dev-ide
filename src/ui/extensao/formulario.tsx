@@ -6,15 +6,13 @@
 //
 // É o `ConnectionForm` da IDE, sem adaptação: os campos, as seções e a grade de
 // tipos vêm todos dos metadados do driver, e gravar é o mesmo `salvarConexao`.
-import { StrictMode, useCallback } from 'react';
+import { StrictMode, useCallback, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
-import CssBaseline from '@mui/material/CssBaseline';
-import { ThemeProvider } from '@mui/material/styles';
 import { definirBaseDaApi } from '../api-http';
 import { ConnectionForm } from '../connections/ConnectionForm';
 import { useConnections } from '../connections/useConnections';
-import { useDialogs } from '../useDialogs';
-import { criarTema } from '../theme';
+import { dialogosNativos } from './dialogos';
+import { ComTemaDoEditor } from './ComTemaDoEditor';
 import { ligarPonte, pedirAoHost } from './ponte';
 
 /** O que o host injeta na página antes de carregar este pacote. */
@@ -25,7 +23,8 @@ declare const BRAYTECH: {
 };
 
 function Formulario() {
-  const dialogs = useDialogs();
+  // As perguntas vão para a caixa do próprio editor, não para dentro da aba.
+  const dialogs = useMemo(() => dialogosNativos(), []);
   const ctrl = useConnections({ confirmar: dialogs.confirmar });
 
   const fechar = useCallback(() => pedirAoHost({ tipo: 'fecharFormulario' }), []);
@@ -55,7 +54,6 @@ function Formulario() {
           fechar();
         }}
       />
-      {dialogs.elemento}
     </>
   );
 }
@@ -69,10 +67,9 @@ const raiz = document.getElementById('raiz');
 if (raiz !== null) {
   createRoot(raiz).render(
     <StrictMode>
-      <ThemeProvider theme={criarTema('escuro')}>
-        <CssBaseline />
+      <ComTemaDoEditor>
         <Formulario />
-      </ThemeProvider>
+      </ComTemaDoEditor>
     </StrictMode>
   );
 }

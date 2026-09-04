@@ -18,37 +18,85 @@ import { htmlDaWebview, PonteDoHost, type DepsDoPainel } from './ponteDoHost';
 /** Uma aba por alvo: reabrir a mesma conexão traz de volta o que já está lá. */
 const abertas = new Map<string, vscode.WebviewPanel>();
 
+/** Cria a aba, ou revela a que já existe. Comum ao cadastro e aos diálogos. */
+function aba(
+  deps: DepsDoPainel,
+  chave: string,
+  titulo: string,
+  arquivo: 'formulario.js' | 'dialogo.js' | 'diagrama.js',
+  config: Record<string, unknown>
+): void {
+  const jaAberta = abertas.get(chave);
+  if (jaAberta !== undefined) {
+    // Revelar em vez de abrir de novo: duas abas do mesmo alvo divergiriam
+    // sobre o mesmo dado.
+    jaAberta.reveal();
+    return;
+  }
+
+  const nova = vscode.window.createWebviewPanel(
+    'braytech.formulario',
+    titulo,
+    vscode.ViewColumn.Active,
+    {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(deps.extensionUri, 'webview')],
+      // Sem isto, trocar de aba e voltar apagaria tudo que ele já digitou.
+      retainContextWhenHidden: true,
+    }
+  );
+
+  nova.webview.html = htmlDaWebview(nova.webview, deps.extensionUri, arquivo, {
+    base: `http://127.0.0.1:${deps.motor.porta}`,
+    ...config,
+  });
+
+  new PonteDoHost(deps, () => nova.dispose()).ligar(nova.webview);
+
+  abertas.set(chave, nova);
+  nova.onDidDispose(() => abertas.delete(chave));
+}
+
 export function abrirFormularioDeConexao(
   deps: DepsDoPainel,
   conexaoId: string | null,
   grupo: string,
   rotulo: string
 ): void {
-  const chave = conexaoId ?? `nova:${grupo}`;
-  const jaAberta = abertas.get(chave);
-  if (jaAberta !== undefined) {
-    // Revelar em vez de abrir de novo: uma segunda aba do mesmo cadastro daria
-    // dois formulários divergindo sobre a mesma conexão.
-    jaAberta.reveal();
-    return;
-  }
+  aba(
+    deps,
+    conexaoId ?? `nova:${grupo}`,
+    conexaoId === null ? 'Nova conexão' : rotulo === '' ? 'Conexão' : rotulo,
+    'formulario.js',
+    { conexaoId, grupo }
+  );
+}
 
-  const titulo = conexaoId === null ? 'Nova conexão' : rotulo === '' ? 'Conexão' : rotulo;
-  const aba = vscode.window.createWebviewPanel('braytech.formulario', titulo, vscode.ViewColumn.Active, {
-    enableScripts: true,
-    localResourceRoots: [vscode.Uri.joinPath(deps.extensionUri, 'webview')],
-    // Sem isto, trocar de aba e voltar apagaria tudo que ele já digitou.
-    retainContextWhenHidden: true,
+/**
+ * Os diálogos ricos do painel — criar objeto e filtrar — também em aba.
+ *
+ * São os mesmos `DialogoDeCriacao` e `DialogoDeFiltro` da IDE. O que muda é o
+ * quadro: numa coluna de 300 px eles colapsam do mesmo jeito que o cadastro
+ * colapsou.
+ */
+export function abrirDialogoEmAba(
+  deps: DepsDoPainel,
+  dialogo: 'criacao' | 'filtro',
+  pedido: unknown
+): void {
+  const p = pedido as { id?: string; rotulo?: string; caminho?: readonly string[] };
+  const titulo = dialogo === 'criacao' ? `Criar em ${p.rotulo ?? ''}` : `Filtrar ${p.rotulo ?? ''}`;
+  aba(deps, `${dialogo}:${p.id ?? ''}:${(p.caminho ?? []).join('/')}`, titulo, 'dialogo.js', {
+    dialogo,
+    pedido,
   });
+}
 
-  aba.webview.html = htmlDaWebview(aba.webview, deps.extensionUri, 'formulario.js', {
-    base: `http://127.0.0.1:${deps.motor.porta}`,
-    conexaoId,
-    grupo,
-  });
-
-  new PonteDoHost(deps, () => aba.dispose()).ligar(aba.webview);
-
-  abertas.set(chave, aba);
-  aba.onDidDispose(() => abertas.delete(chave));
+/** O diagrama ER desenhado. Uma aba por schema. */
+export function abrirDiagramaEmAba(
+  deps: DepsDoPainel,
+  titulo: string,
+  markdown: string
+): void {
+  aba(deps, `diagrama:${titulo}`, titulo, 'diagrama.js', { markdown });
 }

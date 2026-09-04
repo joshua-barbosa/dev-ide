@@ -59,11 +59,21 @@ export function aplicarVariaveis(paleta: Paleta): void {
  * parseável por essa conta.
  */
 export function criarTema(nome: NomeDoTema): Theme {
-  const p = paletaDe(nome);
+  return temaDaPaleta(paletaDe(nome), nome === 'escuro' ? 'dark' : 'light');
+}
+
+/**
+ * O mesmo tema, a partir de uma paleta qualquer.
+ *
+ * Existe separado porque a extensão monta a paleta a partir das variáveis
+ * `--vscode-*` do editor: dentro do VS Code quem manda no tema é o tema DELE, e
+ * uma barra lateral pintada com as cores da minha IDE no meio do Cursor destoa.
+ */
+export function temaDaPaleta(p: Paleta, modo: 'dark' | 'light'): Theme {
   return createTheme({
     palette: {
-      mode: nome === 'escuro' ? 'dark' : 'light',
-      primary: { main: p.accent, contrastText: nome === 'escuro' ? p.bgEditor : '#ffffff' },
+      mode: modo,
+      primary: { main: p.accent, contrastText: modo === 'dark' ? p.bgEditor : '#ffffff' },
       success: { main: p.run },
       error: { main: p.error },
       warning: { main: p.accent },
