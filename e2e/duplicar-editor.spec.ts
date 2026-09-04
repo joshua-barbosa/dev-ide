@@ -74,7 +74,11 @@ test('as duas vistas sujam e limpam juntas', async ({ page }) => {
   await duplicar(page);
 
   await grupo(page, 0).locator('[data-editor]').click();
-  await page.keyboard.insertText('x');
+  // Um COMENTÁRIO, e não um `x` solto. Este teste GRAVA em `utils.ts`, e o
+  // arquivo é o mesmo que `execucao.spec.ts` manda executar depois: com o `x`,
+  // ele saía com `ReferenceError` e `exit 1`, e a falha aparecia trinta testes
+  // adiante, num arquivo que não tinha nada a ver com isto.
+  await page.keyboard.insertText('// sujo');
 
   const abaA = grupo(page, 0).locator('[data-tab="utils.ts"]');
   const abaB = grupo(page, 1).locator('[data-tab="utils.ts"]');
@@ -86,6 +90,12 @@ test('as duas vistas sujam e limpam juntas', async ({ page }) => {
   await page.keyboard.press('Control+s');
   await expect(abaA).toHaveAttribute('data-tab-dirty', 'false');
   await expect(abaB).toHaveAttribute('data-tab-dirty', 'false');
+
+  // Devolve o arquivo como estava. A suíte compartilha o projeto de exemplo, e
+  // teste que grava e não desfaz cobra o preço de quem vier depois.
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Control+s');
+  await expect(abaA).toHaveAttribute('data-tab-dirty', 'false');
 });
 
 test('fechar uma das vistas NÃO pergunta nada, e a outra fica com o texto', async ({ page }) => {

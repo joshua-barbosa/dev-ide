@@ -96,7 +96,10 @@ test('executar consulta abre a grade com colunas tipadas e as linhas', async ({ 
   const grade = page.locator('table');
   await expect(grade).toBeVisible();
   await expect(grade.locator('th')).toContainText(['id', 'nome', 'nota']);
-  await expect(grade).toContainText('INTEGER');
+  // O tipo está na DICA desde a spec 097 (D257): escrito, ele custava uma linha
+  // do cabeçalho em toda tabela e ainda entrava no cálculo da largura. Continua
+  // sendo dito — só não ocupa a tela para dizê-lo.
+  await expect(grade.locator('[data-coluna="id"]')).toHaveAttribute('title', /INTEGER/i);
   await expect(grade).toContainText('joshua');
   await expect(grade).toContainText('maria');
   // Qualificado pelo nome da aba: a contagem também aparece no painel de saída,
