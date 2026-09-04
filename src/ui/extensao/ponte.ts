@@ -53,6 +53,19 @@ export type PedidoAoHost =
       readonly tipo: 'abrirResultado';
       readonly titulo: string;
       readonly resultado: unknown;
+      /**
+       * A consulta que produziu isto, para a aba poder virar a página.
+       *
+       * Sem ela a grade mostra a primeira página e para ali: paginar é rodar a
+       * MESMA consulta com outro `offset`, e quem só recebeu linhas prontas não
+       * tem como. Foi o que ele viu — "não está fazendo paginação quando
+       * retorna o result do +Tab".
+       */
+      readonly consulta?: {
+        readonly connectionId: string;
+        readonly database: string;
+        readonly statement: string;
+      };
     }
   | {
       readonly tipo: 'abrirCaderno';
@@ -167,6 +180,24 @@ export function quandoOHostPedirRecarga(
   const ouvir = (e: MessageEvent): void => {
     const m = e.data as { tipo?: string } & PedidoDeRecarga;
     if (m?.tipo === 'recarregar') recarregar(m);
+  };
+  window.addEventListener('message', ouvir);
+  return () => window.removeEventListener('message', ouvir);
+}
+
+/**
+ * O host mandando DADOS NOVOS para esta aba.
+ *
+ * O `▷ Run` de um bloco reaproveita a mesma aba de resultado a cada execução —
+ * é o que a IDE faz, e abrir uma aba por clique encheria o editor. Como a aba
+ * já existe, o host não a recria: manda o resultado novo por aqui.
+ */
+export function quandoOHostMandarDados(
+  aplicar: (dados: Record<string, unknown>) => void
+): () => void {
+  const ouvir = (e: MessageEvent): void => {
+    const m = e.data as { tipo?: string; dados?: Record<string, unknown> };
+    if (m?.tipo === 'novosDados' && m.dados !== undefined) aplicar(m.dados);
   };
   window.addEventListener('message', ouvir);
   return () => window.removeEventListener('message', ouvir);

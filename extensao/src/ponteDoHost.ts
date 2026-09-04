@@ -45,7 +45,17 @@ export type PedidoDoPainel =
       readonly somenteLeitura: boolean;
     }
   | { readonly tipo: 'fecharArquivo'; readonly caminho: string }
-  | { readonly tipo: 'abrirResultado'; readonly titulo: string; readonly resultado: unknown }
+  | {
+      readonly tipo: 'abrirResultado';
+      readonly titulo: string;
+      readonly resultado: unknown;
+      /** A consulta que produziu isto, para a aba virar a página sozinha. */
+      readonly consulta?: {
+        readonly connectionId: string;
+        readonly database: string;
+        readonly statement: string;
+      };
+    }
   | {
       readonly tipo: 'abrirCaderno';
       readonly caminho: string;
@@ -121,6 +131,8 @@ export interface DepsDoPainel {
   abrirDialogo(dialogo: 'criacao' | 'filtro', pedido: unknown): void;
   /** Abre o diagrama ER desenhado, em aba própria. */
   abrirDiagrama(titulo: string, markdown: string): void;
+  /** Abre o terminal da conexão no painel Terminal do editor. */
+  abrirTerminal(connectionId: string, rotulo: string): void;
   /**
    * Abre uma aba da IDE — tabela, chave, resultado, caderno.
    *
@@ -417,9 +429,7 @@ export class PonteDoHost {
           return;
         case 'abrirTerminal':
           this.deps.definirConexaoAtiva(p.connectionId);
-          void vscode.window.showInformationMessage(
-            `Terminal de ${p.rotulo}: ainda não ligado no VS Code.`
-          );
+          this.deps.abrirTerminal(p.connectionId, p.rotulo);
           return;
         case 'abrirChave':
           this.deps.definirConexaoAtiva(p.connectionId);
@@ -430,7 +440,10 @@ export class PonteDoHost {
           });
           return;
         case 'abrirResultado':
-          this.deps.abrirAbaDaIde('resultado', p.titulo, { resultado: p.resultado });
+          this.deps.abrirAbaDaIde('resultado', p.titulo, {
+            resultado: p.resultado,
+            consulta: p.consulta,
+          });
           return;
         case 'abrirCaderno':
           this.deps.abrirAbaDaIde('caderno', p.caminho.split('/').pop() ?? 'Caderno', {

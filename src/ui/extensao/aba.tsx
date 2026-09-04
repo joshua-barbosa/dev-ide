@@ -11,9 +11,11 @@
 // `CampoColorido` e `VisorDeCelula`, que colorem com o tokenizador do editor),
 // mas o caderno MONTA editores de verdade, e uma aba de grade não tem por que
 // pagar por isso.
-import { StrictMode, useState } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { QueryResult } from '../../shared/contracts';
+import { pedidoDeConsulta } from '../../shared/sql/pedido-de-execucao';
+import { Api } from '../api';
 import { definirBaseDaApi } from '../api-http';
 import { ChaveHost } from '../chaves/ChaveHost';
 import { ResultGrid } from '../grid/ResultGrid';
@@ -22,7 +24,7 @@ import { useQuickInput } from '../useQuickInput';
 import { QuickInput } from '../QuickInput';
 import { abaSintetica } from './abaSintetica';
 import { ComTemaDoEditor } from './ComTemaDoEditor';
-import { ligarPonte, pedirAoHost } from './ponte';
+import { ligarPonte, pedirAoHost, quandoOHostMandarDados } from './ponte';
 import { dialogosNativos } from './dialogos';
 
 declare const BRAYTECH: {
@@ -40,9 +42,87 @@ function texto(chave: string): string {
   return typeof v === 'string' ? v : '';
 }
 
+interface Consulta {
+  readonly connectionId: string;
+  readonly database: string;
+  readonly statement: string;
+}
+
+/**
+ * A aba `Result`, com a paginação da IDE.
+ *
+ * O `+Tab` mandava as linhas prontas e nada mais, e a grade parava na primeira
+ * página — "não está fazendo paginação". Paginar é rodar a MESMA consulta com
+ * outro `offset`, então o que faltava era a consulta chegar aqui.
+ *
+ * O estado nasce dos dados da webview e é TROCADO quando o host manda outros:
+ * o `▷ Run` do caderno reaproveita esta aba a cada execução.
+ */
+function AbaDeResultado({ dados, titulo }: {
+  readonly dados: Record<string, unknown>;
+  readonly titulo: string;
+}) {
+  const consulta = dados.consulta as Consulta | undefined;
+  const [estado, setEstado] = useState(() => ({
+    resultado: dados.resultado as QueryResult,
+    pagina: 1,
+    carregando: false,
+    erro: null as string | null,
+  }));
+
+  useEffect(() => {
+    setEstado({
+      resultado: dados.resultado as QueryResult,
+      pagina: 1,
+      carregando: false,
+      erro: null,
+    });
+  }, [dados]);
+
+  const irPara = (pagina: number): void => {
+    if (consulta === undefined) return;
+    setEstado((a) => ({ ...a, carregando: true, erro: null, pagina }));
+    void Api.execute(
+      consulta.connectionId,
+      pedidoDeConsulta(consulta.statement, consulta.database, pagina)
+    )
+      .then((r) => setEstado({ resultado: r, pagina, carregando: false, erro: null }))
+      .catch((e: unknown) =>
+        setEstado((a) => ({
+          ...a,
+          carregando: false,
+          erro: e instanceof Error ? e.message : String(e),
+        }))
+      );
+  };
+
+  return (
+    <ResultGrid
+      resultado={estado.resultado}
+      erro={estado.erro}
+      carregando={estado.carregando}
+      rotulo={titulo}
+      pagina={estado.pagina}
+      // Só há para onde ir quando a página veio CHEIA — botão de página num
+      // resultado de três linhas seria ruído — ou quando JÁ se virou uma: a
+      // última página não vem cortada, e sem esta metade as setas sumiriam
+      // justamente ali, deixando quem chegou ao fim sem caminho de volta.
+      // Sem consulta não há como repetir nada, e o botão seria quebrado.
+      {...(consulta !== undefined &&
+      (estado.resultado?.truncated === true || estado.pagina > 1)
+        ? { irPara }
+        : {})}
+    />
+  );
+}
+
 function Aba() {
   const qi = useQuickInput();
   const [dialogs] = useState(dialogosNativos);
+  // Os dados da aba MUDAM: o `▷ Run` do caderno reenvia o resultado para esta
+  // mesma aba em vez de abrir uma por execução.
+  const [dados, setDados] = useState(BRAYTECH.dados);
+  useEffect(() => quandoOHostMandarDados(setDados), []);
 
   const erro = (e: unknown): void => {
     pedirAoHost({ tipo: 'erro', mensagem: e instanceof Error ? e.message : String(e) });
@@ -59,12 +139,7 @@ function Aba() {
   }
 
   if (BRAYTECH.tipo === 'resultado') {
-    return (
-      <ResultGrid
-        resultado={BRAYTECH.dados.resultado as QueryResult}
-        rotulo={BRAYTECH.titulo}
-      />
-    );
+    return <AbaDeResultado dados={dados} titulo={BRAYTECH.titulo} />;
   }
 
   return (

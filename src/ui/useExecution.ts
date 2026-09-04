@@ -7,6 +7,7 @@ import { useCallback, useRef, useState } from 'react';
 import { semCores } from '../shared/problem-matcher';
 import type { QueryResult } from '../shared/contracts';
 import type { Vinculo } from '../shared/sql/vinculo';
+import { pedidoAoRunner, pedidoDeConsulta } from '../shared/sql/pedido-de-execucao';
 import { Api } from './api';
 import type { Workspace } from './useWorkspace';
 
@@ -15,13 +16,8 @@ export type ModoExecucao = 'file' | 'block' | 'function';
 /** De onde o resultado de um statement vai aparecer. */
 export type ModoDeStatement = 'run' | 'tab' | 'json';
 
-/**
- * Linhas por página do RESULTADO (T056).
- *
- * Era o teto fixo de 500 com um aviso de "resultado cortado" e nada a fazer
- * sobre ele. Continua 500, mas agora é o tamanho da PÁGINA.
- */
-export const LINHAS_POR_PAGINA = 500;
+/** Reexportado de `shared`: a aba de resultado da extensão pagina o mesmo. */
+export { LINHAS_POR_PAGINA } from '../shared/sql/pedido-de-execucao';
 
 export interface EstadoGrade {
   readonly resultado: QueryResult | null;
@@ -327,12 +323,10 @@ export function useExecution(
           parar: pararDaConexao(vinculo.connectionId, gridId, rotulo),
         });
         try {
-          const r = await Api.execute(vinculo.connectionId, {
-            statement: texto,
-            database: vinculo.database,
-            rowLimit: LINHAS_POR_PAGINA,
-            offset: (pagina - 1) * LINHAS_POR_PAGINA,
-          });
+          const r = await Api.execute(
+            vinculo.connectionId,
+            pedidoDeConsulta(texto, vinculo.database, pagina)
+          );
           atualizarGrade(gridId, {
             resultado: r, erro: null, carregando: false, rotulo, pagina,
             irPara: rodarPagina2,
@@ -346,11 +340,10 @@ export function useExecution(
       const rodarPagina2 = (pagina: number): void => void rodarPagina(pagina);
 
       try {
-        const resultado = await Api.execute(vinculo.connectionId, {
-          statement: texto,
-          database: vinculo.database,
-          rowLimit: LINHAS_POR_PAGINA,
-        });
+        const resultado = await Api.execute(
+          vinculo.connectionId,
+          pedidoDeConsulta(texto, vinculo.database)
+        );
         if (modo === 'json') {
           ws.abrirSemTitulo(JSON.stringify(paraObjetos(resultado), null, 2), 'json');
         } else {
@@ -514,7 +507,7 @@ export function useExecution(
   const executarTexto = useCallback(
     async (linguagem: string, codigo: string) => {
       if (codigo.trim() === '') return;
-      await despachar({ mode: 'block', language: linguagem, code: codigo });
+      await despachar({ ...pedidoAoRunner(linguagem, codigo) });
     },
     [despachar, escrever]
   );

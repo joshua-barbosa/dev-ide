@@ -7,13 +7,15 @@
 //
 // Pacote próprio porque é o único que arrasta o Monaco (os blocos são editores
 // de verdade, com realce e o mesmo tokenizador da IDE).
-import { StrictMode, useCallback, useState } from 'react';
+import { StrictMode, useCallback, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { QueryResult } from '../../shared/contracts';
 import type { ResultadoSalvo } from '../../shared/sql/caderno';
+import { pedidoAoRunner, pedidoDeConsulta } from '../../shared/sql/pedido-de-execucao';
 import { Api } from '../api';
 import { definirBaseDaApi } from '../api-http';
 import { CadernoHost } from '../caderno/CadernoHost';
+import { useCodebase } from '../sql/useCodebase';
 import { abaSintetica } from './abaSintetica';
 import { ComTemaDoEditor } from './ComTemaDoEditor';
 import { escolherSimNao, escreverNaSaida, mostrarSaida, pedirTexto } from './acoes';
@@ -33,6 +35,8 @@ declare const BRAYTECH: {
 
 function Caderno() {
   const [conteudo, setConteudo] = useState(BRAYTECH.conteudo);
+  /** Quantos `+Tab` já saíram: cada um abre uma aba SUA, ao lado das outras. */
+  const proxima = useRef(0);
 
   const erro = useCallback((e: unknown) => {
     pedirAoHost({ tipo: 'erro', mensagem: e instanceof Error ? e.message : String(e) });
@@ -53,6 +57,12 @@ function Caderno() {
       ? null
       : { connectionId: BRAYTECH.connectionId, database: BRAYTECH.database };
 
+  // O catálogo do banco alimenta o autocomplete do bloco de SQL (T053). Faltava
+  // aqui: o Monaco do bloco subia sem provedor nenhum, e completar não fazia
+  // nada. Recebe o VÍNCULO inteiro — a mesma fonte que o `▷ Run` usa —, e por
+  // isso nunca sugere tabela de outro banco.
+  useCodebase(vinculo);
+
   return (
     <CadernoHost
       aba={abaSintetica('caderno', BRAYTECH.titulo, {
@@ -70,20 +80,34 @@ function Caderno() {
           return null;
         }
         try {
-          const r = await Api.execute(vinculo.connectionId, {
-            statement: sql,
-            database: vinculo.database,
-          });
-          // `tab` e `json` pedem uma janela; `run` desenha no próprio bloco.
-          if (modo === 'tab') {
-            pedirAoHost({ tipo: 'abrirResultado', titulo, resultado: r });
-          } else if (modo === 'json') {
+          const r = await Api.execute(
+            vinculo.connectionId,
+            pedidoDeConsulta(sql, vinculo.database)
+          );
+          if (modo === 'json') {
             pedirAoHost({
               tipo: 'abrirSemTitulo',
               conteudo: JSON.stringify(r, null, 2),
               linguagem: 'json',
             });
+            return r;
           }
+          // **`run` TAMBÉM abre a grade** — é o que a IDE faz, e eu tinha
+          // escrito aqui que ele "desenha no próprio bloco". Não desenha em
+          // lugar nenhum: o resultado só ia parar na memória do bloco, e o
+          // botão parecia não fazer nada.
+          //
+          // A diferença entre os dois é o TÍTULO, porque é ele que dá nome à
+          // aba no host: `run` repinta sempre a mesma, `+Tab` abre a próxima ao
+          // lado — que é a razão de o `+Tab` existir.
+          const base = `${titulo} · ${vinculo.database}`;
+          pedirAoHost({
+            tipo: 'abrirResultado',
+            titulo: modo === 'tab' ? `${base} (${(proxima.current += 1)})` : base,
+            resultado: r,
+            // Com a consulta, a aba vira a página sozinha.
+            consulta: { ...vinculo, statement: sql },
+          });
           return r;
         } catch (e) {
           erro(e);
@@ -94,7 +118,7 @@ function Caderno() {
         // A saída vai para o canal do VS Code, que é o par do painel `Output`.
         mostrarSaida();
         try {
-          const r = await Api.run({ language: linguagem, code: codigo });
+          const r = await Api.run({ ...pedidoAoRunner(linguagem, codigo) });
           const saida = [r.stdout, r.stderr].filter((t) => t !== '').join('\n');
           escreverNaSaida(saida === '' ? '(sem saída)' : saida, r.stderr !== '');
         } catch (e) {

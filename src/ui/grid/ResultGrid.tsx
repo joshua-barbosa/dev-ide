@@ -22,7 +22,7 @@ import { Grade } from '../tabela/GradeDaTabela';
 import type { Rascunho } from '../tabela/useRascunho';
 import { PainelDeAparencia } from '../tabela/PainelDeAparencia';
 import { APARENCIA_PADRAO, type Aparencia } from '../../shared/grade/aparencia';
-import { LINHAS_POR_PAGINA } from '../useExecution';
+import { LINHAS_POR_PAGINA } from '../../shared/sql/pedido-de-execucao';
 
 export interface ResultGridProps {
   readonly resultado: QueryResult | null;

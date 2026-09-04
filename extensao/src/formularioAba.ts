@@ -24,10 +24,23 @@ function aba(
   chave: string,
   titulo: string,
   arquivo: 'formulario.js' | 'dialogo.js' | 'diagrama.js' | 'aba.js' | 'caderno.js',
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  /**
+   * O que reenviar quando a aba JÁ existe.
+   *
+   * Só a aba de resultado usa: o `▷ Run` do caderno cai sempre na mesma, e
+   * revelar sem reenviar mostrava o resultado da execução ANTERIOR — um botão
+   * que parece não fazer nada. Formulário e tabela não passam nada aqui de
+   * propósito: reabrir um formulário tem de trazer de volta o que ele digitou,
+   * e não apagá-lo.
+   */
+  dadosNovos?: Record<string, unknown>
 ): void {
   const jaAberta = abertas.get(chave);
   if (jaAberta !== undefined) {
+    if (dadosNovos !== undefined) {
+      void jaAberta.webview.postMessage({ tipo: 'novosDados', dados: dadosNovos });
+    }
     // Revelar em vez de abrir de novo: duas abas do mesmo alvo divergiriam
     // sobre o mesmo dado.
     jaAberta.reveal();
@@ -138,5 +151,12 @@ export function abrirAbaDaIde(
     return;
   }
 
-  aba(deps, `${tipo}:${titulo}`, titulo, 'aba.js', { ...comum, dados });
+  aba(
+    deps,
+    `${tipo}:${titulo}`,
+    titulo,
+    'aba.js',
+    { ...comum, dados },
+    tipo === 'resultado' ? dados : undefined
+  );
 }
