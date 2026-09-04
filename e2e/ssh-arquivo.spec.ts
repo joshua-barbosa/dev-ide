@@ -145,3 +145,24 @@ test('arquivo SEM bit de execução não oferece executar', async ({ page }) => 
     linhaArvore(page, 'notas.txt').getByRole('button', { name: /Executar/ })
   ).toHaveCount(0);
 });
+
+test('imagem do SERVIDOR abre no visualizador, e não como texto', async ({ page }) => {
+  // Ele abriu um `.png` do servidor em 03/09/2026 e a aba mostrou os bytes no
+  // editor. Eram dois defeitos no mesmo caminho: a aba remota nunca perguntava
+  // o tipo do arquivo, e a leitura decodificava o binário como UTF-8 —
+  // corrompendo-o antes de chegar à tela.
+  await abrirServidor(page);
+  await linhaArvore(page, 'aplicacao').click();
+  await linhaArvore(page, 'ponto.png').click();
+
+  await expect(aba(page, 'ponto.png')).toBeVisible();
+  await expect(page.locator('[data-visualizador="imagem"]')).toBeVisible();
+  await expect(page.locator('.monaco-editor')).toHaveCount(0);
+
+  // E a imagem carrega DE VERDADE: `naturalWidth` só é maior que zero quando o
+  // navegador conseguiu decodificar os bytes que vieram.
+  const img = page.locator('[data-visualizador="imagem"] img');
+  await expect(img).toBeVisible();
+  await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+});

@@ -362,7 +362,12 @@ export function EditorGroup({
       {ativa?.type === 'visualizador' && (
         <VisualizadorDeArquivo
           tipo={(ativa.meta.visualizador as Visualizador | undefined) ?? 'texto'}
-          caminho={String(ativa.meta.path ?? '')}
+          // Arquivo remoto não tem `path` — o caminho dele é o `remotePath`, e
+          // o `path` fica nulo de propósito para `Ctrl+S` nunca gravar aqui.
+          caminho={String(ativa.meta.remotePath ?? ativa.meta.path ?? '')}
+          {...(typeof ativa.meta.remoteConnectionId === 'string'
+            ? { conexaoRemota: ativa.meta.remoteConnectionId }
+            : {})}
           conteudo={conteudoDaAba(ativa.id)}
           // P5: editar CSV pela grade. Escreve na ABA e a suja; quem salva
           // continua sendo o Ctrl+S.

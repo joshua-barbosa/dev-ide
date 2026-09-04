@@ -9,6 +9,7 @@
 // que venha de outra rota, de outro driver, ou de código que ainda não existe.
 // Repeti-la aqui daria duas chances de divergirem.
 import express, { Router } from 'express';
+import { tipoDeConteudo } from '../../shared/editor/visualizadores';
 import { alternarFavorito, lerFavoritos } from '../favoritos';
 import { aspasDeShell } from '../../shared/remoto/shell';
 import { requireString, wrap } from '../http/handlers';
@@ -70,8 +71,16 @@ export function createRemoteFilesRouter(pool: SessionPool): Router {
     if (files.readBytes === undefined) {
       throw new Error(`A conexão "${req.params.id}" não lê arquivos em bytes.`);
     }
-    const dados = await files.readBytes(requireString(req.query.path, 'path'));
-    res.setHeader('Content-Type', 'application/octet-stream');
+    const caminho = requireString(req.query.path, 'path');
+    const dados = await files.readBytes(caminho);
+    // O tipo REAL, e não `octet-stream` para tudo: com `octet-stream` o PDF
+    // vira download em vez de abrir, e a imagem depende de o navegador
+    // adivinhar. Ele abriu um `.png` do servidor em 03/09/2026 e caiu no editor
+    // de texto — este é um dos dois lados do conserto.
+    res.setHeader('Content-Type', tipoDeConteudo(caminho));
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'no-store');
     res.send(dados);
   }));
 

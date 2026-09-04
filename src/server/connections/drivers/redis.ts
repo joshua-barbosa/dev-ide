@@ -24,6 +24,10 @@ import {
   QUANTOS_BANCOS_PADRAO, type BancoDoRedis,
 } from '../../../shared/sql/redis-bancos';
 import { SECAO_DA_ARVORE } from '../../../shared/sql/categorias-visiveis';
+import { CLI_REDIS } from '../../../shared/terminal/clientes/redis';
+import {
+  apagarChave, estadoDoServidor, gravarChave, lerChave,
+} from './redis-chaves';
 import { colunasDaAmostra, linhasDosDocumentos } from '../../../shared/sql/mongo-modelo';
 
 export const PORTA_PADRAO = 6379;
@@ -464,6 +468,25 @@ async function connect(config: ResolvedConfig): Promise<Session> {
 
     execute: executar,
 
+    // Abrir uma chave (spec 089). O `bancoAtual` importa: com "todos os bancos"
+    // ligado, a chave clicada pode estar noutro banco que não o da conexão.
+    readKey: async (chave) => lerChave(cliente, chave),
+    writeKey: async (pedido) => {
+      if (config.readOnly) {
+        throw new Error(
+          'Esta conexão está em somente-leitura: gravar uma chave é escrita.'
+        );
+      }
+      await gravarChave(cliente, pedido);
+    },
+    deleteKey: async (pedido) => {
+      if (config.readOnly) {
+        throw new Error('Esta conexão está em somente-leitura: apagar é escrita.');
+      }
+      return apagarChave(cliente, pedido);
+    },
+    estadoDoServidor: async () => estadoDoServidor(cliente),
+
     runAction: async (request) => {
       const indice = request.nodePath[request.nodePath.length - 1] ?? '';
       return {
@@ -508,6 +531,7 @@ export const redisDriver: Driver = {
   label: 'Redis',
   kind: 'kv',
   panel: 'database',
+  cli: CLI_REDIS,
   icon: 'devicon:redis',
   defaultPort: PORTA_PADRAO,
   fields: CAMPOS,

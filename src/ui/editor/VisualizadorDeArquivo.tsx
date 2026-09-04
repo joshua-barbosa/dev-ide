@@ -15,7 +15,9 @@ import {
   csvComTrocas, porQueNaoPodeGravar, type TrocaDeCelula,
 } from '../../shared/editor/csv-edicao';
 import { tokens } from '../theme';
-import { lerTabular, separadorDe, type Visualizador } from '../../shared/editor/visualizadores';
+import {
+  lerTabular, separadorDe, urlDosBytes, type Visualizador,
+} from '../../shared/editor/visualizadores';
 import type { CellValue } from '../../shared/contracts';
 
 export interface VisualizadorDeArquivoProps {
@@ -31,22 +33,30 @@ export interface VisualizadorDeArquivoProps {
    * a joga fora.
    */
   onConteudo?: (texto: string) => void;
+  /**
+   * A conexão onde o arquivo mora, quando ele NÃO é local (spec 089).
+   *
+   * Ausente = arquivo desta máquina. Sem isto, uma imagem do servidor era
+   * buscada em `/api/file/raw`, que procura no disco daqui e não acha.
+   */
+  readonly conexaoRemota?: string;
 }
 
 /** A URL dos bytes. O caminho vai codificado — ele tem barras e acentos. */
-function urlBruta(caminho: string): string {
-  return `/api/file/raw?path=${encodeURIComponent(caminho)}`;
-}
+
 
 export function VisualizadorDeArquivo({
-  tipo, caminho, conteudo, onConteudo,
+  tipo, caminho, conteudo, onConteudo, conexaoRemota,
 }: VisualizadorDeArquivoProps) {
-  if (tipo === 'imagem') return <Imagem caminho={caminho} />;
-  if (tipo === 'pdf') return <Pdf caminho={caminho} />;
+  // O arquivo pode morar no servidor (spec 089): quem sabe montar o endereço é
+  // `urlDosBytes`, e não cada visualizador.
+  const fonte = urlDosBytes(caminho, conexaoRemota);
+  if (tipo === 'imagem') return <Imagem caminho={caminho} fonte={fonte} />;
+  if (tipo === 'pdf') return <Pdf caminho={caminho} fonte={fonte} />;
   return <Csv caminho={caminho} conteudo={conteudo} onConteudo={onConteudo} />;
 }
 
-function Imagem({ caminho }: { readonly caminho: string }) {
+function Imagem({ caminho, fonte }: { readonly caminho: string; readonly fonte: string }) {
   const [erro, setErro] = useState(false);
   const [ampliada, setAmpliada] = useState(false);
 
@@ -67,7 +77,7 @@ function Imagem({ caminho }: { readonly caminho: string }) {
       ) : (
         <Box
           component="img"
-          src={urlBruta(caminho)}
+          src={fonte}
           alt={caminho}
           onError={() => setErro(true)}
           sx={
@@ -83,12 +93,12 @@ function Imagem({ caminho }: { readonly caminho: string }) {
   );
 }
 
-function Pdf({ caminho }: { readonly caminho: string }) {
+function Pdf({ caminho, fonte }: { readonly caminho: string; readonly fonte: string }) {
   return (
     <Box
       data-visualizador="pdf"
       component="iframe"
-      src={urlBruta(caminho)}
+      src={fonte}
       title={caminho}
       // SEM `sandbox`, e a razão é que ele não protegia nada aqui.
       //

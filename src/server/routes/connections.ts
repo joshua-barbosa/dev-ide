@@ -10,6 +10,7 @@ import {
   FOLGA_SOBRE_O_DRIVER_MS, PRAZO_DE_CONSULTA_MS,
 } from '../../shared/prazo';
 import { criarRotasDeTransferencia } from './conexoes-transferencia';
+import { criarRotasDeChaves } from './conexoes-chaves';
 import { applyGroupRename, buildGroupTree, normalizeGroupPath } from '../connections/groups';
 import type { DriverRegistry } from '../connections/registry';
 import type { SessionPool } from '../connections/pool';
@@ -276,6 +277,9 @@ export function createConnectionsRouter(
   router.get('/:id/secret-fields', wrap(async (req, res) => {
     res.json(ok({ campos: vault.camposSecretos(req.params.id) }));
   }));
+
+  // Chave-valor: ler, gravar, apagar e o estado do servidor (spec 089).
+  router.use(criarRotasDeChaves(pool));
 
   // Exportar/importar conexões mora em `conexoes-transferencia.ts` — ver a
   // nota de lá sobre por que a senha sai em claro exatamente nessas duas.

@@ -12,6 +12,7 @@
 import { Api } from '../api';
 import type { EditorHandle } from '../editor/EditorHost';
 import type { Tab } from '../../shared/tabs';
+import { ehBinario, visualizadorDe } from '../../shared/editor/visualizadores';
 
 /** O que a aba de arquivo remoto carrega além do normal. */
 export interface MetaRemota {
@@ -31,7 +32,7 @@ export function idDaAbaRemota(conexaoId: string, caminho: string): string {
 
 export interface AberturaRemota {
   readonly id: string;
-  readonly type: 'sql' | 'editor';
+  readonly type: 'sql' | 'editor' | 'visualizador';
   readonly title: string;
   readonly icon: string;
   readonly meta: Record<string, unknown>;
@@ -44,8 +45,35 @@ export async function lerParaAba(
   linguagemDe: (c: string) => string,
   iconeDeArquivo: (c: string, linguagem: string) => string
 ): Promise<AberturaRemota> {
-  const dados = await Api.lerArquivoRemoto(conexaoId, caminho);
+  const tipo = visualizadorDe(caminho);
   const language = linguagemDe(caminho);
+
+  // **Imagem e PDF não passam pela leitura de texto** (spec 089).
+  //
+  // Ele abriu um `.png` do servidor em 03/09/2026 e viu os bytes como texto no
+  // editor. Eram DOIS defeitos no mesmo caminho: a aba remota nunca perguntava
+  // o tipo do arquivo, e — pior — `lerArquivoRemoto` decodifica como UTF-8, o
+  // que corrompe o binário antes mesmo de chegar à tela. Buscar aqui não
+  // adiantaria: quem busca os bytes é o próprio `<img>`, pela rota de bytes.
+  if (ehBinario(tipo)) {
+    return {
+      id: idDaAbaRemota(conexaoId, caminho),
+      type: 'visualizador',
+      title: caminho.split('/').pop() ?? caminho,
+      icon: iconeDeArquivo(caminho, language),
+      meta: {
+        path: null,
+        remoteConnectionId: conexaoId,
+        remotePath: caminho,
+        content: '',
+        language: 'plain',
+        view: null,
+        visualizador: tipo,
+      },
+    };
+  }
+
+  const dados = await Api.lerArquivoRemoto(conexaoId, caminho);
   return {
     id: idDaAbaRemota(conexaoId, caminho),
     type: language === 'sql' ? 'sql' : 'editor',

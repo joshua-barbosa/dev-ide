@@ -47,6 +47,12 @@ import type {
 } from '../../shared/sql/manager';
 export type { LinhaDeLog, MetricaDoBanco, RetratoDaEstrutura } from '../../shared/sql/manager';
 export type {
+  EscritaDeChave, InfoDoServidor, TipoDeChave, ValorDeChave,
+} from '../../shared/sql/redis-chave';
+import type {
+  EscritaDeChave, InfoDoServidor, ValorDeChave,
+} from '../../shared/sql/redis-chave';
+export type {
   TableColumn,
   TablePage,
   TableRequest,
@@ -344,6 +350,27 @@ export interface Session {
    * esperando a resposta do próprio comando que se quer matar.
    */
   readonly cancelQuery?: () => Promise<void>;
+
+  /**
+   * O conteúdo de UMA chave de chave-valor (spec 089).
+   *
+   * Existe porque abrir uma chave não é abrir uma query: o Redis não fala SQL, e
+   * até esta spec clicar numa chave abria `SELECT * FROM …`. Quem sabe qual
+   * comando lê cada tipo é o driver.
+   */
+  readonly readKey?: (chave: string) => Promise<ValorDeChave>;
+  /** Grava o valor e/ou o prazo de uma chave. */
+  readonly writeKey?: (pedido: EscritaDeChave) => Promise<void>;
+  /** Apaga uma chave, ou todas as de um prefixo. */
+  readonly deleteKey?: (pedido: { chave?: string; prefixo?: string }) => Promise<number>;
+  /**
+   * O que o `INFO` do Redis conta — vira o painel de estado (spec 089).
+   *
+   * Nome próprio, e não `serverInfo`: aquele já existe, devolve `{version,
+   * extra}` e é o que a árvore usa para o rótulo do servidor. Dois significados
+   * num nome só é o tipo de coisa que se descobre tarde.
+   */
+  readonly estadoDoServidor?: () => Promise<InfoDoServidor>;
   /**
    * A estrutura de uma tabela ou view (spec 045).
    *

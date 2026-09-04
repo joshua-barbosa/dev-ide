@@ -32,6 +32,7 @@ import { montarSocketDeTerminal } from './terminal/socket';
 import { montarSocketDoVigia } from './vigia-socket';
 import { criarResolvedorDeAbertura } from './terminal/abertura';
 import { runCode, RunRequest } from './runner';
+import { tipoDeConteudo } from '../shared/editor/visualizadores';
 import { RegistroDeExecucoes } from './execucoes';
 import { EXTENSOES_DE_SIMBOLO, extractSymbols, SymbolInfo } from './symbols';
 
@@ -202,12 +203,6 @@ app.get('/api/file', wrap((req, res) => {
  */
 const MAX_BYTES_BRUTOS = 64 * 1024 * 1024;
 
-const TIPOS: Readonly<Record<string, string>> = {
-  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
-  webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', ico: 'image/x-icon',
-  svg: 'image/svg+xml', pdf: 'application/pdf',
-};
-
 app.get('/api/file/raw', wrap((req, res) => {
   const filePath = validateFilePath(requireString(req.query.path, 'path'));
   if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
@@ -218,9 +213,7 @@ app.get('/api/file/raw', wrap((req, res) => {
     throw new Error('Arquivo muito grande para abrir (limite de 64 MB).');
   }
 
-  const ponto = filePath.toLowerCase().lastIndexOf('.');
-  const ext = ponto === -1 ? '' : filePath.toLowerCase().slice(ponto + 1);
-  const tipo = TIPOS[ext] ?? 'application/octet-stream';
+  const tipo = tipoDeConteudo(filePath);
 
   // `Content-Disposition: inline` para o navegador MOSTRAR em vez de baixar —
   // é o ponto inteiro. E `X-Content-Type-Options` porque o tipo sai de uma

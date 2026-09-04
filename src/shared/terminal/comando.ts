@@ -28,6 +28,33 @@ export interface ClienteDeLinhaDeComando {
   /** Nome do campo que guarda a senha, se houver. */
   readonly campoDeSenha?: string;
   /**
+   * Variável de ambiente que recebe a SENHA, para clientes sem arquivo de
+   * credencial (spec 089).
+   *
+   * O `redis-cli` é o caso: não tem nada como o `.pgpass`, e as alternativas
+   * são `-a senha` ou `--pass senha`, que põem o segredo em `argv` — legível
+   * por qualquer `ps` da máquina. O ambiente de um processo é legível só pelo
+   * DONO dele, que aqui é o próprio usuário da IDE.
+   *
+   * Quem preenche é `montarComando`, e não o driver: assim a senha continua
+   * fora do alcance de quem monta os argumentos, que é a garantia que este
+   * módulo existe para dar.
+   */
+  readonly envDeSenha?: string;
+  /**
+   * Devolve a versão de um campo SECRETO que pode ir para `argv` — ou `null`
+   * para ele continuar escondido (spec 089).
+   *
+   * Existe por um caso concreto: a URL do Redis é secreta porque carrega a
+   * senha dentro (`redis://:senha@host:porta/0`), mas sem o ENDEREÇO o terminal
+   * não sabe a que servidor se conectar — e cairia no `127.0.0.1` do padrão,
+   * calado.
+   *
+   * A sanitização mora AQUI, num lugar só, e não espalhada por cada driver:
+   * assim se audita numa página o que pode escapar para a linha de comando.
+   */
+  readonly sanitizarSegredo?: (nome: string, valor: string) => string | null;
+  /**
    * Monta os argumentos. Recebe o caminho do arquivo de credencial já
    * escrito — nunca a senha, para não haver como colocá-la em `argv` por
    * descuido.
@@ -87,21 +114,41 @@ export function montarComando(
 
   // Tira os segredos ANTES de qualquer driver ver os campos. É o que torna o
   // vazamento em `argv` impossível por construção, e não apenas improvável.
-  const seguro: ContextoDeComando = { ...ctx, fields: semSegredos(ctx.fields, camposSecretos) };
+  const seguro: ContextoDeComando = {
+    ...ctx,
+    fields: semSegredos(ctx.fields, camposSecretos, cli.sanitizarSegredo),
+  };
 
-  const precisaDeArquivo = cli.campoDeSenha !== undefined && senha !== '';
+  const temSenha = cli.campoDeSenha !== undefined && senha !== '';
+  const precisaDeArquivo = temSenha && cli.envDeSenha === undefined;
   return {
     exec: cli.exec,
     args: cli.montarArgs(seguro),
-    env: cli.montarEnv?.(seguro) ?? {},
+    env: {
+      // A senha entra AQUI, e não em `montarEnv`: o driver nunca a vê.
+      ...(temSenha && cli.envDeSenha !== undefined ? { [cli.envDeSenha]: senha } : {}),
+      ...(cli.montarEnv?.(seguro) ?? {}),
+    },
     credencial: precisaDeArquivo ? cli.montarCredencial(senha) : null,
   };
 }
 
 function semSegredos(
   fields: Readonly<Record<string, FieldValue>>,
-  secretos: readonly string[]
+  secretos: readonly string[],
+  sanitizar?: (nome: string, valor: string) => string | null
 ): Readonly<Record<string, FieldValue>> {
   const fora = new Set(secretos);
-  return Object.fromEntries(Object.entries(fields).filter(([nome]) => !fora.has(nome)));
+  const saida: Record<string, FieldValue> = {};
+  for (const [nome, valor] of Object.entries(fields)) {
+    if (!fora.has(nome)) {
+      saida[nome] = valor;
+      continue;
+    }
+    // Campo secreto: só entra se o cliente disser explicitamente o que dele é
+    // seguro, e só com o que ele devolveu.
+    const limpo = sanitizar?.(nome, String(valor)) ?? null;
+    if (limpo !== null) saida[nome] = limpo;
+  }
+  return saida;
 }

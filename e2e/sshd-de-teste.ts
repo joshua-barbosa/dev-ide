@@ -48,6 +48,18 @@ export function subirSshd(): SshdDeTeste {
   fs.mkdirSync(path.join(raiz, 'logs'), { recursive: true });
   fs.writeFileSync(path.join(raiz, 'aplicacao', 'README.md'), '# aplicação\n');
   fs.writeFileSync(path.join(raiz, 'aplicacao', 'src', 'main.ts'), 'export const x = 1;\n');
+
+  // Um PNG DE VERDADE (1x1, transparente), para provar que imagem remota abre
+  // no visualizador e não como texto — ele abriu um `.png` do servidor em
+  // 03/09/2026 e viu os bytes no editor.
+  fs.writeFileSync(
+    path.join(raiz, 'aplicacao', 'ponto.png'),
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk'
+      + 'YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64'
+    )
+  );
   fs.writeFileSync(path.join(raiz, '.env'), 'SEGREDO=nao-e-de-verdade\n');
   fs.writeFileSync(path.join(raiz, 'run.sh'), '#!/bin/sh\necho ola\n', { mode: 0o755 });
   fs.writeFileSync(path.join(raiz, 'notas.txt'), 'x'.repeat(2048));

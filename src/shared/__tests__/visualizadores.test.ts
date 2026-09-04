@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ehBinario, lerTabular, separadorDe, visualizadorDe } from '../editor/visualizadores';
+import {
+  ehBinario, lerTabular, separadorDe, tipoDeConteudo, urlDosBytes, visualizadorDe,
+} from '../editor/visualizadores';
 
 test('cada extensão vai para o visualizador certo', () => {
   assert.equal(visualizadorDe('a.png'), 'imagem');
@@ -66,4 +68,31 @@ test('o teto corta e avisa — um CSV de milhões de linhas mataria a aba', () =
 
 test('vazio devolve nada, e não uma linha em branco', () => {
   assert.deepEqual(lerTabular('', ',').linhas, []);
+});
+
+test('o endereço dos bytes distingue arquivo local de remoto', () => {
+  // Antes desta função só a rota local existia — e por isso uma imagem do
+  // servidor era procurada no disco daqui, e não abria.
+  assert.equal(urlDosBytes('/tmp/a b.png'), '/api/file/raw?path=%2Ftmp%2Fa%20b.png');
+  assert.equal(
+    urlDosBytes('/var/foto.png', 'conx-1'),
+    '/api/connections/conx-1/files/bytes?path=%2Fvar%2Ffoto.png'
+  );
+  assert.equal(urlDosBytes('/a.png', ''), '/api/file/raw?path=%2Fa.png');
+});
+
+test('o tipo de conteúdo sai de tabela, e o desconhecido não vira imagem', () => {
+  assert.equal(tipoDeConteudo('/x/foto.PNG'), 'image/png');
+  assert.equal(tipoDeConteudo('relatorio.pdf'), 'application/pdf');
+  assert.equal(tipoDeConteudo('script.sh'), 'application/octet-stream');
+  assert.equal(tipoDeConteudo('sem-ponto'), 'application/octet-stream');
+});
+
+test('imagem e PDF são BINÁRIOS; csv e texto não', () => {
+  // É esta linha que decide se o arquivo passa pela leitura de texto — que
+  // corrompe binário antes de chegar à tela.
+  assert.equal(ehBinario(visualizadorDe('a.png')), true);
+  assert.equal(ehBinario(visualizadorDe('a.pdf')), true);
+  assert.equal(ehBinario(visualizadorDe('a.csv')), false);
+  assert.equal(ehBinario(visualizadorDe('a.ts')), false);
 });

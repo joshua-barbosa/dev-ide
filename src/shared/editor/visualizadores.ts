@@ -138,3 +138,37 @@ export function lerTabular(
   if (campo !== '' || atual.length > 0) fecharLinha();
   return { linhas, truncado: false };
 }
+
+/**
+ * O `Content-Type` de um arquivo que o navegador vai MOSTRAR.
+ *
+ * Sai de uma tabela nossa, e não de adivinhação: a resposta vai com `nosniff`,
+ * então um tipo errado aqui vira um arquivo que não abre — mas um tipo
+ * adivinhado poderia virar um arquivo tratado como script.
+ */
+const TIPOS_PARA_MOSTRAR: Readonly<Record<string, string>> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', ico: 'image/x-icon',
+  svg: 'image/svg+xml', pdf: 'application/pdf',
+};
+
+export function tipoDeConteudo(caminho: string): string {
+  const nome = caminho.toLowerCase();
+  const ponto = nome.lastIndexOf('.');
+  const ext = ponto === -1 ? '' : nome.slice(ponto + 1);
+  return TIPOS_PARA_MOSTRAR[ext] ?? 'application/octet-stream';
+}
+
+/**
+ * O endereço de onde o navegador busca os BYTES de um arquivo.
+ *
+ * Local e remoto têm rotas diferentes, e antes desta função só a local existia
+ * — por isso uma imagem do servidor abria no editor de texto: ninguém tinha
+ * onde buscar os bytes dela.
+ */
+export function urlDosBytes(caminho: string, conexaoRemota?: string): string {
+  const alvo = encodeURIComponent(caminho);
+  return conexaoRemota === undefined || conexaoRemota === ''
+    ? `/api/file/raw?path=${alvo}`
+    : `/api/connections/${encodeURIComponent(conexaoRemota)}/files/bytes?path=${alvo}`;
+}
