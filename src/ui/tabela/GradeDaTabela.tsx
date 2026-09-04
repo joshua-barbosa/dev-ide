@@ -394,6 +394,32 @@ function Cabecalho({
         </Box>
       </Box>
 
+      {/* O TIPO, numa SEGUNDA linha, menor e apagado.
+          Ele mandou o print da ferramenta que a Braytech Code substitui e
+          perguntou por que a nossa era mais crua. É isto: o tipo de cada coluna
+          é metade do que se lê num cabeçalho de banco, e estava só na dica.
+          Antes eu o tinha posto na MESMA linha do nome, e um teste pegou o
+          custo — assim toda coluna tinha de caber `character varying(255)`.
+          Embaixo, e FORA da conta de largura, ele não disputa espaço com o
+          nome: quando não cabe, é o tipo que é cortado. */}
+      {coluna.type !== undefined && coluna.type !== '' && (
+        <Box
+          data-tipo-escrito
+          sx={{
+            fontSize: 9.5, lineHeight: 1.3, fontWeight: 400, color: 'text.secondary',
+            // `<th>` centraliza por padrão, e o NOME não centraliza: ele mora
+            // num flex que começa à esquerda. Sem esta linha o tipo flutuava no
+            // meio da coluna, longe do nome que ele descreve.
+            textAlign: 'left',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            // A alça mora nos 8 px da direita; passar por baixo dela rouba o
+            // arrasto de quem mira a borda.
+            width: 'calc(100% - 8px)',
+          }}
+        >
+          {coluna.type}
+        </Box>
+      )}
 
       <Alca
         coluna={coluna.name}

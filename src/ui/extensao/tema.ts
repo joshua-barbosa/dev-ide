@@ -11,7 +11,17 @@
 import { useEffect, useState } from 'react';
 import type { Theme } from '@mui/material/styles';
 import { paletaDe, type Paleta } from '../../shared/temas';
+import { misturar } from '../../shared/cores/misturar';
 import { aplicarVariaveis, temaDaPaleta } from '../theme';
+
+/** A borda de um widget: a do tema quando ele declara uma, ou o fg diluído. */
+function bordaDiscreta(padrao: string): string {
+  const declarada = cor('--vscode-editorWidget-border', cor('--vscode-widget-border', ''));
+  if (declarada !== '') return declarada;
+  const fundo = cor('--vscode-editor-background', '');
+  const frente = cor('--vscode-foreground', '');
+  return misturar(frente, fundo, 0.18) ?? padrao;
+}
 
 /** Lê uma variável do editor, caindo no padrão quando ela não existe. */
 function cor(nome: string, padrao: string): string {
@@ -43,7 +53,17 @@ export function paletaDoEditor(): { readonly paleta: Paleta; readonly modo: 'dar
       bg: cor('--vscode-sideBar-background', base.bg),
       bgPanel: cor('--vscode-sideBar-background', base.bgPanel),
       bgEditor: cor('--vscode-editor-background', base.bgEditor),
-      border: cor('--vscode-panel-border', cor('--vscode-editorWidget-border', base.border)),
+      // **Não `panel.border`.** Aquela variável é a linha ÚNICA que separa o
+      // painel do editor, e temas fortes a pintam forte: no Dracula ela é
+      // `#BD93F9`. Em volta de cada bloco do caderno virava uma tela de caixas
+      // roxas — ele mandou os dois prints lado a lado.
+      //
+      // A borda de um widget é o primeiro plano diluído no fundo. Calculada
+      // assim, sai das cores que o TEMA já deu e fica discreta em qualquer um,
+      // sem depender de ele ter declarado uma variável específica. Só se um
+      // tema declarar `editorWidget.border` — que é o papel certo — é que ela
+      // manda.
+      border: bordaDiscreta(base.border),
       fg: cor('--vscode-foreground', base.fg),
       fgDim: cor('--vscode-descriptionForeground', base.fgDim),
       accent: cor('--vscode-textLink-foreground', cor('--vscode-focusBorder', base.accent)),

@@ -244,12 +244,21 @@ test('cada coluna nasce do tamanho do que mostra, e não todas iguais', async ({
   expect(id).toBeLessThan(120);
 });
 
-test('o tipo da coluna está na dica, e não ocupa a tela', async ({ page }) => {
+test('o tipo da coluna é ESCRITO, mas não disputa largura com o nome', async ({ page }) => {
   await abrirTabela(page);
-  // Escrito, o tipo custava uma linha inteira do cabeçalho em toda tabela — e
-  // entrava no cálculo da largura, então `id` de tipo `character varying(255)`
-  // nascia larga por causa da etiqueta e não do dado (spec 097, D257).
+  // O tipo voltou a aparecer, numa SEGUNDA linha (spec 100): ele mandou o print
+  // da ferramenta que a Braytech Code substitui, onde ele é escrito, e o tipo é
+  // metade do que se lê num cabeçalho de banco.
+  //
+  // O que a spec 097 evitou continua evitado: o tipo fica FORA da conta de
+  // largura, então uma coluna `id` de tipo `character varying(255)` não nasce
+  // larga por causa da etiqueta. Quem é cortado é o tipo, nunca o nome.
   const th = page.locator('[data-coluna="id"]');
+  await expect(th.locator('[data-tipo-escrito]')).toHaveText(/INTEGER/i);
   await expect(th).toHaveAttribute('title', /INTEGER/i);
-  await expect(th).not.toContainText('INTEGER');
+
+  // A prova de que ele não infla: a coluna `id` continua estreita, bem abaixo
+  // do que o texto `INTEGER` mediria por inteiro.
+  const largura = await th.evaluate((e) => e.getBoundingClientRect().width);
+  expect(largura).toBeLessThan(90);
 });
