@@ -9,19 +9,27 @@
 // Aqui rodam `ConnectionsPanel`, `useConnections`, `useMenusDeConexao`,
 // `useContextMenu` e `useDialogs` — os originais. O que cruza para o VS Code é
 // só ABRIR: query, tabela, chave, terminal. Ver `ponte.ts`.
-import { StrictMode, useCallback, useMemo } from 'react';
+import { StrictMode, useCallback, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
 import type { PublicConnection, TreeNode } from '../../shared/contracts';
 import { definirBaseDaApi } from '../api-http';
+import Dialog from '@mui/material/Dialog';
+import { ConnectionForm } from '../connections/ConnectionForm';
 import { ConnectionsPanel } from '../connections/ConnectionsPanel';
 import { useConnections } from '../connections/useConnections';
 import { useContextMenu } from '../ContextMenu';
 import { useDialogs } from '../useDialogs';
 import { useMenusDeConexao } from '../acoes/useMenusDeConexao';
 import { criarTema } from '../theme';
+import { useAcoesRemotas } from '../acoes/useAcoesRemotas';
+import {
+  abrirDiagramaEr, escreverNaSaida, mostrarSaida, novaQuery, pedirTexto, renomearQuery,
+} from './acoes';
 import { aindaNao, ligarPonte, pedirAoHost } from './ponte';
+import { Api } from '../api';
+import type { Vinculo } from '../../shared/sql/vinculo';
 
 /** O que o host injeta na página antes de carregar este pacote. */
 declare const BRAYTECH: {
@@ -58,24 +66,49 @@ function Painel() {
     []
   );
 
-  // As ações remotas (SFTP) ainda não têm par no VS Code; o menu delas fica
-  // vazio, e é isso que faz o menu comum aparecer no lugar.
-  const acoesRemotas = useMemo(
-    () => ({
-      menu: () => [] as readonly unknown[],
-      favoritar: async () => aindaNao('Favoritar arquivo remoto'),
-      baixar: async () => aindaNao('Baixar arquivo remoto'),
-      executarScript: async () => aindaNao('Executar script remoto'),
-    }),
+  const abrirArquivoRemoto = useCallback(
+    async (conexaoId: string, caminho: string): Promise<void> => {
+      // Vai como URI `braytech:`, que o host serve por um FileSystemProvider —
+      // então o arquivo abre EDITÁVEL e o Ctrl+S grava no servidor. Abrir uma
+      // cópia sem volta seria pior que não abrir: ele usa SSH justamente para
+      // editar.
+      pedirAoHost({ tipo: 'abrirArquivoRemoto', conexaoId, caminho });
+    },
     []
   );
+
+  // As ações remotas são as MESMAS da IDE (spec 053). O que muda é onde cada
+  // janela acontece: pedir texto, saída e download vão para o VS Code.
+  const acoesRemotas = useAcoesRemotas({
+    copiar,
+    pedir: (o) => pedirTexto({ titulo: o.titulo, placeholder: o.placeholder, valorInicial: o.valorInicial ?? '' }),
+    confirmar: dialogs.confirmar,
+    abrirArquivoRemoto,
+    confirmarScript: async (nome, conteudo) =>
+      dialogs.confirmar({
+        titulo: `Executar ${nome}?`,
+        mensagem: conteudo.slice(0, 2000),
+        rotuloConfirmar: 'Executar',
+        destrutivo: true,
+      }),
+    escreverNaSaida,
+    mostrarSaida,
+    recarregarNo: (id, caminho) => ctrl.recarregarNo(id, caminho),
+    avisar: (p) => { void p.catch(falha); },
+    somenteLeitura: (id) => ctrl.acharConexao(id)?.readOnly === true,
+  });
+
+  /** O formulário de conexão. Aberto num diálogo: aqui não há abas. */
+  const [formulario, setFormulario] = useState<
+    { readonly conexao: PublicConnection | null; readonly grupo: string } | null
+  >(null);
 
   const menus = useMenusDeConexao({
     abrir: menu.abrir,
     copiar,
     abrirQuery,
-    abrirFormulario: () => aindaNao('Cadastro de conexão'),
-    excluir: async () => aindaNao('Excluir conexão'),
+    abrirFormulario: (conexao: PublicConnection) => setFormulario({ conexao, grupo: '' }),
+    excluir: (conexao: PublicConnection) => ctrl.excluir(conexao),
     abrirTerminalDaConexao: async (conexao: PublicConnection) => {
       pedirAoHost({ tipo: 'abrirTerminal', connectionId: conexao.id, rotulo: conexao.label });
     },
@@ -83,10 +116,18 @@ function Painel() {
       await ctrl.recarregarNo(id, []);
     },
     abrirProcessos: () => aindaNao('Lista de processos'),
+    // O `+` do cabeçalho e o do menu abrem o MESMO formulário.
     acoesRemotas,
-    novaQuery: async () => aindaNao('Nova query'),
-    diagramaEr: async () => aindaNao('Diagrama ER'),
-    sabeDesenharEr: () => false,
+    novaQuery: async (connectionId: string, no: TreeNode, tipo: 'sql' | 'sqlbook') => {
+      const database = typeof no.meta?.database === 'string' ? no.meta.database : null;
+      if (database === null) return;
+      await novaQuery({ connectionId, database }, tipo);
+      await ctrl.recarregarNo(connectionId, []);
+    },
+    diagramaEr: abrirDiagramaEr,
+    // Quem sabe desenhar é a SESSÃO, e ela diz. Antes isto era `false` fixo, e
+    // o item aparecia só para dizer que não existia.
+    sabeDesenharEr: (id: string) => ctrl.capacidadesDe(id)?.diagramaEr === true,
     // As mesmas duas linhas do `App`: a conexão aberta vem do estado do cofre,
     // e o somente-leitura é campo da própria conexão.
     estaAberta: (id: string) => ctrl.estado?.openIds.includes(id) === true,
@@ -135,24 +176,78 @@ function Painel() {
             titulo: `${database}.sql`, conteudo: '',
           });
         }}
-        onAbrirArquivoRemoto={async () => aindaNao('Abrir arquivo remoto (SFTP)')}
+        onAbrirArquivoRemoto={abrirArquivoRemoto}
         onAbrirServidor={() => aindaNao('Painel do servidor')}
         onAbrirTerminal={(conexao) => {
           pedirAoHost({ tipo: 'abrirTerminal', connectionId: conexao.id, rotulo: conexao.label });
         }}
-        onNovaConexao={() => aindaNao('Cadastro de conexão')}
-        onRenomearGrupo={() => aindaNao('Renomear grupo')}
-        onDiagramaEr={async () => aindaNao('Diagrama ER')}
-        onNovoObjeto={() => aindaNao('Criar objeto')}
-        onNovaQuery={async () => aindaNao('Nova query')}
-        onRenomearQuery={async () => aindaNao('Renomear query')}
-        onApagarQuery={async () => aindaNao('Apagar query')}
+        onNovaConexao={(grupo?: string) => setFormulario({ conexao: null, grupo: grupo ?? '' })}
+        onRenomearGrupo={async (caminho: string) => {
+          const novo = await pedirTexto({ titulo: 'Novo nome do grupo', valorInicial: caminho });
+          if (novo === null || novo.trim() === '' || novo.trim() === caminho) return;
+          await Api.renameGroup(caminho, novo.trim());
+          await ctrl.recarregar();
+        }}
+        onDiagramaEr={abrirDiagramaEr}
+        onNovoObjeto={(id, caminho, nomeBase, sql, database) => {
+          pedirAoHost({
+            tipo: 'abrirQuery', connectionId: id, database,
+            titulo: `${nomeBase}.sql`, conteudo: sql,
+          });
+          void caminho;
+        }}
+        onNovaQuery={async (vinculo: Vinculo | null) => {
+          if (vinculo === null) return;
+          await novaQuery(vinculo);
+          await ctrl.recarregarNo(vinculo.connectionId, []);
+        }}
+        onRenomearQuery={async (vinculo: Vinculo | null, no: TreeNode) => {
+          if (vinculo === null) return;
+          if (await renomearQuery(vinculo, no.label)) {
+            await ctrl.recarregarNo(vinculo.connectionId, []);
+          }
+        }}
+        onApagarQuery={async (vinculo: Vinculo | null, no: TreeNode) => {
+          if (vinculo === null) return;
+          const ok = await dialogs.confirmar({
+            titulo: 'Apagar query',
+            mensagem: `Apagar "${no.label}"? Isto não tem volta.`,
+            rotuloConfirmar: 'Apagar',
+          });
+          if (!ok) return;
+          await Api.deleteQuery(vinculo, no.label);
+          await ctrl.recarregarNo(vinculo.connectionId, []);
+        }}
         onErro={falha}
         confirmar={dialogs.confirmar}
         avisar={dialogs.avisar}
       />
       {menu.elemento}
       {dialogs.elemento}
+      <Dialog
+        open={formulario !== null}
+        onClose={() => setFormulario(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        {formulario !== null && (
+          <ConnectionForm
+            // Remonta ao trocar de conexão: o formulário guarda estado próprio,
+            // e reaproveitar a instância misturaria os campos de duas conexões.
+            key={formulario.conexao?.id ?? 'nova'}
+            drivers={[...ctrl.drivers.values()]}
+            gruposConhecidos={ctrl.grupos}
+            conexao={formulario.conexao}
+            grupoInicial={formulario.grupo}
+            onSujar={() => undefined}
+            onCancelar={() => setFormulario(null)}
+            onSalvar={async (input, conectar) => {
+              await ctrl.salvarConexao(input, formulario.conexao?.id ?? null, conectar);
+              setFormulario(null);
+            }}
+          />
+        )}
+      </Dialog>
     </>
   );
 }

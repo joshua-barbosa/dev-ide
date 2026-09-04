@@ -10,11 +10,17 @@
 
 import * as vscode from 'vscode';
 import type { Motor } from './motor';
+import { uriRemota } from './arquivosRemotos';
 import type { Painel } from './paineis';
 
 /** O que a webview pode pedir. Nada fora desta lista é atendido. */
 type PedidoDoPainel =
   | { readonly tipo: 'abrirArquivo'; readonly caminho: string }
+  | {
+      readonly tipo: 'abrirArquivoRemoto';
+      readonly conexaoId: string;
+      readonly caminho: string;
+    }
   | {
       readonly tipo: 'abrirQuery';
       readonly connectionId: string;
@@ -34,6 +40,13 @@ type PedidoDoPainel =
   | { readonly tipo: 'avisar'; readonly mensagem: string }
   | { readonly tipo: 'erro'; readonly mensagem: string }
   | { readonly tipo: 'naoImplementado'; readonly o_que: string };
+
+/** Uma chamada ao host que devolve resposta — caixa de texto, saída, download. */
+interface ChamadaAoHost {
+  readonly id: number;
+  readonly acao: string;
+  readonly args: Record<string, unknown>;
+}
 
 /** Um pedido à API do motor, feito pelo painel. */
 interface PedidoDeApi {
@@ -60,6 +73,9 @@ export interface DepsDoPainel {
 }
 
 export class PainelDeConexoes implements vscode.WebviewViewProvider {
+  /** Um canal de saída para a extensão inteira, e não um por painel. */
+  private static canal: vscode.OutputChannel | null = null;
+
   constructor(
     private readonly painel: Painel,
     private readonly deps: DepsDoPainel
@@ -79,6 +95,10 @@ export class PainelDeConexoes implements vscode.WebviewViewProvider {
       const m = bruto as { tipo?: string };
       if (m?.tipo === 'api') {
         void this.repassarAoMotor(web, bruto as PedidoDeApi);
+        return;
+      }
+      if (m?.tipo === 'hostChamada') {
+        void this.atenderChamada(web, bruto as ChamadaAoHost);
         return;
       }
       void this.atender(bruto as PedidoDoPainel);
@@ -108,6 +128,101 @@ export class PainelDeConexoes implements vscode.WebviewViewProvider {
     }
   }
 
+  /**
+   * O que só o editor sabe fazer: pedir um texto, escolher de uma lista, abrir
+   * markdown, escrever numa saída, salvar um download.
+   *
+   * Reimplementar isso dentro da webview daria uma caixa de diálogo estranha no
+   * meio de um editor que já tem a dele — e teclado, tema e acessibilidade de
+   * graça se perderiam junto.
+   */
+  private async atenderChamada(web: vscode.Webview, c: ChamadaAoHost): Promise<void> {
+    const responder = (ok: boolean, data: unknown, erro?: string): void => {
+      void web.postMessage({ tipo: 'hostResposta', id: c.id, ok, data, erro });
+    };
+    try {
+      responder(true, await this.executarChamada(c));
+    } catch (erro) {
+      responder(false, null, erro instanceof Error ? erro.message : String(erro));
+    }
+  }
+
+  private async executarChamada(c: ChamadaAoHost): Promise<unknown> {
+    const a = c.args;
+    switch (c.acao) {
+      case 'pedirTexto':
+        return (
+          (await vscode.window.showInputBox({
+            title: String(a.titulo ?? ''),
+            value: typeof a.valorInicial === 'string' ? a.valorInicial : '',
+            ...(typeof a.placeholder === 'string' ? { placeHolder: a.placeholder } : {}),
+            ignoreFocusOut: true,
+          })) ?? null
+        );
+
+      case 'escolher': {
+        const opcoes = (a.opcoes ?? []) as readonly {
+          valor: string; rotulo: string; detalhe?: string;
+        }[];
+        const escolha = await vscode.window.showQuickPick(
+          opcoes.map((o) => ({
+            label: o.rotulo,
+            ...(o.detalhe === undefined ? {} : { detail: o.detalhe }),
+            valor: o.valor,
+          })),
+          { title: String(a.titulo ?? ''), ignoreFocusOut: true }
+        );
+        return escolha?.valor ?? null;
+      }
+
+      case 'abrirMarkdown': {
+        const doc = await vscode.workspace.openTextDocument({
+          language: 'markdown',
+          content: String(a.conteudo ?? ''),
+        });
+        await vscode.window.showTextDocument(doc, { preview: false });
+        // O VS Code desenha Mermaid na pré-visualização desde a 1.87, então o
+        // diagrama sai desenhado sem carregar biblioteca nenhuma.
+        await vscode.commands.executeCommand('markdown.showPreviewToSide');
+        return null;
+      }
+
+      case 'escreverNaSaida':
+        this.saida().appendLine(String(a.texto ?? ''));
+        if (a.erro === true) this.saida().show(true);
+        return null;
+
+      case 'mostrarSaida':
+        this.saida().show(true);
+        return null;
+
+      case 'baixarRemoto': {
+        const nome = String(a.caminho ?? '').split('/').pop() ?? 'arquivo';
+        const destino = await vscode.window.showSaveDialog({
+          defaultUri: vscode.Uri.file(nome),
+        });
+        if (destino === undefined) return null;
+        const r = await this.deps.motor.pedir<{ content: string }>(
+          'GET',
+          `/api/connections/${encodeURIComponent(String(a.conexaoId))}/files` +
+            `?path=${encodeURIComponent(String(a.caminho))}`
+        );
+        await vscode.workspace.fs.writeFile(destino, new TextEncoder().encode(r.content));
+        void vscode.window.showInformationMessage(`Braytech Code: ${nome} salvo.`);
+        return null;
+      }
+
+      default:
+        // Ação desconhecida é DADO estranho, não instrução: recusa e diz.
+        throw new Error(`Ação desconhecida: ${c.acao}`);
+    }
+  }
+
+  private saida(): vscode.OutputChannel {
+    PainelDeConexoes.canal ??= vscode.window.createOutputChannel('Braytech Code');
+    return PainelDeConexoes.canal;
+  }
+
   private async atender(p: PedidoDoPainel): Promise<void> {
     try {
       switch (p.tipo) {
@@ -121,6 +236,15 @@ export class PainelDeConexoes implements vscode.WebviewViewProvider {
               'O .sqlbook abre como texto por enquanto — o caderno ainda não é desenhado aqui.'
             );
           }
+          return;
+        }
+        case 'abrirArquivoRemoto': {
+          // URI `braytech:`, servida pelo FileSystemProvider: abre EDITÁVEL, e
+          // o Ctrl+S grava no servidor pelas rotas do motor.
+          const doc = await vscode.workspace.openTextDocument(
+            uriRemota(p.conexaoId, p.caminho)
+          );
+          await vscode.window.showTextDocument(doc);
           return;
         }
         case 'abrirQuery':

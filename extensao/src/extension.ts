@@ -14,6 +14,7 @@
 // executa `.sql` com Ctrl+Enter.
 
 import * as vscode from 'vscode';
+import { ArquivosRemotos } from './arquivosRemotos';
 import { mostrarResultado, type ResultadoDoMotor } from './grade';
 import { ligarMotor, type Motor } from './motor';
 import { PainelDeConexoes } from './painelWebview';
@@ -62,6 +63,14 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       return null;
     }
   };
+
+  // Arquivo remoto vira arquivo DE VERDADE do editor: abre, edita e o Ctrl+S
+  // grava no servidor. Ele usa SSH exatamente para isso.
+  contexto.subscriptions.push(
+    vscode.workspace.registerFileSystemProvider('braytech', new ArquivosRemotos(motor), {
+      isCaseSensitive: true,
+    })
+  );
 
   const definirConexaoAtiva = (id: string): void => {
     conexaoAtiva = id;

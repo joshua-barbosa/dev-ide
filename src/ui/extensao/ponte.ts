@@ -19,6 +19,14 @@ import { definirTransporte } from '../api-http';
 export type PedidoAoHost =
   | { readonly tipo: 'abrirArquivo'; readonly caminho: string }
   | {
+      // URI `braytech:`, servida pelo host por um FileSystemProvider — o arquivo
+      // abre EDITÁVEL e o Ctrl+S grava no servidor. Ele usa SSH justamente para
+      // editar; abrir uma cópia sem volta seria pior que não abrir.
+      readonly tipo: 'abrirArquivoRemoto';
+      readonly conexaoId: string;
+      readonly caminho: string;
+    }
+  | {
       readonly tipo: 'abrirQuery';
       readonly connectionId: string;
       readonly database: string | null;
@@ -65,7 +73,9 @@ export function ligarPonte(): void {
 
   window.addEventListener('message', (e: MessageEvent) => {
     const m = e.data as { tipo?: string; id?: number; ok?: boolean; data?: unknown; erro?: string };
-    if (m?.tipo !== 'apiResposta' || typeof m.id !== 'number') return;
+    if ((m?.tipo !== 'apiResposta' && m?.tipo !== 'hostResposta') || typeof m.id !== 'number') {
+      return;
+    }
     const espera = pendentes.get(m.id);
     if (espera === undefined) return;
     pendentes.delete(m.id);
@@ -86,6 +96,27 @@ export function ligarPonte(): void {
 
 export function pedirAoHost(pedido: PedidoAoHost): void {
   canal?.postMessage(pedido);
+}
+
+/**
+ * Uma chamada ao host que DEVOLVE resposta.
+ *
+ * Existe para o que o VS Code faz melhor que uma webview: pedir um texto
+ * (`showInputBox`), escrever num canal de saída, salvar um arquivo baixado.
+ * Reimplementar isso dentro do painel daria uma caixa de diálogo estranha no
+ * meio de um editor que já tem a dele.
+ */
+export function chamarHost<T>(acao: string, args: unknown = {}): Promise<T> {
+  if (canal === null) return Promise.reject(new Error('Fora do VS Code.'));
+  return new Promise<T>((resolver, recusar) => {
+    const id = proximo;
+    proximo += 1;
+    pendentes.set(id, {
+      resolver: (v) => resolver(v as T),
+      recusar,
+    });
+    canal?.postMessage({ tipo: 'hostChamada', id, acao, args });
+  });
 }
 
 /**
