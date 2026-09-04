@@ -48,6 +48,21 @@ export type PedidoAoHost =
       readonly chave: string;
       readonly somenteLeitura: boolean;
     }
+  | {
+      // O painel do servidor — Monitor, SFTP e Port Forwarding — como aba.
+      // Quais divisórias aparecem é a SESSÃO que decide, pelas capacidades: o
+      // FTP nasce sem Terminal e sem Monitor sem ninguém escrever um `if`.
+      readonly tipo: 'abrirServidor';
+      readonly connectionId: string;
+      readonly rotulo: string;
+      readonly somenteLeitura: boolean;
+    }
+  | {
+      readonly tipo: 'abrirProcessos';
+      readonly connectionId: string;
+      readonly rotulo: string;
+      readonly somenteLeitura: boolean;
+    }
   | { readonly tipo: 'fecharArquivo'; readonly caminho: string }
   | {
       // Uma aba com a GRADE da IDE, e não uma <table> desenhada à mão.

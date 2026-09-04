@@ -22,6 +22,7 @@ import {
 } from '../../shared/connections/arvore-aberta';
 import { Api, type CriteriosDeArvore, type DriverInfo } from '../api';
 import type { ArquivoDeQuery, Vinculo } from '../../shared/sql/vinculo';
+import { achatarConexoes } from '../../shared/connections/achatar';
 
 /**
  * O nó da categoria `Query`, injetado pela interface sob cada database.
@@ -538,12 +539,7 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
   /** Conexão por id, achatando a árvore. Aceita `unknown` porque a origem é o
    *  `meta` da aba, que é um registro sem tipo. */
   const todasAsConexoes = useCallback((): readonly PublicConnection[] => {
-    if (estado === null) return [];
-    const juntar = (grupo: GroupNode): PublicConnection[] => [
-      ...grupo.connections,
-      ...grupo.groups.flatMap(juntar),
-    ];
-    return juntar(estado.tree);
+    return estado === null ? [] : achatarConexoes(estado.tree);
   }, [estado]);
 
   const acharConexao = useCallback(

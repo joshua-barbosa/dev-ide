@@ -45,6 +45,13 @@ export type PedidoDoPainel =
       readonly chave: string;
       readonly somenteLeitura: boolean;
     }
+  | {
+      // O painel do servidor e a lista de processos, como abas (spec 100).
+      readonly tipo: 'abrirServidor' | 'abrirProcessos';
+      readonly connectionId: string;
+      readonly rotulo: string;
+      readonly somenteLeitura: boolean;
+    }
   | { readonly tipo: 'fecharArquivo'; readonly caminho: string }
   | {
       readonly tipo: 'abrirResultado';
@@ -439,6 +446,22 @@ export class PonteDoHost {
         case 'abrirTerminal':
           this.deps.definirConexaoAtiva(p.connectionId);
           this.deps.abrirTerminal(p.connectionId, p.rotulo);
+          return;
+        case 'abrirServidor':
+          this.deps.definirConexaoAtiva(p.connectionId);
+          this.deps.abrirAbaDaIde('servidor', p.rotulo, {
+            conexaoId: p.connectionId,
+            rotulo: p.rotulo,
+            somenteLeitura: p.somenteLeitura,
+          });
+          return;
+        case 'abrirProcessos':
+          this.deps.definirConexaoAtiva(p.connectionId);
+          this.deps.abrirAbaDaIde('processos', `Processos — ${p.rotulo}`, {
+            conexaoId: p.connectionId,
+            rotulo: p.rotulo,
+            somenteLeitura: p.somenteLeitura,
+          });
           return;
         case 'abrirChave':
           this.deps.definirConexaoAtiva(p.connectionId);

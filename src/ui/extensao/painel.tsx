@@ -24,7 +24,7 @@ import {
   novaQuery, pedirSenha, pedirTexto, renomearQuery,
 } from './acoes';
 import { ComTemaDoEditor } from './ComTemaDoEditor';
-import { aindaNao, ligarPonte, pedirAoHost, quandoOHostPedirRecarga } from './ponte';
+import { ligarPonte, pedirAoHost, quandoOHostPedirRecarga } from './ponte';
 import { Api } from '../api';
 import type { Vinculo } from '../../shared/sql/vinculo';
 
@@ -193,7 +193,14 @@ function Painel() {
     recarregarMetadados: async (id: string) => {
       await ctrl.recarregarMetadados(id);
     },
-    abrirProcessos: () => aindaNao('Lista de processos'),
+    abrirProcessos: (conexao: PublicConnection) => {
+      pedirAoHost({
+        tipo: 'abrirProcessos',
+        connectionId: conexao.id,
+        rotulo: conexao.label,
+        somenteLeitura: conexao.readOnly === true,
+      });
+    },
     // O `+` do cabeçalho e o do menu abrem o MESMO formulário.
     acoesRemotas,
     novaQuery: async (connectionId: string, no: TreeNode, tipo: 'sql' | 'sqlbook') => {
@@ -285,7 +292,14 @@ function Painel() {
           });
         }}
         onAbrirArquivoRemoto={abrirArquivoRemoto}
-        onAbrirServidor={() => aindaNao('Painel do servidor')}
+        onAbrirServidor={(conexao) => {
+          pedirAoHost({
+            tipo: 'abrirServidor',
+            connectionId: conexao.id,
+            rotulo: conexao.label,
+            somenteLeitura: conexao.readOnly === true,
+          });
+        }}
         onAbrirTerminal={(conexao) => {
           pedirAoHost({ tipo: 'abrirTerminal', connectionId: conexao.id, rotulo: conexao.label });
         }}

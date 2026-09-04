@@ -535,6 +535,13 @@ export function EditorGroup({
               onAbrirTerminal={() => onAbrirTerminalDoServidor(t)}
               abrirMenu={abrirMenu}
               confirmar={confirmar}
+              pedirTexto={(o) =>
+                qi.pedir({
+                  titulo: o.titulo,
+                  placeholder: '',
+                  ...(o.valorInicial === undefined ? {} : { valorInicial: o.valorInicial }),
+                })
+              }
               onErro={onErroDaTabela}
             />
           </Box>

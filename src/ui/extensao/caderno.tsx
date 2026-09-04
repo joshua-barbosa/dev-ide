@@ -11,6 +11,7 @@ import { StrictMode, useCallback, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { QueryResult } from '../../shared/contracts';
 import type { ResultadoSalvo } from '../../shared/sql/caderno';
+import type { Vinculo } from '../../shared/sql/vinculo';
 import { pedidoAoRunner, pedidoDeConsulta } from '../../shared/sql/pedido-de-execucao';
 import { Api } from '../api';
 import { definirBaseDaApi } from '../api-http';
@@ -18,7 +19,7 @@ import { CadernoHost } from '../caderno/CadernoHost';
 import { useCodebase } from '../sql/useCodebase';
 import { abaSintetica } from './abaSintetica';
 import { ComTemaDoEditor } from './ComTemaDoEditor';
-import { escolherSimNao, escreverNaSaida, mostrarSaida, pedirTexto } from './acoes';
+import { escolherVinculo, escreverNaSaida, mostrarSaida, pedirTexto } from './acoes';
 import { chamarHost, ligarPonte, pedirAoHost } from './ponte';
 
 declare const BRAYTECH: {
@@ -52,10 +53,14 @@ function Caderno() {
     [erro]
   );
 
-  const vinculo =
+  // O vínculo é ESTADO, e não uma constante da subida: ele pode trocá-lo na
+  // barra do caderno, e a troca precisa valer para o `▷ Run` e para o
+  // autocomplete sem fechar e reabrir a aba.
+  const [vinculo, setVinculo] = useState<Vinculo | null>(() =>
     BRAYTECH.connectionId === null || BRAYTECH.database === null
       ? null
-      : { connectionId: BRAYTECH.connectionId, database: BRAYTECH.database };
+      : { connectionId: BRAYTECH.connectionId, database: BRAYTECH.database }
+  );
 
   // O catálogo do banco alimenta o autocomplete do bloco de SQL (T053). Faltava
   // aqui: o Monaco do bloco subia sem provedor nenhum, e completar não fazia
@@ -151,9 +156,15 @@ function Caderno() {
         });
       }}
       onTrocarVinculo={() => {
-        void escolherSimNao(
-          'A troca de vínculo ainda mora na IDE. Abrir o caderno por outra conexão?'
-        );
+        void (async () => {
+          const novo = await escolherVinculo(vinculo);
+          if (novo === null) return;
+          setVinculo(novo);
+          // Lembrar no servidor é o que faz a escolha sobreviver a fechar a
+          // aba — é a mesma lembrança que a IDE lê, no mesmo lugar, então o
+          // caderno abre no banco certo dos dois lados.
+          await Api.rememberLink(BRAYTECH.caminho, novo);
+        })().catch(erro);
       }}
     />
   );

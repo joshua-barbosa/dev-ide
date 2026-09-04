@@ -54,12 +54,24 @@ export interface ServidorHostProps {
     rotuloConfirmar?: string;
     destrutivo?: boolean;
   }): Promise<boolean>;
+  /**
+   * Pergunta um texto — nome novo, permissões, nome de arquivo.
+   *
+   * Chega por props, e não por `window.prompt`, por dois motivos que apontam
+   * para o mesmo lado: dentro da webview do editor o `prompt` devolve `null`
+   * calado, e na IDE quem pergunta é a entrada rápida, que já existe. Quem
+   * monta a tela decide qual caixa aparece.
+   */
+  pedirTexto(o: {
+    titulo: string;
+    valorInicial?: string;
+  }): Promise<string | null>;
   onErro(erro: unknown): void;
 }
 
 export function ServidorHost({
   conexaoId, rotulo, capacidades, somenteLeitura, onAbrirArquivo, onAbrirTerminal, abrirMenu,
-  confirmar, onErro,
+  confirmar, pedirTexto, onErro,
 }: ServidorHostProps) {
   const disponiveis = DIVISORIAS.filter(
     (d) => capacidades !== null && capacidades[d.exige] === true
@@ -132,6 +144,7 @@ export function ServidorHost({
               onAbrirArquivo={onAbrirArquivo}
               abrirMenu={abrirMenu}
               confirmar={confirmar}
+              pedirTexto={pedirTexto}
               onErro={onErro}
             />
           )}

@@ -14,6 +14,7 @@ import { documentoDoDiagrama } from '../../shared/sql/diagrama-er';
 import type { Vinculo } from '../../shared/sql/vinculo';
 import { chamarHost, pedirAoHost } from './ponte';
 import { CAMPOS_DO_FILTRO } from '../../shared/tree/campos-do-filtro';
+import { achatarConexoes } from '../../shared/connections/achatar';
 import { FILTRO_VAZIO, type FiltroDaArvore } from '../../shared/tree/filtro-da-arvore';
 
 /** Pergunta um texto usando a caixa NATIVA do editor. */
@@ -140,4 +141,56 @@ export async function renomearQuery(vinculo: Vinculo, nomeAtual: string): Promis
 /** Baixa um arquivo remoto para a máquina, escolhendo onde pelo diálogo nativo. */
 export async function baixarRemoto(conexaoId: string, caminho: string): Promise<void> {
   await chamarHost('baixarRemoto', { conexaoId, caminho });
+}
+
+/**
+ * Escolhe conexão e database pelas caixas NATIVAS — o "trocar vínculo".
+ *
+ * É a mesma pergunta em dois degraus que o `useVinculo` da IDE faz, e pela
+ * mesma razão: a lista de databases vem do DRIVER, viva, e não de um cache
+ * nosso que ficaria velho no dia em que ele criasse um banco.
+ *
+ * Onde a IDE abre a entrada rápida dela, aqui abre a do editor. O caderno é
+ * uma aba do editor: uma caixa de diálogo desenhada por nós no meio dela seria
+ * a única coisa da janela que não se parece com a janela.
+ */
+export async function escolherVinculo(atual: Vinculo | null): Promise<Vinculo | null> {
+  const conexoes = achatarConexoes((await Api.connections()).tree);
+  if (conexoes.length === 0) {
+    throw new Error('Nenhuma conexão cadastrada. Crie uma no painel do Braytech.');
+  }
+
+  const escolhida = await chamarHost<string | null>('escolher', {
+    titulo: 'Executar contra qual conexão?',
+    opcoes: conexoes.map((c) => ({
+      valor: c.id,
+      rotulo: c.label,
+      detalhe: c.group === '' ? c.type : `${c.group} · ${c.type}`,
+    })),
+  });
+  if (escolhida === null) return null;
+
+  const nos = await Api.children(escolhida, ['server']);
+  const bancos = nos.filter((n) => typeof n.meta?.database === 'string');
+  if (bancos.length === 0) throw new Error('Esta conexão não expôs nenhum database.');
+
+  // Um só: perguntar seria um diálogo com uma opção. O SQLite cai aqui.
+  if (bancos.length === 1) {
+    return { connectionId: escolhida, database: String(bancos[0]?.meta?.database) };
+  }
+
+  const banco = await chamarHost<string | null>('escolher', {
+    titulo: 'Em qual database?',
+    opcoes: bancos.map((n) => ({
+      valor: String(n.meta?.database),
+      rotulo: n.label,
+      ...(n.detail === undefined ? {} : { detalhe: n.detail }),
+    })),
+  });
+  if (banco === null) return null;
+  // `atual` só serve para não gravar de novo o que já estava valendo.
+  const novo = { connectionId: escolhida, database: banco };
+  return atual !== null && atual.connectionId === novo.connectionId && atual.database === novo.database
+    ? atual
+    : novo;
 }

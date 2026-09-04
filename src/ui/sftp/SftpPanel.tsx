@@ -81,11 +81,23 @@ export interface SftpPanelProps {
     rotuloConfirmar?: string;
     destrutivo?: boolean;
   }): Promise<boolean>;
+  /**
+   * Pergunta um texto — nome novo, permissões, nome de arquivo.
+   *
+   * Chega por props, e não por `window.prompt`, por dois motivos que apontam
+   * para o mesmo lado: dentro da webview do editor o `prompt` devolve `null`
+   * calado, e na IDE quem pergunta é a entrada rápida, que já existe. Quem
+   * monta a tela decide qual caixa aparece.
+   */
+  pedirTexto(o: {
+    titulo: string;
+    valorInicial?: string;
+  }): Promise<string | null>;
   onErro(erro: unknown): void;
 }
 
 export function SftpPanel({
-  conexaoId, raiz, somenteLeitura, onAbrirArquivo, abrirMenu, confirmar, onErro,
+  conexaoId, raiz, somenteLeitura, onAbrirArquivo, abrirMenu, confirmar, pedirTexto, onErro,
 }: SftpPanelProps) {
   const [caminho, setCaminho] = useState(raiz);
   const [entradas, setEntradas] = useState<readonly RemoteEntry[] | null>(null);
@@ -548,7 +560,7 @@ export function SftpPanel({
   }
 
   async function renomear(entrada: RemoteEntry): Promise<void> {
-    const nome = window.prompt('Novo nome', entrada.name);
+    const nome = await pedirTexto({ titulo: 'Novo nome', valorInicial: entrada.name });
     if (nome === null || nome.trim() === '' || nome === entrada.name) return;
     try {
       await Api.renomearRemoto(conexaoId, entrada.path, `${paiDe(entrada.path)}/${nome.trim()}`);
@@ -562,7 +574,10 @@ export function SftpPanel({
     // O modo em octal, como no `chmod` — traduzir para caixas de seleção
     // esconderia o número que quem administra servidor já sabe de cor.
     const atual = (entrada.mode ?? '').slice(-3);
-    const modo = window.prompt(`Permissões de "${entrada.name}" (ex.: 755)`, atual);
+    const modo = await pedirTexto({
+      titulo: `Permissões de "${entrada.name}" (ex.: 755)`,
+      valorInicial: atual,
+    });
     if (modo === null || modo.trim() === '') return;
     try {
       await Api.permissoesRemotas(conexaoId, entrada.path, modo.trim());
@@ -596,23 +611,19 @@ export function SftpPanel({
   async function copiarTexto(texto: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(texto);
-    } catch {
-      // Sem permissão de área de transferência: o caminho velho ainda funciona.
-      const campo = document.createElement('textarea');
-      campo.value = texto;
-      document.body.appendChild(campo);
-      campo.select();
-      document.execCommand('copy');
-      campo.remove();
+    } catch (e) {
+      // Sem permissão de área de transferência. O caminho velho — um textarea
+      // escondido com `execCommand('copy')` — falha CALADO dentro da webview
+      // do editor, o que é pior que não copiar: quem clicou vai colar o que
+      // estava antes. Então diz.
+      onErro(e);
     }
   }
 
   async function criar(tipo: 'pasta' | 'arquivo'): Promise<void> {
-    // O nome vem de um `prompt` do navegador de propósito: a entrada rápida da
-    // IDE pertence ao `App`, e passá-la por cinco níveis de props só para esta
-    // caixa seria arrastar o mundo inteiro até aqui. Trocar por ela é uma
-    // melhoria óbvia se este painel ganhar mais entradas de texto.
-    const nome = window.prompt(tipo === 'pasta' ? 'Nome da nova pasta' : 'Nome do novo arquivo');
+    const nome = await pedirTexto({
+      titulo: tipo === 'pasta' ? 'Nome da nova pasta' : 'Nome do novo arquivo',
+    });
     if (nome === null || nome.trim() === '') return;
     const alvo = `${caminho === '/' ? '' : caminho}/${nome.trim()}`;
     try {

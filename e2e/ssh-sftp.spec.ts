@@ -167,3 +167,50 @@ test('excluir no servidor PERGUNTA antes, e cancelar não apaga nada', async ({ 
 
   await expect(page.locator('[data-linha-sftp]')).toHaveCount(antes);
 });
+
+// A entrada de texto do SFTP, depois da spec 100.
+//
+// Renomear, permissões e criar usavam `window.prompt`, que dentro da webview
+// do editor devolve `null` CALADO: o clique não fazia nada e não havia erro
+// nenhum para investigar. Passaram a usar a entrada rápida da IDE, que é a
+// mesma dos dois lados — e que, ao contrário do `prompt`, pode ser testada.
+test('criar pasta pede o nome pela entrada rápida, e não por um prompt do navegador', async ({
+  page,
+}) => {
+  // Se algum `window.prompt` voltar, este teste falha em vez de travar: a
+  // caixa nativa do navegador nunca é respondida, e o clique não faz nada.
+  let houvePrompt = false;
+  page.on('dialog', (d) => {
+    houvePrompt = true;
+    void d.dismiss();
+  });
+
+  await abrirAbaDoServidor(page);
+  await page.getByRole('button', { name: 'Nova pasta' }).click();
+
+  const caixa = page.getByRole('dialog', { name: 'Nome da nova pasta' });
+  await expect(caixa).toBeVisible();
+  await caixa.getByRole('textbox').fill('pasta-da-spec-100');
+  await page.keyboard.press('Enter');
+
+  await expect(
+    page.locator('[data-linha-sftp]').filter({ hasText: 'pasta-da-spec-100' })
+  ).toBeVisible({ timeout: 30_000 });
+  expect(houvePrompt).toBe(false);
+});
+
+test('renomear pede o nome NOVO já preenchido com o atual', async ({ page }) => {
+  await abrirAbaDoServidor(page);
+  await page.locator('[data-linha-sftp]').filter({ hasText: 'notas.txt' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Renomear…' }).click();
+
+  const caixa = page.getByRole('dialog', { name: 'Novo nome' });
+  await expect(caixa).toBeVisible();
+  // Já preenchido: renomear costuma ser mexer numa letra, não redigitar tudo.
+  await expect(caixa.getByRole('textbox')).toHaveValue('notas.txt');
+  await page.keyboard.press('Escape');
+  // Escapar não renomeia nada — o arquivo continua onde estava.
+  await expect(
+    page.locator('[data-linha-sftp]').filter({ hasText: 'notas.txt' })
+  ).toBeVisible();
+});
