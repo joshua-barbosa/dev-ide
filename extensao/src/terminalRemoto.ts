@@ -1,9 +1,14 @@
-// O terminal de uma conexão, no painel Terminal do editor.
+// O terminal de uma conexão, como ABA do editor.
 //
-// Ele decidiu isto pela ferramenta que a Braytech Code substitui: *"já é
-// provado, pois a própria extensão que eu usava lá abria"*. E o painel Terminal
-// é onde ele já tem fonte, tema, divisão, busca e copiar/colar — nada disso
-// precisa ser reescrito aqui.
+// Eu o abri no painel de baixo e ele corrigiu: *"você abriu o terminal embaixo
+// e não como uma aba que deveria ser"*. Quando ele disse que a ferramenta que a
+// Braytech Code substitui já provava o desenho, estava falando da ABA — eu li
+// como se fosse do painel.
+//
+// Continua sendo o terminal NATIVO: o editor abre terminal na área de edição
+// por `TerminalLocation.Editor`, então a aba tem a fonte, o tema, a busca e o
+// copiar/colar dele, sem webview no meio. A escolha entre painel e aba é de
+// LOCAL, não de implementação — e é por isso que ela cabe numa linha.
 //
 // **Não é imitação.** A árvore nativa foi derrubada por ser cópia pobre de um
 // componente que existe; aqui não há o que copiar: o que atravessa são BYTES. O
@@ -22,27 +27,55 @@ import * as vscode from 'vscode';
 import { emCinza, emVermelho, ligarAoMotor, type CanalDoTerminal } from './canalDoTerminal';
 import type { DepsDoPainel } from './ponteDoHost';
 
-/** Um terminal por conexão. Ver o comentário de `abrirTerminalRemoto`. */
-const abertos = new Map<string, vscode.Terminal>();
+/**
+ * Quantos terminais já saíram de cada conexão, para numerar o nome.
+ *
+ * Dois terminais chamados `Playground` são indistinguíveis na barra de abas, e
+ * a primeira coisa que se faz com dois terminais é alternar entre eles.
+ */
+const quantos = new Map<string, number>();
 
 /**
- * Abre — ou revela — o terminal de uma conexão.
+ * Destranca o grupo de editores ativo.
  *
- * Um por conexão: um segundo terminal do mesmo servidor é pedido legítimo, mas
- * quem clica duas vezes na árvore quer VER o que já abriu. Para um segundo, o
- * editor tem o botão de dividir, que é onde ele já está acostumado a pedir.
+ * O editor TRANCA todo grupo que recebe um terminal — `autoLockGroups` traz
+ * `terminalEditor: true` de fábrica —, e grupo trancado recusa editores novos:
+ * cada terminal seguinte era obrigado a abrir a própria coluna, dividindo a
+ * tela. Ele perguntou a coisa certa: *"as outras coisas abrem normal sem
+ * precisar colocar isso aí, porque o nosso não pode?"*. Porque as outras abas
+ * nossas são webviews, e o editor só tranca grupo de TERMINAL.
+ *
+ * Destrancar aqui é o que dispensa mexer nas configurações dele: uma
+ * configuração global valeria para todo terminal do editor, e o preço de um
+ * detalhe nosso não é dele pagar. Destrancar um grupo já destrancado não faz
+ * nada, então não há caso ruim.
+ */
+async function destrancarOGrupo(): Promise<void> {
+  try {
+    await vscode.commands.executeCommand('workbench.action.unlockEditorGroup');
+  } catch {
+    // Comando ausente numa versão do editor não pode derrubar a abertura do
+    // terminal: no pior caso ele abre em coluna própria, como abria antes.
+  }
+}
+
+/**
+ * Abre um terminal da conexão. **Um por clique.**
+ *
+ * Eu tinha guardado um por conexão e revelado o existente no segundo clique,
+ * supondo que quem clica de novo quer ver o que já abriu. Ele corrigiu: *"se eu
+ * clicar uma segunda vez no abrir terminal, ele deveria abrir um novo terminal,
+ * e não simplesmente não fazer nada"*.
+ *
+ * E ele tem razão sobre o pior caso: com o terminal aberto numa aba escondida
+ * atrás de outras, o clique parecia não fazer NADA — a única resposta era uma
+ * aba longe da vista ganhando foco, ou nem isso.
  */
 export function abrirTerminalRemoto(
   deps: DepsDoPainel,
   connectionId: string,
   rotulo: string
 ): void {
-  const jaAberto = abertos.get(connectionId);
-  if (jaAberto !== undefined) {
-    jaAberto.show();
-    return;
-  }
-
   if (typeof WebSocket === 'undefined') {
     void vscode.window.showErrorMessage(
       'Braytech Code: este editor roda num Node sem WebSocket, e o terminal remoto precisa dele.'
@@ -73,10 +106,17 @@ export function abrirTerminalRemoto(
         escrever: (texto) => escrever.fire(texto),
         erro: (mensagem) => escrever.fire(emVermelho(mensagem)),
         encerrado: () => escrever.fire(emCinza('[sessão encerrada]')),
-        // O terminal FECHA com o código do processo, que é o que o editor
-        // mostra ao lado do nome. Deixá-lo aberto e mudo seria pior: no painel
-        // Terminal, uma aba viva que não responde parece conexão travada.
-        fim: (codigo) => fechou.fire(codigo),
+        // **A aba FICA.** Eu fechava no instante do `fim`, e o editor
+        // substituía a tela inteira por "The terminal process failed to launch
+        // (exit code: 1)" — apagando a única coisa útil, que é o que o cliente
+        // imprimiu antes de morrer ("connection to server ... failed",
+        // "ERROR 2003 ... Can't connect"). Ele viu só a mensagem genérica.
+        //
+        // É a mesma decisão que a IDE já tinha tomado: ler o motivo depois de o
+        // processo morrer é metade da utilidade de um terminal. Quem fecha é
+        // ele, no X da aba.
+        fim: (codigo) =>
+          escrever.fire(emCinza(`[processo encerrado com código ${codigo}]`)),
       });
     },
 
@@ -88,7 +128,6 @@ export function abrirTerminalRemoto(
       canal = null;
       escrever.dispose();
       fechou.dispose();
-      abertos.delete(connectionId);
     },
 
     handleInput: (dados) => canal?.digitar(dados),
@@ -100,18 +139,35 @@ export function abrirTerminalRemoto(
     },
   };
 
-  const terminal = vscode.window.createTerminal({
-    name: rotulo,
-    pty,
-    iconPath: new vscode.ThemeIcon('server'),
-  });
-  abertos.set(connectionId, terminal);
-  terminal.show();
-}
+  const ordem = (quantos.get(connectionId) ?? 0) + 1;
+  quantos.set(connectionId, ordem);
 
-/** O editor fechou o terminal por fora (lixeira do painel, fechar janela). */
-export function esquecerTerminaisFechados(fechado: vscode.Terminal): void {
-  for (const [id, t] of abertos) {
-    if (t === fechado) abertos.delete(id);
-  }
+  const abrir = (): vscode.Terminal =>
+    vscode.window.createTerminal({
+      // O segundo em diante leva o número: na barra de abas, dois `Playground`
+      // não se distinguem.
+      name: ordem === 1 ? rotulo : `${rotulo} ${ordem}`,
+      pty,
+      iconPath: new vscode.ThemeIcon('server'),
+      // Na área do EDITOR, e não no painel de baixo: um terminal de servidor é
+      // onde se trabalha, e trabalhar numa tira de dez linhas embaixo da tela é
+      // outra coisa. Ele pediu com todas as letras.
+      //
+      // E na coluna ATIVA, dita por extenso. Com o enum `TerminalLocation.Editor`
+      // sozinho, o editor abria AO LADO, dividindo a tela — "ele abre dividindo a
+      // tela, ao invés de ser uma aba". Uma aba é uma aba no grupo onde ele já
+      // está; dividir é gesto dele, não meu.
+      location: { viewColumn: vscode.ViewColumn.Active },
+    });
+
+  void (async () => {
+    // **Antes de criar**, e não depois: a trava que atrapalha é a que o
+    // terminal ANTERIOR deixou no grupo. Destrancar só depois já seria tarde —
+    // este aqui já teria nascido numa coluna nova.
+    await destrancarOGrupo();
+    const terminal = abrir();
+    terminal.show();
+    // E de novo, para o PRÓXIMO caber neste mesmo grupo.
+    await destrancarOGrupo();
+  })();
 }
