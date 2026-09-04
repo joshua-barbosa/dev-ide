@@ -20,6 +20,7 @@ import {
   abrirAbaDaIde, abrirDiagramaEmAba, abrirDialogoEmAba, abrirFormularioDeConexao,
 } from './formularioAba';
 import { PainelDeConexoes } from './painelWebview';
+import { abrirTerminalRemoto, esquecerTerminaisFechados } from './terminalRemoto';
 import type { DepsDoPainel } from './ponteDoHost';
 import type { Painel } from './paineis';
 
@@ -116,6 +117,7 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       abrirFormularioDeConexao(deps, conexaoId, grupo, rotulo),
     abrirDialogo: (dialogo, pedido) => abrirDialogoEmAba(deps, dialogo, pedido),
     abrirDiagrama: (titulo, markdown) => abrirDiagramaEmAba(deps, titulo, markdown),
+    abrirTerminal: (connectionId, rotulo) => abrirTerminalRemoto(deps, connectionId, rotulo),
     abrirAbaDaIde: (tipo, titulo, dados) => {
       if (tipo !== 'caderno') {
         abrirAbaDaIde(deps, tipo, titulo, dados);
@@ -149,6 +151,13 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       )
     );
   }
+
+  // O terminal pode ser fechado pela lixeira do painel, e não só pelo `close`
+  // do nosso `Pseudoterminal`: sem isto, clicar de novo na árvore tentaria
+  // revelar um terminal que não existe mais, e nada abriria.
+  contexto.subscriptions.push(
+    vscode.window.onDidCloseTerminal((t) => esquecerTerminaisFechados(t))
+  );
 
   barra = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   barra.command = 'braytech.recarregar';

@@ -12,10 +12,6 @@
     "Other"
   ],
   "main": "./dist/extension.js",
-  "activationEvents": [
-    "onView:braytech.databases",
-    "onView:braytech.servicos"
-  ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
