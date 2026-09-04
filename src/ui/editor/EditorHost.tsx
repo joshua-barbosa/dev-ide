@@ -16,6 +16,7 @@
 // O `ViewState` continua sendo o nosso formato simples, e não o do Monaco: ele é
 // guardado no `meta` da aba, que atravessa o store — e amarrar o store ao
 // formato interno de uma biblioteca seria trocar um acoplamento por outro pior.
+import { opcoesParaTamanho } from '../../shared/arquivo-grande';
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import Box from '@mui/material/Box';
 import * as monaco from 'monaco-editor';
@@ -461,13 +462,27 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
     monaco.editor.setTheme(NOME_DO_TEMA);
   }, [tema]);
 
+  /**
+   * A preferência de quebra de linha, para quem foi criado uma vez só.
+   *
+   * `useImperativeHandle` abaixo tem lista de dependências vazia — de
+   * propósito, o punho é estável —, então ler `wordWrap` lá dentro leria o
+   * valor da primeira renderização para sempre.
+   */
+  const quebrarLinha = useRef(wordWrap);
+  quebrarLinha.current = wordWrap;
+
   // Aparência sem remontar: `updateOptions` é o caminho que o Monaco oferece
   // justamente para isso.
   useEffect(() => {
-    editor.current?.updateOptions({
+    const ed = editor.current;
+    if (ed === null) return;
+    ed.updateOptions({
       fontSize,
       tabSize,
-      wordWrap: wordWrap ? 'on' : 'off',
+      // O tamanho do arquivo tem a última palavra sobre a quebra de linha: num
+      // dump de linhas quilométricas, recalculá-la é o que trava o Monaco.
+      ...opcoesParaTamanho(ed.getModel()?.getValueLength() ?? 0, wordWrap),
     });
   }, [fontSize, tabSize, wordWrap]);
 
@@ -483,6 +498,10 @@ export const EditorHost = forwardRef<EditorHandle, EditorHostProps>(function Edi
         // Só troca quando é outro: `setModel` com o mesmo modelo joga fora
         // rolagem e seleção sem motivo.
         if (ed.getModel() !== modelo) ed.setModel(modelo);
+        // Arquivo grande abre em modo econômico (spec 091). Aqui, e não na
+        // criação do editor, porque o mesmo editor recebe arquivos de tamanhos
+        // diferentes ao trocar de aba.
+        ed.updateOptions(opcoesParaTamanho(conteudo.length, quebrarLinha.current));
       },
 
       setValue: (valor) => {

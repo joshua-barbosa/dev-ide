@@ -1,3 +1,4 @@
+import { MAX_BYTES_NO_EDITOR, mensagemDeArquivoEnorme } from '../shared/arquivo-grande';
 import express from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -41,7 +42,6 @@ const HOST = '127.0.0.1';
 const IDLE_SWEEP_MS = 60_000;
 const ROOT = path.resolve(__dirname, '..', '..');
 const PROJECTS_DIR = pastaDeProjetos(ROOT);
-const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 const store = new ProjectStore(PROJECTS_DIR);
 store.ensureBaseDir();
@@ -176,9 +176,10 @@ app.get('/api/file', wrap((req, res) => {
   if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
     throw new Error(`Arquivo não encontrado: ${filePath}`);
   }
-  if (fs.statSync(filePath).size > MAX_FILE_BYTES) {
-    throw new Error('Arquivo muito grande para abrir no editor (limite de 2 MB).');
-  }
+  // Grande abre em modo econômico (o editor desliga minimapa, dobra e realce);
+  // só o que passa do teto é recusado, e a recusa diz o que fazer no lugar.
+  const bytes = fs.statSync(filePath).size;
+  if (bytes > MAX_BYTES_NO_EDITOR) throw new Error(mensagemDeArquivoEnorme(bytes));
   res.json({
     success: true,
     data: { path: filePath, content: fs.readFileSync(filePath, 'utf8') },

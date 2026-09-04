@@ -96,6 +96,13 @@ export default async function globalSetup(): Promise<void> {
     path.join(dados, 'projects', 'demo', 'sub', 'dentro.txt'),
     'ZORBAXDEPENDENCIA aqui dentro\n'
   );
+  // Um arquivo GRANDE, acima do limiar de 2 MB do modo econômico (spec 091).
+  // Gerado, e não versionado: 3 MB no repositório para um teste seria caro.
+  fs.writeFileSync(
+    path.join(dados, 'projects', 'demo', 'grande.log'),
+    'linha de log com texto suficiente para encher o arquivo\n'.repeat(60_000)
+  );
+
   fs.mkdirSync(path.join(dados, 'projects', 'demo', 'node_modules'));
   fs.writeFileSync(
     path.join(dados, 'projects', 'demo', 'node_modules', 'dep.js'),

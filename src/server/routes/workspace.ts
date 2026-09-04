@@ -12,6 +12,7 @@
 import { Router } from 'express';
 import { ehCaminhoAbsoluto, plataformaAtual, type Plataforma } from '../../shared/plataforma';
 import { nomeDoCaminho } from '../../shared/caminho-local';
+import { LIMIAR_DE_ARQUIVO_GRANDE } from '../../shared/arquivo-grande';
 import { spawn } from 'node:child_process';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -294,6 +295,18 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
     // Passa pela mesma porteira do resto: nada de ler fora das raízes abertas.
     raizDe(caminho);
     if (!EXTENSOES_DE_SIMBOLO.has(path.extname(caminho))) {
+      res.json(ok({ simbolos: [] }));
+      return;
+    }
+    // Arquivo grande não passa pelo analisador: um `.ts` de 20 MB levaria o
+    // compilador do TypeScript a segundos de trabalho a cada aba aberta, e o
+    // preço seria pago pela barra de navegação — que é enfeite, não função.
+    try {
+      if (fs.statSync(caminho).size > LIMIAR_DE_ARQUIVO_GRANDE) {
+        res.json(ok({ simbolos: [] }));
+        return;
+      }
+    } catch {
       res.json(ok({ simbolos: [] }));
       return;
     }
