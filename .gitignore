@@ -21,3 +21,6 @@ empacotado/
 # As specs ficam LOCAIS: elas citam nomes de servidores e bancos reais,
 # e trechos de conversa. Decisão dele em 03/09/2026.
 specs/
+
+# O pacote da extensão é artefato de build.
+*.vsix

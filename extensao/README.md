@@ -16,17 +16,39 @@ O motor é o mesmo `dist/server/index.js` que a IDE própria roda. A extensão o
 sobe dentro do host de extensão — que também é Node — ou se liga ao que já
 estiver de pé, para as duas janelas não brigarem pelo cofre.
 
-## Rodar
+## Instalar
 
 ```bash
-npm run build          # na RAIZ do projeto: compila o motor
+npm run build                              # na RAIZ: compila o motor
 cd extensao && npm install && npm run build
+npx @vscode/vsce package --no-dependencies --allow-missing-repository
+code   --install-extension braytech-code-0.1.0.vsix --force
+cursor --install-extension braytech-code-0.1.0.vsix --force
 ```
 
-Depois, no VS Code, abra a pasta `extensao/` e tecle **F5**. Abre uma janela de
-testes com a extensão carregada.
+**Reinicie o editor** depois de instalar. A extensão aparece na barra lateral
+com um ícone de banco de dados, e em `Extensões` como *Braytech Code*.
 
-Na janela nova:
+### Onde ela acha o motor
+
+Nesta ordem, e a primeira que responder ganha:
+
+1. um Braytech Code **já de pé** na porta (padrão `4321`);
+2. a configuração `braytech.motor`;
+3. o `dist/server/index.js` de **alguma pasta aberta** no editor — é o que faz
+   ela funcionar sem configurar nada, com o projeto aberto;
+4. ao lado da própria extensão, para quem a roda de dentro do projeto.
+
+Não achando nenhum, o erro diz a configuração que resolve.
+
+## Rodar em desenvolvimento
+
+Abra a pasta `extensao/` no VS Code e tecle **F5**: abre uma janela de testes
+com a extensão carregada, sem precisar instalar.
+
+## Usar
+
+Na janela do editor:
 
 1. ícone do banco na barra lateral → **Conexões**;
 2. cofre trancado aparece como uma linha — clique para destrancar;

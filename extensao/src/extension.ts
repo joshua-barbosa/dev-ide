@@ -27,7 +27,11 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
 
   let motor: Motor;
   try {
-    motor = await ligarMotor(porta, conf.get<string>('motor') ?? '');
+    motor = await ligarMotor(
+      porta,
+      conf.get<string>('motor') ?? '',
+      (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath)
+    );
   } catch (erro) {
     // Sem motor não há extensão. Dizer isso uma vez, claro, é melhor que
     // deixar cada comando falhar depois com uma mensagem de rede.

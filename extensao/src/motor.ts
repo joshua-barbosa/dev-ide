@@ -9,7 +9,9 @@
 // motor na mesma máquina brigariam pelo cofre e pelo arquivo de estado — e,
 // pior, ele perderia as conexões abertas ao alternar entre as duas janelas.
 
+import * as fs from 'fs';
 import * as http from 'http';
+import * as path from 'path';
 
 export interface Motor {
   /** Faz um pedido à API do motor e devolve o `data` do envelope. */
@@ -72,18 +74,51 @@ function pedidoCru(
   });
 }
 
+/** O motor não foi achado em lugar nenhum — a mensagem diz o que fazer. */
+export class MotorNaoEncontrado extends Error {
+  constructor(readonly tentados: readonly string[]) {
+    super(
+      'Não encontrei o motor da Braytech Code. Aponte o caminho do ' +
+        '`dist/server/index.js` na configuração `braytech.motor`.'
+    );
+    this.name = 'MotorNaoEncontrado';
+  }
+}
+
 /**
  * Sobe o motor, ou se liga ao que já está de pé.
  *
- * @param caminhoDoMotor o `dist/server/index.js`. Vazio usa o que veio junto.
+ * A ordem importa e é esta:
+ *
+ * 1. **Já de pé na porta** — usa ELE. Duas cópias na mesma máquina brigariam
+ *    pelo cofre e pelo arquivo de estado.
+ * 2. **A configuração `braytech.motor`**.
+ * 3. **As pastas abertas no editor** — se o projeto da Braytech Code estiver
+ *    aberto, o motor dele está a um `dist/server/index.js` de distância. É o
+ *    que faz a extensão instalada funcionar sem ninguém configurar nada.
+ * 4. **Ao lado da extensão** — o caso de quem a roda de dentro do projeto.
+ *
+ * Sem nenhum dos quatro, o erro DIZ a configuração que resolve, em vez de falar
+ * de rede.
  */
-export async function ligarMotor(porta: number, caminhoDoMotor: string): Promise<Motor> {
+export async function ligarMotor(
+  porta: number,
+  caminhoDoMotor: string,
+  pastasAbertas: readonly string[] = []
+): Promise<Motor> {
   if (!(await jaEstaDePe(porta))) {
-    const alvo = caminhoDoMotor === '' ? '../../dist/server/index.js' : caminhoDoMotor;
+    const candidatos = [
+      ...(caminhoDoMotor === '' ? [] : [caminhoDoMotor]),
+      ...pastasAbertas.map((pasta) => path.join(pasta, 'dist', 'server', 'index.js')),
+      path.resolve(__dirname, '..', '..', 'dist', 'server', 'index.js'),
+    ];
+    const achado = candidatos.find((c) => fs.existsSync(c));
+    if (achado === undefined) throw new MotorNaoEncontrado(candidatos);
+
     // `require` e não `import`: o caminho é decidido em tempo de execução, e o
     // host de extensão é CommonJS.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const servidor = require(alvo) as { iniciarServidor(porta: number): Promise<void> };
+    const servidor = require(achado) as { iniciarServidor(porta: number): Promise<void> };
     process.env.PORT = String(porta);
     await servidor.iniciarServidor(porta);
   }
