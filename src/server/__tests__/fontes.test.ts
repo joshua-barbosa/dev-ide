@@ -22,10 +22,12 @@ const ALVOS = ['src', 'e2e', 'scripts', 'extensao'].map((d) => path.join(RAIZ, d
  * Pastas que a varredura NÃO desce.
  *
  * `extensao/` entrou nos alvos com a prova de conceito (spec 092), e ela tem
- * `node_modules` e `dist` próprios. Sem isto, o teto de 800 linhas reprovaria o
- * `vscode.d.ts` — código de outra pessoa, que não é nosso para encurtar.
+ * `node_modules`, `dist` e `webview` próprios. Sem isto, o teto de 800 linhas
+ * reprovaria o `vscode.d.ts` — código de outra pessoa, que não é nosso para
+ * encurtar — e a varredura de bytes de controle reprovaria o `painel.js`, que é
+ * saída do Vite, não fonte.
  */
-const NAO_DESCER = new Set(['node_modules', 'dist']);
+const NAO_DESCER = new Set(['node_modules', 'dist', 'webview']);
 const EXTENSOES = new Set(['.ts', '.tsx', '.js', '.mjs', '.json', '.html', '.css', '.md']);
 
 /** Tudo abaixo de 0x20 exceto tab, LF e CR — o que torna o arquivo "binário". */
