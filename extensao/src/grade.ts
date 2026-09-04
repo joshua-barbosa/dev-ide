@@ -25,7 +25,28 @@ export interface ResultadoDoMotor {
 
 let painel: vscode.WebviewPanel | null = null;
 
-export function mostrarResultado(resultado: ResultadoDoMotor, titulo: string): void {
+/** Um texto solto (o SQL de uma ação, um DDL) numa aba de editor de verdade. */
+export function mostrarTexto(texto: string, titulo: string, linguagem = 'sql'): void {
+  void vscode.workspace
+    .openTextDocument({ language: linguagem, content: texto })
+    .then((doc) => vscode.window.showTextDocument(doc, { preview: true }))
+    .then(undefined, () => {
+      void vscode.window.showErrorMessage(`Braytech Code: não consegui abrir ${titulo}.`);
+    });
+}
+
+/** O que só a prévia de uma TABELA sabe: o total real e o SQL que rodou. */
+export interface ExtrasDaTabela {
+  readonly total: number | null;
+  readonly totalEstimado: number | null;
+  readonly sql: string;
+}
+
+export function mostrarResultado(
+  resultado: ResultadoDoMotor,
+  titulo: string,
+  extras?: ExtrasDaTabela
+): void {
   if (painel === null) {
     painel = vscode.window.createWebviewPanel(
       'braytech.resultado',
@@ -38,7 +59,7 @@ export function mostrarResultado(resultado: ResultadoDoMotor, titulo: string): v
     });
   }
   painel.title = `Resultado — ${titulo}`;
-  painel.webview.html = desenhar(resultado);
+  painel.webview.html = desenhar(resultado, extras);
   painel.reveal(vscode.ViewColumn.Beside, true);
 }
 
@@ -50,14 +71,22 @@ export function mostrarResultado(resultado: ResultadoDoMotor, titulo: string): v
  * Escapar continua obrigatório de todo jeito — o dado é dele, e um `<script>`
  * dentro de uma célula é um dado perfeitamente legítimo.
  */
-function desenhar(r: ResultadoDoMotor): string {
+function desenhar(r: ResultadoDoMotor, extras?: ExtrasDaTabela): string {
   const cabecalho = r.columns.map((c) => `<th>${escapar(c.name)}</th>`).join('');
   const corpo = r.rows
     .map((linha) => `<tr>${linha.map((v) => `<td>${celula(v)}</td>`).join('')}</tr>`)
     .join('');
 
+  // "200 de 41.312" diz o que "200 linhas" esconde. Total ausente vira
+  // estimativa marcada como tal — contar pode ser caro demais, e um número
+  // exato que não é seria pior que nenhum.
+  const doTotal = extras === undefined || extras.total === null
+    ? (extras?.totalEstimado == null ? null : `~${extras.totalEstimado.toLocaleString('pt-BR')} estimadas`)
+    : `de ${extras.total.toLocaleString('pt-BR')}`;
+
   const resumo = [
     `${r.rowCount} linha${r.rowCount === 1 ? '' : 's'}`,
+    doTotal,
     `${r.durationMs} ms`,
     r.truncated ? 'cortado pelo limite' : null,
     r.message ?? null,

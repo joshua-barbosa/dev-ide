@@ -8,7 +8,7 @@
   "engines": { "vscode": "^1.90.0" },
   "categories": ["Other"],
   "main": "./dist/extension.js",
-  "activationEvents": ["onView:braytech.conexoes"],
+  "activationEvents": ["onView:braytech.databases", "onView:braytech.servicos"],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -21,7 +21,8 @@
     },
     "views": {
       "braytech": [
-        { "id": "braytech.conexoes", "name": "Conexões" }
+        { "id": "braytech.databases", "name": "Databases" },
+        { "id": "braytech.servicos", "name": "Services" }
       ]
     },
     "commands": [
@@ -29,11 +30,25 @@
       { "command": "braytech.executar", "title": "Braytech: Executar consulta", "icon": "$(play)" },
       { "command": "braytech.novaConsulta", "title": "Braytech: Nova consulta" },
       { "command": "braytech.destrancarCofre", "title": "Braytech: Destrancar o cofre" },
-      { "command": "braytech.escolher", "title": "Braytech: Usar esta conexão" }
+      { "command": "braytech.abrirNo", "title": "Braytech: Ver linhas" },
+      { "command": "braytech.abrirArquivoDeQuery", "title": "Braytech: Abrir query" },
+      { "command": "braytech.acoesDoNo", "title": "Braytech: Ações deste nó…", "icon": "$(list-unordered)" }
     ],
     "menus": {
       "view/title": [
-        { "command": "braytech.recarregar", "when": "view == braytech.conexoes", "group": "navigation" }
+        { "command": "braytech.recarregar", "when": "view == braytech.databases || view == braytech.servicos", "group": "navigation" }
+      ],
+      "view/item/context": [
+        {
+          "command": "braytech.acoesDoNo",
+          "when": "viewItem =~ /^braytech\\.(no|conexao)\\.comAcoes$/",
+          "group": "inline"
+        },
+        {
+          "command": "braytech.abrirNo",
+          "when": "viewItem =~ /^braytech\\.no/",
+          "group": "braytech@1"
+        }
       ],
       "editor/title": [
         { "command": "braytech.executar", "when": "resourceLangId == sql", "group": "navigation" }

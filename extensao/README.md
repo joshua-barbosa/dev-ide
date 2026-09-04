@@ -48,21 +48,35 @@ com a extensão carregada, sem precisar instalar.
 
 ## Usar
 
-Na janela do editor:
+Na barra lateral, o ícone de banco abre **duas** visões, como na IDE própria:
 
-1. ícone do banco na barra lateral → **Conexões**;
-2. cofre trancado aparece como uma linha — clique para destrancar;
-3. clique numa conexão para torná-la a ativa (ela aparece na barra de status);
-4. abra um `.sql` e tecle **Ctrl+Enter**.
+- **Databases** — MySQL, PostgreSQL, SQL Server, SQLite, Redis, MongoDB, Pinecone
+- **Services** — SSH e FTP
+
+Quem separa é o `panel` que o **driver declara**, não uma lista escrita aqui.
+
+| gesto | o que acontece |
+|---|---|
+| clicar numa conexão | vira a conexão ativa (aparece na barra de status) e expande |
+| clicar numa **tabela** ou view | mostra as primeiras 200 linhas, com o total real |
+| botão direito num nó | as ações que o **driver** declarou: DDL, contagem, `SELECT`, templates de INSERT/UPDATE/DELETE, esvaziar, apagar |
+| pasta **Query** de um database | os `.sql` e `.sqlbook` daquele database, que abrem no editor |
+| **Ctrl+Enter** num `.sql` | executa a seleção — ou o arquivo inteiro, se não houver seleção |
+
+Ação destrutiva pede confirmação antes. Ação marcada como "copiar" vai para a
+área de transferência em vez de abrir aba, que foi a decisão dele sobre o SQL de
+usuário e permissão.
 
 ## O que ela ainda NÃO faz
 
-Não é uma lacuna escondida — é o limite combinado de uma prova de conceito:
+Não é lacuna escondida — é o limite da prova de conceito:
 
+- **`.sqlbook` abre como TEXTO.** Desenhá-lo como caderno pede a API de Notebook
+  do editor, que é trabalho de tamanho próprio;
 - cadastrar, editar e apagar conexão (hoje se faz na IDE própria);
-- caderno `.sqlbook`, SFTP, terminal remoto, monitor, portas e processos;
-- editar célula na grade, paginação, exportar;
-- menu de contexto na árvore (ver DDL, truncar, abrir consulta do nó).
+- SFTP, terminal remoto, monitor, portas e processos;
+- editar célula na grade, paginar além da primeira página, exportar;
+- filtro e ordenação na árvore.
 
 ## Configuração
 

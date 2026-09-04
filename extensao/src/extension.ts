@@ -1,25 +1,39 @@
 // Braytech Code dentro do VS Code e do Cursor — prova de conceito.
 //
-// A pergunta que ela responde é uma só: **quanto do projeto sobrevive à troca
-// de casca?** A resposta, medida no que está aqui:
+// Duas árvores, `Databases` e `Services`, como na IDE própria; quem separa é o
+// `panel` que o DRIVER declara. Clicar numa folha mostra as linhas; o menu de
+// contexto oferece o que o driver declarou em `actions`, e nada além.
 //
-// - o motor (drivers, cofre, pool, rotas) não mudou UMA LINHA;
-// - a árvore virou a árvore nativa do editor, sem webview;
-// - a grade precisou de uma webview, e é o único desenho reescrito.
-//
-// O que o VS Code passa a dar de graça: editor, abas, árvore de arquivos,
-// vigia de disco, busca, símbolos, arquivo grande, caminho do Windows,
-// empacotamento, atualização e Remote-SSH. Foi onde moraram todos os defeitos
-// das specs 090 e 091.
+// O motor (drivers, cofre, pool, rotas) não mudou uma linha para nada disto.
 
 import * as vscode from 'vscode';
-import { ArvoreDeConexoes, type ItemDaArvore } from './arvore';
-import { mostrarResultado, type ResultadoDoMotor } from './grade';
+import { ArvoreDeConexoes, type AcaoDoNo, type ItemDaArvore } from './arvore';
+import { mostrarResultado, mostrarTexto, type ResultadoDoMotor } from './grade';
 import { ligarMotor, type Motor } from './motor';
+import type { Painel } from './paineis';
 
-/** A conexão em que as consultas rodam. Escolhida clicando na árvore. */
+/** A conexão em que as consultas rodam. Vem da seleção na árvore. */
 let conexaoAtiva: string | null = null;
 let barra: vscode.StatusBarItem | null = null;
+
+/** Linhas por página na prévia de uma tabela. */
+const POR_PAGINA = 200;
+
+/** `TablePage` do motor. */
+interface PaginaDeTabela {
+  readonly resultado: ResultadoDoMotor;
+  readonly total: number | null;
+  readonly totalEstimado: number | null;
+  readonly sql: string;
+}
+
+/** `ActionResult` do motor. */
+interface ResultadoDeAcao {
+  readonly kind: 'statement' | 'text';
+  readonly title: string;
+  readonly content: string;
+  readonly language?: string;
+}
 
 export async function activate(contexto: vscode.ExtensionContext): Promise<void> {
   const conf = vscode.workspace.getConfiguration('braytech');
@@ -41,10 +55,26 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
     return;
   }
 
-  const arvore = new ArvoreDeConexoes(motor);
-  contexto.subscriptions.push(
-    vscode.window.createTreeView('braytech.conexoes', { treeDataProvider: arvore })
-  );
+  const arvores = new Map<Painel, ArvoreDeConexoes>();
+  for (const [painel, view] of [
+    ['database', 'braytech.databases'],
+    ['service', 'braytech.servicos'],
+  ] as const) {
+    const arvore = new ArvoreDeConexoes(motor, painel);
+    arvores.set(painel, arvore);
+    const vista = vscode.window.createTreeView(view, { treeDataProvider: arvore });
+    // **A seleção marca a conexão ativa, e não um `command` no item.** Um
+    // `TreeItem` com comando executa o comando em vez de expandir — era o que
+    // fazia a árvore não abrir ao clicar numa conexão.
+    vista.onDidChangeSelection((e) => {
+      const item = e.selection[0];
+      if (item === undefined || item.conexao === '') return;
+      conexaoAtiva = item.conexao;
+      atualizarBarra();
+    });
+    contexto.subscriptions.push(vista);
+  }
+  const recarregarTudo = (): void => arvores.forEach((a) => a.recarregar());
 
   barra = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   barra.command = 'braytech.recarregar';
@@ -52,8 +82,17 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
   barra.show();
   contexto.subscriptions.push(barra);
 
+  const pedir = async <T>(metodo: string, rota: string, corpo?: unknown): Promise<T | null> => {
+    try {
+      return await motor.pedir<T>(metodo, rota, corpo);
+    } catch (erro) {
+      void vscode.window.showErrorMessage(`Braytech Code: ${mensagem(erro)}`);
+      return null;
+    }
+  };
+
   contexto.subscriptions.push(
-    vscode.commands.registerCommand('braytech.recarregar', () => arvore.recarregar()),
+    vscode.commands.registerCommand('braytech.recarregar', recarregarTudo),
 
     vscode.commands.registerCommand('braytech.destrancarCofre', async () => {
       const senha = await vscode.window.showInputBox({
@@ -62,10 +101,33 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
         ignoreFocusOut: true,
       });
       if (senha === undefined || senha === '') return;
+      const ok = await pedir('POST', '/api/connections/vault/unlock', { password: senha });
+      if (ok === null) return;
+      recarregarTudo();
+      void vscode.window.showInformationMessage('Braytech Code: cofre destrancado.');
+    }),
+
+    /**
+     * Abre um `.sql` ou `.sqlbook` da pasta `Query` no editor.
+     *
+     * Como ARQUIVO de verdade, e não como texto solto numa aba sem nome: é o
+     * mesmo arquivo em disco que a IDE própria abre, então salvar aqui e abrir
+     * lá dá a mesma coisa.
+     */
+    vscode.commands.registerCommand('braytech.abrirArquivoDeQuery', async (item: ItemDaArvore) => {
+      conexaoAtiva = item.conexao;
+      atualizarBarra();
       try {
-        await motor.pedir('POST', '/api/connections/vault/unlock', { password: senha });
-        arvore.recarregar();
-        void vscode.window.showInformationMessage('Braytech Code: cofre destrancado.');
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(item.arquivo));
+        await vscode.window.showTextDocument(doc);
+        if (item.arquivo.endsWith('.sqlbook')) {
+          // Dizer antes de ele descobrir sozinho: o caderno abre como TEXTO.
+          // Desenhá-lo como caderno pede a API de Notebook do editor, que é
+          // trabalho de tamanho próprio e ainda não foi feito.
+          void vscode.window.showInformationMessage(
+            'O .sqlbook abre como texto por enquanto — o caderno ainda não é desenhado aqui.'
+          );
+        }
       } catch (erro) {
         void vscode.window.showErrorMessage(`Braytech Code: ${mensagem(erro)}`);
       }
@@ -74,6 +136,81 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
     vscode.commands.registerCommand('braytech.novaConsulta', async () => {
       const doc = await vscode.workspace.openTextDocument({ language: 'sql', content: '' });
       await vscode.window.showTextDocument(doc);
+    }),
+
+    /** Clique numa folha da árvore: as linhas dela. */
+    vscode.commands.registerCommand('braytech.abrirNo', async (item: ItemDaArvore) => {
+      conexaoAtiva = item.conexao;
+      atualizarBarra();
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Window, title: `Braytech Code: ${item.label}…` },
+        async () => {
+          // `/table` devolve uma PÁGINA (`TablePage`), e não um `QueryResult`
+          // solto: ela traz o total real e o SQL que rodou. O total é o que
+          // permite dizer "200 de 41.312" em vez de deixar o corte implícito.
+          const r = await pedir<PaginaDeTabela>(
+            'POST',
+            `/api/connections/${encodeURIComponent(item.conexao)}/table`,
+            { nodePath: item.nodePath, pagina: 1, porPagina: POR_PAGINA }
+          );
+          if (r !== null) {
+            mostrarResultado(r.resultado, String(item.label), {
+              total: r.total,
+              totalEstimado: r.totalEstimado,
+              sql: r.sql,
+            });
+          }
+        }
+      );
+    }),
+
+    /**
+     * O menu do nó — o que o DRIVER declarou, e nada além.
+     *
+     * Um item de menu por ação exigiria conhecer as ações no `package.json`, que
+     * é estático. A escolha rápida resolve isso sem a extensão inventar
+     * nenhuma: ela mostra o que veio no `actions` daquele nó.
+     */
+    vscode.commands.registerCommand('braytech.acoesDoNo', async (item: ItemDaArvore) => {
+      if (item.acoes.length === 0) {
+        void vscode.window.showInformationMessage('Este nó não tem ações.');
+        return;
+      }
+      const escolha = await vscode.window.showQuickPick(
+        item.acoes.map((a: AcaoDoNo) => ({
+          label: a.danger === true ? `$(warning) ${a.label}` : a.label,
+          acao: a,
+        })),
+        { placeHolder: String(item.label) }
+      );
+      if (escolha === undefined) return;
+
+      if (escolha.acao.danger === true) {
+        const confirma = await vscode.window.showWarningMessage(
+          `“${escolha.acao.label}” em ${String(item.label)}?`,
+          { modal: true },
+          'Continuar'
+        );
+        if (confirma !== 'Continuar') return;
+      }
+
+      const r = await pedir<ResultadoDeAcao>(
+        'POST',
+        `/api/connections/${encodeURIComponent(item.conexao)}/action`,
+        { nodePath: item.nodePath, actionId: escolha.acao.id }
+      );
+      if (r === null) return;
+
+      // Ação de COPIAR vai para a área de transferência — decisão dele sobre o
+      // SQL de usuário e permissão: o texto é para colar num `.sql`, não para
+      // virar mais uma aba a fechar.
+      if (escolha.acao.copiar === true) {
+        await vscode.env.clipboard.writeText(r.content);
+        void vscode.window.showInformationMessage(`${r.title} copiado.`);
+        return;
+      }
+      mostrarTexto(r.content, r.title, r.language ?? 'sql');
+      recarregarTudo();
     }),
 
     vscode.commands.registerCommand('braytech.executar', async () => {
@@ -91,27 +228,18 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       const sql = selecao.trim() === '' ? editor.document.getText() : selecao;
       if (sql.trim() === '') return;
 
+      const alvo = conexaoAtiva;
       await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: 'Braytech Code: executando…' },
         async () => {
-          try {
-            const r = await motor.pedir<ResultadoDoMotor>(
-              'POST',
-              `/api/connections/${encodeURIComponent(conexaoAtiva as string)}/execute`,
-              { statement: sql }
-            );
-            mostrarResultado(r, conexaoAtiva as string);
-          } catch (erro) {
-            void vscode.window.showErrorMessage(`Braytech Code: ${mensagem(erro)}`);
-          }
+          const r = await pedir<ResultadoDoMotor>(
+            'POST',
+            `/api/connections/${encodeURIComponent(alvo)}/execute`,
+            { statement: sql }
+          );
+          if (r !== null) mostrarResultado(r, alvo);
         }
       );
-    }),
-
-    // Clicar num nó da árvore escolhe a conexão em que o Ctrl+Enter roda.
-    vscode.commands.registerCommand('braytech.escolher', (item: ItemDaArvore) => {
-      conexaoAtiva = item.conexao;
-      atualizarBarra();
     })
   );
 }
