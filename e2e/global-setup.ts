@@ -8,6 +8,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { esperarSshd, sshdDisponivel, subirSshd, type SshdDeTeste } from './sshd-de-teste';
+import { esperarRedis, redisDisponivel, semear, subirRedis } from './redis-de-teste';
 
 export const SENHA_MESTRA = 'senha-de-teste';
 
@@ -18,6 +19,9 @@ export const CONEXAO = 'escola';
 export const CONEXAO_SSH = 'playground-de-teste';
 /** Onde o setup deixa o que o teardown precisa para derrubar o `sshd`. */
 export const ARQUIVO_DO_SSHD = 'sshd-de-teste.json';
+/** A conexão Redis da spec 089, contra o `redis-server` descartável da suíte. */
+export const CONEXAO_REDIS = 'cache-de-teste';
+export const ARQUIVO_DO_REDIS = 'redis-de-teste.json';
 export const TABELA = 'alunos';
 export const VIEW = 'alunos_view';
 /** Tabela de uso exclusivo dos testes que escrevem (spec 044). */
@@ -156,6 +160,25 @@ export default async function globalSetup(): Promise<void> {
     readOnly: false,
     fields: { file: banco },
   });
+
+  // A conexão Redis da spec 089, contra um `redis-server` descartável.
+  if (redisDisponivel()) {
+    const redis = subirRedis();
+    fs.writeFileSync(
+      path.join(dados, ARQUIVO_DO_REDIS),
+      JSON.stringify({ pid: redis.pid })
+    );
+    if (await esperarRedis(redis.porta)) {
+      semear(redis.porta);
+      await chamar(base, '/api/connections', {
+        type: 'redis',
+        label: CONEXAO_REDIS,
+        group: 'ACME/Bancos',
+        readOnly: false,
+        fields: { modo: 'campos', host: '127.0.0.1', port: redis.porta, database: 0 },
+      });
+    }
+  }
 
   // A conexão SSH da spec 052. Só existe se houver `sshd` na máquina: a suíte
   // não pode ficar vermelha num ambiente que não tem servidor SSH instalado —

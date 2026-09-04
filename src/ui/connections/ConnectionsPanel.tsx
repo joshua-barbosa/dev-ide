@@ -44,6 +44,8 @@ export interface ConnectionsPanelProps {
   ) => void;
   readonly onMenuConexao: (e: React.MouseEvent, conexao: PublicConnection) => void;
   readonly onAbrirQuery: (id: string, no: TreeNode, database: string | null) => void;
+  /** Abre a aba de uma CHAVE de chave-valor (spec 089). */
+  readonly onAbrirChave: (id: string, chave: string) => void;
   /** Recebe o grupo quando vem do botão de uma pasta, para já vir preenchido. */
   readonly onNovaConexao: (grupo?: string) => void;
   readonly onRenomearGrupo: (caminho: string) => void;
@@ -155,6 +157,7 @@ export function ConnectionsPanel({
   onMenuNo,
   onMenuConexao,
   onAbrirQuery,
+  onAbrirChave,
   onNovaConexao,
   onRenomearGrupo,
   onAbrirTerminal,
@@ -263,7 +266,13 @@ export function ConnectionsPanel({
                         // chegou a abrir `SELECT * FROM Favorites` — visto no
                         // navegador.
                         comErro(() => ctrl.alternarNo(id, filho, no))
-                      : () => onAbrirQuery(id, no, bancoAqui)
+                      // **Uma CHAVE não abre uma query** (spec 089): num banco
+                      // de chave-valor, `SELECT * FROM` não é uma consulta
+                      // ruim — é impossível. Quem diz que o nó é uma chave é o
+                      // driver, pelo `meta.chave`; a tela só obedece.
+                      : typeof no.meta?.chave === 'string'
+                        ? () => onAbrirChave(id, String(no.meta?.chave))
+                        : () => onAbrirQuery(id, no, bancoAqui)
             }
             // O duplo clique continua abrindo a QUERY, como desde a spec 009.
             // Chegou a abrir a aba de tabela durante a spec 041, e foi um passo
@@ -273,6 +282,7 @@ export function ConnectionsPanel({
             onDoubleClick={
               no.meta?.arquivoDeQuery === true ||
               typeof no.meta?.remotePath === 'string' ||
+              typeof no.meta?.chave === 'string' ||
               no.meta?.atalho !== undefined
                 ? undefined
                 : () => onAbrirQuery(id, no, bancoAqui)

@@ -174,6 +174,7 @@ export interface Workspace {
   abrirTerminal(connectionId: string | null, titulo: string): void;
   /** A lista de processos de uma conexão (spec 047). */
   abrirProcessos(connectionId: string, titulo: string): void;
+  abrirChave(connectionId: string, chave: string): void;
   /** A tela de configurações (T001). */
   abrirTelaDePreferencias(): void;
   /** A tela do que a IDE precisa da máquina (spec 077). */
@@ -729,6 +730,7 @@ export function useWorkspace({ confirmar, aoAbrirArquivo }: WorkspaceDeps): Work
     abrirFormulario: dados.abrirFormulario,
     abrirTerminal: dados.abrirTerminal,
     abrirProcessos: dados.abrirProcessos,
+    abrirChave: dados.abrirChave,
     abrirTelaDePreferencias: dados.abrirPreferencias,
     abrirRequisitos: dados.abrirRequisitos,
     abrirCodeSnap: (origem: number) => {

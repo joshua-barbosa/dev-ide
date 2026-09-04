@@ -1,4 +1,7 @@
 import type { Tarefa } from '../shared/tarefas';
+import type {
+  InfoDoServidor, TipoDeChave, ValorDeChave,
+} from '../shared/sql/redis-chave';
 import type { Capacidade, ModoDeFormatacao } from '../shared/formatacao';
 import type { EstadoDaFerramenta } from '../shared/ferramentas';
 import type { LinhaDeLog, MetricaDoBanco, RetratoDaEstrutura } from '../shared/sql/manager';
@@ -485,6 +488,25 @@ export const Api = {
       'GET',
       `${conexoes}/${id}/files?path=${encodeURIComponent(caminho)}`
     ),
+  // Chave-valor (spec 089). O nome da chave vai codificado na URL pela mesma
+  // razão do caminho de arquivo: chave do Redis aceita `?`, `&` e `#`, e
+  // qualquer um deles cortaria a consulta ao meio.
+  lerChave: (id: string, chave: string) =>
+    request<ValorDeChave>(
+      'GET', `${conexoes}/${id}/key?name=${encodeURIComponent(chave)}`
+    ),
+  gravarChave: (id: string, pedido: {
+    chave: string; tipo: TipoDeChave; valor?: string; ttl?: number | null;
+  }) => request<{ gravou: boolean }>('PUT', `${conexoes}/${id}/key`, pedido),
+  apagarChave: (id: string, alvo: { chave?: string; prefixo?: string }) =>
+    request<{ apagadas: number }>(
+      'DELETE',
+      `${conexoes}/${id}/key?${alvo.chave === undefined
+        ? `prefix=${encodeURIComponent(alvo.prefixo ?? '')}`
+        : `name=${encodeURIComponent(alvo.chave)}`}`
+    ),
+  estadoDoServidor: (id: string) =>
+    request<InfoDoServidor>('GET', `${conexoes}/${id}/server-state`),
   encaminhamentos: (id: string) =>
     request<readonly PortForward[]>('GET', `${conexoes}/${id}/forwards`),
   abrirEncaminhamento: (

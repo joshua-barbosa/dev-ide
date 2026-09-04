@@ -161,3 +161,26 @@ test('somente-leitura RECUSA gravar e apagar', pular, async () => {
   assert.equal((await trancada.readKey!('texto')).texto, 'bom dia');
   await trancada.close();
 });
+
+test('reabrir um nó NÃO dobra a contagem das chaves', pular, async () => {
+  // Uma varredura completa era refeita por cima do mesmo acumulador: a cada
+  // reabertura a contagem dobrava, e uma chave contada duas vezes virava PASTA
+  // na árvore — clicar nela expandia em vez de abrir. Visto na tela.
+  const raiz = await sessao!.children([]);
+  const caminho = [raiz[0]!.id, '@chaves'];
+
+  const primeira = await sessao!.children(caminho);
+  const segunda = await sessao!.children(caminho);
+  const terceira = await sessao!.children(caminho);
+
+  assert.deepEqual(
+    segunda.map((n) => [n.label, n.detail]),
+    primeira.map((n) => [n.label, n.detail]),
+    'a segunda abertura tem de ver o mesmo que a primeira'
+  );
+  assert.deepEqual(terceira.map((n) => n.detail), primeira.map((n) => n.detail));
+  assert.ok(
+    primeira.every((n) => n.label !== ''),
+    'nenhum ramo pode nascer sem nome'
+  );
+});

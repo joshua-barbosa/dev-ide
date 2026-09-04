@@ -23,6 +23,7 @@ import { ServidorHost } from './servidor/ServidorHost';
 import type { QuickInputController } from './useQuickInput';
 import { MarkdownPreview } from './editor/MarkdownPreview';
 import { VisualizadorDeArquivo } from './editor/VisualizadorDeArquivo';
+import { ChaveHost } from './chaves/ChaveHost';
 import { BarraDoArquivo } from './editor/BarraDoArquivo';
 import type { Visualizador } from '../shared/editor/visualizadores';
 import { tokens } from './theme';
@@ -249,7 +250,7 @@ export function EditorGroup({
     ativa !== null &&
     !mostrandoPreview &&
     ![
-      'grid', 'conexao', 'terminal', 'tabela', 'processos', 'caderno', 'servidor',
+      'grid', 'conexao', 'terminal', 'tabela', 'processos', 'caderno', 'servidor', 'chave',
       'preferencias', 'requisitos', 'codesnap',
       // Imagem, PDF e CSV têm tela própria (T027) — o Monaco não abre nenhum
       // dos três de um jeito útil.
@@ -376,6 +377,17 @@ export function EditorGroup({
               ? undefined
               : (texto) => onConteudoDaAba(ativa.id, texto)
           }
+        />
+      )}
+
+      {/* A chave de chave-valor (spec 089). Montada só quando ativa: ela busca
+          do servidor ao nascer, e manter as escondidas vivas faria cada troca
+          de aba disparar leituras que ninguém está olhando. */}
+      {ativa?.type === 'chave' && (
+        <ChaveHost
+          conexaoId={String(ativa.meta.connectionId ?? '')}
+          chave={String(ativa.meta.chave ?? '')}
+          somenteLeitura={conexaoSomenteLeitura(ativa)}
         />
       )}
 

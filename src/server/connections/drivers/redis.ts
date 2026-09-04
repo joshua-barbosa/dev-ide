@@ -355,8 +355,23 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       // caminho de um filho começava na própria categoria, e o teste de nível
       // devolvia a raiz de novo — expandir `Chaves` mostrava `Chaves`.
       if (nodePath.length === 0) {
+        // A VERSÃO como detalhe, e não um nó mudo repetindo o nome da conexão:
+        // um nível que não acrescenta informação é um clique cobrado à toa.
+        // É a mesma forma do PostgreSQL.
+        let detalhe: string | undefined;
+        try {
+          const bruto = String(await cliente.info('server'));
+          detalhe = /redis_version:([^\r\n]+)/.exec(bruto)?.[1];
+        } catch {
+          // Servidor que esconde o `INFO`: o nó nasce sem detalhe, e não deixa
+          // de nascer.
+        }
         return [{
-          id: SERVER_ID, label: config.label, icon: 'server', hasChildren: true,
+          id: SERVER_ID,
+          label: config.label,
+          icon: 'server',
+          ...(detalhe === undefined ? {} : { detail: detalhe }),
+          hasChildren: true,
         }];
       }
       if (nodePath[0] !== SERVER_ID) return [];
@@ -438,12 +453,24 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       // db3 são duas varreduras, e misturá-las mostraria chave que não existe.
       const chaveDaVarredura = `${bancoAtual}\u0000${prefixo}`;
       const anterior = varreduras.get(chaveDaVarredura);
+
+      // **Varredura COMPLETA recomeça do zero; incompleta CONTINUA.**
+      //
+      // Continuar uma varredura que já acabou refazia a volta inteira somando
+      // ao mesmo acumulador — e a contagem DOBRAVA a cada vez que o nó era
+      // reaberto. Pior que o número errado: uma chave contada duas vezes vira
+      // pasta na árvore, e clicar nela passava a expandir em vez de abrir.
+      // Visto na tela, com um Redis de verdade.
+      //
+      // Recomeçar também é o que faz recarregar mostrar o estado de AGORA, em
+      // vez do de quando o nó foi aberto pela primeira vez.
+      const continuar = anterior !== undefined && !anterior.completa;
       const r = await varrer(
         cliente,
         padrao,
         prefixo,
-        anterior?.cursor ?? '0',
-        anterior?.acumulado ?? new Map()
+        continuar ? anterior.cursor : '0',
+        continuar ? anterior.acumulado : new Map()
       );
       varreduras.set(chaveDaVarredura, r);
 

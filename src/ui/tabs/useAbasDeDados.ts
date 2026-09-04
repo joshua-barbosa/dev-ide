@@ -33,6 +33,8 @@ export interface AbasDeDados {
   abrirTerminal(connectionId: string | null, titulo: string): void;
   /** A lista de processos de uma conexão (spec 047). */
   abrirProcessos(connectionId: string, titulo: string): void;
+  /** Abre a aba de uma chave de chave-valor (spec 089). */
+  abrirChave(connectionId: string, chave: string): void;
   /** A tela de configurações (T001). Uma só, como no VS Code. */
   abrirPreferencias(): void;
   /** A tela do que a IDE precisa da máquina (spec 077). */
@@ -169,6 +171,29 @@ export function useAbasDeDados(store: TabStore, salvarGrupoFocado: () => void): 
     [salvarGrupoFocado, store]
   );
 
+  /**
+   * Abre a aba de uma CHAVE de chave-valor (spec 089).
+   *
+   * Uma aba por chave: reabrir a mesma foca a que existe, como na tabela. O
+   * nome da chave entra no id, e por isso duas chaves do mesmo servidor são
+   * duas abas.
+   */
+  const abrirChave = useCallback(
+    (connectionId: string, chave: string) => {
+      salvarGrupoFocado();
+      store.open({
+        id: `chave:${connectionId}:${chave}`,
+        type: 'chave',
+        // O nome INTEIRO no título: chave de Redis é hierárquica por convenção,
+        // e cortar o começo esconderia justamente o que a distingue.
+        title: chave,
+        icon: 'key',
+        meta: { connectionId, chave },
+      });
+    },
+    [salvarGrupoFocado, store]
+  );
+
   const abrirProcessos = useCallback(
     (connectionId: string, titulo: string) => {
       salvarGrupoFocado();
@@ -211,6 +236,7 @@ export function useAbasDeDados(store: TabStore, salvarGrupoFocado: () => void): 
 
   return {
     abrirQuery, abrirTexto, abrirTabela, abrirFormulario, abrirTerminal, abrirProcessos,
+    abrirChave,
     abrirPreferencias, abrirRequisitos,
     abrirServidor,
   };

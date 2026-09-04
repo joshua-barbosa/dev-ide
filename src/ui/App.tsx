@@ -75,6 +75,7 @@ import { useVinculo } from './query/useVinculo';
 import { ligarCodeLensDeSql, propsDeVinculo, useAcoesDeQuery } from './query/useAcoesDeQuery';
 import { useAcoesRemotas } from './acoes/useAcoesRemotas';
 import { depsDasAcoesRemotas } from './acoes/depsDasAcoesRemotas';
+import { depsDosMenusDeConexao } from './acoes/depsDosMenusDeConexao';
 import { mapaDeAcoes } from './acoes/mapaDeAcoes';
 import { Api } from './api';
 import { usePasta } from './files/usePasta';
@@ -347,31 +348,14 @@ export function App() {
     })
   );
 
-  const menusDeConexao = useMenusDeConexao({
-    abrir: menu.abrir,
-    acoesRemotas,
-    copiar,
-    // T064: o diagrama sai como markdown com um bloco Mermaid, aberto JÁ em
-    // preview. O texto continua atrás do switch, para ele poder gravar o
-    // diagrama no repositório como documentação.
-    sabeDesenharEr: (id) => conexoes.capacidadesDe(id)?.diagramaEr === true,
-    diagramaEr: conexoesAcoes.diagramaEr,
-    abrirQuery: ws.abrirQuery,
-    abrirFormulario: (conexao) => conexoesAcoes.abrirFormulario(conexao),
-    excluir: conexoes.excluir,
-    abrirTerminalDaConexao: conexoesAcoes.abrirTerminalDaConexao,
-    recarregarMetadados: conexoes.recarregarMetadados,
-    abrirProcessos: (conexao) => ws.abrirProcessos(conexao.id, conexao.label),
-    novaQuery: async (connectionId, no, tipo) => {
-      const database = typeof no.meta?.database === 'string' ? no.meta.database : null;
-      if (database === null) return;
-      await conexoesAcoes.novaQuery({ connectionId, database }, tipo);
-    },
-    estaAberta: (id) => conexoes.estado?.openIds.includes(id) === true,
-    desconectar: conexoes.desconectar,
-    abrirConexao: conexoes.abrirConexao,
-    confirmar: dialogs.confirmar,
-  });
+  const menusDeConexao = useMenusDeConexao(
+    depsDosMenusDeConexao({
+      ws, conexoes, conexoesAcoes, acoesRemotas,
+      abrir: menu.abrir,
+      copiar,
+      confirmar: dialogs.confirmar,
+    })
+  );
 
   const novoTerminalNoPainel = painelDeTerminais.abrir;
   const dividirTerminalNoPainel = painelDeTerminais.dividir;
@@ -535,6 +519,7 @@ export function App() {
             confirmar: dialogs.confirmar,
             avisar: dialogs.avisar,
             onAbrirQuery: conexoesAcoes.abrirQueryDoNo,
+            onAbrirChave: ws.abrirChave,
             onAbrirArquivoRemoto: ws.abrirArquivoRemoto,
             onAbrirServidor: (conexao: PublicConnection) => {
               // Conecta ANTES de abrir a aba quando ainda não há sessão: sem

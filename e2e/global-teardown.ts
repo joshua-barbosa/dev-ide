@@ -4,7 +4,7 @@
 // a porta muda a cada vez, eles se acumulam indefinidamente.
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ARQUIVO_DO_SSHD } from './global-setup';
+import { ARQUIVO_DO_REDIS, ARQUIVO_DO_SSHD } from './global-setup';
 
 /**
  * Derruba o `sshd` descartável da spec 052.
@@ -27,9 +27,27 @@ function derrubarSshd(dados: string): void {
   }
 }
 
+/**
+ * Derruba o `redis-server` descartável da spec 089.
+ *
+ * Mesma razão do `sshd`: órfão segurando uma porta faria a execução seguinte
+ * falhar ao subir o dele.
+ */
+function derrubarRedis(dados: string): void {
+  try {
+    const { pid } = JSON.parse(
+      fs.readFileSync(path.join(dados, ARQUIVO_DO_REDIS), 'utf8')
+    ) as { pid?: number };
+    if (typeof pid === 'number') process.kill(pid, 'SIGTERM');
+  } catch {
+    // Sem marca, sem Redis: a suíte roda igual em máquina que não tem um.
+  }
+}
+
 export default function globalTeardown(): void {
   const dados = process.env.E2E_DATA;
   if (dados === undefined) return;
   derrubarSshd(dados);
+  derrubarRedis(dados);
   fs.rmSync(dados, { recursive: true, force: true });
 }
