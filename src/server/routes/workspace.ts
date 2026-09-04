@@ -10,6 +10,7 @@
 // a navegação a uma raiz daria sensação de segurança sem tirar capacidade
 // nenhuma de quem já chegou até aqui.
 import { Router } from 'express';
+import { ehCaminhoAbsoluto, plataformaAtual } from '../../shared/plataforma';
 import { spawn } from 'node:child_process';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -373,7 +374,7 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
 
     // Caminho absoluto: a raiz é a que o contém. Relativo: o da primeira raiz,
     // que é como a árvore sempre chamou — ela manda o caminho absoluto.
-    const raiz = limpo.startsWith('/') ? raizDe(limpo) : primeira;
+    const raiz = ehCaminhoAbsoluto(limpo, plataformaAtual()) ? raizDe(limpo) : primeira;
     const alvo = dentroDaPasta(raiz, limpo);
     if (!fs.existsSync(alvo)) throw new Error(`"${relativo}" não existe.`);
     return { alvo, raiz };

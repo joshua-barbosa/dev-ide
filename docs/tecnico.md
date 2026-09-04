@@ -89,6 +89,34 @@ No Redis o equivalente são três campos: `Mostrar todos os bancos` (faz nascer 
 nível `db0`, `db1`…), `Bancos visíveis` (lista branca) e `Usar RedisJSON e
 RediSearch`.
 
+### Windows
+
+O que muda entre plataformas mora em `shared/plataforma.ts`, e **nada ali lê o
+sistema**: tudo recebe a plataforma como argumento. É o que torna as decisões
+testáveis numa máquina que não é Windows — que é o caso desta.
+
+| O quê | Unix | Windows |
+|---|---|---|
+| Shell do terminal | `$SHELL`, senão `/bin/bash` | `%ComSpec%`, senão `cmd.exe` |
+| Rodar `.sh` | `bash` | `bash` do Git para Windows; sem ele, avisa o que instalar |
+| Caminho absoluto | começa com `/` | `C:\…` ou `\\servidor\pasta` |
+| Achar executável no PATH | nome + bit de execução | nome + sufixos do `PATHEXT` (`bash.exe`) |
+| Lembrar a senha do cofre | arquivo `600` + `/etc/machine-id` | **só o chaveiro do sistema** (DPAPI) |
+
+A última linha é a única que muda o que a ferramenta FAZ, e é uma decisão de
+segurança: no Windows o modo `600` é ignorado e `/etc/machine-id` não existe —
+as duas pernas do backend de arquivo caem ao mesmo tempo, e o que sobraria seria
+a chave do cofre legível por quem lesse o disco. Por isso lá a lembrança exige o
+`safeStorage`, que só existe no aplicativo. No navegador, a senha é digitada a
+cada vez, e a tela diz por quê.
+
+O `node-pty` publica binários prontos para `win32-x64` e `win32-arm64` — o
+terminal não precisa de compilação na máquina do usuário. O pacote Windows
+exclui `node-pty/build`, que traz o binário Linux desta máquina.
+
+**Nada disto foi verificado em Windows de verdade.** O que existe são testes de
+unidade sobre as decisões puras.
+
 ### Serviços suportados
 
 | Tipo | Biblioteca | Somente-leitura imposto por |

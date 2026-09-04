@@ -5,6 +5,7 @@
 // argumentos — se mandasse, o terminal viraria execução remota arbitrária
 // disfarçada de recurso.
 import * as os from 'os';
+import { plataformaAtual, shellDoTerminal } from '../../shared/plataforma';
 import { montarComando } from '../../shared/terminal/comando';
 import type { DriverRegistry } from '../connections/registry';
 import type { Vault } from '../connections/vault';
@@ -47,7 +48,7 @@ export function criarResolvedorDeAbertura({ registry, vault, cwdPadrao }: DepsDe
     if (typeof p.connectionId !== 'string' || p.connectionId === '') {
       return {
         comando: {
-          exec: process.env.SHELL ?? '/bin/bash',
+          exec: shellDoTerminal(plataformaAtual(), process.env),
           // `-l` para o shell carregar o perfil do usuário: sem isso faltam
           // PATH, aliases e prompt, e o terminal parece quebrado.
           args: ['-l'],

@@ -16,6 +16,9 @@
 //   peça não pode impedir a IDE de subir: o pior caso aceitável é pedir a senha,
 //   que é exatamente o comportamento de quem nunca marcou a caixa.
 import * as crypto from 'crypto';
+import {
+  aceitaLembrancaEmArquivo, plataformaAtual, SEM_LEMBRANCA_NO_WINDOWS, type Plataforma,
+} from '../../shared/plataforma';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -270,7 +273,32 @@ export class RememberedKey {
   }
 
   /** `machine-id` + uid, ou `null` se a máquina não puder ser identificada. */
-  private identidade(): string | null {
+  /**
+   * Por que a lembrança não está disponível — a frase que a tela mostra.
+   *
+   * `null` quando ela ESTÁ disponível. Existe porque a recusa era silenciosa:
+   * marcar "lembrar a senha" no Windows não fazia nada, e ninguém dizia por
+   * quê. Silêncio numa opção de segurança é pior que a opção não existir.
+   */
+  porQueNao(plataforma: Plataforma = plataformaAtual()): string | null {
+    if (this.available()) return null;
+    return aceitaLembrancaEmArquivo(plataforma)
+      ? 'Esta máquina não tem identificador — a senha terá de ser digitada a cada vez.'
+      : SEM_LEMBRANCA_NO_WINDOWS;
+  }
+
+  private identidade(plataforma: Plataforma = plataformaAtual()): string | null {
+    // **No Windows, o backend de ARQUIVO é recusado de propósito.**
+    //
+    // As duas pernas dele caem lá ao mesmo tempo: o modo `600` do arquivo é
+    // ignorado pelo sistema, e a chave é derivada de `/etc/machine-id`, que não
+    // existe. O que sobraria seria a chave do cofre legível por quem lesse o
+    // disco — exatamente o limite que a nota do `SeloDoSistema` descreve.
+    //
+    // Recusar aqui, e não confiar em `/etc/machine-id` falhar sozinho: sob Git
+    // Bash ou com um disco Linux montado, esse arquivo PODE existir, e aí o
+    // backend inseguro nasceria sem ninguém notar. Escolha dele, 03/09/2026.
+    if (!aceitaLembrancaEmArquivo(plataforma)) return null;
     try {
       const id = this.lerMaquina();
       if (typeof id !== 'string' || id.trim() === '') return null;

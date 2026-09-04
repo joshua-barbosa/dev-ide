@@ -11,6 +11,7 @@
 // escreve, e apaga no encerramento E na morte súbita do processo. Deixar isso
 // com quem chama é como o segredo acabaria esquecido em disco.
 import * as fs from 'fs';
+import { existeNoCaminho } from '../programas';
 import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -73,7 +74,7 @@ export class TerminalSession {
     // não existe — ele deixa o processo auxiliar falhar com "execvp failed" e
     // sair com código 1. Isso viraria uma aba com uma mensagem críptica, e
     // pior, o segredo já teria ido para o disco.
-    if (!existeNoPath(comando.exec)) {
+    if (!existeNoCaminho(comando.exec)) {
       throw new Error(
         `"${comando.exec}" não está instalado ou não está no PATH. ` +
           'Instale o cliente para abrir esta conexão no terminal.'
@@ -189,19 +190,6 @@ export class TerminalSession {
   }
 }
 
-/** Procura o executável, aceitando caminho absoluto ou nome no PATH. */
-function existeNoPath(exec: string): boolean {
-  if (exec.includes('/')) return fs.existsSync(exec);
-  const pastas = (process.env.PATH ?? '').split(path.delimiter).filter((d) => d !== '');
-  return pastas.some((pasta) => {
-    try {
-      fs.accessSync(path.join(pasta, exec), fs.constants.X_OK);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-}
 
 /**
  * Grava a credencial num arquivo `600` dentro de um diretório `700`.

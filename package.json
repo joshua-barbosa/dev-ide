@@ -89,6 +89,7 @@
     "files": [
       "dist/**/*",
       "recursos/icone.png",
+      "recursos/icone.ico",
       "package.json"
     ],
     "directories": {
@@ -104,6 +105,36 @@
     },
     "electronDownload": {
       "cache": "node_modules/.cache/electron"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "files": [
+        "!node_modules/node-pty/build/**"
+      ],
+      "icon": "recursos/icone.ico",
+      "fileAssociations": [
+        {
+          "ext": "sqlbook",
+          "name": "Caderno de SQL",
+          "role": "Editor"
+        },
+        {
+          "ext": "sql",
+          "name": "Script SQL",
+          "role": "Editor"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Braytech Code"
     }
   }
 }

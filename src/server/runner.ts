@@ -1,4 +1,6 @@
 import { spawn } from 'child_process';
+import { existeNoCaminho } from './programas';
+import { comandoDeShellScript, plataformaAtual } from '../shared/plataforma';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -269,7 +271,15 @@ async function execute(
       fs.writeFileSync(file, source, { encoding: 'utf8', mode: 0o700 });
       // `bash`, e não o `SHELL` dele: o script foi escrito para bash, e rodá-lo
       // no fish ou no zsh daria erro de sintaxe em coisa que está certa.
-      return execProcess('bash', [file], cwd, RUN_TIMEOUT_MS, { controle });
+      //
+      // No Windows o `bash` vem do Git para Windows. Quando ele não está lá, o
+      // aviso diz o que instalar — sem isso a falha apareceria como "comando
+      // não encontrado", que não ajuda ninguém.
+      const shell = comandoDeShellScript(plataformaAtual());
+      if (shell.aviso !== null && !existeNoCaminho(shell.exec)) {
+        throw new Error(shell.aviso);
+      }
+      return execProcess(shell.exec, [file], cwd, RUN_TIMEOUT_MS, { controle });
     }
     case 'php': {
       const file = path.join(runDir, 'main.php');

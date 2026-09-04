@@ -36,8 +36,14 @@ sistema para as senhas.
 > versão desktop a partir do código com o isolamento do Chromium ligado exige um
 > `sudo` uma única vez; sem ele, `npm run electron:sem-sandbox`.
 >
-> **Windows** ainda não roda: há quatro pontos do código que assumem Unix, e
-> estão listados em [`docs/tecnico.md`](docs/tecnico.md).
+> **Windows:** o instalador (`.exe`) e o `.zip` portátil saem de
+> `npm run empacotar:win`. A instalação é **por usuário**, sem pedir
+> administrador — o cofre fica amarrado ao seu login do Windows.
+>
+> Duas diferenças em relação ao Linux, e as duas são de propósito:
+> **lembrar a senha do cofre só funciona no aplicativo**, não no navegador (o
+> chaveiro do sistema não existe lá), e rodar arquivos `.sh` exige o `bash` do
+> [Git para Windows](https://git-scm.com/download/win) no PATH.
 
 ---
 

@@ -416,3 +416,31 @@ test('sem máquina E sem chaveiro, não há onde lembrar', () => {
   assert.equal(new RememberedKey('/tmp/nao-usado.json', () => '').available(), true);
   registrarSeloDoSistema(null);
 });
+
+test('no WINDOWS a lembrança em arquivo é recusada, mesmo com machine-id', async (t) => {
+  // Recusar pela PLATAFORMA, e não confiar em `/etc/machine-id` falhar: sob Git
+  // Bash ou com um disco Linux montado esse arquivo pode existir, e aí o
+  // backend inseguro nasceria sem ninguém notar.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'braytech-win-'));
+  const alvo = path.join(dir, 'session.json');
+  const chaveiro = new RememberedKey(alvo, () => 'id-de-maquina-que-existe');
+
+  const identidade = (chaveiro as unknown as {
+    identidade(p: string): string | null;
+  }).identidade.bind(chaveiro);
+
+  assert.equal(identidade('win32'), null, 'no Windows, sem amarra de máquina');
+  assert.ok(identidade('linux') !== null, 'no Linux continua funcionando');
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+});
+
+test('a recusa DIZ o motivo, em vez de não fazer nada', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'braytech-win-'));
+  const chaveiro = new RememberedKey(path.join(dir, 'session.json'), () => {
+    throw new Error('sem machine-id');
+  });
+
+  assert.match(chaveiro.porQueNao('win32') ?? '', /chaveiro do sistema/);
+  assert.match(chaveiro.porQueNao('linux') ?? '', /identificador/);
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+});
