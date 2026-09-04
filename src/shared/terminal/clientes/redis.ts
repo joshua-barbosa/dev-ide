@@ -14,9 +14,12 @@
 import type { ClienteDeLinhaDeComando } from '../comando';
 import { texto } from '../comando';
 
+const CAMPO_DE_BANCO = 'database';
+
 export const CLI_REDIS: ClienteDeLinhaDeComando = {
   exec: 'redis-cli',
   campoDeSenha: 'password',
+  campoDeBanco: CAMPO_DE_BANCO,
   envDeSenha: 'REDISCLI_AUTH',
 
   /**
@@ -52,7 +55,7 @@ export const CLI_REDIS: ClienteDeLinhaDeComando = {
     };
     par('-h', texto(fields, 'host'));
     par('-p', texto(fields, 'port'));
-    par('-n', texto(fields, 'database'));
+    par('-n', texto(fields, CAMPO_DE_BANCO));
     // Usuário VAZIO não vira `--user default`: há servidor que só tem senha, e
     // mandar um usuário que não existe derruba a autenticação. É a mesma regra
     // que o driver já segue.

@@ -10,15 +10,27 @@
 // `argv`, que é exatamente o que esta spec existe para evitar.
 import type { ClienteDeLinhaDeComando } from '../comando';
 import { texto } from '../comando';
+import { bancoInicialDoPostgres } from '../../sql/banco-inicial';
 
 /** No `.pgpass`, `:` e `\` dentro de um campo precisam de barra invertida. */
 function escapar(valor: string): string {
   return valor.replace(/([\\:])/g, '\\$1');
 }
 
+/**
+ * O campo que o DRIVER declara para o banco principal.
+ *
+ * Aqui estava escrito `database`, que driver nenhum tem: o `-d` nunca era
+ * montado, o `psql` caía no banco com o nome do usuário e morria com código 2.
+ * Uma constante só, usada na declaração e na leitura, para não voltarem a
+ * divergir.
+ */
+const CAMPO_DE_BANCO = 'main_database';
+
 export const CLI_POSTGRES: ClienteDeLinhaDeComando = {
   exec: 'psql',
   campoDeSenha: 'password',
+  campoDeBanco: CAMPO_DE_BANCO,
 
   montarArgs({ fields, readOnly }) {
     const args: string[] = [];
@@ -29,8 +41,10 @@ export const CLI_POSTGRES: ClienteDeLinhaDeComando = {
     par('-p', texto(fields, 'port'));
     par('-U', texto(fields, 'user'));
 
-    const banco = texto(fields, 'database');
-    if (banco !== '') args.push('-d', banco);
+    // SEMPRE com `-d`. Sem ele o `psql` abre o banco com o nome do usuário, e
+    // o erro que volta — `FATAL: database "<usuário>" does not exist` — parece
+    // qualquer coisa menos uma opção que faltou. A mesma regra do driver.
+    args.push('-d', bancoInicialDoPostgres(texto(fields, CAMPO_DE_BANCO)));
 
     // `readOnly` não vira argumento aqui: vai em PGOPTIONS, porque `psql` não
     // tem equivalente ao `--init-command` do MySQL.

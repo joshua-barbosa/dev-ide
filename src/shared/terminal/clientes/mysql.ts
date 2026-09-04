@@ -10,9 +10,12 @@
 import type { ClienteDeLinhaDeComando } from '../comando';
 import { texto } from '../comando';
 
+const CAMPO_DE_BANCO = 'main_database';
+
 export const CLI_MYSQL: ClienteDeLinhaDeComando = {
   exec: 'mysql',
   campoDeSenha: 'password',
+  campoDeBanco: CAMPO_DE_BANCO,
 
   montarArgs({ fields, readOnly, arquivoDeCredencial }) {
     const args: string[] = [];
@@ -37,15 +40,27 @@ export const CLI_MYSQL: ClienteDeLinhaDeComando = {
       args.push('--init-command=SET SESSION TRANSACTION READ ONLY');
     }
 
-    const banco = texto(fields, 'main_database');
+    const banco = texto(fields, CAMPO_DE_BANCO);
     if (banco !== '') args.push(banco);
 
     return args;
   },
 
   montarCredencial(senha) {
-    // Formato de option file. Sem aspas: o MySQL lê o valor até o fim da linha,
-    // então senha com espaço ou aspas funciona sem escape nenhum.
-    return `[client]\npassword=${senha}\n`;
+    // **Entre aspas, e com escape.** Aqui estava escrito que o MySQL "lê o
+    // valor até o fim da linha, então senha com espaço ou aspas funciona sem
+    // escape nenhum". É falso, e custou caro: num option file sem aspas o `#`
+    // começa um COMENTÁRIO e `\n`, `\t`, `\s` e `\b` são ESCAPES. Uma senha
+    // com `#` chegava cortada no primeiro `#`, e uma com `\n` virava duas
+    // linhas.
+    //
+    // O sintoma é traiçoeiro: o driver recebe a senha inteira e a árvore abre
+    // normalmente, enquanto o terminal responde "Access denied" — parece
+    // permissão do banco, e é o arquivo que foi mal escrito. Foi o que ele viu.
+    //
+    // Conferido contra o cliente de verdade, com `mysql --print-defaults`:
+    // sem aspas, `abc#def` vira `abc`; com aspas, volta inteiro.
+    const escapada = senha.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return `[client]\npassword="${escapada}"\n`;
   },
 };

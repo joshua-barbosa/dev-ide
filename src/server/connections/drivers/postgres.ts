@@ -44,6 +44,7 @@ import { estruturaDoPostgres, logDoPostgres, metricasDoPostgres } from './postgr
 import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
 import { modeloSql, type ColunaDeModelo } from './modelos';
 import { CLI_POSTGRES } from '../../../shared/terminal/clientes/postgres';
+import { bancoInicialDoPostgres } from '../../../shared/sql/banco-inicial';
 import type {
   OpcoesDeNavegacao,
   ActionRequest,
@@ -475,7 +476,10 @@ function opcaoSsl(modo: string, ca: string): ClientConfig['ssl'] {
 
 async function connect(config: ResolvedConfig): Promise<Session> {
   const f = config.fields;
-  const principal = String(f.main_database === undefined || f.main_database === '' ? 'postgres' : f.main_database);
+  // A MESMA regra que o cliente de linha de comando usa. Quando ela morava só
+  // aqui, o terminal abria sem `-d` e o `psql` caía no banco com o nome do
+  // usuário.
+  const principal = bancoInicialDoPostgres(f.main_database);
 
   const exibicao: Exibicao = {
     main: principal,
@@ -662,7 +666,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     },
     execute: async (request) => {
       // O vínculo do arquivo manda (spec 038); depois o nó ativo; depois o
-      // principal. A ordem importa: uma query amarrada a `nuntius` não pode
+      // principal. A ordem importa: uma query amarrada a `registros` não pode
       // rodar em `postgres` só porque a árvore estava aberta em outro lugar —
       // é a mesma armadilha do `pgdb` sem `-d`, que responde do banco errado
       // sem dar erro.
@@ -703,7 +707,7 @@ export const postgresDriver: Driver = {
       name: 'show_databases',
       label: 'Bancos visíveis',
       type: 'textarea',
-      placeholder: 'ex.: nuntius, bussola',
+      placeholder: 'ex.: registros, financeiro',
       help: 'Lista branca separada por vírgula ou quebra de linha. Vazio mostra todos.',
       section: 'Árvore',
     },

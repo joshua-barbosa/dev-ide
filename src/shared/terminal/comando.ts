@@ -28,6 +28,19 @@ export interface ClienteDeLinhaDeComando {
   /** Nome do campo que guarda a senha, se houver. */
   readonly campoDeSenha?: string;
   /**
+   * Nome do campo que guarda o BANCO a abrir, se houver.
+   *
+   * Declarado, e não só lido dentro de `montarArgs`, porque foi exatamente aí
+   * que um defeito se escondeu: o cliente do `psql` lia `database` e o driver
+   * do Postgres declara `main_database`. O `-d` nunca era montado, e o cliente
+   * morria tentando abrir um banco com o nome do usuário.
+   *
+   * Com o nome DECLARADO, um teste compara o que o cliente usa com o que o
+   * driver diz ter — e o par que não bate para de passar despercebido.
+   * `montarArgs` lê a mesma constante, para os dois não poderem divergir.
+   */
+  readonly campoDeBanco?: string;
+  /**
    * Variável de ambiente que recebe a SENHA, para clientes sem arquivo de
    * credencial (spec 089).
    *

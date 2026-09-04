@@ -17,9 +17,9 @@ const TODOS = [
 function ctx(extra: Partial<ContextoDeComando> = {}): ContextoDeComando {
   return {
     fields: {
-      host: 'gee-prd-brz-mysql-03.mysql.database.azure.com',
+      host: 'acme-db-03.exemplo.invalido',
       port: 3306,
-      user: 'joshuabarbosa',
+      user: 'usuario-acme',
       main_database: 'servidor-4',
       // Em produção a configuração resolvida CONTÉM a senha. O teste precisa
       // refletir isso, senão não exercita a proteção que importa.
@@ -117,25 +117,32 @@ test('o MySQL recebe host, porta, usuário e banco', () => {
   const cmd = montarComando(CLI_MYSQL, ctx(), SENHA, SECRETOS)!;
   assert.equal(cmd.exec, 'mysql');
   const linha = cmd.args.join(' ');
-  assert.match(linha, /gee-prd-brz-mysql-03/);
+  assert.match(linha, /acme-db-03/);
   assert.match(linha, /3306/);
-  assert.match(linha, /joshuabarbosa/);
+  assert.match(linha, /usuario-acme/);
   assert.ok(cmd.args.includes('servidor-4'), 'o banco entra como último argumento');
 });
 
 test('o PostgreSQL recebe host, porta, usuário e banco', () => {
+  // `main_database`, e não `database`. Este teste passava com o nome errado
+  // porque INVENTAVA o campo — e assim escondia que driver nenhum o declara: o
+  // `-d` nunca era montado em uso real, e o `psql` morria tentando abrir um
+  // banco com o nome do usuário. Quem pega isso agora é
+  // `campos-do-cliente.test.ts`, que monta os campos a partir do DRIVER.
   const cmd = montarComando(
     CLI_POSTGRES,
-    ctx({ fields: { host: '10.0.0.9', port: 5432, user: 'postgres', database: 'nuntius' } }),
+    ctx({
+      fields: { host: '192.0.2.9', port: 5432, user: 'postgres', main_database: 'acme_registros' },
+    }),
     SENHA,
     SECRETOS
   )!;
   assert.equal(cmd.exec, 'psql');
   const linha = cmd.args.join(' ');
-  assert.match(linha, /10\.0\.0\.9/);
+  assert.match(linha, /192\.0\.2\.9/);
   assert.match(linha, /5432/);
   assert.match(linha, /postgres/);
-  assert.match(linha, /nuntius/);
+  assert.match(linha, /acme_registros/);
 });
 
 test('campo ausente não vira argumento vazio', () => {
