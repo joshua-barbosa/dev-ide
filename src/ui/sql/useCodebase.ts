@@ -5,7 +5,11 @@
 // lá evita reler o catálogo, o daqui evita a viagem.
 import { useEffect, useRef } from 'react';
 import { Api } from '../api';
-import { definirCodebase, registrarCompletarSql } from '../editor/completarSql';
+// O provedor de autocomplete VIVE no Monaco, e por isso mora atrás de um
+// `import()` (P7, spec 101): a IDE inteira esperava por ele no primeiro
+// desenho, e ele só serve depois que existe um editor de SQL na tela.
+const completar = (): Promise<typeof import('../editor/completarSql')> =>
+  import('../editor/completarSql');
 import type { Codebase } from '../../shared/sql/codebase';
 import type { Vinculo } from '../../shared/sql/vinculo';
 
@@ -22,30 +26,37 @@ export function useCodebase(vinculo: Vinculo | null): void {
   const guardados = useRef(new Map<string, Codebase>());
 
   useEffect(() => {
-    registrarCompletarSql();
+    void completar().then((m) => m.registrarCompletarSql());
   }, []);
 
   useEffect(() => {
+    // `definirCodebase` passa por `import()`, então é assíncrono; a ordem entre
+    // as chamadas continua a mesma porque o módulo é UM só e a promessa dele já
+    // está resolvida a partir da segunda vez.
+    const definir = (c: Codebase | null): void => {
+      void completar().then((m) => m.definirCodebase(c));
+    };
+
     if (connectionId === null) {
-      definirCodebase(null);
+      definir(null);
       return;
     }
     const chave = `${connectionId} ${database ?? ''}`;
     const guardado = guardados.current.get(chave);
     if (guardado !== undefined) {
-      definirCodebase(guardado);
+      definir(guardado);
       return;
     }
 
     let vigente = true;
     // Enquanto não chega, o autocomplete fica SEM catálogo — e não com o do
     // banco anterior, que sugeriria tabela que não existe aqui.
-    definirCodebase(null);
+    definir(null);
     Api.codebase(connectionId, database ?? '')
       .then((catalogo) => {
         if (!vigente) return;
         guardados.current.set(chave, catalogo);
-        definirCodebase(catalogo);
+        definir(catalogo);
       })
       .catch(() => {
         // Conexão sem catálogo, ou fora do ar: o editor segue completando as

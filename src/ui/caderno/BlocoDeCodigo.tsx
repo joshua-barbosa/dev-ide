@@ -13,9 +13,17 @@
 // A posição do cursor ATRAVESSA a troca. Sem isso, clicar no meio de uma linha
 // levaria o cursor para o começo do bloco — o gesto mais comum de todos ficaria
 // irritante.
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { CampoColorido } from '../editor/CampoColorido';
-import { EditorDoBloco } from './EditorDoBloco';
+
+// O bloco em FOCO vira Monaco; os outros ficam no `CampoColorido`, que já era
+// a decisão D17. Trazer o Monaco por `import()` (P7, spec 101) faz um caderno
+// que nunca ganhou foco não pagar por ele — e faz o resto da IDE não esperar.
+// Enquanto ele não chega, quem aparece é o MESMO campo colorido de antes: o
+// bloco não pisca em branco nem perde o texto.
+const EditorDoBloco = lazy(async () => ({
+  default: (await import('./EditorDoBloco')).EditorDoBloco,
+}));
 import type { NomeDoTema } from '../../shared/temas';
 
 export interface BlocoDeCodigoProps {
@@ -42,8 +50,25 @@ export function BlocoDeCodigo({
   /** Onde o cursor estava quando o Monaco entrou. `null` = camada de texto. */
   const [editando, setEditando] = useState<number | null>(null);
 
+  /** O que ocupa o lugar enquanto o Monaco do bloco não chegou: o campo de antes. */
+  const CampoDeTexto = () => (
+    <CampoColorido
+      valor={conteudo}
+      linguagem={linguagem}
+      tema={tema}
+      fontSize={fontSize}
+      tabSize={tabSize}
+      rotulo={rotulo}
+      linhas={alturaEmLinhas(conteudo)}
+      marcaDoTexto={{ 'data-conteudo': id }}
+      marcaDaCor={{ 'data-colorido': id }}
+      onAlterar={onAlterar}
+    />
+  );
+
   if (editando !== null) {
     return (
+      <Suspense fallback={<CampoDeTexto />}>
       <EditorDoBloco
         conteudo={conteudo}
         linguagem={linguagem}
@@ -56,6 +81,7 @@ export function BlocoDeCodigo({
         onAtalhoDeRodar={onAtalhoDeRodar}
         onSair={() => setEditando(null)}
       />
+      </Suspense>
     );
   }
 

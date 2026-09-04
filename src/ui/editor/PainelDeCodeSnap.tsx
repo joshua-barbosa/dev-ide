@@ -25,7 +25,7 @@ import { ESTILO_PADRAO, nomeDaFoto, type EstiloDaFoto } from '../../shared/codes
 import { baixarImagem, comoPng, copiarImagem, desenharFoto } from './codesnap-canvas';
 // O MESMO módulo que o `EditorHost` carrega — é dele que sai o realce, com o
 // tema que está aplicado agora. Um segundo Monaco daria outras cores.
-import * as monaco from 'monaco-editor';
+
 import type { EditorHandle } from './EditorHost';
 import type { Paleta } from '../../shared/temas';
 
@@ -94,7 +94,13 @@ export function PainelDeCodeSnap({
       primeiraLinha: trecho.primeiraLinha,
     };
 
-    desenharFoto({ texto: trecho.texto, linguagem: trecho.linguagem, estilo, paleta, monaco })
+    // O Monaco entra por `import()` (P7, spec 101): quem tira foto de um
+    // trecho já tem um editor aberto, então o pedaço já está em memória — e
+    // quem NUNCA usa o CodeSnap deixa de pagar por ele no primeiro desenho.
+    import('monaco-editor')
+      .then((monaco) =>
+        desenharFoto({ texto: trecho.texto, linguagem: trecho.linguagem, estilo, paleta, monaco })
+      )
       .then((canvas) => {
         if (!vivo) return;
         canvasAtual.current = canvas;

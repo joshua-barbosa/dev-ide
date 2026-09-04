@@ -33,7 +33,7 @@ import { useAbasDeDados } from './tabs/useAbasDeDados';
 import { useGruposDeEditor } from './editor/useGruposDeEditor';
 import type { SessaoDeAbas } from '../shared/sessao-abas';
 import { chaveDoModelo, gemeas } from '../shared/abas-gemeas';
-import { descartarModelo } from './editor/modelos';
+
 
 export interface EditorTabMeta {
   /** Caminho no disco; `null` em aba de query, que não tem arquivo. */
@@ -435,7 +435,10 @@ export function useWorkspace({ confirmar, aoAbrirArquivo }: WorkspaceDeps): Work
       const usado = store
         .list()
         .some((t) => chaveDoModelo(t.id, metaDe(t).path ?? null) === chave);
-      if (!usado) descartarModelo(chave);
+      // O módulo de modelos é do Monaco, e por isso entra por `import()`
+      // (P7, spec 101). Descartar é limpeza: chegar um instante depois não
+      // muda nada, e nesta altura o editor já está carregado de qualquer jeito.
+      if (!usado) void import('./editor/modelos').then((m) => m.descartarModelo(chave));
     },
     [store]
   );

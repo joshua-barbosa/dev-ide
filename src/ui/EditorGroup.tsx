@@ -12,7 +12,8 @@ import { useCallback, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import { TabBar } from './tabs/TabBar';
 import { ZonaDeSoltura } from './ZonaDeSoltura';
-import { EditorHost, type AcaoDeMenuDoEditor, type EditorHandle } from './editor/EditorHost';
+import type { AcaoDeMenuDoEditor, EditorHandle } from './editor/EditorHost';
+import { EditorPreguicoso } from './editor/EditorPreguicoso';
 import type { ContextoDeLinguagem } from './editor/provedores';
 import { AbaDeTerminal } from './terminal/AbaDeTerminal';
 import { ResultGrid } from './grid/ResultGrid';
@@ -335,7 +336,7 @@ export function EditorGroup({
       {/* Montado sempre: desmontá-lo ao ficar sem abas perderia a instância e a
           fachada imperativa. Some de vista, não do DOM. */}
       <Box sx={{ flex: 1, display: mostrarEditor ? 'flex' : 'none', minHeight: 0 }}>
-        <EditorHost
+        <EditorPreguicoso
           ref={guardarEditor}
           acoesDeMenu={acoesDeMenu}
           contextoDeLinguagem={contextoDeLinguagem}

@@ -9,7 +9,10 @@
 // sabe o que fazer com ele, e o `App` só liga um no outro.
 import type { TreeNode } from '../../shared/contracts';
 import type { Execution } from '../useExecution';
-import { definirTratadorDeStatement } from './codelens';
+// O CodeLens é do Monaco, e o tratador só é chamado quando alguém clica num
+// `▷ Run` DENTRO do editor — que não existe antes de o Monaco carregar.
+const codelens = (): Promise<typeof import('./codelens')> => import('./codelens');
+import type { ModoDeExecucao } from './codelens';
 import type { ControleDeVinculo } from './useVinculo';
 import type { Vinculo } from '../../shared/sql/vinculo';
 import type { Workspace } from '../useWorkspace';
@@ -84,7 +87,7 @@ export function ligarCodeLensDeSql(
   exec: Execution,
   avisar: (p: Promise<unknown>) => void
 ): void {
-  definirTratadorDeStatement((modo, statement, uri) => {
+  const tratador = (modo: ModoDeExecucao, statement: string, uri: string): void => {
     // A URI diz de QUAL editor veio o clique. Com a tela dividida há um modelo
     // por grupo, e sem isto o `Run` da esquerda rodaria o arquivo da direita.
     const aba = ws.abaDaUri(uri) ?? ws.active;
@@ -98,7 +101,8 @@ export function ligarCodeLensDeSql(
     avisar(
       exec.executarStatement(modo, statement, meta.path ?? null, aba?.title ?? 'Query', daAba)
     );
-  });
+  };
+  void codelens().then((m) => m.definirTratadorDeStatement(tratador));
 }
 
 /**
