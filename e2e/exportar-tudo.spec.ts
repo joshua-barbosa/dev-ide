@@ -52,7 +52,9 @@ test('a página vai para uma aba do editor, como antes', async ({ page }) => {
 test('a tabela inteira vira ARQUIVO, com os filtros da tela junto', async ({ page }) => {
   await abrirTabela(page);
   // Filtra para uma linha só: o arquivo tem que ser o que está na tela, e não a
-  // tabela toda ignorando o filtro.
+  // tabela toda ignorando o filtro. A fila de `contém…` aparece a pedido desde
+  // a spec 097 (D257).
+  await page.getByRole('button', { name: 'Filtrar por coluna' }).click();
   await page.getByLabel('Filtrar nome').fill('josh');
   await expect(page.locator('[data-total-da-tabela]')).toContainText('de 1');
 

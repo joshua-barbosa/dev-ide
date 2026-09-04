@@ -23,7 +23,8 @@
     "instalar": "npm run empacotar && npm run instalar-atalho",
     "empacotar:win": "npm run build && electron-builder --win",
     "prints": "playwright test --config=playwright.prints.ts",
-    "build:extensao": "npm run build:server && npm run build:icons && BRAYTECH_ALVO=painel vite build --config vite.extensao.config.ts && BRAYTECH_ALVO=formulario vite build --config vite.extensao.config.ts && BRAYTECH_ALVO=dialogo vite build --config vite.extensao.config.ts && BRAYTECH_ALVO=aba vite build --config vite.extensao.config.ts && BRAYTECH_ALVO=caderno vite build --config vite.extensao.config.ts && BRAYTECH_ALVO=diagrama vite build --config vite.extensao.config.ts && node extensao/scripts/gerar-icones.mjs && tsc -p extensao/tsconfig.json"
+    "build:extensao": "npm run build:server && npm run build:icons && BRAYTECH_ALVO=painel vite build --config vite.extensao.config.ts && BRAYTECH_ALVO=formulario vite build --config vite.extensao.config.ts && BRAYTECH_ALVO=dialogo vite build --config vite.extensao.config.ts && BRAYTECH_ALVO=aba vite build --config vite.extensao.config.ts && BRAYTECH_ALVO=caderno vite build --config vite.extensao.config.ts && BRAYTECH_ALVO=diagrama vite build --config vite.extensao.config.ts && node extensao/scripts/gerar-icones.mjs && tsc -p extensao/tsconfig.json",
+    "empacotar:extensao": "npm run build:extensao && cd extensao && npx @vscode/vsce package --no-dependencies --allow-missing-repository"
   },
   "license": "MIT",
   "dependencies": {

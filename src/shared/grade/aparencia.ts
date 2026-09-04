@@ -22,17 +22,27 @@ export interface Aparencia {
 }
 
 /**
- * O padrão é o que a grade já fazia antes desta fase.
+ * O padrão da grade.
  *
- * Mudar o comportamento de quem nunca abriu o `👁` seria trocar a tela dele por
- * uma decisão minha — que é exatamente o que esta spec está desfazendo.
+ * `borda: 'todas'` desenhava um retângulo em volta de CADA célula: numa tabela
+ * de quatro colunas por vinte linhas são oitenta molduras, e a grade parecia
+ * uma planilha dos anos 90. Ele olhou e pediu algo mais bonito, marcando
+ * "densidade e respiro" e "cores e contraste".
+ *
+ * `horizontal` mantém o que a borda existe para fazer — não perder a linha ao
+ * correr o olho — e para de riscar o vertical, que a própria coluna já separa.
+ * A altura sobe de 22 para 24: dois pixels por linha é o que separa "apertado"
+ * de "legível" sem custar uma tela de rolagem.
+ *
+ * Quem já escolheu a aparência no `👁` não é afetado: a escolha dele está
+ * guardada e continua valendo.
  */
 export const APARENCIA_PADRAO: Aparencia = {
-  alturaDaLinha: 22,
+  alturaDaLinha: 24,
   numeroDaLinha: true,
   colunaDeControle: true,
   alinhamento: 'auto',
-  borda: 'todas',
+  borda: 'horizontal',
 };
 
 export const ALTURA_MINIMA = 16;

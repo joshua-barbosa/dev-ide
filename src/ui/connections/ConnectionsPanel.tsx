@@ -6,14 +6,12 @@
 // os dois são armazenamento e vão para Database.
 import { useState } from 'react';
 import Box from '@mui/material/Box';
-import IconButton from '@mui/material/IconButton';
-import Tooltip from '@mui/material/Tooltip';
 import type { DriverPanel, GroupNode, PublicConnection, TreeNode } from '../../shared/contracts';
 import { Api } from '../api';
 import { noRemotoDe, type NoRemoto as NoRemotoDaLinha } from '../acoes/useAcoesRemotas';
 import type { Vinculo } from '../../shared/sql/vinculo';
-import { Icon } from '../Icon';
 import { AcaoDoImportar } from './AcaoDoImportar';
+import { AcaoDaLinha, AcoesDoNoRemoto } from './AcoesDaLinhaRemota';
 import { AcaoDoPainel } from './AcaoDoPainel';
 import { TreeRow } from '../tree/TreeRow';
 import { DialogoDeFiltro, type PedidoDeFiltro } from './DialogoDeFiltro';
@@ -44,6 +42,20 @@ export interface ConnectionsPanelProps {
   ) => void;
   readonly onMenuConexao: (e: React.MouseEvent, conexao: PublicConnection) => void;
   readonly onAbrirQuery: (id: string, no: TreeNode, database: string | null) => void;
+  /**
+   * Roda a ação que o DRIVER declarou para o clique naquele nó.
+   *
+   * Existe porque `SELECT * FROM` só faz sentido em banco SQL. Ele clicou num
+   * ÍNDICE do Redis e a IDE abriu `SELECT * FROM acme:idx:turmas` —
+   * uma consulta que não é ruim, é impossível. Agora quem diz o que o clique
+   * faz é o nó, pelo `meta.acaoAoClicar`.
+   */
+  readonly onAcaoDoNo: (
+    id: string,
+    caminho: readonly string[],
+    acaoId: string,
+    database: string | null
+  ) => void;
   /** Abre a aba de uma CHAVE de chave-valor (spec 089). */
   readonly onAbrirChave: (id: string, chave: string) => void;
   /** Recebe o grupo quando vem do botão de uma pasta, para já vir preenchido. */
@@ -114,36 +126,6 @@ function vinculoDaPasta(connectionId: string, caminho: readonly string[]): Vincu
   return database === undefined ? null : { connectionId, database };
 }
 
-/** Ação que aparece na linha da árvore ao passar o mouse. */
-function AcaoDaLinha({
-  icone, rotulo, onClick, ativa = false,
-}: {
-  readonly icone: string;
-  readonly rotulo: string;
-  readonly onClick: () => void;
-  /** Destaca a ação quando ela está em vigor — hoje, só o filtro. */
-  readonly ativa?: boolean;
-}) {
-  return (
-    <Tooltip title={rotulo} placement="bottom">
-      <IconButton
-        size="small"
-        aria-label={rotulo}
-        aria-pressed={ativa}
-        color={ativa ? 'primary' : 'default'}
-        onClick={(e) => {
-          // Sem isto, o clique também abriria ou fecharia a pasta.
-          e.stopPropagation();
-          onClick();
-        }}
-        sx={{ p: 0.25, borderRadius: 0.5 }}
-      >
-        <Icon name={icone} size={12} />
-      </IconButton>
-    </Tooltip>
-  );
-}
-
 /** Data curta e local — o horário exato não ajuda em nada aqui. */
 function formatarData(iso: string): string {
   return new Date(iso).toLocaleDateString('pt-BR', {
@@ -172,6 +154,7 @@ export function ConnectionsPanel({
   onMenuNo,
   onMenuConexao,
   onAbrirQuery,
+  onAcaoDoNo,
   onAbrirChave,
   onNovaConexao,
   onPedirFiltro,
@@ -274,7 +257,10 @@ export function ConnectionsPanel({
             onClick={
               // O arquivo de query abre no editor; o resto segue como antes.
               no.meta?.arquivoDeQuery === true
-                ? comErro(() => onAbrirArquivoDeQuery(no, vinculoDaPasta(id, filho)))
+                // `caminho`, não `filho`: o vínculo mora na PASTA `Query`, e
+                // ler do caminho do arquivo dava `__queries__` como se fosse o
+                // nome do banco — o caderno tentava rodar contra ele.
+                ? comErro(() => onAbrirArquivoDeQuery(no, vinculoDaPasta(id, caminho)))
                 : no.hasChildren
                   ? comErro(() => ctrl.alternarNo(id, filho, no))
                   : typeof no.meta?.remotePath === 'string'
@@ -293,7 +279,11 @@ export function ConnectionsPanel({
                       // driver, pelo `meta.chave`; a tela só obedece.
                       : typeof no.meta?.chave === 'string'
                         ? () => onAbrirChave(id, String(no.meta?.chave))
-                        : () => onAbrirQuery(id, no, bancoAqui)
+                        : // O NÓ diz o que o clique faz, quando tem opinião.
+                          typeof no.meta?.acaoAoClicar === 'string'
+                          ? () =>
+                              onAcaoDoNo(id, filho, String(no.meta?.acaoAoClicar), bancoAqui)
+                          : () => onAbrirQuery(id, no, bancoAqui)
             }
             // O duplo clique continua abrindo a QUERY, como desde a spec 009.
             // Chegou a abrir a aba de tabela durante a spec 041, e foi um passo
@@ -714,74 +704,5 @@ export function ConnectionsPanel({
         }}
       />
     </Box>
-  );
-}
-
-/**
- * A barra de ações de um nó da árvore remota (spec 053, AC-7 e AC-8).
- *
- * Pasta e arquivo oferecem coisas diferentes, e é isso que o print do usuário
- * mostra: pasta tem recarregar; arquivo executável tem executar. O que escreve
- * some com a conexão trancada — a trava de valer está na rota.
- */
-function AcoesDoNoRemoto({
-  conexaoId, no, trancada, acoes, onRecarregar, aoFalhar,
-}: {
-  readonly conexaoId: string;
-  readonly no: TreeNode;
-  readonly trancada: boolean;
-  readonly acoes: {
-    favoritar(conexaoId: string, remoto: NoRemotoDaLinha): Promise<void>;
-    baixar(conexaoId: string, remoto: NoRemotoDaLinha): Promise<void>;
-    executarScript(conexaoId: string, remoto: NoRemotoDaLinha): Promise<void>;
-  };
-  readonly onRecarregar: () => void;
-  readonly aoFalhar: (erro: unknown) => void;
-}) {
-  const remoto = noRemotoDe(no);
-  if (remoto === null) return null;
-
-  /**
-   * A ação só acontece no CLIQUE.
-   *
-   * A primeira versão recebia a promessa pronta — `chamar(acoes.favoritar(...))`
-   * —, e isso a executava **a cada renderização**: favoritar, baixar e até
-   * EXECUTAR O SCRIPT rodavam sozinhos, e cada um provocava a renderização
-   * seguinte. A árvore nunca parava de piscar. O que se passa aqui é a função,
-   * nunca o resultado dela.
-   */
-  const chamar = (acao: () => Promise<unknown>) => () => {
-    acao().catch(aoFalhar);
-  };
-
-  return (
-    <>
-      {remoto.kind !== 'file' && (
-        <AcaoDaLinha
-          icone="lucide:refresh-cw"
-          rotulo={`Recarregar ${no.label}`}
-          onClick={onRecarregar}
-        />
-      )}
-      <AcaoDaLinha
-        icone="lucide:star"
-        rotulo={`Favoritar ${no.label}`}
-        onClick={chamar(() => acoes.favoritar(conexaoId, remoto))}
-      />
-      {remoto.kind === 'file' && (
-        <AcaoDaLinha
-          icone="lucide:download"
-          rotulo={`Baixar ${no.label}`}
-          onClick={chamar(() => acoes.baixar(conexaoId, remoto))}
-        />
-      )}
-      {remoto.executable && !trancada && (
-        <AcaoDaLinha
-          icone="lucide:play"
-          rotulo={`Executar ${no.label} no servidor`}
-          onClick={chamar(() => acoes.executarScript(conexaoId, remoto))}
-        />
-      )}
-    </>
   );
 }

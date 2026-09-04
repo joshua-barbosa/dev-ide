@@ -263,6 +263,56 @@ export class PonteDoHost {
           })) ?? null
         );
 
+      case 'filtroEmPassos': {
+        // O filtro numa caixa NATIVA, em passos — a escolha dele.
+        //
+        // Antes isto abria uma aba inteira do editor para três campos, com um
+        // cartãozinho no meio de uma página vazia. Ele perguntou: "precisa
+        // abrir uma página só para ele?". Não precisa.
+        const campos = (a.campos ?? []) as { chave: string; rotulo: string; dica: string }[];
+        const valores = new Map<string, string>(
+          campos.map((c) => [c.chave, String((a.atual as Record<string, unknown>)?.[c.chave] ?? '')])
+        );
+        const titulo = String(a.titulo ?? 'Filtrar');
+
+        for (;;) {
+          const linhas: (vscode.QuickPickItem & { acao: string })[] = [
+            ...campos.map((c) => {
+              const valor = valores.get(c.chave) ?? '';
+              return {
+                label: `$(edit) ${c.rotulo}`,
+                // O valor de AGORA à direita: sem ele, a lista não diz o que já
+                // foi preenchido, e ele teria de abrir campo por campo para ver.
+                description: valor === '' ? c.dica : valor,
+                acao: `campo:${c.chave}`,
+              };
+            }),
+            { label: '$(check) Aplicar', description: '', acao: 'aplicar' },
+            { label: '$(clear-all) Limpar', description: 'tira o filtro deste nó', acao: 'limpar' },
+          ];
+          const escolha = await vscode.window.showQuickPick(linhas, {
+            title: titulo,
+            ignoreFocusOut: true,
+          });
+          // Esc desiste sem aplicar nada — o padrão seguro.
+          if (escolha === undefined) return null;
+          if (escolha.acao === 'aplicar') return Object.fromEntries(valores);
+          if (escolha.acao === 'limpar') {
+            return Object.fromEntries(campos.map((c) => [c.chave, '']));
+          }
+          const chave = escolha.acao.slice('campo:'.length);
+          const campo = campos.find((c) => c.chave === chave);
+          const digitado = await vscode.window.showInputBox({
+            title: `${titulo} — ${campo?.rotulo ?? ''}`,
+            value: valores.get(chave) ?? '',
+            placeHolder: campo?.dica ?? '',
+            ignoreFocusOut: true,
+          });
+          // Esc no campo volta para a lista sem mexer no valor.
+          if (digitado !== undefined) valores.set(chave, digitado);
+        }
+      }
+
       case 'escolher': {
         const opcoes = (a.opcoes ?? []) as readonly {
           valor: string; rotulo: string; detalhe?: string;

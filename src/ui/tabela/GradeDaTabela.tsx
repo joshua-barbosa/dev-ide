@@ -20,7 +20,7 @@ import Box from '@mui/material/Box';
 import InputBase from '@mui/material/InputBase';
 import { Icon } from '../Icon';
 import { tokens } from '../theme';
-import { larguraDoConteudo } from '../../shared/grade/larguras';
+import { LARGURA_MINIMA, larguraDoConteudo } from '../../shared/grade/larguras';
 import { explicarFiltro } from '../../shared/grade/filtro';
 import {
   alinhamentoDe, bordasDe, ehTipoNumerico, type Aparencia,
@@ -39,14 +39,6 @@ import type {
  * grade usa 12 px. Erro aqui só afeta o palpite inicial, que o arrasto corrige.
  */
 const POR_CARACTERE = 12 * 0.6;
-
-/**
- * O tipo da coluna é desenhado numa fonte menor (10 px), e mede diferente.
- *
- * Sem contá-lo, a coluna `id` de uma tabela do MySQL nascia com 48 px — o
- * mínimo — e escondia o próprio `bigint unsigned` e o campo `contém…`.
- */
-const POR_CARACTERE_DO_TIPO = 10 * 0.6;
 
 /** A coluna do número da linha e a da caixa de apagar: fixas, não se arrastam. */
 const LARGURA_DO_NUMERO = 44;
@@ -111,8 +103,12 @@ export function Grade({
         colunas.map((c, j) => [
           c.name,
           Math.max(
+            // Só o que é MOSTRADO manda na largura. Enquanto o tipo aparecia
+            // escrito, ele entrava na conta — e uma coluna `id` de tipo
+            // `character varying(255)` nascia larga por causa da etiqueta, não
+            // do dado. O tipo agora é dica, e dica não ocupa espaço.
             larguraDoConteudo([c.name, ...linhas.map((l) => String(l[j] ?? ''))], POR_CARACTERE),
-            larguraDoConteudo([c.type ?? ''], POR_CARACTERE_DO_TIPO)
+            LARGURA_MINIMA
           ),
         ])
       ),
@@ -154,14 +150,16 @@ export function Grade({
           '& th, & td': {
             borderRight: bordas.direita ? 1 : 0,
             borderBottom: bordas.baixo ? 1 : 0,
-            borderColor: 'divider', px: 1,
+            // A borda da grade é RÉGUA, não moldura: no peso cheio do tema ela
+            // competia com o dado. Meia opacidade guia o olho sem gritar.
+            borderColor: 'divider', opacity: 1, px: 1.25,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           },
           // A altura é da LINHA, e não da célula: pôr no `td` deixaria o
           // cabeçalho de fora, e ele tem duas linhas (nome e tipo).
           '& tbody td': { height: aparencia.alturaDaLinha, py: 0 },
           '& thead th': {
-            py: '3px',
+            py: '5px',
             position: 'sticky', top: 0, bgcolor: 'background.paper', zIndex: 1,
           },
         }}
@@ -353,6 +351,15 @@ function Cabecalho({
     <Box
       component="th"
       data-coluna={coluna.name}
+      // O TIPO vira dica, e sai da tela.
+      //
+      // Ele escolheu assim, por escrito: "enxugar para uma linha, com o tipo em
+      // tooltip". Escrito, o tipo custava uma linha inteira no cabeçalho de
+      // toda tabela — e, pior, entrava no cálculo da largura: uma coluna `id`
+      // de tipo `character varying(255)` nascia larga por causa da etiqueta, e
+      // não do dado.
+      title={coluna.type === undefined || coluna.type === '' ? coluna.name : `${coluna.name} · ${coluna.type}`}
+      data-tipo-da-coluna={coluna.type ?? ''}
       // `position: relative` para a alça poder se pendurar na borda direita.
       // A LARGURA não vem daqui: vem do `colgroup`, que é quem o
       // `table-layout: fixed` obedece. Este `width` fica como redundância
@@ -387,7 +394,6 @@ function Cabecalho({
         </Box>
       </Box>
 
-      <Box sx={{ color: 'text.secondary', fontSize: 10, fontWeight: 400 }}>{coluna.type}</Box>
 
       <Alca
         coluna={coluna.name}

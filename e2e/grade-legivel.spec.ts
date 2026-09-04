@@ -244,15 +244,12 @@ test('cada coluna nasce do tamanho do que mostra, e não todas iguais', async ({
   expect(id).toBeLessThan(120);
 });
 
-test('a coluna cabe o próprio tipo, e não só os valores', async ({ page }) => {
+test('o tipo da coluna está na dica, e não ocupa a tela', async ({ page }) => {
   await abrirTabela(page);
-  // `id` guarda 1 e 2 — dois caracteres — mas o cabeçalho mostra `INTEGER`
-  // embaixo do nome. Sem contar o tipo, a coluna nascia no mínimo e escondia
-  // tanto o tipo quanto o campo `contém…`.
-  const cabe = await page.evaluate(() => {
-    const th = document.querySelector('[data-coluna="id"]') as HTMLElement;
-    const tipo = [...th.querySelectorAll('div')].find((d) => /INTEGER/i.test(d.textContent ?? ''))!;
-    return tipo.scrollWidth <= th.clientWidth;
-  });
-  expect(cabe).toBe(true);
+  // Escrito, o tipo custava uma linha inteira do cabeçalho em toda tabela — e
+  // entrava no cálculo da largura, então `id` de tipo `character varying(255)`
+  // nascia larga por causa da etiqueta e não do dado (spec 097, D257).
+  const th = page.locator('[data-coluna="id"]');
+  await expect(th).toHaveAttribute('title', /INTEGER/i);
+  await expect(th).not.toContainText('INTEGER');
 });

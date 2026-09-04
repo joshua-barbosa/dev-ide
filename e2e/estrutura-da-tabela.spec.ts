@@ -98,6 +98,8 @@ test('o SQLite oferece gatilho e NÃO oferece chave estrangeira nem checagem', a
 test('trocar de sub-aba NÃO perde o que estava nos dados', async ({ page }) => {
   // Mesma regra do editor e do terminal: esconder, nunca desmontar.
   await abrirTabela(page);
+  // A fila de `contém…` aparece a pedido desde a spec 097 (D257).
+  await page.getByRole('button', { name: 'Filtrar por coluna' }).click();
   await page.getByLabel('Filtrar nome').fill('josh');
   await expect(page.locator('[data-total-da-tabela]')).toContainText('de 1');
 

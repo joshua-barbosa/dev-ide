@@ -19,6 +19,7 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { CAMPOS_DO_FILTRO } from '../../shared/tree/campos-do-filtro';
 import {
   FILTRO_VAZIO,
   estaVazio,
@@ -41,19 +42,10 @@ export interface DialogoDeFiltroProps {
   readonly onCancelar: () => void;
 }
 
-interface Campo {
-  readonly criterio: Criterio;
-  readonly chave: keyof FiltroDaArvore;
-  readonly rotulo: string;
-  readonly dica: string;
-}
-
-const CAMPOS: readonly Campo[] = [
-  { criterio: 'nome', chave: 'nome', rotulo: 'Nome', dica: 'alunos, tiraduvidas_%, %_2024' },
-  { criterio: 'dono', chave: 'dono', rotulo: 'Dono', dica: 'postgres, ia_master' },
-  { criterio: 'tamanho', chave: 'tamanho', rotulo: 'Maior que', dica: '10 MB, 1,5 GB, 512K' },
-  { criterio: 'data', chave: 'desde', rotulo: 'Mexida desde', dica: '2026-01-15 ou 30d' },
-];
+// A lista mora em `shared/tree/campos-do-filtro`: a mesma pergunta tem dois
+// desenhos — esta caixa e a lista em passos do VS Code —, e duas listas
+// divergiriam.
+const CAMPOS = CAMPOS_DO_FILTRO;
 
 export function DialogoDeFiltro({ pedido, onAplicar, onCancelar }: DialogoDeFiltroProps) {
   const [filtro, setFiltro] = useState<FiltroDaArvore>(FILTRO_VAZIO);

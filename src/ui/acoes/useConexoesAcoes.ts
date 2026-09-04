@@ -54,6 +54,19 @@ export interface ConexoesAcoes {
   ): void;
   /** `Abrir Query` no nó de um database: abre o arquivo dele, já amarrado. */
   abrirQueryDoDatabase(id: string, no: TreeNode): Promise<void>;
+  /**
+   * Roda a ação que o NÓ declarou para o clique.
+   *
+   * Existe porque `SELECT * FROM` só faz sentido em banco SQL: ele clicou num
+   * índice do Redis e a IDE abriu `SELECT * FROM acme:idx:turmas` —
+   * uma consulta que não é ruim, é impossível.
+   */
+  acaoDoNo(
+    id: string,
+    caminho: readonly string[],
+    acaoId: string,
+    database: string | null
+  ): Promise<void>;
   /** Cria, renomeia ou apaga um arquivo da categoria `Query`. */
   novaQuery(vinculo: Vinculo, tipo?: 'sql' | 'sqlbook'): Promise<void>;
   renomearQuery(vinculo: Vinculo, nome: string): Promise<void>;
@@ -126,6 +139,17 @@ export function useConexoesAcoes(deps: ConexoesAcoesDeps): ConexoesAcoes {
   };
 
   /** Monta o SELECT de um objeto, qualificando com o schema quando houver. */
+  const acaoDoNo = async (
+    id: string,
+    caminho: readonly string[],
+    acaoId: string,
+    database: string | null
+  ): Promise<void> => {
+    const r = await Api.runAction(id, { nodePath: caminho, actionId: acaoId });
+    if (r.content === '') return;
+    ws.abrirQuery(`acao:${id}:${r.title}`, r.title, r.content, id, database);
+  };
+
   const abrirQueryDoNo = (
     id: string,
     no: { label: string; meta?: Record<string, unknown> },
@@ -251,6 +275,7 @@ export function useConexoesAcoes(deps: ConexoesAcoesDeps): ConexoesAcoes {
     abrirTerminalDaConexao,
     novoObjeto,
     renomearGrupo,
+    acaoDoNo,
     abrirQueryDoNo,
   };
 }

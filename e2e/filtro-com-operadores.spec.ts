@@ -17,6 +17,10 @@ async function abrirTabela(page: Page): Promise<void> {
   await linhaArvore(page, TABELA).hover();
   await page.getByRole('button', { name: `Abrir tabela ${TABELA}`, exact: true }).click();
   await expect(aba(page, TABELA)).toBeVisible();
+  // A fila de `contém…` no cabeçalho passou a aparecer A PEDIDO (spec 097,
+  // D257): custava uma linha inteira em toda tabela aberta, e ele pediu por
+  // escrito "o filtro só quando pedido".
+  await page.getByRole('button', { name: 'Filtrar por coluna' }).click();
 }
 
 const filtrar = (page: Page, coluna: string, valor: string) =>

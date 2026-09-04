@@ -42,10 +42,12 @@ test('abre com as linhas, o total REAL e o SQL à vista', async ({ page }) => {
   await expect(sqlDaAba(page)).toContainText('LIMIT');
 });
 
-test('o cabeçalho marca a chave primária e o tipo', async ({ page }) => {
+test('o cabeçalho marca a chave primária, e o tipo está na dica', async ({ page }) => {
   await abrirTabela(page);
   const id = page.locator('[data-coluna="id"]');
-  await expect(id).toContainText('INTEGER');
+  // O tipo saiu da tela e virou dica (spec 097, D257): escrito, custava uma
+  // linha do cabeçalho em toda tabela e ainda inflava a largura da coluna.
+  await expect(id).toHaveAttribute('title', /INTEGER/i);
   await expect(id.getByTitle('Chave primária')).toBeVisible();
   await expect(page.locator('[data-coluna="nome"]').getByTitle('NOT NULL')).toBeVisible();
 });
@@ -75,9 +77,20 @@ test('ordenar pela coluna inverte a ordem na tela', async ({ page }) => {
   await expect(sqlDaAba(page)).not.toContainText('ORDER BY');
 });
 
+/**
+ * A fila de `contém…` no cabeçalho agora aparece a PEDIDO (spec 097, D257).
+ *
+ * Ela custava uma linha inteira em toda tabela aberta, e ele pediu por escrito
+ * "o filtro só quando pedido". Filtro em vigor traz a linha de volta sozinho.
+ */
+async function abrirFiltroPorColuna(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Filtrar por coluna' }).click();
+}
+
 test('filtrar por coluna reduz as linhas E o total, juntos', async ({ page }) => {
   // O par é o que faz a paginação não mentir.
   await abrirTabela(page);
+  await abrirFiltroPorColuna(page);
   await page.getByLabel('Filtrar nome').fill('josh');
   await expect(total(page)).toContainText('de 1');
   await expect(page.getByText('maria')).toHaveCount(0);
@@ -107,6 +120,7 @@ test('trocar de aba e voltar NÃO perde o filtro', async ({ page }) => {
   // A aba fica montada e apenas some de vista — a regra constitucional. Remontar
   // custaria outra ida ao banco e apagaria a ordenação e os filtros.
   await abrirTabela(page);
+  await abrirFiltroPorColuna(page);
   await page.getByLabel('Filtrar nome').fill('josh');
   await expect(total(page)).toContainText('de 1');
 

@@ -64,3 +64,29 @@ export function larguraDoConteudo(
     Math.max(LARGURA_MINIMA, Math.ceil(maior * porCaractere) + respiro)
   );
 }
+
+/**
+ * A largura que cabe o CABEÇALHO, com nome e tipo na mesma linha.
+ *
+ * Enquanto o tipo ficava empilhado sob o nome, bastava o maior dos dois. Agora
+ * eles dividem a linha — o tipo empurrado para a direita —, e a coluna precisa
+ * caber a SOMA. Sem esta conta, uma coluna `id` de tipo `INTEGER` nascia na
+ * largura de `id` e escondia o tipo.
+ *
+ * As duas métricas entram separadas porque as fontes são de tamanhos
+ * diferentes: o nome é a fonte da grade, o tipo é menor.
+ */
+export function larguraDoCabecalho(
+  nome: string,
+  tipo: string,
+  porCaractere: number,
+  porCaractereDoTipo: number,
+  /** O espaço entre o nome e o tipo, para não ficarem colados. */
+  folga = 8,
+  respiro = 24
+): number {
+  const bruto =
+    nome.length * porCaractere +
+    (tipo === '' ? 0 : tipo.length * porCaractereDoTipo + folga);
+  return Math.min(TETO_AUTOMATICO, Math.max(LARGURA_MINIMA, Math.ceil(bruto) + respiro));
+}

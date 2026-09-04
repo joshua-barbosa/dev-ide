@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  aoArrastar, definir, esquecer, larguraDoConteudo, LARGURA_MINIMA, TETO_AUTOMATICO,
+  aoArrastar, definir, esquecer, larguraDoCabecalho, larguraDoConteudo, LARGURA_MINIMA,
+  TETO_AUTOMATICO,
 } from '../grade/larguras';
 
 test('arrastar para a direita alarga, para a esquerda estreita', () => {
@@ -57,4 +58,17 @@ test('coluna curta nasce ESTREITA — foi o que o navegador mostrou que faltava'
 
 test('coluna vazia ainda tem o mínimo', () => {
   assert.equal(larguraDoConteudo([], 8), LARGURA_MINIMA);
+});
+
+test('o cabeçalho cabe nome E tipo, que agora dividem a linha', () => {
+  // `id` com tipo `INTEGER`: enquanto o tipo ficava empilhado, bastava o maior
+  // dos dois. Na mesma linha, a coluna precisa caber a soma.
+  const so_nome = larguraDoCabecalho('id', '', 7.2, 6);
+  const com_tipo = larguraDoCabecalho('id', 'INTEGER', 7.2, 6);
+  assert.ok(com_tipo > so_nome);
+  assert.ok(com_tipo >= Math.ceil(2 * 7.2 + 7 * 6 + 8) + 24);
+});
+
+test('sem tipo não há folga cobrada', () => {
+  assert.equal(larguraDoCabecalho('alunos', '', 7.2, 6), larguraDoCabecalho('alunos', '', 7.2, 6));
 });

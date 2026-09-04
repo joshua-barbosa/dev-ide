@@ -522,6 +522,10 @@ export function App() {
             confirmar: dialogs.confirmar,
             avisar: dialogs.avisar,
             onAbrirQuery: conexoesAcoes.abrirQueryDoNo,
+            // O clique num nó que declarou ação própria roda ELA — é o que
+            // impede um SELECT nascer num banco de chave-valor.
+            onAcaoDoNo: (id, caminho, acaoId, database) =>
+              avisar(conexoesAcoes.acaoDoNo(id, caminho, acaoId, database)),
             onAbrirChave: ws.abrirChave,
             onAbrirArquivoRemoto: ws.abrirArquivoRemoto,
             onAbrirServidor: (conexao: PublicConnection) => {

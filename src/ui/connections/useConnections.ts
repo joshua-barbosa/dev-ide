@@ -273,6 +273,30 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
   filtrosRef.current = filtros;
 
   /**
+   * O tipo de cada conexão e o `kind` de cada driver, lidos por ref.
+   *
+   * `buscarFilhos` é um `useCallback` sem estas dependências — pô-las lá
+   * refaria o gancho a cada chegada de dado, e a busca dispararia de novo.
+   */
+  const tiposRef = useRef<{
+    tipoDe: ReadonlyMap<string, string>;
+    kindDe: ReadonlyMap<string, string>;
+  }>({ tipoDe: new Map(), kindDe: new Map() });
+  tiposRef.current = {
+    tipoDe: new Map(
+      estado === null
+        ? []
+        : (function achatar(g: GroupNode): [string, string][] {
+            return [
+              ...g.connections.map((c): [string, string] => [c.id, c.type]),
+              ...g.groups.flatMap(achatar),
+            ];
+          })(estado.tree)
+    ),
+    kindDe: new Map([...drivers].map(([t, d]) => [t, d.kind])),
+  };
+
+  /**
    * Os filtros guardados de uma conexão, do disco para a memória (T111).
    *
    * As chaves vêm do servidor no mesmo formato de `chaveDe` sem o id — juntar
@@ -316,8 +340,16 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
         // e depender do valor capturado buscaria com o filtro de um render atrás.
         const nos = await Api.children(id, caminho, criteriosDe(filtrosRef.current.get(chave)));
         const database = typeof noPai?.meta?.database === 'string' ? noPai.meta.database : null;
+        // A pasta `Query` guarda arquivos `.sql` e `.sqlbook`. Num banco de
+        // chave-valor ela aparecia igual, e o `+` oferecia "Query SQL" — para
+        // um servidor que não fala SQL.
+        const tipo = tiposRef.current.tipoDe.get(id);
+        const ehSql = tipo !== undefined && tiposRef.current.kindDe.get(tipo) === 'sql';
         setFilhos((atual) =>
-          new Map(atual).set(chave, database === null ? nos : [noDeQueries(database), ...nos])
+          new Map(atual).set(
+            chave,
+            database === null || !ehSql ? nos : [noDeQueries(database), ...nos]
+          )
         );
       } finally {
         setCarregando((atual) => marcar(atual, chave, false));

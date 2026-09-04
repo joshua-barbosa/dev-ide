@@ -12,6 +12,7 @@
 // respirando entre um lote e outro.
 import Redis from 'ioredis';
 import type { Driver, ResolvedConfig, Session, TreeNode } from '../types';
+import { globDoLike } from '../../../shared/tree/glob-do-like';
 import type { ExecuteRequest, FieldSpec, QueryResult } from '../../../shared/contracts';
 import {
   destinoDaConexao, lerComando, linhasDaResposta, modoDeConexao,
@@ -345,7 +346,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
   return {
     kind: 'kv',
 
-    children: async (nodePath) => {
+    children: async (nodePath, opcoes) => {
       // A forma da árvore, de fora para dentro:
       //
       //     servidor → [db0, db1…] → Índices | Chaves → prefixos → chave
@@ -424,7 +425,12 @@ async function connect(config: ResolvedConfig): Promise<Session> {
           label: 'Chaves',
           icon: 'folder',
           hasChildren: true,
-          meta: { categoria: 'chaves' },
+          // `categoria: true` é o que faz a barra de hover oferecer FILTRAR, e
+          // `criterios: ['nome']` diz que aqui só o nome filtra — chave de
+          // Redis não tem dono nem data. Ele pediu: "precisa ter filter também
+          // para listar as chaves com o padrão que eu filtrar, igual a do
+          // databases".
+          meta: { categoria: true, criterios: ['nome'] },
         });
         return raiz;
       }
@@ -437,7 +443,11 @@ async function connect(config: ResolvedConfig): Promise<Session> {
           label: nome,
           icon: 'search',
           hasChildren: false,
-          meta: { indice: nome },
+          // `acaoAoClicar` diz à interface o que o CLIQUE faz aqui. Sem isso
+          // ela caía no comportamento de banco SQL e montava
+          // `SELECT * FROM acme:idx:...` — que não é uma consulta ruim,
+          // é impossível num banco de chave-valor.
+          meta: { indice: nome, acaoAoClicar: 'redis-buscar' },
           actions: [{ id: 'redis-buscar', label: 'Abrir busca' }],
         }));
       }
@@ -447,11 +457,19 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       // Abaixo de `Chaves`: a árvore de prefixos. O último pedaço do caminho JÁ
       // é o prefixo inteiro — `noDaChave` monta o id assim.
       const prefixo = resto.length === 1 ? '' : (resto[resto.length - 1] ?? '');
-      const padrao = prefixo === '' ? '*' : `${prefixo}*`;
+      // O filtro chega como padrão de `LIKE` (`%x%`) e o `SCAN` fala glob.
+      // Mandar o `LIKE` cru casaria com chave nenhuma, em silêncio.
+      const glob =
+        opcoes?.filtro === undefined || opcoes.filtro === null
+          ? null
+          : globDoLike(opcoes.filtro);
+      const padrao = glob === null ? (prefixo === '' ? '*' : `${prefixo}*`) : `${prefixo}${glob}`;
 
       // A varredura é guardada por BANCO e prefixo: o mesmo prefixo em db0 e em
       // db3 são duas varreduras, e misturá-las mostraria chave que não existe.
-      const chaveDaVarredura = `${bancoAtual}\u0000${prefixo}`;
+      // O filtro entra na chave: uma varredura filtrada não pode ser continuada
+      // como se fosse a completa, senão a contagem mistura as duas.
+      const chaveDaVarredura = `${bancoAtual}\u0000${prefixo}\u0000${glob ?? ''}`;
       const anterior = varreduras.get(chaveDaVarredura);
 
       // **Varredura COMPLETA recomeça do zero; incompleta CONTINUA.**

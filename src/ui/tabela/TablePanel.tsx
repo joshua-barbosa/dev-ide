@@ -130,6 +130,13 @@ export function TablePanel({
   // A aparência vive na ABA, como a largura da coluna: some no F5, junto com a
   // ordenação e o filtro, que também somem.
   const [aparencia, setAparencia] = useState<Aparencia>(APARENCIA_PADRAO);
+  /** A fila de `contém…` no cabeçalho: a pedido, e não sempre. */
+  const [mostrarFiltro, setMostrarFiltro] = useState(false);
+  // Filtro em vigor obriga a linha a aparecer: escondê-lo deixaria a tabela
+  // mostrando menos linhas sem nada na tela explicando por quê.
+  const temFiltroDeColuna = Object.values(estado.filtros).some(
+    (v) => typeof v === 'string' && v.trim() !== ''
+  );
   const [olho, setOlho] = useState<HTMLElement | null>(null);
 
   const colunas = pagina?.columns ?? [];
@@ -210,6 +217,9 @@ export function TablePanel({
         mostrando={visiveis.length}
         podeEditar={rascunho !== undefined && motivoSemEdicao === null}
         onAcrescentar={() => rascunho?.acrescentarLinha()}
+        mostrarFiltro={mostrarFiltro}
+        onAlternarFiltro={() => setMostrarFiltro((v) => !v)}
+        temFiltroDeColuna={temFiltroDeColuna}
       />
 
       {avisoDaExportacao !== null && (
@@ -251,7 +261,7 @@ export function TablePanel({
               : { atual: estado.ordenar, alternar: estado.alternarOrdem }
           }
           filtroPorColuna={
-            estado.modoLivre
+            estado.modoLivre || !(mostrarFiltro || temFiltroDeColuna)
               ? undefined
               : { valores: estado.filtros, definir: estado.definirFiltro }
           }
@@ -278,7 +288,7 @@ export function TablePanel({
 
 function BarraDeComando({
   estado, busca, onBusca, onExportarPagina, onExportarTudo, exportando, onOlho,
-  mostrando, podeEditar, onAcrescentar,
+  mostrando, podeEditar, onAcrescentar, mostrarFiltro, onAlternarFiltro, temFiltroDeColuna,
 }: {
   readonly estado: EstadoDaTabela;
   readonly busca: string;
@@ -290,6 +300,9 @@ function BarraDeComando({
   readonly mostrando: number;
   readonly podeEditar: boolean;
   readonly onAcrescentar: () => void;
+  readonly mostrarFiltro: boolean;
+  readonly onAlternarFiltro: () => void;
+  readonly temFiltroDeColuna: boolean;
 }) {
   const { pagina, numero, totalDePaginas, carregando } = estado;
   const ultima = totalDePaginas !== null && numero >= totalDePaginas;
@@ -351,6 +364,19 @@ function BarraDeComando({
           rotulo="Parar esta consulta"
           onClick={estado.parar}
           cor="error.main"
+        />
+      )}
+      {/* A fila de caixas `contém…` no cabeçalho é útil quando se está
+          filtrando e é ruído no resto do tempo — ela custava uma linha inteira
+          em toda tabela aberta. Agora aparece a pedido, e sozinha quando já há
+          filtro em vigor: um filtro escondido que não dá para ver nem limpar
+          seria pior que a linha de ruído. */}
+      {!estado.modoLivre && (
+        <Acao
+          icone="lucide:list-filter"
+          rotulo={mostrarFiltro ? 'Esconder o filtro por coluna' : 'Filtrar por coluna'}
+          onClick={onAlternarFiltro}
+          {...(mostrarFiltro || temFiltroDeColuna ? { cor: 'primary.main' } : {})}
         />
       )}
       {/* Ao lado do `▷`, como no print da ferramenta de referência. */}

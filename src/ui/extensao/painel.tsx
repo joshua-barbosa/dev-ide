@@ -20,8 +20,8 @@ import { dialogosNativos } from './dialogos';
 import { useMenusDeConexao } from '../acoes/useMenusDeConexao';
 import { useAcoesRemotas } from '../acoes/useAcoesRemotas';
 import {
-  abrirDiagramaEr, baixarRemoto, escolherSimNao, escreverNaSaida, mostrarSaida, novaQuery,
-  pedirSenha, pedirTexto, renomearQuery,
+  abrirDiagramaEr, baixarRemoto, escolherSimNao, escreverNaSaida, filtroEmPassos, mostrarSaida,
+  novaQuery, pedirSenha, pedirTexto, renomearQuery,
 } from './acoes';
 import { ComTemaDoEditor } from './ComTemaDoEditor';
 import { aindaNao, ligarPonte, pedirAoHost, quandoOHostPedirRecarga } from './ponte';
@@ -223,6 +223,17 @@ function Painel() {
         somenteLeitura={(id) => ctrl.acharConexao(id)?.readOnly === true}
         onMenuNo={menus.onMenuNo}
         onMenuConexao={menus.onMenuConexao}
+        // O clique num nó que declarou ação própria roda ELA. Sem isto, clicar
+        // num índice do Redis abria `SELECT * FROM acme:idx:...`.
+        onAcaoDoNo={(id, caminho, acaoId, database) => {
+          void (async () => {
+            const r = await Api.runAction(id, { nodePath: caminho, actionId: acaoId });
+            pedirAoHost({
+              tipo: 'abrirQuery', connectionId: id, database,
+              titulo: r.title, conteudo: r.content,
+            });
+          })().catch(falha);
+        }}
         onAbrirQuery={(id, no, database) => {
           const objeto = typeof no.meta?.object === 'string' ? no.meta.object : no.label;
           const schema = typeof no.meta?.schema === 'string' ? no.meta.schema : null;
@@ -283,7 +294,15 @@ function Painel() {
         // são formulários, e formulário numa coluna de 300 px vira o que ele
         // fotografou.
         onPedirCriacao={(p) => pedirAoHost({ tipo: 'abrirDialogo', dialogo: 'criacao', pedido: p })}
-        onPedirFiltro={(p) => pedirAoHost({ tipo: 'abrirDialogo', dialogo: 'filtro', pedido: p })}
+        // O filtro vai para a caixa nativa, em passos — não abre aba. Três
+        // campos não justificam uma página inteira do editor.
+        onPedirFiltro={(p) => {
+          void (async () => {
+            const filtro = await filtroEmPassos(p.rotulo, p.criterios, p.atual);
+            if (filtro === null) return;
+            await ctrl.definirFiltro(p.id, p.caminho, filtro);
+          })().catch(falha);
+        }}
         onRenomearGrupo={async (caminho: string) => {
           const novo = await pedirTexto({ titulo: 'Novo nome do grupo', valorInicial: caminho });
           if (novo === null || novo.trim() === '' || novo.trim() === caminho) return;

@@ -43,15 +43,15 @@ test.beforeEach(async ({ page }) => {
   await esperarIdePronta(page);
 });
 
-test('quem nunca abre o olho vê a grade EXATAMENTE como antes', async ({ page }) => {
+test('o padrão da grade é régua horizontal, não moldura', async ({ page }) => {
   await abrirTabela(page);
-  // Mudar a tela de quem não pediu nada seria trocá-la por decisão minha — que
-  // é o que esta spec inteira está desfazendo.
+  // A borda era `Todas` — um retângulo em volta de CADA célula. Ele pediu
+  // "densidade e respiro" e "cores e contraste" por escrito (spec 097).
   await expect(page.locator('[data-grade] tbody tr').first().locator('td').first()).toContainText('1');
   await abrirOlho(page);
   await expect(painel(page).getByRole('switch', { name: 'Número da linha' })).toHaveAttribute('aria-checked', 'true');
   await expect(painel(page).getByRole('radio', { name: 'Alinhamento: Auto' })).toHaveAttribute('aria-checked', 'true');
-  await expect(painel(page).getByRole('radio', { name: 'Borda: Todas' })).toHaveAttribute('aria-checked', 'true');
+  await expect(painel(page).getByRole('radio', { name: 'Borda: Horizontal' })).toHaveAttribute('aria-checked', 'true');
 });
 
 test('aumentar a altura da linha muda a grade de verdade', async ({ page }) => {
@@ -110,18 +110,20 @@ test('o alinhamento à direita vale para toda coluna, e o auto só para número'
 
 test('tirar a borda tira a borda; voltar ao padrão devolve tudo', async ({ page }) => {
   await abrirTabela(page);
-  const bordaDireita = () =>
+  // A de BAIXO, e não a da direita: o padrão passou a ser régua horizontal, e a
+  // vertical só existe quando ele escolhe.
+  const bordaDeBaixo = () =>
     page.evaluate(() =>
       getComputedStyle(
         document.querySelector('[data-grade] tbody tr:first-child td') as HTMLElement
-      ).borderRightWidth
+      ).borderBottomWidth
     );
-  expect(await bordaDireita()).not.toBe('0px');
+  expect(await bordaDeBaixo()).not.toBe('0px');
 
   await abrirOlho(page);
   await painel(page).getByRole('radio', { name: 'Borda: Nenhuma' }).click();
-  await expect.poll(bordaDireita).toBe('0px');
+  await expect.poll(bordaDeBaixo).toBe('0px');
 
   await painel(page).getByRole('button', { name: 'Voltar ao padrão' }).click();
-  await expect.poll(bordaDireita).not.toBe('0px');
+  await expect.poll(bordaDeBaixo).not.toBe('0px');
 });

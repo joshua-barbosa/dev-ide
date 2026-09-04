@@ -5,13 +5,17 @@ import {
   ehTipoNumerico,
 } from '../grade/aparencia';
 
-test('o padrão é o que a grade já fazia antes desta fase', () => {
-  // Mudar a tela de quem nunca abriu o olho seria trocá-la por decisão minha —
-  // que é justamente o que esta spec desfaz.
+test('o padrão desenha régua, não moldura', () => {
+  // Era `todas`, e desenhava um retângulo em volta de CADA célula: quatro
+  // colunas por vinte linhas são oitenta molduras. Ele pediu, por escrito,
+  // "densidade e respiro" e "cores e contraste". Quem já escolheu a aparência
+  // no olho não é afetado — a escolha dele está guardada.
+  assert.equal(APARENCIA_PADRAO.borda, 'horizontal');
+  assert.equal(APARENCIA_PADRAO.alturaDaLinha, 24);
+  // O resto do padrão não mudou.
   assert.equal(APARENCIA_PADRAO.numeroDaLinha, true);
   assert.equal(APARENCIA_PADRAO.colunaDeControle, true);
   assert.equal(APARENCIA_PADRAO.alinhamento, 'auto');
-  assert.equal(APARENCIA_PADRAO.borda, 'todas');
 });
 
 test('a altura tem paredes dos dois lados', () => {

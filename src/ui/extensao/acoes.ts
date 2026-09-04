@@ -13,6 +13,8 @@ import { Api } from '../api';
 import { documentoDoDiagrama } from '../../shared/sql/diagrama-er';
 import type { Vinculo } from '../../shared/sql/vinculo';
 import { chamarHost, pedirAoHost } from './ponte';
+import { CAMPOS_DO_FILTRO } from '../../shared/tree/campos-do-filtro';
+import { FILTRO_VAZIO, type FiltroDaArvore } from '../../shared/tree/filtro-da-arvore';
 
 /** Pergunta um texto usando a caixa NATIVA do editor. */
 export function pedirTexto(o: {
@@ -41,6 +43,30 @@ export async function escolherSimNao(titulo: string): Promise<boolean> {
     ],
   });
   return r === 'sim';
+}
+
+/**
+ * O filtro da árvore, pedido na caixa NATIVA e em passos.
+ *
+ * Uma lista com os campos, o valor de cada um à direita, e as linhas `Aplicar`
+ * e `Limpar` no fim. Escolher um campo abre a caixa de texto; Esc volta.
+ *
+ * Ele viu isto como uma aba inteira do editor com um cartãozinho no meio e
+ * perguntou se precisava de uma página só para aquilo. Não precisa.
+ */
+export async function filtroEmPassos(
+  rotulo: string,
+  criterios: readonly string[],
+  atual: unknown
+): Promise<FiltroDaArvore | null> {
+  const campos = CAMPOS_DO_FILTRO.filter((c) => criterios.includes(c.criterio));
+  const r = await chamarHost<Record<string, string> | null>('filtroEmPassos', {
+    titulo: `Filtrar ${rotulo}`,
+    campos: campos.map((c) => ({ chave: c.chave, rotulo: c.rotulo, dica: c.dica })),
+    atual: atual ?? {},
+  });
+  if (r === null) return null;
+  return { ...FILTRO_VAZIO, ...r };
 }
 
 /** Escreve no canal de saída do VS Code — o par do painel `Output` da IDE. */
