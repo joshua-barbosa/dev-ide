@@ -47,6 +47,48 @@ sistema para as senhas.
 
 ---
 
+## Dentro do VS Code e do Cursor
+
+A mesma IDE também roda **como extensão**, dentro do editor que você já usa: a
+árvore de conexões vira um ícone na barra lateral, e os resultados, formulários
+e cadernos abrem como abas normais.
+
+Não está no Marketplace — é uso próprio. Instala-se a partir do código:
+
+```bash
+npm run empacotar:extensao                 # gera extensao/braytech-code-0.1.0.vsix
+
+code   --install-extension extensao/braytech-code-0.1.0.vsix --force   # VS Code
+cursor --install-extension extensao/braytech-code-0.1.0.vsix --force   # Cursor
+```
+
+Depois, no editor: **Developer: Reload Window**. O ícone do Braytech aparece na
+barra de atividades.
+
+Quem prefere o mouse: no VS Code, **Extensions → `…` → Install from VSIX…** e
+escolha o `.vsix` gerado.
+
+> **Reinstalar depois de mexer no código:** o editor usa o `.vsix` instalado,
+> não o que está no repositório. Toda alteração em `src/ui/extensao/` ou
+> `extensao/src/` só chega até lá repetindo os dois comandos acima e recarregando
+> a janela.
+
+A extensão sobe o mesmo servidor da IDE em `127.0.0.1` e conversa com ele pelo
+processo do editor — as senhas continuam no mesmo cofre, e nenhuma porta nova
+fica exposta.
+
+Comandos disponíveis na paleta (`Ctrl+Shift+P`):
+
+| Comando | O que faz |
+|---|---|
+| `Braytech: Nova consulta` | abre um editor SQL amarrado à conexão selecionada |
+| `Braytech: Executar consulta` | roda o que está no editor e abre a grade |
+| `Braytech Code: Nova conexão` | abre o formulário de conexão |
+| `Braytech: Destrancar o cofre` | pede a senha-mestra |
+| `Braytech: Recarregar conexões` | relê o cofre e redesenha a árvore |
+
+---
+
 ## O que ela faz
 
 ### Editar código

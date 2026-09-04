@@ -57,7 +57,7 @@ function noDeArquivo(arquivo: ArquivoDeQuery): TreeNode {
  *
  * O database é o penúltimo pedaço, e isso vale para os três drivers:
  * `[main, __queries__]` no SQLite, `[server, servidor-2, __queries__]` no MySQL,
- * `[server, nuntius, __queries__]` no PostgreSQL.
+ * `[server, registros, __queries__]` no PostgreSQL.
  */
 function vinculoDoCaminho(connectionId: string, caminho: readonly string[]): Vinculo | null {
   if (caminho[caminho.length - 1] !== ID_DE_QUERIES) return null;

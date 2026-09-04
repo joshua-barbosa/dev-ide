@@ -77,7 +77,7 @@ export function montarCodebase(
  * - **Objeto de EXTENSÃO é da extensão.** `pg_depend` com `deptype = 'e'`
  *   marca o que veio junto de um `CREATE EXTENSION`.
  *
- * Os números do banco dele mediram o quanto isso importa: no `nuntius`, das 107
+ * Os números de um banco real dele mediram o quanto isso importa: das 107
  * relações só 32 são dele, e das 440 rotinas **nenhuma** — as outras 408 são
  * todas do TimescaleDB e do pgvector. Sem estes dois cortes, o autocomplete
  * oferecia 542 nomes, e os primeiros da lista eram pedaços internos.

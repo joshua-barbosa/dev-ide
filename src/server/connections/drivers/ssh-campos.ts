@@ -185,7 +185,7 @@ function camposDoSsh(sugestoesDeChave: readonly FieldOption[]): readonly FieldSp
 export { camposDoSsh };
 
 const CAMPOS_BASE: readonly FieldSpec[] = [
-  { name: 'host', label: 'Host', type: 'string', required: true, placeholder: '10.0.16.53' },
+  { name: 'host', label: 'Host', type: 'string', required: true, placeholder: '192.0.2.53' },
   { name: 'port', label: 'Porta', type: 'number', required: true, default: PORTA_PADRAO },
   { name: 'username', label: 'Usuário', type: 'string', required: true, default: 'root' },
   {
