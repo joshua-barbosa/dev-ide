@@ -19,6 +19,7 @@ import {
   compactar, indentar, modosDe, paraEditar, resumoDe, type ModoDoVisor,
 } from '../../shared/grade/valor';
 import type { CellValue } from '../../shared/contracts';
+import { baixarArquivo as entregarArquivo, escolherArquivoDeTexto } from '../arquivos/transferencia';
 
 /**
  * O que decide a posição de cada caractere, compartilhado pelas duas camadas.
@@ -63,7 +64,6 @@ export interface VisorDeCelulaProps {
 export function VisorDeCelula({
   aberto, coluna, valor, motivoSemEdicao, onFechar, onSalvar, buscarInteiro,
 }: VisorDeCelulaProps) {
-  const arquivo = useRef<HTMLInputElement | null>(null);
   const camada = useRef<HTMLPreElement>(null);
   const [buscando, setBuscando] = useState(false);
   /** O valor inteiro, quando já chegou. Antes disso vale o da grade. */
@@ -213,7 +213,13 @@ export function VisorDeCelula({
             <BotaoDoVisor
               icone="lucide:file-up"
               rotulo="Carregar de um arquivo"
-              onClick={() => arquivo.current?.click()}
+              onClick={() => {
+                void escolherArquivoDeTexto().then((r) => {
+                  if (r === null) return;
+                  setTexto(r.texto);
+                  setAviso(null);
+                });
+              }}
             />
           )}
           <BotaoDoVisor
@@ -222,26 +228,6 @@ export function VisorDeCelula({
             onClick={() => baixar(`${coluna}.txt`, texto)}
           />
         </Box>
-
-        {/* Fora da tela, mas no DOM: é o único jeito de abrir o seletor de
-            arquivo do sistema, e ele precisa do clique do usuário. */}
-        <Box
-          component="input"
-          type="file"
-          ref={arquivo}
-          aria-label="Arquivo para carregar na célula"
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            const f = e.target.files?.[0];
-            if (f === undefined) return;
-            void f.text().then((conteudo) => {
-              setTexto(conteudo);
-              setAviso(null);
-            });
-            // Zera para o mesmo arquivo poder ser escolhido duas vezes seguidas.
-            e.target.value = '';
-          }}
-          sx={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-        />
 
         {/* Duas camadas ocupando o mesmo espaço, como no bloco do caderno
             (spec 050, D17): embaixo o `<pre>` que o Monaco colore, em cima a
@@ -331,20 +317,9 @@ function avisoDeCorte(
   return null;
 }
 
-/**
- * Entrega um arquivo ao usuário.
- *
- * `URL.revokeObjectURL` sempre: sem ele cada `Export` deixa o conteúdo da
- * célula preso na memória da aba até a página recarregar, e uma coluna `blob`
- * de alguns megabytes torna isso perceptível.
- */
+/** Entrega um arquivo ao usuário — pela costura da spec 100. */
 function baixar(nome: string, conteudo: string): void {
-  const url = URL.createObjectURL(new Blob([conteudo], { type: 'text/plain' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nome;
-  a.click();
-  URL.revokeObjectURL(url);
+  void entregarArquivo(nome, conteudo, 'text/plain');
 }
 
 function BotaoDoVisor({

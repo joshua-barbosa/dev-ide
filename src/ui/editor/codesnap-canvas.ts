@@ -13,6 +13,7 @@ import {
 } from '../../shared/codesnap';
 import { tokens } from '../theme';
 import type { Paleta } from '../../shared/temas';
+import { baixarArquivo as entregarArquivo } from '../arquivos/transferencia';
 
 /** Um pedaço de linha com uma cor só. */
 interface Pedaco {
@@ -256,13 +257,12 @@ export async function copiarImagem(blob: Blob): Promise<void> {
   await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
 }
 
-/** Baixa a imagem com o nome que `nomeDaFoto` deu. */
-export function baixarImagem(blob: Blob, nome: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nome;
-  a.click();
-  // Sem o revoke o blob fica na memória até a aba fechar.
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+/**
+ * Baixa a imagem com o nome que `nomeDaFoto` deu.
+ *
+ * Passou a ser assíncrona porque os BYTES precisam ser lidos do blob: dentro
+ * da webview quem grava é o host, e um `Blob` não atravessa um `postMessage`.
+ */
+export async function baixarImagem(blob: Blob, nome: string): Promise<void> {
+  await entregarArquivo(nome, new Uint8Array(await blob.arrayBuffer()), 'image/png');
 }

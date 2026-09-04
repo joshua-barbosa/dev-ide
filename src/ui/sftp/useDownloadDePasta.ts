@@ -12,6 +12,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Api } from '../api';
 import { varrerPasta, type ArquivoAchado } from '../../shared/baixar-pasta';
 import { montarZip, nomeDoZip, type EntradaDeZip } from '../../shared/zip';
+import { baixarArquivo as entregarArquivo } from '../arquivos/transferencia';
 
 export type FaseDoDownload = 'parado' | 'varrendo' | 'baixando' | 'compactando';
 
@@ -143,18 +144,7 @@ async function buscar(conexaoId: string, arquivo: ArquivoAchado): Promise<Entrad
   };
 }
 
-/**
- * Entrega o `.zip` ao navegador.
- *
- * `revokeObjectURL` depois de um tempo, e não na hora: revogar antes de o
- * download começar cancela o próprio download em alguns navegadores. Sem
- * revogar nunca, o zip inteiro fica na memória até a aba fechar.
- */
+/** Entrega o `.zip`, pela costura da spec 100. */
 function salvar(zip: Uint8Array, nome: string): void {
-  const url = URL.createObjectURL(new Blob([zip as BlobPart], { type: 'application/zip' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nome;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  void entregarArquivo(nome, zip, 'application/zip');
 }

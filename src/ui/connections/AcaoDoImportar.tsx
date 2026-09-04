@@ -12,6 +12,7 @@ import {
   lerArquivoDeConexoes, planoDeImportacao, resumoDoPlano,
 } from '../../shared/importar-conexoes';
 import type { ConnectionsController } from './useConnections';
+import { escolherArquivoDeTexto } from '../arquivos/transferencia';
 
 export interface AcaoDoImportarProps {
   readonly ctrl: ConnectionsController;
@@ -22,33 +23,6 @@ export interface AcaoDoImportarProps {
   }) => Promise<boolean>;
   readonly avisar: (mensagem: string, titulo?: string) => Promise<void>;
   readonly onErro: (erro: unknown) => void;
-}
-
-/**
- * Pede um `.json` ao usuário e devolve o conteúdo — `null` se ele desistir.
- *
- * `<input type="file">` criado na hora e descartado: um input escondido fixo no
- * DOM guardaria o arquivo anterior, e reimportar o mesmo arquivo duas vezes não
- * dispararia o `change` na segunda vez. É um defeito clássico deste elemento.
- */
-async function pedirArquivoJson(): Promise<string | null> {
-  return new Promise((resolver) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/json,.json';
-    input.onchange = () => {
-      const arquivo = input.files?.[0];
-      if (arquivo === undefined) {
-        resolver(null);
-        return;
-      }
-      arquivo.text().then(resolver, () => resolver(null));
-    };
-    // `cancel` existe nos navegadores atuais; sem ele a promessa ficaria
-    // pendente para sempre quando ele fechasse o diálogo.
-    input.oncancel = () => resolver(null);
-    input.click();
-  });
 }
 
 export function AcaoDoImportar({ ctrl, confirmar, avisar, onErro }: AcaoDoImportarProps) {
@@ -63,8 +37,9 @@ export function AcaoDoImportar({ ctrl, confirmar, avisar, onErro }: AcaoDoImport
     rotulo="Importar conexões de um arquivo"
     desabilitada={!destrancado}
     onClick={comErro(async () => {
-      const texto = await pedirArquivoJson();
-      if (texto === null) return;
+      const escolhido = await escolherArquivoDeTexto(['json']);
+      if (escolhido === null) return;
+      const texto = escolhido.texto;
 
       const lido = lerArquivoDeConexoes(texto, [...ctrl.drivers.keys()]);
       if ('erro' in lido) {

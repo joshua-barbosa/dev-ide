@@ -185,7 +185,7 @@ export function PainelDeCodeSnap({
           disabled={trecho === null}
           startIcon={<Icon name="lucide:download" size={13} />}
           onClick={comOCanvas((blob) => {
-            baixarImagem(blob, nomeDaFoto(caminhoDeOrigem, trecho?.primeiraLinha ?? 1));
+            void baixarImagem(blob, nomeDaFoto(caminhoDeOrigem, trecho?.primeiraLinha ?? 1));
           })}
           sx={{ fontSize: 11.5 }}
         >

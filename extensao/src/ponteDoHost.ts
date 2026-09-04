@@ -14,6 +14,7 @@ import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import { uriRemota } from './arquivosRemotos';
 import type { Motor } from './motor';
+import { escolherArquivo, salvarArquivo } from './arquivosLocais';
 
 /** O que a webview pode pedir. Nada fora desta lista é atendido. */
 export type PedidoDoPainel =
@@ -348,6 +349,14 @@ export class PonteDoHost {
       case 'mostrarSaida':
         saida().show(true);
         return null;
+
+      // Baixar e escolher arquivo, pelo diálogo nativo (spec 100). O painel
+      // não sabe que é aqui: para ele isto é a costura `transferencia.ts`.
+      case 'salvarArquivo':
+        return salvarArquivo(a);
+
+      case 'escolherArquivo':
+        return escolherArquivo(a);
 
       case 'baixarRemoto': {
         const nome = String(a.caminho ?? '').split('/').pop() ?? 'arquivo';

@@ -15,6 +15,7 @@
 // Mensagem é DADO, nunca instrução: o host confere o `tipo` contra a lista dele
 // e ignora o que não reconhece.
 import { definirTransporte } from '../api-http';
+import { definirTransferencia } from '../arquivos/transferencia';
 
 export type PedidoAoHost =
   | { readonly tipo: 'abrirArquivo'; readonly caminho: string }
@@ -155,6 +156,14 @@ export function ligarPonte(): void {
         canal?.postMessage({ tipo: 'api', id, metodo, rota: url, corpo });
       })
   );
+
+  // Baixar e escolher arquivo pelo host (spec 100). Sem isto, os nove pontos
+  // que entregam ou leem arquivo falhariam CALADOS dentro da webview: `<a
+  // download>` e `<input type="file">` simplesmente não fazem nada aqui.
+  definirTransferencia({
+    salvar: (o) => chamarHost('salvarArquivo', o),
+    escolher: (o) => chamarHost('escolherArquivo', o),
+  });
 }
 
 export function pedirAoHost(pedido: PedidoAoHost): void {

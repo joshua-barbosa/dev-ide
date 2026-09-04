@@ -24,6 +24,7 @@ import { paraCsv, paraJson } from '../../shared/exportar';
 import { TAMANHOS_DE_PAGINA, type EstadoDaTabela } from './useTabela';
 import { BarraDeRascunho } from './BarraDeRascunho';
 import { chaveDoId, type Rascunho } from './useRascunho';
+import { baixarArquivo as entregarArquivo } from '../arquivos/transferencia';
 
 // `minWidth: 0` NÃO é enfeite (spec 062).
 //
@@ -495,19 +496,9 @@ function Exportador({
   );
 }
 
-/**
- * Entrega o arquivo ao usuário.
- *
- * `revokeObjectURL` sempre: sem ele o conteúdo fica preso na memória da aba até
- * a página recarregar, e aqui isso são cem mil linhas.
- */
+/** Entrega o arquivo ao usuário — pela costura, que sabe onde estamos. */
 function baixarArquivo(nome: string, conteudo: string): void {
-  const url = URL.createObjectURL(new Blob([conteudo], { type: 'text/plain;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nome;
-  a.click();
-  URL.revokeObjectURL(url);
+  void entregarArquivo(nome, conteudo, 'text/plain;charset=utf-8');
 }
 
 function Total({

@@ -18,6 +18,7 @@ import { DialogoDeFiltro, type PedidoDeFiltro } from './DialogoDeFiltro';
 import { DialogoDeCriacao, type PedidoDeCriacao } from './DialogoDeCriacao';
 import type { Criterio } from '../../shared/tree/filtro-da-arvore';
 import type { ConnectionsController } from './useConnections';
+import { baixarArquivo as entregarArquivo } from '../arquivos/transferencia';
 
 export interface ConnectionsPanelProps {
   readonly painel: DriverPanel;
@@ -611,14 +612,11 @@ export function ConnectionsPanel({
           desabilitada={!vault.unlocked}
           onClick={comErro(async () => {
             const tudo = await Api.exportarConexoes();
-            const url = URL.createObjectURL(
-              new Blob([JSON.stringify(tudo, null, 2)], { type: 'application/json' })
+            await entregarArquivo(
+              'conexoes-com-senhas.json',
+              JSON.stringify(tudo, null, 2),
+              'application/json'
             );
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'conexoes-com-senhas.json';
-            a.click();
-            URL.revokeObjectURL(url);
           })}
         />
         <AcaoDoPainel

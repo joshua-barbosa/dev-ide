@@ -23,6 +23,7 @@ import type { Rascunho } from '../tabela/useRascunho';
 import { PainelDeAparencia } from '../tabela/PainelDeAparencia';
 import { APARENCIA_PADRAO, type Aparencia } from '../../shared/grade/aparencia';
 import { LINHAS_POR_PAGINA } from '../../shared/sql/pedido-de-execucao';
+import { baixarArquivo as entregarArquivo } from '../arquivos/transferencia';
 
 export interface ResultGridProps {
   readonly resultado: QueryResult | null;
@@ -259,14 +260,9 @@ const BOTAO_DE_EXPORTAR = {
   '&:hover': { bgcolor: 'action.hover' },
 } as const;
 
-/** Entrega o arquivo. `revokeObjectURL` sempre — ver a nota na aba de tabela. */
+/** Entrega o arquivo — pela costura, que funciona na IDE e na webview. */
 function baixar(nome: string, conteudo: string): void {
-  const url = URL.createObjectURL(new Blob([conteudo], { type: 'text/plain;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nome;
-  a.click();
-  URL.revokeObjectURL(url);
+  void entregarArquivo(nome, conteudo, 'text/plain;charset=utf-8');
 }
 
 function Mensagem({ texto, erro = false }: { readonly texto: string; readonly erro?: boolean }) {

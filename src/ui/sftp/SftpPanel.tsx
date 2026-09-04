@@ -18,6 +18,7 @@ import { useDownloadDePasta } from './useDownloadDePasta';
 import type { EntradaMenu } from '../ContextMenu';
 import { decodificarCarga, MIME_DE_ARRASTE } from '../../shared/arrastar';
 import type { RemoteEntry } from '../../shared/contracts';
+import { baixarArquivo as entregarArquivo } from '../arquivos/transferencia';
 
 interface Coluna {
   readonly id: ColunaDeOrdem;
@@ -540,12 +541,7 @@ export function SftpPanel({
   async function baixarUm(entrada: RemoteEntry): Promise<void> {
     try {
       const dados = await Api.lerBytesRemotos(conexaoId, entrada.path);
-      const url = URL.createObjectURL(new Blob([dados as BlobPart]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = entrada.name;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      await entregarArquivo(entrada.name, dados);
     } catch (e) {
       onErro(e);
     }

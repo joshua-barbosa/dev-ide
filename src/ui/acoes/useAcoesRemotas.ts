@@ -10,6 +10,7 @@
 import { Api } from '../api';
 import { nomeDe, paiDe } from '../../shared/remoto/caminho';
 import type { TreeNode } from '../../shared/contracts';
+import { baixarArquivo as entregarArquivo } from '../arquivos/transferencia';
 
 export interface EntradaDeMenu {
   readonly label: string;
@@ -98,14 +99,10 @@ export function useAcoesRemotas(deps: DepsDasAcoesRemotas): AcoesRemotas {
       return;
     }
     const { content } = await Api.lerArquivoRemoto(conexaoId, remoto.remotePath);
-    // O navegador não escolhe pasta: ele baixa para a de sempre. É a única
-    // forma que uma IDE em aba tem — e é o que o usuário já conhece.
-    const url = URL.createObjectURL(new Blob([content], { type: 'application/octet-stream' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = nomeDe(remoto.remotePath);
-    link.click();
-    URL.revokeObjectURL(url);
+    // No navegador não se escolhe pasta: ele baixa para a de sempre, que é a
+    // única forma que uma IDE em aba tem. Dentro do editor a costura leva ao
+    // diálogo nativo, e aí a pasta é escolhida.
+    await entregarArquivo(nomeDe(remoto.remotePath), content, 'application/octet-stream');
   };
 
   const executarScript = async (conexaoId: string, remoto: NoRemoto): Promise<void> => {
