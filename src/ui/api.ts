@@ -1,3 +1,5 @@
+import { comCaminho, request } from './api-http';
+import type { Plataforma } from '../shared/plataforma';
 import type { Tarefa } from '../shared/tarefas';
 import type {
   InfoDoServidor, TipoDeChave, ValorDeChave,
@@ -158,8 +160,9 @@ export interface RetratoDoEspaco {
   readonly pasta: string | null;
   readonly recentes: readonly string[];
   readonly arvore: readonly FileNode[];
-  readonly simbolos: readonly SymbolInfo[];
   readonly truncated: boolean;
+  /** Onde o SERVIDOR roda — é ele que dita o separador de caminho (D223). */
+  readonly plataforma: Plataforma;
 }
 
 export interface FileNode {
@@ -186,44 +189,6 @@ export interface RunResult {
   readonly timedOut: boolean;
   /** Encerrado pelo usuário — distinto de tempo esgotado. */
   readonly cancelled: boolean;
-}
-
-interface Envelope<T> {
-  readonly success: boolean;
-  readonly data: T;
-  readonly error: string | null;
-}
-
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method,
-      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-  } catch (err) {
-    const detalhe = err instanceof Error ? err.message : String(err);
-    throw new Error(`Falha de conexão com o servidor da IDE: ${detalhe}`);
-  }
-
-  let payload: Envelope<T>;
-  try {
-    payload = (await response.json()) as Envelope<T>;
-  } catch {
-    throw new Error(`Resposta inválida do servidor (HTTP ${response.status}).`);
-  }
-
-  if (!payload.success) {
-    throw new Error(payload.error ?? `Erro do servidor (HTTP ${response.status}).`);
-  }
-  return payload.data;
-}
-
-/** Cada segmento vira um `path=` separado: ids e caminhos podem conter "/". */
-function comCaminho(base: string, nodePath: readonly string[]): string {
-  const qs = nodePath.map((p) => `path=${encodeURIComponent(p)}`).join('&');
-  return qs === '' ? base : `${base}?${qs}`;
 }
 
 const conexoes = '/api/connections';
@@ -397,6 +362,15 @@ export const Api = {
       caminho === undefined ? '/api/folders' : `/api/folders?path=${encodeURIComponent(caminho)}`
     ),
   workspace: () => request<RetratoDoEspaco>('GET', '/api/workspace'),
+  /** Os símbolos de TODO o espaço — pedidos só quando a aba Símbolos abre (D222). */
+  workspaceSymbols: () =>
+    request<{ simbolos: SymbolInfo[] }>('GET', '/api/workspace/symbols'),
+  /** Os símbolos de UM arquivo — a trilha acima do editor. */
+  fileSymbols: (caminho: string) =>
+    request<{ simbolos: SymbolInfo[] }>(
+      'GET',
+      `/api/symbols?path=${encodeURIComponent(caminho)}`
+    ),
   /** Os filhos de uma pasta do projeto — a árvore carrega um nível por vez. */
   fileChildren: (caminho: string) =>
     request<{ nodes: FileNode[]; truncated: boolean }>(

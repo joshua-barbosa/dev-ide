@@ -2,6 +2,7 @@
 //
 // Mesmo corte dos outros arquivos daqui: os fluxos de um assunto, com as
 // dependências vindas de fora, para o `App` caber no teto do Artigo IV.
+import { dentroDe, nomeParaExibir, pastaDoCaminho } from '../../shared/caminho-local';
 import { Api } from '../api';
 import { ponteDoDesktop } from '../desktop';
 import { pedirComRetentativa, type QuickInputController } from '../useQuickInput';
@@ -206,7 +207,7 @@ export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
       placeholder: 'Escolha uma pasta',
       opcoes: pasta.recentes.map((caminho) => ({
         valor: caminho,
-        rotulo: caminho.split('/').filter((p) => p !== '').pop() ?? caminho,
+        rotulo: nomeParaExibir(caminho),
         detalhe: caminho,
         icone: 'folder',
       })),
@@ -302,7 +303,7 @@ export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
    * obrigar a redigitar o nome inteiro seria hostil.
    */
   const renomearItem = async (caminho: string): Promise<void> => {
-    const atual = caminho.split('/').pop() ?? caminho;
+    const atual = nomeParaExibir(caminho);
     const novo = await pedirComRetentativa(
       qi,
       { titulo: 'Renomear', placeholder: atual, valorInicial: atual },
@@ -322,7 +323,7 @@ export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
    * lixeira aqui — o que sai, sai —, então a caixa diz o nome e é destrutiva.
    */
   const excluirItem = async (caminho: string, ehPasta: boolean): Promise<void> => {
-    const nome = caminho.split('/').pop() ?? caminho;
+    const nome = nomeParaExibir(caminho);
     const ok = await deps.confirmar({
       titulo: 'Excluir',
       mensagem: ehPasta
@@ -348,8 +349,10 @@ export function usePastaAcoes(deps: PastaAcoesDeps): PastaAcoes {
    * e um item a mais para ler toda vez.
    */
   const menuDoItem = (no: FileNode, e: React.MouseEvent): void => {
-    const pastaDoItem = no.type === 'dir' ? no.path : no.path.slice(0, no.path.lastIndexOf('/'));
-    const relativo = no.path.startsWith(`${pasta.pasta}/`)
+    const pastaDoItem = no.type === 'dir'
+      ? no.path
+      : pastaDoCaminho(no.path, pasta.plataforma);
+    const relativo = dentroDe(pasta.pasta, no.path, pasta.plataforma)
       ? no.path.slice(pasta.pasta.length + 1)
       : no.path;
     deps.abrirMenu(e, [

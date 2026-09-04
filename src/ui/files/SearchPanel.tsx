@@ -7,6 +7,7 @@
 // Nada de lógica de casamento aqui: o que decide o que casa mora em
 // `shared/busca.ts`, e quem varre é o servidor. Este arquivo é formulário,
 // lista e dois botões perigosos.
+import { nomeParaExibir } from '../../shared/caminho-local';
 import { useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -37,7 +38,7 @@ function trecho(o: Ocorrencia): { antes: string; casado: string; depois: string 
   };
 }
 
-const nomeDe = (caminho: string): string => caminho.split('/').pop() ?? caminho;
+const nomeDe = nomeParaExibir;
 
 export function SearchPanel({ busca, onAbrir, onConfirmar, onErro }: SearchPanelProps) {
   const [recolhidos, setRecolhidos] = useState<ReadonlySet<string>>(new Set());

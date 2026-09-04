@@ -3,6 +3,7 @@
 // Saiu do `App` quando ele estourou o teto de 800 do Artigo IV pela oitava vez.
 // O assunto é um só, e não é montar tela: **o que acontece quando ele escolhe
 // uma versão** — trazer para o editor, ou abrir ao lado para comparar.
+import { nomeParaExibir } from '../../shared/caminho-local';
 import { useCallback } from 'react';
 import type { NotificacoesController } from '../useNotificacoes';
 import type { Workspace } from '../useWorkspace';
@@ -48,7 +49,7 @@ export function useTimeline(
    */
   const abrirParaComparar = useCallback(
     (caminho: string, quando: number, conteudo: string) => {
-      const nome = caminho.split('/').pop() ?? caminho;
+      const nome = nomeParaExibir(caminho);
       ws.abrirTexto(
         `versao:${caminho}:${quando}`,
         `${nome} · ${new Date(quando).toLocaleString()}`,

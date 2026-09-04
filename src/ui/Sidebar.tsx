@@ -10,6 +10,7 @@ import { Icon } from './Icon';
 import { FilesPanel } from './files/FilesPanel';
 import { ConnectionsPanel, type ConnectionsPanelProps } from './connections/ConnectionsPanel';
 import { SymbolsPanel } from './files/SymbolsPanel';
+import { useSimbolos } from './files/useSimbolos';
 import { SearchPanel, type SearchPanelProps } from './files/SearchPanel';
 import type { PastaAberta } from './files/usePasta';
 import type { FileNode } from './api';
@@ -72,6 +73,9 @@ export function Sidebar({
   onPainelAtivo,
 }: SidebarProps) {
   const ativo = painelAtivo as PainelId;
+  // Só busca com a aba aberta (D222); a chave refaz a lista quando o espaço de
+  // trabalho muda, sem custar nada a quem nunca abre a aba.
+  const simbolos = useSimbolos(ativo === 'symbols', pasta.raizes.map((r) => r.pasta).join('|'));
 
   return (
     <Box
@@ -145,7 +149,13 @@ export function Sidebar({
           <SearchPanel {...busca} />
         </Box>
         {ativo === 'symbols' && (
-          <SymbolsPanel simbolos={pasta.simbolos} onIr={onIrParaSimbolo} />
+          <SymbolsPanel
+            simbolos={simbolos.lista}
+            carregando={simbolos.carregando}
+            erro={simbolos.erro}
+            onIr={onIrParaSimbolo}
+            onRecarregar={() => void simbolos.recarregar()}
+          />
         )}
         {ativo === 'timeline' && <>{timeline}</>}
       </Box>

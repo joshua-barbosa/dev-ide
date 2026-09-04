@@ -6,6 +6,7 @@
 //
 // Puro no que dá: a única coisa que ele faz além de decidir é buscar o texto,
 // e mesmo isso entra por parâmetro, para o teste não precisar de servidor.
+import { nomeParaExibir } from '../../shared/caminho-local';
 import { iconeDeArquivo } from '../../shared/editor/arquivos';
 import { ehBinario, visualizadorDe } from '../../shared/editor/visualizadores';
 import type { TabInput } from '../../shared/tabs';
@@ -47,7 +48,7 @@ export async function montarAbaDeArquivo(
       aba: {
         id: `file:${caminho}`,
         type: 'visualizador',
-        title: caminho.split('/').pop() ?? caminho,
+        title: nomeParaExibir(caminho),
         icon: iconeDeArquivo(caminho, 'plain'),
         meta: { path: caminho, content: '', language: 'plain', view: null, visualizador: tipo },
       },
@@ -74,7 +75,7 @@ export async function montarAbaDeArquivo(
           : language === 'sql'
             ? 'sql'
             : 'editor',
-      title: dados.path.split('/').pop() ?? dados.path,
+      title: nomeParaExibir(dados.path),
       icon: ehCaderno ? 'lucide:notebook-pen' : iconeDeArquivo(dados.path, language),
       meta: {
         path: dados.path,

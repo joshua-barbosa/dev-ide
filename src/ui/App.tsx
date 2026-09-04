@@ -79,6 +79,7 @@ import { depsDosMenusDeConexao } from './acoes/depsDosMenusDeConexao';
 import { mapaDeAcoes } from './acoes/mapaDeAcoes';
 import { Api } from './api';
 import { usePasta } from './files/usePasta';
+import { useSimbolosDoArquivo } from './files/useSimbolos';
 import { useRecentesDeArquivo } from './files/useRecentesDeArquivo';
 import { usePrefs } from './usePrefs';
 import { useAutoSave } from './useAutoSave';
@@ -279,6 +280,8 @@ export function App() {
     (ws.active?.meta as { path?: string | null } | undefined)?.path ?? null;
 
   useCodebase(vinculos.vinculoDe(caminhoAtivo)); // autocomplete de SQL (T053)
+  /** A trilha usa só os símbolos do arquivo em foco — e agora só pede esses. */
+  const simbolosDoArquivo = useSimbolosDoArquivo(caminhoAtivo);
 
   const conexoesAcoes = useConexoesAcoes({
     qi,
@@ -609,7 +612,8 @@ export function App() {
                   breadcrumb={montarBreadcrumb({
                     caminho: caminhoAtivo,
                     raiz: pasta.pasta,
-                    simbolos: pasta.simbolos,
+                    simbolos: simbolosDoArquivo,
+                    plataforma: pasta.plataforma,
                     linha: ws.cursor.linha,
                     irParaLinha: (l) => ws.editorRef.current?.goToLine(l),
                   })}

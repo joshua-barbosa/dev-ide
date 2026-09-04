@@ -4,6 +4,7 @@
 // forma da resposta: **uma lista de lugares**, que pode ter zero, um ou muitos.
 // A regra é a mesma para as três perguntas — um leva direto, muitos abrem a
 // escolha rápida, nenhum avisa em vez de não fazer nada em silêncio.
+import { nomeParaExibir } from '../../shared/caminho-local';
 import { Api, type Alvo, type PerguntaDeCodigo } from '../api';
 import { iconeDeArquivo } from '../../shared/editor/arquivos';
 import type { QuickInputController } from '../useQuickInput';
@@ -21,7 +22,7 @@ export interface CodigoAcoes {
   verReferencias(): Promise<void>;
 }
 
-const nomeDe = (caminho: string): string => caminho.split('/').pop() ?? caminho;
+const nomeDe = nomeParaExibir;
 
 export function useCodigoAcoes({ qi, ws, avisar }: CodigoAcoesDeps): CodigoAcoes {
   /**

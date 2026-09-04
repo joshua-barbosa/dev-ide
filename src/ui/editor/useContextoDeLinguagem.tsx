@@ -7,6 +7,7 @@
 //
 // A `ref` resolve isso, e o `useMemo` garante que o objeto entregue ao
 // registro seja sempre o mesmo.
+import type { Plataforma } from '../../shared/plataforma';
 import { useMemo, useRef } from 'react';
 import { caminhoDaUri } from '../../shared/abas-gemeas';
 import { Breadcrumb } from './Breadcrumb';
@@ -40,6 +41,7 @@ export function montarBreadcrumb(o: {
   readonly raiz: string;
   readonly simbolos: readonly SimboloDaTrilha[];
   readonly linha: number;
+  readonly plataforma: Plataforma;
   irParaLinha(linha: number): void;
 }): React.ReactNode {
   return (
@@ -48,6 +50,7 @@ export function montarBreadcrumb(o: {
       raiz={o.raiz}
       simbolos={o.simbolos}
       linha={o.linha}
+      plataforma={o.plataforma}
       onIrParaLinha={o.irParaLinha}
     />
   );

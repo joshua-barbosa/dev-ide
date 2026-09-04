@@ -63,6 +63,17 @@ export function FilesPanel({
   /** Pedidos em voo, para o efeito não disparar dois pelo mesmo caminho. */
   const pedidos = useRef(new Set<string>());
   /**
+   * Pastas cujo pedido FALHOU — não se pede de novo sozinho.
+   *
+   * O efeito abaixo é declarativo: "aberta e sem filhos significa vai buscar".
+   * Quando a busca falha, os filhos seguem ausentes e a condição continua
+   * verdadeira, então ele pedia outra vez, e outra, sem parar — com o "…"
+   * acendendo e apagando. Era metade do "abre fecha abre fecha" que ele viu no
+   * Windows (a outra metade era o caminho, em D223). Fechar e reabrir a pasta
+   * limpa a marca e tenta de novo, que é o gesto natural de quem quer insistir.
+   */
+  const falharam = useRef(new Set<string>());
+  /**
    * Raízes recolhidas (T004).
    *
    * Guardadas como as FECHADAS, e não como as abertas: assim uma raiz nova
@@ -75,7 +86,11 @@ export function FilesPanel({
     setAbertas((atual) => {
       const proximo = new Set(atual);
       if (proximo.has(no.path)) proximo.delete(no.path);
-      else proximo.add(no.path);
+      else {
+        // Reabrir é o pedido de tentar de novo depois de uma falha.
+        falharam.current.delete(no.path);
+        proximo.add(no.path);
+      }
       return proximo;
     });
   }, []);
@@ -103,12 +118,15 @@ export function FilesPanel({
     for (const raiz of pasta.raizes) procurar(raiz.arvore);
 
     for (const caminho of faltando) {
-      if (pedidos.current.has(caminho)) continue;
+      if (pedidos.current.has(caminho) || falharam.current.has(caminho)) continue;
       pedidos.current.add(caminho);
       setCarregando((atual) => new Set(atual).add(caminho));
       pasta
         .carregarFilhos(caminho)
-        .catch(onErro)
+        .catch((e: unknown) => {
+          falharam.current.add(caminho);
+          onErro(e);
+        })
         .finally(() => {
           pedidos.current.delete(caminho);
           setCarregando((atual) => {

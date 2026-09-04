@@ -6,6 +6,7 @@
 //
 // A conta mora em `shared/breadcrumb.ts` e é testada sem navegador; aqui é só o
 // desenho e o clique.
+import type { Plataforma } from '../../shared/plataforma';
 import Box from '@mui/material/Box';
 import { Icon } from '../Icon';
 import { tokens } from '../theme';
@@ -19,6 +20,8 @@ export interface BreadcrumbProps {
   readonly raiz: string;
   readonly simbolos: readonly SimboloDaTrilha[];
   readonly linha: number;
+  /** Onde o servidor roda: é ele que dita o separador de caminho (D223). */
+  readonly plataforma: Plataforma;
   /** Pula para a linha do símbolo clicado. */
   onIrParaLinha(linha: number): void;
 }
@@ -37,11 +40,11 @@ const ICONE_DO_TIPO: Readonly<Record<string, string>> = {
 };
 
 export function Breadcrumb({
-  caminho, raiz, simbolos, linha, onIrParaLinha,
+  caminho, raiz, simbolos, linha, plataforma, onIrParaLinha,
 }: BreadcrumbProps) {
   if (caminho === null) return null;
 
-  const degraus = trilha(caminho, raiz, simbolos, linha);
+  const degraus = trilha(caminho, raiz, simbolos, linha, plataforma);
   if (degraus.length === 0) return null;
 
   return (

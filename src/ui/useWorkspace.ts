@@ -10,6 +10,8 @@
 // 2. `null` significa "nenhuma aba". Usá-lo também para "aba fechada" faz a
 //    guarda engolir o evento de fechar a última, e a barra de status fica presa
 //    no arquivo anterior.
+import { nomeParaExibir } from '../shared/caminho-local';
+import { linguagemDe } from './linguagem-do-arquivo';
 import { useCallback, useRef, useState } from 'react';
 import type { Tab, TabStore } from '../shared/tabs';
 import type { Lado, NoDeLayout } from '../shared/layout-editor';
@@ -19,7 +21,6 @@ import { proximoSemTitulo } from '../shared/untitled';
 import { usePreview } from './editor/usePreview';
 import { ICONE_DE_ARQUIVO, iconeDeArquivo } from '../shared/editor/arquivos';
 import type { EditorHandle, ViewState } from './editor/EditorHost';
-import { EXT_TO_LANG, NOME_TO_LANG } from '../shared/editor/languages';
 import { montarAbaDeArquivo } from './editor/abaDeArquivo';
 import { idDaAbaRemota, lerParaAba } from './remoto/abaRemota';
 import { soltarNoGrupoCom } from './tabs/soltura';
@@ -55,27 +56,6 @@ const EDITAVEIS = new Set(['editor', 'sql']);
 const ehEditavel = (aba: Tab | null): boolean => aba !== null && EDITAVEIS.has(aba.type);
 const metaDe = (aba: Tab): EditorTabMeta => aba.meta as unknown as EditorTabMeta;
 
-export function linguagemDe(caminho: string): string {
-  const nome = (caminho.split('/').pop() ?? caminho).toLowerCase();
-  // Nome inteiro primeiro: `Dockerfile` e `Makefile` não têm extensão, e o
-  // `split('.')` neles devolveria o próprio nome como se fosse uma.
-  const porNome = NOME_TO_LANG[nome];
-  if (porNome !== undefined) return porNome;
-
-  if (!nome.includes('.')) return 'plain';
-  // Extensão DUPLA antes da simples (T041): `.blade.php` cairia em `.php` e
-  // perderia o rótulo de Blade — que é o que faz a barra de status dizer o que
-  // o arquivo é. O realce continua o de PHP, que é o certo.
-  const partes = nome.split('.');
-  if (partes.length > 2) {
-    const dupla = `.${partes.slice(-2).join('.')}`;
-    const porDupla = EXT_TO_LANG[dupla];
-    if (porDupla !== undefined) return porDupla;
-  }
-  const ext = `.${partes.pop() ?? ''}`;
-  return EXT_TO_LANG[ext] ?? 'plain';
-}
-
 /**
  * Ponteiro de leitura para o editor do grupo focado.
  *
@@ -84,6 +64,8 @@ export function linguagemDe(caminho: string): string {
  * quinze lugares que já escreviam `ws.editorRef.current?.getValue()` — eles
  * continuam iguais e passam a falar com o editor que está em foco.
  */
+export { linguagemDe } from './linguagem-do-arquivo';
+
 export interface PonteiroDeEditor {
   readonly current: EditorHandle | null;
 }
@@ -680,7 +662,7 @@ export function useWorkspace({ confirmar, aoAbrirArquivo }: WorkspaceDeps): Work
       store.open({
         id: `file:${caminho}`,
         type: language === 'sql' ? 'sql' : 'editor',
-        title: caminho.split('/').pop() ?? caminho,
+        title: nomeParaExibir(caminho),
         icon: iconeDeArquivo(caminho, language),
         dirty: sujo,
         grupo: aba.grupo,

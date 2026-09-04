@@ -4,6 +4,7 @@
 // o menu da árvore (T043). O corte é por assunto: *"o que a entrada rápida abre
 // ou escolhe"* — arquivo, preferências e tema —, e o `App` fica só com a
 // montagem da tela.
+import { pastaParaExibir } from '../../shared/caminho-local';
 import { Api } from '../api';
 import { acharArquivos, nomeDe } from '../../shared/busca-de-arquivo';
 import { iconeDeArquivo } from '../../shared/editor/arquivos';
@@ -100,7 +101,7 @@ export function useAberturas(deps: AberturasDeps): Aberturas {
       rotulo: nomeDe(rotulo),
       // A pasta vai no detalhe, e não no rótulo: dois `index.ts` só se
       // distinguem por ela, e o rótulo em negrito fica legível.
-      detalhe: rotulo.includes('/') ? rotulo.slice(0, rotulo.lastIndexOf('/')) : undefined,
+      detalhe: pastaParaExibir(rotulo) === '' ? undefined : pastaParaExibir(rotulo),
       icone: iconeDeArquivo(rotulo, 'plain'),
       ...(recentes.includes(rotulo) ? { sufixo: 'recente' } : {}),
     }));

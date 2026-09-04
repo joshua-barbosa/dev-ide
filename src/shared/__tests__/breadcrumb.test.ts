@@ -7,7 +7,7 @@ const RAIZ = '/casa/projeto';
 
 test('a raiz NÃO entra na trilha', () => {
   // Ela é a mesma em toda trilha; repeti-la ocuparia a barra sem informar nada.
-  const t = trilhaDoCaminho('/casa/projeto/src/ui/App.tsx', RAIZ);
+  const t = trilhaDoCaminho('/casa/projeto/src/ui/App.tsx', RAIZ, 'linux');
   assert.deepEqual(t.map((d) => d.rotulo), ['src', 'ui', 'App.tsx']);
   assert.equal(t.at(-1)?.tipo, 'arquivo');
   assert.equal(t[0]?.tipo, 'pasta');
@@ -15,7 +15,7 @@ test('a raiz NÃO entra na trilha', () => {
 
 test('barra sobrando na raiz não muda nada', () => {
   assert.deepEqual(
-    trilhaDoCaminho('/casa/projeto/a.ts', '/casa/projeto/').map((d) => d.rotulo),
+    trilhaDoCaminho('/casa/projeto/a.ts', '/casa/projeto/', 'linux').map((d) => d.rotulo),
     ['a.ts']
   );
 });
@@ -23,7 +23,7 @@ test('barra sobrando na raiz não muda nada', () => {
 test('arquivo fora da raiz aparece inteiro', () => {
   // Aberto por caminho absoluto, de outro lugar: cortar o começo daria um
   // caminho que não existe.
-  const t = trilhaDoCaminho('/outro/lugar/x.ts', RAIZ);
+  const t = trilhaDoCaminho('/outro/lugar/x.ts', RAIZ, 'linux');
   assert.deepEqual(t.map((d) => d.rotulo), ['outro', 'lugar', 'x.ts']);
 });
 
@@ -80,12 +80,12 @@ test('a lista pode vir fora de ordem', () => {
 
 test('a trilha inteira põe o símbolo DEPOIS do arquivo', () => {
   // É a ordem que se erra ao juntar as duas metades.
-  const t = trilha('/casa/projeto/src/T.tsx', RAIZ, SIMBOLOS, 25);
+  const t = trilha('/casa/projeto/src/T.tsx', RAIZ, SIMBOLOS, 25, 'linux');
   assert.deepEqual(t.map((d) => d.rotulo), ['src', 'T.tsx', 'TabelaHost', 'carregarPagina']);
 });
 
 test('sem símbolo nenhum, sobra o caminho', () => {
-  const t = trilha('/casa/projeto/leia.md', RAIZ, [], 1);
+  const t = trilha('/casa/projeto/leia.md', RAIZ, [], 1, 'linux');
   assert.deepEqual(t.map((d) => d.rotulo), ['leia.md']);
 });
 
@@ -96,6 +96,16 @@ test('a trilha usa só os símbolos DESTE arquivo', () => {
     { name: 'DaquiMesmo', kind: 'class', line: 10, lineEnd: 100, file: '/casa/projeto/a.ts' },
     { name: 'DeOutro', kind: 'class', line: 10, lineEnd: 100, file: '/casa/projeto/b.ts' },
   ];
-  const t = trilha('/casa/projeto/a.ts', RAIZ, deVarios, 20);
+  const t = trilha('/casa/projeto/a.ts', RAIZ, deVarios, 20, 'linux');
   assert.deepEqual(t.map((d) => d.rotulo), ['a.ts', 'DaquiMesmo']);
+});
+
+test('no Windows a trilha separa por `\\` — senão mostra o caminho inteiro (D223)', () => {
+  const t = trilhaDoCaminho('C:\\casa\\projeto\\src\\App.tsx', 'C:\\casa\\projeto', 'win32');
+  assert.deepEqual(t.map((d) => d.rotulo), ['src', 'App.tsx']);
+});
+
+test('no Linux a contrabarra continua sendo nome de arquivo', () => {
+  const t = trilhaDoCaminho('/casa/projeto/a\\b.ts', '/casa/projeto', 'linux');
+  assert.deepEqual(t.map((d) => d.rotulo), ['a\\b.ts']);
 });

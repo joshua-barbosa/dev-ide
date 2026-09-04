@@ -8,6 +8,7 @@
 //   não têm marca nenhuma e ficariam sem ícone num conjunto de tecnologias.
 //
 // Usar um só conjunto para os dois papéis deixaria metade dos casos sem ícone.
+import { nomeParaExibir } from '../caminho-local';
 import { iconeDaLinguagem } from './idiomas';
 
 const POR_EXTENSAO: Readonly<Record<string, string>> = {
@@ -74,7 +75,7 @@ export const ICONES_DE_ARQUIVO: readonly string[] = [
  * linguagem nova entra num lugar só.
  */
 export function iconeDeArquivo(caminho: string, linguagem?: string): string {
-  const nome = caminho.split('/').pop() ?? caminho;
+  const nome = nomeParaExibir(caminho);
   const ext = nome.includes('.') ? `.${nome.split('.').pop()?.toLowerCase() ?? ''}` : nome;
 
   const direto = POR_EXTENSAO[ext] ?? POR_EXTENSAO[nome.toLowerCase()];

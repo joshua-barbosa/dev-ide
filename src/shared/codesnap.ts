@@ -13,6 +13,8 @@
 // é `ui/editor/codesnap-canvas.ts`, e quem mede o texto é o próprio canvas —
 // por isso a largura entra como parâmetro em vez de ser calculada aqui.
 
+import { nomeParaExibir } from './caminho-local';
+
 export interface EstiloDaFoto {
   /** Tamanho da fonte do código, em pixels. */
   readonly fontSize: number;
@@ -146,7 +148,7 @@ export function semORecuoComum(texto: string): string {
  * contexto vira `imagem-3.png` na pasta de downloads e ninguém acha depois.
  */
 export function nomeDaFoto(caminho: string | null, primeiraLinha: number): string {
-  const base = (caminho ?? 'trecho').split('/').pop() ?? 'trecho';
+  const base = nomeParaExibir(caminho ?? 'trecho');
   const semExtensao = base.includes('.') ? base.slice(0, base.lastIndexOf('.')) : base;
   const limpo = semExtensao.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '');
   return `${limpo === '' ? 'trecho' : limpo}-L${primeiraLinha}.png`;

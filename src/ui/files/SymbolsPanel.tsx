@@ -2,6 +2,7 @@
 //
 // Agrupa por espécie na ordem em que interessa ler um arquivo desconhecido:
 // primeiro os tipos, depois o que executa, por último o que guarda valor.
+import { nomeParaExibir } from '../../shared/caminho-local';
 import Box from '@mui/material/Box';
 import type { SymbolInfo } from '../api';
 import { tokens } from '../theme';
@@ -26,10 +27,26 @@ const COR: Record<string, string> = {
 
 export interface SymbolsPanelProps {
   readonly simbolos: readonly SymbolInfo[];
+  /** A busca está em voo — a lista chega quando a aba abre, não antes (D222). */
+  readonly carregando?: boolean;
+  readonly erro?: string | null;
   readonly onIr: (arquivo: string, linha: number) => void;
+  /** Refaz a lista. A árvore muda sem a aba estar aberta; isto é o acerto. */
+  readonly onRecarregar?: () => void;
 }
 
-export function SymbolsPanel({ simbolos, onIr }: SymbolsPanelProps) {
+export function SymbolsPanel({
+  simbolos, carregando, erro, onIr, onRecarregar,
+}: SymbolsPanelProps) {
+  const aviso = (texto: string, cor = 'text.secondary') => (
+    <Box sx={{ px: 1.25, color: cor, fontSize: 11, lineHeight: 1.5 }}>{texto}</Box>
+  );
+
+  // Enquanto procura, dizer que procura: sem isto o painel vazio parece um
+  // projeto sem símbolos, e o usuário fecha a aba antes da resposta chegar.
+  if (carregando === true && simbolos.length === 0) return aviso('Procurando símbolos…');
+  if (erro !== null && erro !== undefined) return aviso(erro, 'error.main');
+
   if (simbolos.length === 0) {
     return (
       <Box sx={{ px: 1.25, color: 'text.secondary', fontSize: 11, lineHeight: 1.5 }}>
@@ -47,6 +64,21 @@ export function SymbolsPanel({ simbolos, onIr }: SymbolsPanelProps) {
 
   return (
     <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      {onRecarregar !== undefined && (
+        <Box
+          component="button"
+          type="button"
+          onClick={onRecarregar}
+          disabled={carregando === true}
+          sx={{
+            border: 0, bgcolor: 'transparent', color: 'text.secondary', cursor: 'pointer',
+            fontSize: 10.5, px: 1.25, py: 0.5, font: 'inherit', textAlign: 'left',
+            '&:hover': { color: 'text.primary' },
+          }}
+        >
+          {carregando === true ? 'Procurando…' : 'Recarregar'}
+        </Box>
+      )}
       {ORDEM.filter((especie) => porEspecie.has(especie)).map((especie) => (
         <Box key={especie}>
           <Box
@@ -84,7 +116,7 @@ export function SymbolsPanel({ simbolos, onIr }: SymbolsPanelProps) {
                 </Box>
                 <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</Box>
                 <Box sx={{ ml: 'auto', pl: 1, color: 'text.secondary', fontSize: 10 }}>
-                  {s.file.split('/').pop()}:{s.line}
+                  {nomeParaExibir(s.file)}:{s.line}
                 </Box>
               </Box>
             ))}

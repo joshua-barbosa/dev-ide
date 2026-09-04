@@ -9,6 +9,9 @@
 // era a pergunta ao contrário: em vez de "quais símbolos há", **"qual símbolo
 // contém esta linha"**.
 
+import { dentroDe, pedacos } from './caminho-local';
+import type { Plataforma } from './plataforma';
+
 export interface DegrauDaTrilha {
   readonly rotulo: string;
   /** `pasta`, `arquivo` ou o tipo do símbolo (`class`, `function`…). */
@@ -42,10 +45,17 @@ export interface SimboloDaTrilha {
  * `/home/joshua/Documentos/projetos/…` em cada arquivo ocuparia a barra inteira
  * sem informar nada.
  */
-export function trilhaDoCaminho(caminho: string, raiz: string): readonly DegrauDaTrilha[] {
-  const base = raiz.replace(/\/+$/, '');
-  const dentro = caminho.startsWith(`${base}/`) ? caminho.slice(base.length + 1) : caminho;
-  const partes = dentro.split('/').filter((p) => p !== '');
+export function trilhaDoCaminho(
+  caminho: string,
+  raiz: string,
+  /** Sem valor por omissão de propósito: um `'linux'` calado no Windows é o
+   *  defeito que este parâmetro existe para impedir (D223). */
+  plataforma: Plataforma
+): readonly DegrauDaTrilha[] {
+  // A raiz pode vir com separador no fim; dois seguidos dariam um degrau vazio.
+  const base = raiz.replace(plataforma === 'win32' ? /[\\/]+$/ : /\/+$/, '');
+  const dentro = dentroDe(base, caminho, plataforma) ? caminho.slice(base.length + 1) : caminho;
+  const partes = pedacos(dentro, plataforma).filter((p) => p !== '');
 
   return partes.map((parte, i) => ({
     rotulo: parte,
@@ -95,11 +105,12 @@ export function trilha(
   caminho: string,
   raiz: string,
   simbolos: readonly SimboloDaTrilha[],
-  linha: number
+  linha: number,
+  plataforma: Plataforma
 ): readonly DegrauDaTrilha[] {
   // **Só os símbolos DESTE arquivo.** A lista do painel é do projeto inteiro, e
   // sem o filtro a trilha mostraria a classe de outro arquivo qualquer que
   // tivesse uma linha com o mesmo número.
   const daqui = simbolos.filter((s) => s.file === undefined || s.file === caminho);
-  return [...trilhaDoCaminho(caminho, raiz), ...trilhaDoSimbolo(daqui, linha)];
+  return [...trilhaDoCaminho(caminho, raiz, plataforma), ...trilhaDoSimbolo(daqui, linha)];
 }

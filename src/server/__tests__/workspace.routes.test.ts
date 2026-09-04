@@ -19,8 +19,12 @@ interface Retrato {
   readonly pasta: string | null;
   readonly recentes: readonly string[];
   readonly arvore: readonly { name: string }[];
-  readonly simbolos: readonly { name: string }[];
   readonly truncated: boolean;
+  readonly plataforma: string;
+}
+
+interface Simbolos {
+  readonly simbolos: readonly { name: string }[];
 }
 
 interface Arquivo {
@@ -89,12 +93,58 @@ test('a IDE começa sem pasta aberta', async () => {
   });
 });
 
-test('abrir uma pasta devolve árvore e símbolos de uma vez', async () => {
+test('abrir uma pasta devolve a árvore, e NENHUM símbolo (D222)', async () => {
   await comServidor(async (call, _dados, projeto) => {
     const r = (await call('POST', '/workspace', { path: projeto })).data as Retrato;
     assert.equal(r.pasta, projeto);
     assert.deepEqual(r.arvore.map((n) => n.name), ['utils.ts']);
-    assert.ok(r.simbolos.some((s) => s.name === 'VERSAO'), 'os símbolos vêm na mesma resposta');
+    // Os símbolos custavam 588 ms de event loop travado NUM REPOSITÓRIO
+    // PEQUENO, e o retrato é pedido em toda criação, renomeação e exclusão.
+    // Desenhar a árvore não pode depender de ler o projeto inteiro.
+    assert.equal(
+      'simbolos' in r, false,
+      'o retrato não carrega mais símbolos — eles têm rota própria'
+    );
+  });
+});
+
+test('o retrato diz a PLATAFORMA — a interface separa caminho por `\\` no Windows (D223)', async () => {
+  await comServidor(async (call) => {
+    const r = (await call('GET', '/workspace')).data as Retrato;
+    assert.ok(['win32', 'darwin', 'linux'].includes(r.plataforma), r.plataforma);
+  });
+});
+
+test('os símbolos do projeto têm rota própria, pedida só quando a aba abre', async () => {
+  await comServidor(async (call, _dados, projeto) => {
+    await call('POST', '/workspace', { path: projeto });
+    const s = (await call('GET', '/workspace/symbols')).data as Simbolos;
+    assert.ok(s.simbolos.some((x) => x.name === 'VERSAO'));
+  });
+});
+
+test('sem pasta aberta, a rota de símbolos devolve vazio em vez de erro', async () => {
+  await comServidor(async (call) => {
+    const s = (await call('GET', '/workspace/symbols')).data as Simbolos;
+    assert.deepEqual(s.simbolos, []);
+  });
+});
+
+test('os símbolos de UM arquivo — é o que a trilha do editor precisa', async () => {
+  await comServidor(async (call, _dados, projeto) => {
+    await call('POST', '/workspace', { path: projeto });
+    const alvo = path.join(projeto, 'utils.ts');
+    const s = (await call('GET', `/symbols?path=${encodeURIComponent(alvo)}`)).data as Simbolos;
+    assert.deepEqual(s.simbolos.map((x) => x.name), ['VERSAO']);
+  });
+});
+
+test('símbolos de arquivo fora das raízes abertas são recusados', async () => {
+  await comServidor(async (call, dados, projeto) => {
+    await call('POST', '/workspace', { path: projeto });
+    const fora = path.join(dados, 'state.json');
+    const r = await call('GET', `/symbols?path=${encodeURIComponent(fora)}`);
+    assert.equal(r.success, false);
   });
 });
 

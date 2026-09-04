@@ -7,6 +7,7 @@
 //
 // **Não há `Debug Console`** de propósito: pressupõe depurador, e a IDE decidiu
 // não ter um. Ver `product.md`.
+import { nomeParaExibir } from '../shared/caminho-local';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
@@ -202,7 +203,7 @@ export function BottomPanel({
                   <Box sx={{ flex: 1, minWidth: 0, whiteSpace: 'pre-wrap' }}>{p.mensagem}</Box>
                   {p.lugar !== undefined && (
                     <Box sx={{ color: 'text.secondary', fontSize: 10, flexShrink: 0 }}>
-                      {(p.lugar.caminho.split('/').pop() ?? '')}:{p.lugar.linha}
+                      {nomeParaExibir(p.lugar.caminho)}:{p.lugar.linha}
                     </Box>
                   )}
                   <Box sx={{ color: 'text.secondary', fontSize: 10, flexShrink: 0 }}>

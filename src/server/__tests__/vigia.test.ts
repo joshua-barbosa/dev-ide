@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { Vigia, type Mudanca } from '../vigia';
+import { MAX_VIGIADAS, usaVigiaRecursivo, Vigia, type Mudanca } from '../vigia';
 
 /** Espera até `condicao` valer, ou desiste. */
 async function ate(condicao: () => boolean, limite = 4_000): Promise<void> {
@@ -120,6 +120,95 @@ test('parar solta os observadores e cala o vigia', async () => {
     await new Promise((r) => setTimeout(r, 400));
     assert.deepEqual(vistas, [], 'vigia parado não avisa mais nada');
   } finally {
+    fs.rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Vigia recursivo (D224) — Windows e macOS.
+//
+// O teto de 2 000 observadores é uma regra do `inotify` do Linux, e ela estava
+// sendo aplicada ao Windows, onde `fs.watch` recursivo é UM handle
+// (`ReadDirectoryChangesW`) para a subárvore inteira. O código abria dois mil
+// onde um bastava — e batia no teto, que é o aviso que ele viu na tela.
+//
+// O modo recursivo é exercitável aqui porque o Node ≥ 20 também o oferece no
+// Linux; o que muda é só QUEM o escolhe.
+
+async function comVigiaRecursivo(
+  fn: (raiz: string, vistas: Mudanca[], vigia: Vigia) => Promise<void>
+): Promise<void> {
+  const raiz = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dev-ide-vigia-r-')));
+  const vistas: Mudanca[] = [];
+  const vigia = new Vigia(raiz, { aoMudar: (m) => vistas.push(...m), plataforma: 'win32' });
+  try {
+    await fn(raiz, vistas, vigia);
+  } finally {
+    vigia.parar();
+    fs.rmSync(raiz, { recursive: true, force: true });
+  }
+}
+
+test('quem escolhe o modo é a plataforma, e só ela', () => {
+  assert.equal(usaVigiaRecursivo('win32'), true);
+  assert.equal(usaVigiaRecursivo('darwin'), true);
+  // No Linux o limite do `inotify` é real e compartilhado com a máquina toda:
+  // lá continua um observador por pasta, com teto e aviso.
+  assert.equal(usaVigiaRecursivo('linux'), false);
+});
+
+test('no modo recursivo é UM observador, por mais funda que seja a árvore', async () => {
+  await comVigiaRecursivo(async (raiz, _vistas, vigia) => {
+    fs.mkdirSync(path.join(raiz, 'a', 'b', 'c'), { recursive: true });
+    assert.equal(vigia.tamanho, 1, 'um handle cobre a subárvore inteira');
+  });
+});
+
+test('no modo recursivo a PASTA avisada é a do arquivo, e não a raiz', async () => {
+  await comVigiaRecursivo(async (raiz, vistas) => {
+    const funda = path.join(raiz, 'src', 'ui');
+    fs.mkdirSync(funda, { recursive: true });
+    await ate(() => vistas.length > 0);
+    vistas.length = 0;
+    fs.writeFileSync(path.join(funda, 'a.ts'), 'export const A = 1;\n');
+    await ate(() => vistas.some((m) => path.basename(m.caminho) === 'a.ts'));
+    const aviso = vistas.find((m) => path.basename(m.caminho) === 'a.ts');
+    assert.equal(aviso?.caminho, path.join(funda, 'a.ts'));
+    // A interface recarrega `pasta`. Dizer a raiz recarregaria o nível errado,
+    // e a pasta aberta ficaria com o conteúdo velho.
+    assert.equal(aviso?.pasta, funda);
+  });
+});
+
+test('no modo recursivo o `.gitignore` continua valendo', async () => {
+  await comVigiaRecursivo(async (raiz, vistas) => {
+    fs.writeFileSync(path.join(raiz, '.gitignore'), 'lixo/\n');
+    fs.mkdirSync(path.join(raiz, 'lixo'), { recursive: true });
+    await ate(() => vistas.length > 0);
+    vistas.length = 0;
+
+    fs.writeFileSync(path.join(raiz, 'lixo', 'a.txt'), 'x');
+    fs.writeFileSync(path.join(raiz, 'visivel.txt'), 'x');
+    await ate(() => vistas.some((m) => path.basename(m.caminho) === 'visivel.txt'));
+    assert.deepEqual(nomes(vistas), ['visivel.txt'], 'o que a varredura ignora, o vigia ignora');
+  });
+});
+
+test('no modo recursivo o teto não existe, e ninguém avisa que lotou', async () => {
+  const raiz = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dev-ide-vigia-t-')));
+  let lotou = false;
+  // Mais pastas do que o teto do modo por-pasta permitiria observar.
+  for (let i = 0; i < MAX_VIGIADAS + 10; i += 1) {
+    fs.mkdirSync(path.join(raiz, `p${i}`));
+  }
+  const vigia = new Vigia(raiz, {
+    aoMudar: () => undefined, aoLotar: () => { lotou = true; }, plataforma: 'win32',
+  });
+  try {
+    assert.equal(lotou, false, 'o aviso do teto é do Linux, e não do Windows');
+    assert.equal(vigia.tamanho, 1);
+  } finally {
+    vigia.parar();
     fs.rmSync(raiz, { recursive: true, force: true });
   }
 });

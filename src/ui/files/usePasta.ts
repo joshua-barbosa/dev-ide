@@ -8,12 +8,15 @@
 // Uma requisição só devolve pasta, recentes, árvore e símbolos. Três chamadas
 // dariam três momentos, e a árvore apareceria antes dos símbolos.
 import { useCallback, useEffect, useState } from 'react';
+import { nomeDoCaminho } from '../../shared/caminho-local';
+import { enxertarNasRaizes } from '../../shared/enxerto-na-arvore';
+import type { Plataforma } from '../../shared/plataforma';
 import {
-  Api, type FileNode, type Projeto, type RaizAberta, type RetratoDoEspaco, type SymbolInfo,
+  Api, type FileNode, type Projeto, type RaizAberta, type RetratoDoEspaco,
 } from '../api';
 
 const VAZIO: RetratoDoEspaco = {
-  raizes: [], pasta: null, recentes: [], arvore: [], simbolos: [], truncated: false,
+  raizes: [], pasta: null, recentes: [], arvore: [], truncated: false, plataforma: 'linux',
 };
 
 export interface PastaAberta {
@@ -30,7 +33,14 @@ export interface PastaAberta {
   readonly nome: string;
   readonly recentes: readonly string[];
   readonly arvore: readonly FileNode[];
-  readonly simbolos: readonly SymbolInfo[];
+  /**
+   * Onde o SERVIDOR roda (D223).
+   *
+   * A interface não pode deduzir isto do navegador: com a IDE aberta no Chrome
+   * de uma máquina e o servidor em outra, quem manda no separador de caminho é
+   * quem tem os arquivos.
+   */
+  readonly plataforma: Plataforma;
   /** A árvore bateu no teto e foi cortada — o painel avisa. */
   readonly truncada: boolean;
   /** Projetos de `projects/`, que continuam sendo atalhos. */
@@ -58,27 +68,6 @@ export interface PastaAberta {
   excluir(caminho: string): Promise<void>;
 }
 
-/**
- * Devolve a árvore com os filhos de `alvo` preenchidos.
- *
- * Imutável de ponta a ponta: só o ramo que muda é recriado, e o resto é
- * reaproveitado — é o que evita o React redesenhar a árvore inteira a cada
- * pasta aberta.
- */
-function enxertar(
-  nos: readonly FileNode[],
-  alvo: string,
-  filhos: readonly FileNode[]
-): readonly FileNode[] {
-  return nos.map((no) => {
-    if (no.path === alvo) return { ...no, children: filhos };
-    // Só desce pelo ramo que contém o alvo.
-    if (no.type !== 'dir' || no.children === undefined) return no;
-    if (!alvo.startsWith(`${no.path}/`)) return no;
-    return { ...no, children: enxertar(no.children, alvo, filhos) };
-  });
-}
-
 export function usePasta(): PastaAberta {
   const [retrato, setRetrato] = useState<RetratoDoEspaco>(VAZIO);
   const [projetos, setProjetos] = useState<readonly Projeto[]>([]);
@@ -103,23 +92,9 @@ export function usePasta(): PastaAberta {
   const carregarFilhos = useCallback(async (caminho: string): Promise<void> => {
     const { nodes } = await Api.fileChildren(caminho);
     setRetrato((atual) => {
-      // Com várias raízes (T004), o enxerto vai na ÁRVORE DA RAIZ que contém o
-      // caminho — a raiz é escolhida pelo prefixo mais LONGO, para uma pasta
-      // dentro de outra aberta não cair na de fora.
-      const raizes = atual.raizes.map((raiz) => {
-        if (caminho !== raiz.pasta && !caminho.startsWith(`${raiz.pasta}/`)) return raiz;
-        const dona = atual.raizes
-          .filter((r) => caminho === r.pasta || caminho.startsWith(`${r.pasta}/`))
-          .reduce((a, b) => (b.pasta.length > a.pasta.length ? b : a));
-        if (dona.pasta !== raiz.pasta) return raiz;
-        // A RAIZ não é um nó da árvore: ela É a árvore. Sem este caso,
-        // recarregar a pasta aberta não fazia nada — `enxertar` procurava um nó
-        // com aquele caminho e não achava. Custou o primeiro teste do vigia.
-        return {
-          ...raiz,
-          arvore: caminho === raiz.pasta ? nodes : enxertar(raiz.arvore, caminho, nodes),
-        };
-      });
+      // Quem escolhe a raiz e enxerta é `shared/enxerto-na-arvore`, com teste.
+      const raizes = enxertarNasRaizes(atual.raizes, caminho, nodes, atual.plataforma);
+      if (raizes === atual.raizes) return atual;
       const primeira = raizes[0];
       return { ...atual, raizes, arvore: primeira === undefined ? [] : primeira.arvore };
     });
@@ -213,10 +188,10 @@ export function usePasta(): PastaAberta {
   return {
     raizes: retrato.raizes,
     pasta,
-    nome: pasta === '' ? '' : (pasta.split('/').filter((p) => p !== '').pop() ?? pasta),
+    nome: pasta === '' ? '' : nomeDoCaminho(pasta, retrato.plataforma),
     recentes: retrato.recentes,
     arvore: retrato.arvore,
-    simbolos: retrato.simbolos,
+    plataforma: retrato.plataforma,
     truncada: retrato.truncated,
     projetos,
     erro,

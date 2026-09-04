@@ -10,7 +10,8 @@
 // a navegação a uma raiz daria sensação de segurança sem tirar capacidade
 // nenhuma de quem já chegou até aqui.
 import { Router } from 'express';
-import { ehCaminhoAbsoluto, plataformaAtual } from '../../shared/plataforma';
+import { ehCaminhoAbsoluto, plataformaAtual, type Plataforma } from '../../shared/plataforma';
+import { nomeDoCaminho } from '../../shared/caminho-local';
 import { spawn } from 'node:child_process';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -47,18 +48,28 @@ export interface RetratoDoEspaco {
   readonly pasta: string | null;
   readonly recentes: readonly string[];
   readonly arvore: readonly FileNode[];
-  readonly simbolos: readonly SymbolInfo[];
   /** Verdadeiro quando o teto cortou a árvore de alguma raiz. */
   readonly truncated: boolean;
+  /**
+   * Onde o servidor roda (D223).
+   *
+   * A interface precisa disto para saber que o separador de caminho é `\` — a
+   * comparação `caminho.startsWith(raiz + '/')` era falsa em toda subpasta do
+   * Windows, e a árvore entrava em laço de pedidos. Vem no retrato, e não numa
+   * rota própria, porque a interface já espera por ele para desenhar qualquer
+   * coisa: uma segunda ida ao servidor abriria uma janela em que a árvore
+   * existe e o separador ainda não.
+   */
+  readonly plataforma: Plataforma;
 }
 
-const VAZIO: RetratoDoEspaco = {
-  raizes: [], pasta: null, recentes: [], arvore: [], simbolos: [], truncated: false,
+const VAZIO: Omit<RetratoDoEspaco, 'plataforma'> = {
+  raizes: [], pasta: null, recentes: [], arvore: [], truncated: false,
 };
 
 /** O nome de uma pasta, sem o caminho. */
 function nomeDaPasta(caminho: string): string {
-  return caminho.split('/').filter((p) => p !== '').pop() ?? caminho;
+  return nomeDoCaminho(caminho, plataformaAtual());
 }
 
 export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string): Router {
@@ -74,7 +85,6 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
   const retrato = (): RetratoDoEspaco => {
     let atual = estado.ler();
     const raizes: RaizAberta[] = [];
-    const simbolos: SymbolInfo[] = [];
     let truncated = false;
 
     for (const bruta of atual.pastas) {
@@ -93,17 +103,11 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
       const { nodes, truncated: cortada } = filhosDaPasta(pasta);
       raizes.push({ pasta, nome: nomeDaPasta(pasta), arvore: nodes, truncated: cortada });
       truncated = truncated || cortada;
-
-      for (const arquivo of varrerArquivos(pasta, { extensoes: EXTENSOES_DE_SIMBOLO }).arquivos) {
-        try {
-          simbolos.push(...extractSymbols(arquivo, fs.readFileSync(arquivo, 'utf8')));
-        } catch {
-          // Arquivo ilegível ou binário: ignora e segue com os demais.
-        }
-      }
     }
 
-    if (raizes.length === 0) return { ...VAZIO, recentes: atual.recentes };
+    if (raizes.length === 0) {
+      return { ...VAZIO, recentes: atual.recentes, plataforma: plataformaAtual() };
+    }
     const primeira = raizes[0] as RaizAberta;
     return {
       raizes,
@@ -111,8 +115,8 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
       pasta: primeira.pasta,
       arvore: primeira.arvore,
       recentes: atual.recentes,
-      simbolos,
       truncated,
+      plataforma: plataformaAtual(),
     };
   };
 
@@ -251,6 +255,55 @@ export function createWorkspaceRouter(estado: EstadoStore, raizDoProjeto: string
 
   router.get('/workspace', wrap((_req, res) => {
     res.json(ok(retrato()));
+  }));
+
+  /**
+   * Os símbolos de TODO o espaço — a aba Símbolos, e só ela (D222).
+   *
+   * Isto morava dentro do `retrato()`, e era o defeito: ler e analisar o
+   * projeto inteiro acontecia em toda subida, em toda troca de raiz e depois de
+   * cada criar, renomear, duplicar e excluir. Medido num repositório de 584
+   * arquivos: 588 ms de event loop travado, por vez. Num projeto grande, o
+   * congelamento que ele descreveu.
+   *
+   * Rota própria significa: quem não abre a aba não paga nada.
+   */
+  router.get('/workspace/symbols', wrap((_req, res) => {
+    const simbolos: SymbolInfo[] = [];
+    for (const pasta of raizesAbertas()) {
+      for (const arquivo of varrerArquivos(pasta, { extensoes: EXTENSOES_DE_SIMBOLO }).arquivos) {
+        try {
+          simbolos.push(...extractSymbols(arquivo, fs.readFileSync(arquivo, 'utf8')));
+        } catch {
+          // Arquivo ilegível ou binário: ignora e segue com os demais.
+        }
+      }
+    }
+    res.json(ok({ simbolos }));
+  }));
+
+  /**
+   * Os símbolos de UM arquivo — a trilha acima do editor.
+   *
+   * A trilha sempre usou só os do arquivo em foco (`shared/breadcrumb.ts`), e
+   * mesmo assim recebia a lista do projeto inteiro. Um arquivo é uma leitura e
+   * uma análise; a diferença entre isto e a rota de cima é o projeto todo.
+   */
+  router.get('/symbols', wrap((req, res) => {
+    const caminho = path.resolve(requireString(req.query?.path, 'path'));
+    // Passa pela mesma porteira do resto: nada de ler fora das raízes abertas.
+    raizDe(caminho);
+    if (!EXTENSOES_DE_SIMBOLO.has(path.extname(caminho))) {
+      res.json(ok({ simbolos: [] }));
+      return;
+    }
+    try {
+      res.json(ok({ simbolos: extractSymbols(caminho, fs.readFileSync(caminho, 'utf8')) }));
+    } catch {
+      // Sumiu, é binário ou não se deixa ler: uma trilha sem símbolo é melhor
+      // que um erro vermelho por causa da barra de navegação.
+      res.json(ok({ simbolos: [] }));
+    }
   }));
 
   router.post('/workspace', wrap((req, res) => {

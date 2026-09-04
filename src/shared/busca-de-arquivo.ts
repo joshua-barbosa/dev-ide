@@ -12,6 +12,8 @@
 // navegador. Provar no Playwright que `usli` traz `usa-lib.ts` antes de
 // `utils.ts` custaria um teste lento para cada caso de borda.
 
+import { nomeParaExibir } from './caminho-local';
+
 const SEPARADORES = new Set(['/', '-', '_', '.', ' ']);
 
 /** Um caractere que começa palavra: início do texto, ou logo após separador. */
@@ -67,7 +69,7 @@ export function pontuar(alvo: string, termo: string): number | null {
 
 /** O nome do arquivo, sem as pastas. */
 export function nomeDe(caminho: string): string {
-  return caminho.slice(caminho.lastIndexOf('/') + 1);
+  return nomeParaExibir(caminho);
 }
 
 /**
