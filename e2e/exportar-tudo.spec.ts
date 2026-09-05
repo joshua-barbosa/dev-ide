@@ -55,7 +55,7 @@ test('a tabela inteira vira ARQUIVO, com os filtros da tela junto', async ({ pag
   // tabela toda ignorando o filtro. A fila de `contém…` aparece a pedido desde
   // a spec 097 (D257).
   await page.getByRole('button', { name: 'Filtrar por coluna' }).click();
-  await page.getByLabel('Filtrar nome').fill('josh');
+  await page.getByLabel('Filtrar nome').fill('an');
   await expect(page.locator('[data-total-da-tabela]')).toContainText('de 1');
 
   const baixando = page.waitForEvent('download');
@@ -65,7 +65,7 @@ test('a tabela inteira vira ARQUIVO, com os filtros da tela junto', async ({ pag
 
   const caminho = await arquivo.path();
   const conteudo = await import('node:fs/promises').then((fs) => fs.readFile(caminho, 'utf8'));
-  expect(conteudo).toContain('joshua');
+  expect(conteudo).toContain('ana');
   expect(conteudo).not.toContain('maria');
   // Cabeçalho mais uma linha: o CSV termina em quebra, então a última é vazia.
   expect(conteudo.trim().split('\r\n')).toHaveLength(2);
@@ -102,7 +102,7 @@ test('a tela de RESULTADO exporta tudo que a query devolveu', async ({ page }) =
   // Pela lente `Run` do CodeLens, que é o caminho da spec 038.
   await page.locator('.codelens-decoration').first().getByText('Run', { exact: false }).click();
   await expect(aba(page, 'Resultado')).toBeVisible();
-  await expect(page.getByText('joshua')).toBeVisible();
+  await expect(page.getByText('ana')).toBeVisible();
 
   const baixando = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Exportar o resultado em CSV' }).click();
@@ -111,7 +111,7 @@ test('a tela de RESULTADO exporta tudo que a query devolveu', async ({ page }) =
   const fs = await import('node:fs/promises');
   const conteudo = await fs.readFile(caminho, 'utf8');
   // As DUAS linhas, e não a primeira: é o resultado inteiro.
-  expect(conteudo).toContain('joshua');
+  expect(conteudo).toContain('ana');
   expect(conteudo).toContain('maria');
 });
 

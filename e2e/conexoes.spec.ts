@@ -100,7 +100,7 @@ test('executar consulta abre a grade com colunas tipadas e as linhas', async ({ 
   // do cabeçalho em toda tabela e ainda entrava no cálculo da largura. Continua
   // sendo dito — só não ocupa a tela para dizê-lo.
   await expect(grade.locator('[data-coluna="id"]')).toHaveAttribute('title', /INTEGER/i);
-  await expect(grade).toContainText('joshua');
+  await expect(grade).toContainText('ana');
   await expect(grade).toContainText('maria');
   // Qualificado pelo nome da aba: a contagem também aparece no painel de saída,
   // e um seletor ambíguo falharia por modo estrito em vez de por regressão.

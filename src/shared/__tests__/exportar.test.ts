@@ -5,7 +5,7 @@ import { campoCsv, paraCsv, paraJson } from '../exportar';
 const COLUNAS = [{ name: 'id' }, { name: 'nome' }];
 
 test('campo simples não ganha aspas', () => {
-  assert.equal(campoCsv('joshua', ','), 'joshua');
+  assert.equal(campoCsv('ana', ','), 'ana');
 });
 
 test('campo com o separador dentro vai entre aspas', () => {
@@ -35,8 +35,8 @@ test('número e booleano saem como texto, sem aspas', () => {
 });
 
 test('o CSV leva o cabeçalho e termina cada linha com CRLF', () => {
-  const csv = paraCsv(COLUNAS, [[1, 'joshua'], [2, 'a,b']]);
-  assert.equal(csv, 'id,nome\r\n1,joshua\r\n2,"a,b"\r\n');
+  const csv = paraCsv(COLUNAS, [[1, 'ana'], [2, 'a,b']]);
+  assert.equal(csv, 'id,nome\r\n1,ana\r\n2,"a,b"\r\n');
 });
 
 test('o CSV aceita ponto-e-vírgula, que é o que o Excel em português espera', () => {

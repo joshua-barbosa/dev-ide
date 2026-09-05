@@ -3,7 +3,7 @@ import test from 'node:test';
 import { explicarFiltro, interpretarFiltro } from '../grade/filtro';
 
 test('texto sem sinal continua sendo `contém` — o dedo de quem já usa não quebra', () => {
-  assert.deepEqual(interpretarFiltro('joshua'), { operador: 'contem', valores: ['joshua'] });
+  assert.deepEqual(interpretarFiltro('ana'), { operador: 'contem', valores: ['ana'] });
 });
 
 test('vazio e só espaço não filtram nada', () => {
@@ -62,7 +62,7 @@ test('três pontos não é intervalo de três pedaços', () => {
 });
 
 test('a explicação some no padrão e aparece no resto', () => {
-  assert.equal(explicarFiltro('joshua'), null);
+  assert.equal(explicarFiltro('ana'), null);
   assert.equal(explicarFiltro('>10'), 'maior que 10');
   assert.equal(explicarFiltro('null'), 'é nulo');
   assert.equal(explicarFiltro('1..5'), 'entre 1 e 5');

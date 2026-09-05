@@ -93,7 +93,7 @@ test('a definição de TIPO leva à interface, e não à variável', () => {
   comProjeto((pasta) => {
     const texto = [
       'export interface Aluno { nome: string }',
-      'const aluno: Aluno = { nome: "joshua" };',
+      'const aluno: Aluno = { nome: "ana" };',
       'console.log(aluno);',
       '',
     ].join('\n');

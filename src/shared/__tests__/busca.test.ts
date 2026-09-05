@@ -194,6 +194,6 @@ test('a prévia respeita o `$` literal fora do modo regex', () => {
 
 test('em modo regex, `$1` continua sendo o grupo', () => {
   const regex = montarRegex('(\\w+)@', { ...OPCOES_PADRAO, regex: true })!;
-  const oco = { linha: 1, coluna: 1, colunaFim: 5, texto: 'joshua@servidor-1' };
-  assert.equal(previaDaLinha(oco, regex, '<$1>', true), '<joshua>servidor-1');
+  const oco = { linha: 1, coluna: 1, colunaFim: 5, texto: 'ana@servidor-1' };
+  assert.equal(previaDaLinha(oco, regex, '<$1>', true), '<ana>servidor-1');
 });

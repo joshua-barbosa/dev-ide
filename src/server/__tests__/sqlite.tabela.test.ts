@@ -27,7 +27,7 @@ function bancoDeTeste(): string {
     CREATE INDEX idx_notas_aluno ON notas(aluno_id);
   `);
   const insert = db.prepare('INSERT INTO alunos(nome, foto) VALUES (?, ?)');
-  insert.run('joshua', Buffer.from([0xde, 0xad]));
+  insert.run('ana', Buffer.from([0xde, 0xad]));
   insert.run('maria', null);
   db.close();
   return file;
@@ -102,7 +102,7 @@ test('o filtro reduz as linhas E o total, juntos', async () => {
   // mandaria o usuário para uma página que não existe.
   const { session } = await abrir();
   try {
-    const p = await pagina(session, { porPagina: 10, filtros: [{ coluna: 'nome', valor: 'josh' }] });
+    const p = await pagina(session, { porPagina: 10, filtros: [{ coluna: 'nome', valor: 'an' }] });
     assert.equal(p.resultado.rows.length, 1);
     assert.equal(p.total, 1);
   } finally {
@@ -160,14 +160,14 @@ test('a prévia monta o SQL e NÃO toca no banco', async () => {
   try {
     const r = await session.writeTable!({
       nodePath: NODE,
-      alteracoes: [{ chave: { id: 1 }, antes: { nome: 'joshua' }, depois: { nome: 'x' } }],
+      alteracoes: [{ chave: { id: 1 }, antes: { nome: 'ana' }, depois: { nome: 'x' } }],
       simular: true,
     });
     assert.equal(r.executado, false);
     assert.match(r.comandos[0]?.sql ?? '', /UPDATE/);
 
     const depois = await session.execute!({ statement: 'SELECT nome FROM alunos WHERE id = 1' });
-    assert.equal(depois.rows[0]?.[0], 'joshua', 'a simulação não gravou nada');
+    assert.equal(depois.rows[0]?.[0], 'ana', 'a simulação não gravou nada');
   } finally {
     await session.close();
   }
@@ -178,7 +178,7 @@ test('gravar altera de verdade, e o SQL é o MESMO da prévia', async () => {
   try {
     const pedido = {
       nodePath: NODE,
-      alteracoes: [{ chave: { id: 1 }, antes: { nome: 'joshua' }, depois: { nome: 'josh' } }],
+      alteracoes: [{ chave: { id: 1 }, antes: { nome: 'ana' }, depois: { nome: 'bruno' } }],
     };
     const previa = await session.writeTable!({ ...pedido, simular: true });
     const feito = await session.writeTable!(pedido);
@@ -188,7 +188,7 @@ test('gravar altera de verdade, e o SQL é o MESMO da prévia', async () => {
     assert.equal(feito.linhasAfetadas, 1);
 
     const r = await session.execute!({ statement: 'SELECT nome FROM alunos WHERE id = 1' });
-    assert.equal(r.rows[0]?.[0], 'josh');
+    assert.equal(r.rows[0]?.[0], 'bruno');
   } finally {
     await session.close();
   }
@@ -204,7 +204,7 @@ test('linha alterada por baixo é DETECTADA, e nada é gravado', async () => {
     await assert.rejects(
       () => session.writeTable!({
         nodePath: NODE,
-        alteracoes: [{ chave: { id: 1 }, antes: { nome: 'joshua' }, depois: { nome: 'josh' } }],
+        alteracoes: [{ chave: { id: 1 }, antes: { nome: 'ana' }, depois: { nome: 'bruno' } }],
       }),
       /mudou no banco/i
     );
@@ -223,14 +223,14 @@ test('uma linha ruim desfaz a gravação INTEIRA', async () => {
     await assert.rejects(() => session.writeTable!({
       nodePath: NODE,
       alteracoes: [
-        { chave: { id: 1 }, antes: { nome: 'joshua' }, depois: { nome: 'novo-1' } },
+        { chave: { id: 1 }, antes: { nome: 'ana' }, depois: { nome: 'novo-1' } },
         // Esta não casa: o valor antigo está errado de propósito.
         { chave: { id: 2 }, antes: { nome: 'ERRADO' }, depois: { nome: 'novo-2' } },
       ],
     }));
 
     const r = await session.execute!({ statement: 'SELECT nome FROM alunos ORDER BY id' });
-    assert.deepEqual(r.rows.map((l) => l[0]), ['joshua', 'maria'], 'nenhuma das duas entrou');
+    assert.deepEqual(r.rows.map((l) => l[0]), ['ana', 'maria'], 'nenhuma das duas entrou');
   } finally {
     await session.close();
   }
@@ -270,10 +270,10 @@ test('conexão somente-leitura recusa a escrita pela grade', async () => {
   try {
     await assert.rejects(() => session.writeTable!({
       nodePath: NODE,
-      alteracoes: [{ chave: { id: 1 }, antes: { nome: 'joshua' }, depois: { nome: 'x' } }],
+      alteracoes: [{ chave: { id: 1 }, antes: { nome: 'ana' }, depois: { nome: 'x' } }],
     }));
     const r = await session.execute!({ statement: 'SELECT nome FROM alunos WHERE id = 1' });
-    assert.equal(r.rows[0]?.[0], 'joshua');
+    assert.equal(r.rows[0]?.[0], 'ana');
   } finally {
     await session.close();
   }

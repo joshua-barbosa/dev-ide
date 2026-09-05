@@ -121,7 +121,7 @@ export default async function globalSetup(): Promise<void> {
     [
       "import { saudar } from './lib';",
       '',
-      'export const MENSAGEM = saudar("joshua");',
+      'export const MENSAGEM = saudar("ana");',
       '',
     ].join('\n')
   );
@@ -147,13 +147,13 @@ export default async function globalSetup(): Promise<void> {
   // Tabela SÓ para a spec 044, que ESCREVE. A suíte compartilha um banco, e sem
   // uma tabela própria a edição de um teste vaza para os outros — foi o que
   // aconteceu: `alunos` chegou a `gravado-de-verdade` e três testes de specs
-  // anteriores quebraram procurando por `joshua`.
+  // anteriores quebraram procurando por `ana`.
   db.exec(`CREATE TABLE ${TABELA_EDITAVEL} (id INTEGER PRIMARY KEY, nome TEXT NOT NULL, nota REAL)`);
   const inserirEdicao = db.prepare(`INSERT INTO ${TABELA_EDITAVEL}(nome, nota) VALUES (?, ?)`);
-  inserirEdicao.run('joshua', 9.5);
+  inserirEdicao.run('ana', 9.5);
   inserirEdicao.run('maria', 8);
   const inserir = db.prepare(`INSERT INTO ${TABELA}(nome, nota) VALUES (?, ?)`);
-  inserir.run('joshua', 9.5);
+  inserir.run('ana', 9.5);
   inserir.run('maria', 8);
   db.close();
 

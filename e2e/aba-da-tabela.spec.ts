@@ -34,7 +34,7 @@ test.beforeEach(async ({ page }) => {
 
 test('abre com as linhas, o total REAL e o SQL à vista', async ({ page }) => {
   await abrirTabela(page);
-  await expect(page.getByText('joshua')).toBeVisible();
+  await expect(page.getByText('ana')).toBeVisible();
   await expect(page.getByText('maria')).toBeVisible();
   // "2 de 2": o total é contado, não é o número trazido.
   await expect(total(page)).toContainText('de 2');
@@ -72,7 +72,7 @@ test('ordenar pela coluna inverte a ordem na tela', async ({ page }) => {
     page.locator('tbody tr').first().locator('[data-celula-da-coluna="nome"]');
 
   await page.getByLabel('Ordenar por nome').click();
-  await expect(primeira()).toHaveText('joshua');
+  await expect(primeira()).toHaveText('ana');
   await page.getByLabel('Ordenar por nome').click();
   await expect(primeira()).toHaveText('maria');
   // Terceiro clique volta ao natural, e o ORDER BY some do SQL.
@@ -94,7 +94,7 @@ test('filtrar por coluna reduz as linhas E o total, juntos', async ({ page }) =>
   // O par é o que faz a paginação não mentir.
   await abrirTabela(page);
   await abrirFiltroPorColuna(page);
-  await page.getByLabel('Filtrar nome').fill('josh');
+  await page.getByLabel('Filtrar nome').fill('an');
   await expect(total(page)).toContainText('de 1');
   await expect(page.getByText('maria')).toHaveCount(0);
   await expect(sqlDaAba(page)).toContainText('LIKE');
@@ -109,7 +109,7 @@ test('exportar abre o CSV numa aba, com cabeçalho e escape', async ({ page }) =
   await page.getByRole('button', { name: 'Exportar', exact: true }).click();
   await page.getByRole('menuitem', { name: 'CSV · esta página' }).click();
   await expect.poll(() => textoDoEditor(page)).toContain('id,nome,nota');
-  expect(await textoDoEditor(page)).toContain('joshua');
+  expect(await textoDoEditor(page)).toContain('ana');
 });
 
 test('exportar JSON sai como lista de objetos', async ({ page }) => {
@@ -124,13 +124,13 @@ test('trocar de aba e voltar NÃO perde o filtro', async ({ page }) => {
   // custaria outra ida ao banco e apagaria a ordenação e os filtros.
   await abrirTabela(page);
   await abrirFiltroPorColuna(page);
-  await page.getByLabel('Filtrar nome').fill('josh');
+  await page.getByLabel('Filtrar nome').fill('an');
   await expect(total(page)).toContainText('de 1');
 
   await page.getByRole('button', { name: 'Exportar', exact: true }).click();
   await page.getByRole('menuitem', { name: 'JSON · esta página' }).click();
   await aba(page, TABELA).click();
-  await expect(page.getByLabel('Filtrar nome')).toHaveValue('josh');
+  await expect(page.getByLabel('Filtrar nome')).toHaveValue('an');
   await expect(total(page)).toContainText('de 1');
 });
 

@@ -542,7 +542,7 @@ function Cabecalho({
       />
       )}
       {/* O que a IDE ENTENDEU do que foi digitado. Só aparece quando não é o
-          padrão: escrever "contém joshua" embaixo de toda caixa seria ruído. */}
+          padrão: escrever "contém ana" embaixo de toda caixa seria ruído. */}
       {filtra && explicarFiltro(filtroDaColuna) !== null && (
         <Box
           data-leitura-do-filtro

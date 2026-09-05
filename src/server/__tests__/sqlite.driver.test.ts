@@ -18,7 +18,7 @@ function bancoDeTeste(): string {
     CREATE INDEX idx_notas_aluno ON notas(aluno_id);
   `);
   const insert = db.prepare('INSERT INTO alunos(nome, foto) VALUES (?, ?)');
-  insert.run('joshua', Buffer.from([0xde, 0xad]));
+  insert.run('ana', Buffer.from([0xde, 0xad]));
   insert.run('maria', null);
   db.close();
   return file;
@@ -140,7 +140,7 @@ test('executa SELECT devolvendo colunas tipadas', async () => {
   const r = await session.execute!({ statement: 'SELECT id, nome FROM alunos ORDER BY id' });
   assert.deepEqual(r.columns.map((c) => c.name), ['id', 'nome']);
   assert.equal(r.columns[0].type, 'INTEGER');
-  assert.deepEqual(r.rows, [[1, 'joshua'], [2, 'maria']]);
+  assert.deepEqual(r.rows, [[1, 'ana'], [2, 'maria']]);
   assert.equal(r.rowCount, 2);
   assert.equal(r.truncated, false);
   await session.close();

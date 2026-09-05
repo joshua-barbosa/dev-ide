@@ -235,7 +235,7 @@ test('o valor longo deixa de ser cortado quando a coluna é alargada', async ({ 
 
 test('cada coluna nasce do tamanho do que mostra, e não todas iguais', async ({ page }) => {
   await abrirTabela(page);
-  // `id` guarda 1 e 2; `nome` guarda `joshua` e `maria`. Se as duas nascessem
+  // `id` guarda 1 e 2; `nome` guarda `ana` e `maria`. Se as duas nascessem
   // com o mesmo teto, dez colunas caberiam onde cabem quatro — foi o que o
   // navegador mostrou depois da primeira versão desta fase.
   const id = await larguraDe(page, 'id');

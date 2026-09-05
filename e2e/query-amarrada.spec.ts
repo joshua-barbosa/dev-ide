@@ -165,7 +165,7 @@ test('aba de query nascida da árvore NÃO pergunta a conexão', async ({ page }
 
   // Sem diálogo no caminho, e a grade com os dados.
   await expect(page.getByText('Executar contra qual conexão?')).toHaveCount(0);
-  await expect(page.locator('table')).toContainText('joshua');
+  await expect(page.locator('table')).toContainText('ana');
 });
 
 test('a aba de Resultado é a MESMA grade da aba de tabela (spec 070)', async ({ page }) => {

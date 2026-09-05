@@ -42,7 +42,7 @@ export interface SimboloDaTrilha {
  * Os degraus de pasta e arquivo, relativos à raiz aberta.
  *
  * **A raiz não entra.** Ela é a mesma em toda trilha, e repetir
- * `/home/joshua/Documentos/projetos/…` em cada arquivo ocuparia a barra inteira
+ * `/home/ana/Documentos/projetos/…` em cada arquivo ocuparia a barra inteira
  * sem informar nada.
  */
 export function trilhaDoCaminho(

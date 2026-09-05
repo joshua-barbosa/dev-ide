@@ -36,10 +36,10 @@ test.beforeEach(async ({ page }) => {
 
 test('sem sinal continua sendo `contém` — o dedo de quem já usa não quebra', async ({ page }) => {
   await abrirTabela(page);
-  await filtrar(page, 'nome', 'josh');
+  await filtrar(page, 'nome', 'an');
   await expect(sql(page)).toContainText('LIKE');
   await expect(total(page)).toContainText('de 1');
-  await expect(page.getByText('joshua')).toBeVisible();
+  await expect(page.getByText('ana')).toBeVisible();
 });
 
 test('`>` vira comparação de verdade, e não texto procurado', async ({ page }) => {
@@ -49,7 +49,7 @@ test('`>` vira comparação de verdade, e não texto procurado', async ({ page }
   await expect(sql(page)).toContainText('> ?');
   await expect(sql(page)).not.toContainText('LIKE');
   await expect(page.getByText('maria')).toBeVisible();
-  await expect(page.getByText('joshua')).toHaveCount(0);
+  await expect(page.getByText('ana')).toHaveCount(0);
 });
 
 test('a tela diz o que ENTENDEU do que foi digitado', async ({ page }) => {
@@ -70,7 +70,7 @@ test('intervalo vira BETWEEN', async ({ page }) => {
   await filtrar(page, 'id', '1..1');
   await expect(sql(page)).toContainText('BETWEEN');
   await expect(total(page)).toContainText('de 1');
-  await expect(page.getByText('joshua')).toBeVisible();
+  await expect(page.getByText('ana')).toBeVisible();
 });
 
 test('`null` vira IS NULL, e o total conta certo', async ({ page }) => {

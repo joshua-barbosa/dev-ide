@@ -6,7 +6,7 @@ const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
 
 test('o prompt comum é reconhecido', () => {
-  assert.equal(pareceProntoParaComando('joshua@micro:~$ '), true);
+  assert.equal(pareceProntoParaComando('ana@maquina:~$ '), true);
   assert.equal(pareceProntoParaComando('root@srv:/opt# '), true);
   assert.equal(pareceProntoParaComando('user@mac ~ % '), true);
   assert.equal(pareceProntoParaComando('PS C:\\> '), true);
@@ -30,7 +30,7 @@ test('`$` no MEIO do texto não conta', () => {
 });
 
 test('prompt COLORIDO é reconhecido — a cor de fechamento vem depois do `$`', () => {
-  const colorido = `${ESC}[1;32mjoshua@micro${ESC}[0m:${ESC}[1;34m~${ESC}[0m$ `;
+  const colorido = `${ESC}[1;32mana@maquina${ESC}[0m:${ESC}[1;34m~${ESC}[0m$ `;
   assert.equal(pareceProntoParaComando(colorido), true);
 });
 
@@ -39,8 +39,8 @@ test('prompt de DUAS LINHAS, com título de janela depois — o do usuário', ()
   // sequência de título (OSC) DEPOIS do `$`, e o fim do texto deixava de ser o
   // `$`. O comando salvo da spec 039 nunca era digitado.
   const starship =
-    `${ESC}]0;joshua@micro: /tmp/demo${BEL}` +
-    `${ESC}[1;32mjoshua.barbosa${ESC}[0m at ${ESC}[1;33mmicro-3923${ESC}[0m in ` +
+    `${ESC}]0;ana@maquina: /tmp/demo${BEL}` +
+    `${ESC}[1;32mana.ribeiro${ESC}[0m at ${ESC}[1;33mmaquina-4210${ESC}[0m in ` +
     `${ESC}[1;34m/tmp/dev-ide-e2e/projects/demo${ESC}[0m\r\n$ ${ESC}[?2004h`;
   assert.equal(pareceProntoParaComando(starship), true);
 });
@@ -51,14 +51,14 @@ test('o prompt REAL desta máquina, capturado de um shell de verdade', () => {
   // do `$` — não é CSI, e sobrava na limpeza.
   const real =
     `${ESC}[?2004h${ESC}]0;dev-ide${BEL}${ESC}[1m\r\r\n` +
-    `${ESC}[38;5;166mjoshua.barbosa${ESC}[97m at ${ESC}[38;5;136mmicro-3923${ESC}[97m in ` +
+    `${ESC}[38;5;166mana.ribeiro${ESC}[97m at ${ESC}[38;5;136mmaquina-4210${ESC}[97m in ` +
     `${ESC}[38;5;64m~/Documentos/projetos${ESC}[97m on ${ESC}[38;5;61mmain\r\r\n` +
     `${ESC}[97m$ ${ESC}(B${ESC}[m`;
   assert.equal(pareceProntoParaComando(real), true);
 });
 
 test('linhas em branco DEPOIS do prompt não escondem o prompt', () => {
-  assert.equal(pareceProntoParaComando('joshua@micro:~$ \r\n\r\n'), true);
+  assert.equal(pareceProntoParaComando('ana@maquina:~$ \r\n\r\n'), true);
 });
 
 test('saída que não terminou em prompt não conta', () => {

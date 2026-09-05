@@ -45,7 +45,7 @@ test.beforeEach(async ({ page }) => {
 
 test('a lupa só aparece com o mouse em cima, e abre o valor inteiro', async ({ page }) => {
   await abrirTabela(page);
-  const celula = page.locator('[data-grade] tbody td', { hasText: 'joshua' }).first();
+  const celula = page.locator('[data-grade] tbody td', { hasText: 'ana' }).first();
 
   // Uma lupa por célula, sempre visível, encheria a grade de ícones.
   const lupa = celula.getByRole('button', { name: 'Ver o valor inteiro' });
@@ -55,7 +55,7 @@ test('a lupa só aparece com o mouse em cima, e abre o valor inteiro', async ({ 
 
   await lupa.click();
   await expect(visor(page)).toBeVisible();
-  await expect(caixa(page)).toHaveValue('joshua');
+  await expect(caixa(page)).toHaveValue('ana');
 });
 
 test('o valor longo aparece INTEIRO, e não cortado como na grade', async ({ page }) => {
@@ -80,7 +80,7 @@ test('quando é JSON, o visor abre já indentado e oferece o modo JSON', async (
 
 test('quando NÃO é JSON, o modo JSON nem existe', async ({ page }) => {
   await abrirTabela(page);
-  await abrirLupa(page, 'joshua');
+  await abrirLupa(page, 'ana');
   // Botão que não faz nada é pior que botão ausente — a mesma regra da spec 041.
   await expect(visor(page).getByRole('tab', { name: 'json' })).toHaveCount(0);
 });
@@ -96,14 +96,14 @@ test('um número solto NÃO conta como JSON', async ({ page }) => {
 
 test('salvar no visor alimenta o RASCUNHO, e não grava no banco', async ({ page }) => {
   await abrirTabela(page);
-  await abrirLupa(page, 'joshua');
-  await caixa(page).fill('joshua editado no visor');
+  await abrirLupa(page, 'ana');
+  await caixa(page).fill('ana editado no visor');
   await visor(page).getByRole('button', { name: 'Salvar no rascunho' }).click();
 
   await expect(visor(page)).toHaveCount(0);
   // A célula fica marcada como mexida, e a barra de rascunho aparece — que é
   // quem grava, com o SQL à vista e a confirmação (spec 044).
-  await expect(page.getByText('joshua editado no visor')).toBeVisible();
+  await expect(page.getByText('ana editado no visor')).toBeVisible();
   await expect(page.getByRole('button', { name: /Gravar/i })).toBeVisible();
 });
 
@@ -125,8 +125,8 @@ test('a chave primária abre só para leitura, e diz por quê', async ({ page })
 
 test('reabrir noutra célula mostra o valor NOVO, e não o anterior', async ({ page }) => {
   await abrirTabela(page);
-  await abrirLupa(page, 'joshua');
-  await expect(caixa(page)).toHaveValue('joshua');
+  await abrirLupa(page, 'ana');
+  await expect(caixa(page)).toHaveValue('ana');
   await visor(page).getByRole('button', { name: 'Fechar' }).click();
 
   await abrirLupa(page, 'maria');

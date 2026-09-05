@@ -23,11 +23,11 @@ const montar = (bruto: Record<string, unknown>) =>
 test('alterar uma célula vira UPDATE com a chave E o valor antigo no WHERE', () => {
   // O valor antigo é o que detecta alteração concorrente sem trava nenhuma.
   const [cmd] = montar({
-    alteracoes: [{ chave: { id: 1 }, antes: { nome: 'joshua' }, depois: { nome: 'josh' } }],
+    alteracoes: [{ chave: { id: 1 }, antes: { nome: 'ana' }, depois: { nome: 'bruno' } }],
   }).comandos;
   assert.match(cmd?.sql ?? '', /^UPDATE `escola`\.`alunos`\s+SET `nome` = \?/);
   assert.match(cmd?.sql ?? '', /WHERE `id` = \? AND `nome` = \?/);
-  assert.deepEqual(cmd?.params, ['josh', 1, 'joshua']);
+  assert.deepEqual(cmd?.params, ['bruno', 1, 'ana']);
 });
 
 test('duas colunas na mesma linha viram UM UPDATE', () => {

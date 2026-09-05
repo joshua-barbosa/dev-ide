@@ -64,7 +64,7 @@ test('editar uma célula deixa a alteração PENDENTE, sem tocar no banco', asyn
   // A prova de que o banco não foi tocado: descartar devolve o valor de lá.
   await page.getByRole('button', { name: 'Descartar' }).click();
   await expect(page.getByRole('cell', { name: 'editado-mas-nao-gravado' })).toHaveCount(0);
-  await expect(page.getByRole('cell', { name: 'joshua' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'ana' })).toBeVisible();
 });
 
 test('o rascunho segue a LINHA, não a posição na tela', async ({ page }) => {

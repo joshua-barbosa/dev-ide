@@ -45,8 +45,8 @@ test('editar uma célula em SQL livre chega ao rascunho', async ({ page }) => {
   await abrirTabela(page);
   await rodarLivre(page, `select * from ${TABELA_EDITAVEL} where id = 1`);
 
-  // `joshua` é a linha 1 de `alunos_edicao` — a tabela de escrita do fixture.
-  const celula = page.locator('[data-grade] tbody td', { hasText: 'joshua' }).first();
+  // `ana` é a linha 1 de `alunos_edicao` — a tabela de escrita do fixture.
+  const celula = page.locator('[data-grade] tbody td', { hasText: 'ana' }).first();
   await celula.dblclick();
   await page.keyboard.press('Control+a');
   await page.keyboard.type('editada em sql livre');

@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
 
 test('F12 atravessa para o arquivo onde a função foi definida', async ({ page }) => {
   await abrirArquivo(page, 'usa-lib.ts');
-  // `export const MENSAGEM = saudar("joshua");` — o cursor vai sobre `saudar`.
+  // `export const MENSAGEM = saudar("ana");` — o cursor vai sobre `saudar`.
   await cursorEm(page, 3, 25);
 
   await page.keyboard.press('F12');

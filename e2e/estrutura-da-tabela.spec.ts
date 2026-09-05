@@ -100,12 +100,12 @@ test('trocar de sub-aba NÃO perde o que estava nos dados', async ({ page }) => 
   await abrirTabela(page);
   // A fila de `contém…` aparece a pedido desde a spec 097 (D257).
   await page.getByRole('button', { name: 'Filtrar por coluna' }).click();
-  await page.getByLabel('Filtrar nome').fill('josh');
+  await page.getByLabel('Filtrar nome').fill('an');
   await expect(page.locator('[data-total-da-tabela]')).toContainText('de 1');
 
   await estrutura(page).click();
   await page.getByRole('tab', { name: 'dados' }).click();
-  await expect(page.getByLabel('Filtrar nome')).toHaveValue('josh');
+  await expect(page.getByLabel('Filtrar nome')).toHaveValue('an');
   await expect(page.locator('[data-total-da-tabela]')).toContainText('de 1');
 });
 

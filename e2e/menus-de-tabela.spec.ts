@@ -86,5 +86,5 @@ test('o comando gerado nasce amarrado à conexão, pronto para o Run', async ({ 
 
   await expect.poll(() => textoDoEditor(page)).toContain('SELECT');
   await page.locator('.codelens-decoration').first().getByText('Run').click();
-  await expect(page.locator('table')).toContainText('joshua');
+  await expect(page.locator('table')).toContainText('ana');
 });

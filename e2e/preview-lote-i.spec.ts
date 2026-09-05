@@ -162,7 +162,7 @@ test('`$` dentro de bloco de código NÃO vira fórmula', async ({ page }) => {
 
 test('um CSV abre na GRADE, com as colunas do cabeçalho', async ({ page }) => {
   const nome = novoNome('csv');
-  await criarArquivo(page, nome, 'nome,idade\njoshua,40\nmaria,35\n');
+  await criarArquivo(page, nome, 'nome,idade\nana,40\nmaria,35\n');
   // Fecha e reabre pela árvore: salvar deixa a aba de TEXTO aberta, e o que se
   // quer provar é o caminho de ABRIR.
   await page.locator(`[data-tab="${nome}"] [aria-label^="Fechar"]`).click();
@@ -172,13 +172,13 @@ test('um CSV abre na GRADE, com as colunas do cabeçalho', async ({ page }) => {
   await abrirArquivo(page, nome);
 
   await expect(page.locator('[data-visualizador="csv"]')).toBeVisible();
-  await expect(page.getByText('joshua')).toBeVisible();
+  await expect(page.getByText('ana')).toBeVisible();
   await expect(page.locator('[data-coluna="idade"]')).toBeVisible();
 });
 
 test('o separador vem do CONTEÚDO: um CSV com `;` abre certo', async ({ page }) => {
   const nome = novoNome('csv');
-  await criarArquivo(page, nome, 'nome;cidade\njoshua;diadema\n');
+  await criarArquivo(page, nome, 'nome;cidade\nana;vila-nova\n');
   await page.locator(`[data-tab="${nome}"] [aria-label^="Fechar"]`).click();
   await painelLateral(page, 'Arquivos').click();
   await abrirArquivo(page, nome);
