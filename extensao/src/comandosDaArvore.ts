@@ -26,6 +26,8 @@ import * as path from 'node:path';
 import type { Motor } from './motor';
 import type { ArvoreDeConexoes, ItemDaArvore } from './arvore';
 import { documentoDoDiagrama, type DiagramaER } from './diagrama-er';
+import { varrerPasta, type EntradaRemota } from './baixar-pasta';
+import { montarZip, nomeDoZip, type EntradaDeZip } from './zip';
 
 /** O que os comandos precisam do resto da extensão. */
 export interface DepsDosComandos {
@@ -267,6 +269,110 @@ export function registrarComandos(
         `Braytech Code: ${erro instanceof Error ? erro.message : String(erro)}`
       );
     }
+  });
+
+  // **Permissões, que só existiam no painel.** O menu de botão direito do SFTP
+  // tem `Permissões…` desde a T079; a árvore nativa não tinha, e era um dos
+  // gestos que ele usa de verdade — é para isso que ele abre o SSH.
+  registrar('braytech.permissoesRemotas', async (item) => {
+    const alvo = remotoDe(item);
+    if (alvo === null) return;
+    // O modo em OCTAL, como no `chmod`. Traduzir para caixas de seleção
+    // esconderia o número que quem administra servidor já sabe de cor — foi a
+    // decisão da IDE, e as duas telas pedem a mesma coisa.
+    const atual = texto(item.meta.mode).slice(-3);
+    const modo = await vscode.window.showInputBox({
+      prompt: `Permissões de "${String(item.label ?? '')}" (ex.: 755)`,
+      value: atual,
+      ignoreFocusOut: true,
+    });
+    if (modo === undefined || modo.trim() === '') return;
+    const r = await deps.pedir<{ path: string; mode: string }>(
+      'POST',
+      rota(item, '/files/chmod'),
+      { path: alvo, mode: modo.trim() }
+    );
+    if (r === null) return;
+    // Recarrega o PAI: o modo mudou, e a linha o mostra no tooltip.
+    deps.recarregarTudo();
+    void vscode.window.showInformationMessage(
+      `Braytech Code: permissões de ${alvo} agora são ${r.mode}.`
+    );
+  });
+
+  // **Baixar uma PASTA inteira, em `.zip`.** O painel tem desde a T089; a
+  // árvore só baixava arquivo solto, e uma pasta ficava sem caminho nenhum.
+  //
+  // A varredura e o formato do zip são os MESMOS da IDE (`baixar-pasta.ts` e
+  // `zip.ts`, copiados): escrever um segundo zip aqui daria um arquivo que
+  // abre num programa e não noutro, e o defeito só apareceria na mão dele.
+  registrar('braytech.baixarPastaRemota', async (item) => {
+    const alvo = remotoDe(item);
+    if (alvo === null) return;
+    const onde = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(nomeDoZip(alvo)),
+      saveLabel: 'Baixar .zip',
+    });
+    if (onde === undefined) return;
+
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `Baixando ${alvo}`, cancellable: true },
+      async (progresso, sinal) => {
+        try {
+          const { arquivos, pastasVazias } = await varrerPasta(
+            alvo,
+            async (caminho) => {
+              const r = await deps.pedir<readonly EntradaRemota[]>(
+                'GET',
+                rota(item, `/files/list?path=${encodeURIComponent(caminho)}`)
+              );
+              return r ?? [];
+            },
+            {
+              cancelado: () => sinal.isCancellationRequested,
+              aoAndar: (achados, pasta) =>
+                progresso.report({ message: `${achados} arquivo(s) · ${pasta}` }),
+            }
+          );
+          if (arquivos.length === 0 && pastasVazias.length === 0) {
+            void vscode.window.showWarningMessage('Braytech Code: esta pasta está vazia.');
+            return;
+          }
+
+          const entradas: EntradaDeZip[] = pastasVazias.map((relativo) => ({
+            caminho: relativo,
+            dados: new Uint8Array(),
+          }));
+          // Um de cada vez: o SFTP tem UM canal por sessão, e cem leituras
+          // simultâneas se atropelam nele. É a mesma nota do upload.
+          for (const [i, arquivo] of arquivos.entries()) {
+            if (sinal.isCancellationRequested) return;
+            progresso.report({ message: `${i + 1}/${arquivos.length} · ${arquivo.relativo}` });
+            entradas.push({
+              caminho: arquivo.relativo,
+              dados: await deps.motor.pedirBytes(
+                'GET',
+                rota(item, `/files/bytes?path=${encodeURIComponent(arquivo.caminho)}`)
+              ),
+            });
+          }
+
+          progresso.report({ message: 'compactando…' });
+          const zip = await montarZip(entradas, {
+            cancelado: () => sinal.isCancellationRequested,
+          });
+          if (sinal.isCancellationRequested) return;
+          await vscode.workspace.fs.writeFile(onde, zip);
+          void vscode.window.showInformationMessage(
+            `Braytech Code: ${arquivos.length} arquivo(s) em ${onde.fsPath}`
+          );
+        } catch (erro) {
+          void vscode.window.showErrorMessage(
+            `Braytech Code: ${erro instanceof Error ? erro.message : String(erro)}`
+          );
+        }
+      }
+    );
   });
 
   registrar('braytech.executarRemoto', async (item) => {

@@ -267,6 +267,14 @@
         "icon": "$(add)"
       },
       {
+        "command": "braytech.permissoesRemotas",
+        "title": "Braytech: Permissões…"
+      },
+      {
+        "command": "braytech.baixarPastaRemota",
+        "title": "Braytech: Baixar pasta (.zip)"
+      },
+      {
         "command": "braytech.acao.select",
         "title": "Braytech: Abrir consulta"
       },
@@ -617,6 +625,14 @@
           "when": "false"
         },
         {
+          "command": "braytech.permissoesRemotas",
+          "when": "false"
+        },
+        {
+          "command": "braytech.baixarPastaRemota",
+          "when": "false"
+        },
+        {
           "command": "braytech.renomearRemoto",
           "when": "false"
         },
@@ -941,6 +957,16 @@
           "command": "braytech.novaPastaRemota",
           "when": "viewItem =~ /pastaRemota/ && !(viewItem =~ /\\.trancada/)",
           "group": "4_criar"
+        },
+        {
+          "command": "braytech.permissoesRemotas",
+          "when": "viewItem =~ /(pastaRemota|arquivoRemoto)/ && !(viewItem =~ /\\.trancada/)",
+          "group": "9_editar"
+        },
+        {
+          "command": "braytech.baixarPastaRemota",
+          "when": "viewItem =~ /pastaRemota/",
+          "group": "5_transferir"
         },
         {
           "command": "braytech.renomearRemoto",

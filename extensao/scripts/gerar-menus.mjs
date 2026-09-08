@@ -132,6 +132,14 @@ const FIXOS = [
     when: 'viewItem =~ /(pastaRemota|arquivoRemoto)/', g: '1_copiar' },
   { semEscrita: true, cmd: 'novoArquivoRemoto', t: 'Novo arquivo…', when: 'viewItem =~ /pastaRemota/', g: '4_criar' },
   { semEscrita: true, cmd: 'novaPastaRemota', t: 'Nova pasta…', when: 'viewItem =~ /pastaRemota/', g: '4_criar' },
+  // Permissões: no menu de botão direito, como no SFTP da IDE. Escrita — some
+  // em conexão somente-leitura.
+  { semEscrita: true, cmd: 'permissoesRemotas', t: 'Permissões…',
+    when: 'viewItem =~ /(pastaRemota|arquivoRemoto)/', g: '9_editar' },
+  // Baixar a pasta inteira. Não é `inline`: a linha da pasta já tem Enviar,
+  // Favoritar e Recarregar, e um quarto ícone deixa de ser barra e vira ruído.
+  { cmd: 'baixarPastaRemota', t: 'Baixar pasta (.zip)',
+    when: 'viewItem =~ /pastaRemota/', g: '5_transferir' },
   { semEscrita: true, cmd: 'renomearRemoto', t: 'Renomear…',
     when: 'viewItem =~ /(pastaRemota|arquivoRemoto)/', g: '9_editar' },
   { semEscrita: true, cmd: 'apagarRemoto', t: 'Apagar',

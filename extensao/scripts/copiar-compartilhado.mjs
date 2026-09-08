@@ -19,6 +19,11 @@ export const COMPARTILHADOS = [
   { de: 'src/shared/sql/diagrama-er.ts', para: 'extensao/src/diagrama-er.ts' },
   { de: 'src/shared/tree/filtro.ts', para: 'extensao/src/filtro.ts' },
   { de: 'src/shared/tree/filtro-da-arvore.ts', para: 'extensao/src/filtro-da-arvore.ts' },
+  // Baixar pasta em `.zip`: o plano da varredura e o formato do zip. Puros e
+  // sem import, como os de cima — e é o que permite o host montar o mesmo zip
+  // que o navegador monta, sem uma segunda implementação para divergir.
+  { de: 'src/shared/baixar-pasta.ts', para: 'extensao/src/baixar-pasta.ts' },
+  { de: 'src/shared/zip.ts', para: 'extensao/src/zip.ts' },
 ];
 
 let mudou = 0;

@@ -460,6 +460,26 @@ try {
   marcar('a extensão tem tantas afordâncias quanto o painel', temos >= esperadas,
     `painel ${esperadas} · extensão ${temos} (hover ${inline.length} + barra ${naBarra.length})`);
 
+  // **O menu do SFTP, que é o dos SERVICES.** O painel tem um menu de botão
+  // direito por entrada remota (`menuDaEntrada`, T079); a árvore precisa dos
+  // mesmos gestos. Faltavam dois quando ele foi olhar em 08/09/2026:
+  // `Permissões…` e `Baixar pasta (.zip)`.
+  //
+  // Conta, como o guarda de cima: casar rótulo a rótulo fingiria saber que
+  // "Baixar" e "Baixar pasta (.zip)" são a mesma coisa. Contar pega o SUMIÇO,
+  // que é o defeito real.
+  const fonteSftp = await fs2.readFile(`${RAIZ}/src/ui/sftp/SftpPanel.tsx`, 'utf8');
+  const menuDaEntrada = fonteSftp.slice(
+    fonteSftp.indexOf('function menuDaEntrada'),
+    fonteSftp.indexOf('async function subirDaIde')
+  );
+  const gestosDoSftp = [...menuDaEntrada.matchAll(/label: (?:ehPasta \? )?'([^']+)'/g)].length;
+  const itensRemotos = itens.filter((m) =>
+    /pastaRemota|arquivoRemoto|executavel/.test(String(m.when ?? ''))
+  ).length;
+  marcar('a árvore tem tantos gestos remotos quanto o SFTP',
+    itensRemotos >= gestosDoSftp, `SFTP ${gestosDoSftp} · árvore ${itensRemotos}`);
+
   // **Item de hover sem `icon` é desenhado com o TÍTULO INTEIRO.** Foi o
   // "Braytech: Excluir conexão" por extenso na linha, no lugar da lixeira. O
   // defeito não é visível em nenhum outro lugar: o `package.json` fica válido,
