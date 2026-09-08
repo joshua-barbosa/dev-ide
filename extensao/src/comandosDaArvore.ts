@@ -131,7 +131,10 @@ export function registrarComandos(
   registrar('braytech.verProcessos', (item) => {
     deps.definirConexaoAtiva(item.conexao);
     deps.abrirAbaDaIde('processos', `Processos — ${String(item.label ?? '')}`, {
-      connectionId: item.conexao,
+      // **`conexaoId`, não `connectionId`.** É o nome que a WEBVIEW da aba lê
+      // (`aba.tsx`), e a ponte do painel já traduzia — eu não. O id chegava
+      // vazio e virava `/api/connections//key`, que foi o que ele viu.
+      conexaoId: item.conexao,
       titulo: String(item.label ?? ''),
       // **Do ITEM, nunca `false` fixo.** Matar processo MUDA o servidor, e a
       // rota recusa — mas oferecer o botão faz o clique parecer defeito.
@@ -415,7 +418,7 @@ export function registrarComandos(
   registrar('braytech.abrirServidorDaConexao', (item) => {
     deps.definirConexaoAtiva(item.conexao);
     deps.abrirAbaDaIde('servidor', String(item.label ?? ''), {
-      connectionId: item.conexao,
+      conexaoId: item.conexao,
       rotulo: String(item.label ?? ''),
       somenteLeitura: item.trancada,
     });
@@ -537,7 +540,7 @@ export function registrarComandos(
   registrar('braytech.abrirChave', (item) => {
     deps.definirConexaoAtiva(item.conexao);
     deps.abrirAbaDaIde('chave', texto(item.meta.chave), {
-      connectionId: item.conexao,
+      conexaoId: item.conexao,
       chave: texto(item.meta.chave),
       somenteLeitura: item.trancada,
     });

@@ -481,6 +481,27 @@ try {
   marcar('a conexão diz se está aberta ou fechada',
     aConexao?.contextValue === 'braytech.conexao.aberta', String(aConexao?.contextValue));
 
+  // ---- 7b. os NOMES dos campos que a aba lê (spec 104, D315) ----
+  //
+  // Ele: *"Resposta inválida do motor em `/api/connections//key?name=…`"* —
+  // repare no `//`: o id da conexão chegou VAZIO. A webview da aba lê
+  // `conexaoId`, e os meus comandos mandavam `connectionId`. A ponte do painel
+  // traduzia; eu não traduzi, e o `pedir` do host não erra por isso — quem erra
+  // é a rota, lá na frente, na tela dele.
+  //
+  // O guarda lê o NOME direto de `aba.tsx`, para não haver uma segunda verdade
+  // que envelheça.
+  const fonteAba = await fs2.readFile(`${RAIZ}/src/ui/extensao/aba.tsx`, 'utf8');
+  const camposDaAba = new Map();
+  for (const bloco of fonteAba.split(/if \(BRAYTECH\.tipo === /).slice(1)) {
+    const tipo = /^'([a-z]+)'/.exec(bloco)?.[1];
+    if (tipo === undefined) continue;
+    const corpo = bloco.slice(0, bloco.indexOf('\n  }'));
+    camposDaAba.set(tipo, [...corpo.matchAll(/texto\('([A-Za-z]+)'\)/g)].map((m) => m[1]));
+  }
+  marcar('a aba declara os campos que lê', camposDaAba.size >= 3,
+    [...camposDaAba].map(([t, c]) => `${t}:${c.join('+')}`).join(' '));
+
   // ---- 8. os comandos EXECUTADOS de verdade (spec 104, D305) ----
   //
   // Ele: *"o Diagrama ER não está funcionando, só na outra versão"*,
@@ -834,6 +855,36 @@ try {
   // **Nenhuma rota pode ter respondido erro.** É o guarda de verdade: qualquer
   // payload que eu escreva de cabeça cai aqui.
   const comErro = feitos.filter((f) => f.ok === false);
+  // **As três abas que erravam, ABERTAS de verdade.** Sem isto o guarda de
+  // baixo só via `caderno`, e o defeito passava — foi o que aconteceu na
+  // primeira execução deste bloco.
+  await registrados.get('braytech.abrirServidorDaConexao')?.(conexao3);
+  await registrados.get('braytech.verProcessos')?.(conexao3);
+  // A chave não existe no SQLite: monta-se o item como o driver de chave-valor
+  // o entrega, porque o que se confere aqui é o COMANDO, não o Redis.
+  const ItemDeTeste = require_(`${RAIZ}/extensao/dist/arvore.js`).ItemDaArvore;
+  await registrados.get('braytech.abrirChave')?.(
+    new ItemDeTeste(
+      'no', conexao3.conexao, [...conexao3.nodePath, 'acme:aluno:1'], '',
+      'acme:aluno:1', undefined, false, 'key', [], { chave: 'acme:aluno:1' }, false, 'db0'
+    )
+  );
+
+  // Toda aba aberta por um comando traz os campos com o nome que a webview lê,
+  // e nenhum deles vazio.
+  const abasAbertas = feitos.filter((f) => f.aba !== undefined);
+  const semCampo = [];
+  for (const a of abasAbertas) {
+    for (const campo of camposDaAba.get(a.aba) ?? []) {
+      const v = a.d?.[campo];
+      if (typeof v !== 'string' || v === '') semCampo.push(`${a.aba}.${campo}`);
+    }
+  }
+  marcar('a aba recebe os campos com o NOME que ela lê', semCampo.length === 0,
+    semCampo.length === 0
+      ? abasAbertas.map((a) => a.aba).join(', ') || '(nenhuma aba aberta)'
+      : `vazio: ${semCampo.join(', ')}`);
+
   marcar('nenhum comando executado deu erro no motor', comErro.length === 0,
     comErro.length === 0
       ? `${feitos.filter((f) => f.ok !== undefined).length} chamadas`
