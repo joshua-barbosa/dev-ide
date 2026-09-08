@@ -5,6 +5,7 @@
 // de rede acontece — é o que sustenta o critério de funcionar offline.
 import { Icon as IconifyIcon, addCollection, type IconifyJSON } from '@iconify/react';
 import pacotes from './generated/icons.json';
+import proprios from './generated/icones-proprios.json';
 import { resolverIcone } from '../shared/icons';
 
 // O JSON gerado tem um formato literal por conjunto; a asserção direta deixa de
@@ -21,7 +22,27 @@ export interface IconProps {
   readonly title?: string;
 }
 
+/** O desenho dele, quando existe um `.svg` com este nome em `icones/`. */
+const DELE: Readonly<Record<string, string>> = proprios;
+
 export function Icon({ name, size = 14, color, title }: IconProps) {
+  // **O ícone dele ganha do catálogo.** Vai como `<img>` de data-URI, e não
+  // pelo Iconify: o desenho pode ser colorido (é o caso dos que vêm de um tema
+  // de ícones), e o Iconify o pintaria de uma cor só.
+  const meu = DELE[name];
+  if (meu !== undefined) {
+    return (
+      <img
+        src={`data:image/svg+xml;utf8,${encodeURIComponent(meu)}`}
+        width={size}
+        height={size}
+        alt={title ?? ''}
+        aria-hidden={title === undefined}
+        style={{ flexShrink: 0, display: 'block' }}
+      />
+    );
+  }
+
   return (
     <IconifyIcon
       icon={resolverIcone(name)}

@@ -331,8 +331,22 @@ try {
     materias === null ? 'não achei' : materias.nodePath.join('/'));
 
   if (materias !== null) {
-    marcar('o ícone do nó é ThemeIcon, e segue o tema DELE',
-      materias.iconPath?.id === codiconDe('table'), String(materias.iconPath?.id));
+    // **O desenho DELE ganha do codicon.** `icones/table.svg` na raiz vira
+    // `proprio-table-*.svg` nos recursos, e a linha passa a usá-lo. Sem ícone
+    // próprio, fica o `ThemeIcon`, que segue a cor do tema.
+    const disco2 = await import('node:fs/promises');
+    const temProprio = await disco2
+      .access(`${RAIZ}/extensao/recursos/icones/proprio-table-light.svg`)
+      .then(() => true, () => false);
+    marcar(
+      temProprio
+        ? 'o ícone do nó é o SVG PRÓPRIO dele'
+        : 'o ícone do nó é ThemeIcon, e segue o tema DELE',
+      temProprio
+        ? String(materias.iconPath?.light?.fsPath ?? '').endsWith('proprio-table-light.svg')
+        : materias.iconPath?.id === codiconDe('table'),
+      temProprio ? String(materias.iconPath?.light?.fsPath ?? '') : String(materias.iconPath?.id)
+    );
     marcar('clicar na tabela abre a grade da IDE',
       materias.command?.command === 'braytech.abrirNo', String(materias.command?.command));
 

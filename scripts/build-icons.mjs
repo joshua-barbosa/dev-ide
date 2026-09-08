@@ -11,6 +11,7 @@ import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { lerIconesProprios } from './icones-proprios.mjs';
 
 const require = createRequire(import.meta.url);
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -22,7 +23,7 @@ if (!fs.existsSync(COMPILADO)) {
   process.exit(1);
 }
 
-const { ICONES_USADOS } = require(COMPILADO);
+const { ICONES_USADOS, NODE_ICONS, TAB_ICONS, ICONES_DE_SERVICO } = require(COMPILADO);
 
 /** Agrupa "lucide:database" por prefixo, porque cada conjunto é um arquivo. */
 const porConjunto = new Map();
@@ -72,6 +73,23 @@ if (ausentes.length > 0) {
 
 fs.mkdirSync(path.dirname(SAIDA), { recursive: true });
 fs.writeFileSync(SAIDA, JSON.stringify(pacotes));
+
+// **Os ícones dele ganham do catálogo.** Vão num arquivo à parte, como texto
+// SVG: o `Icon` desenha o que estiver aqui em vez de pedir ao Iconify.
+const validos = new Set([
+  ...NODE_ICONS,
+  ...TAB_ICONS,
+  ...Object.keys(ICONES_DE_SERVICO ?? {}),
+]);
+const proprios = lerIconesProprios(validos);
+const SAIDA_PROPRIOS = path.join(RAIZ, 'src', 'ui', 'generated', 'icones-proprios.json');
+fs.writeFileSync(
+  SAIDA_PROPRIOS,
+  JSON.stringify(Object.fromEntries([...proprios].map(([n, p]) => [n, p.claro])))
+);
+if (proprios.size > 0) {
+  console.log(`${proprios.size} ícone(s) próprio(s) de icones/ ganham do catálogo`);
+}
 
 const total = pacotes.reduce((n, p) => n + Object.keys(p.icons).length, 0);
 const kb = (fs.statSync(SAIDA).size / 1024).toFixed(1);

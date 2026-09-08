@@ -15,6 +15,7 @@ import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { lerIconesProprios } from '../../scripts/icones-proprios.mjs';
 
 const require = createRequire(import.meta.url);
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -27,16 +28,16 @@ if (!fs.existsSync(COMPILADO)) {
   process.exit(1);
 }
 
-const { NODE_ICONS, ICONES_DE_SERVICO, ICONE_DE_SSH, ICONE_DE_FTP, resolverIcone } =
+const { NODE_ICONS, ICONES_DE_SERVICO, ICONE_DE_SSH, ICONE_DE_FTP } =
   require(COMPILADO);
 
 /** A cor do traço em cada tema. O VS Code não recolore SVG na árvore. */
 const COR = { light: '#424242', dark: '#c5c5c5' };
 
-/** Nomes lógicos que a árvore pode receber, mais os de marca dos serviços. */
-const logicos = new Set([...NODE_ICONS, 'query', 'folder', 'file', 'link', 'terminal']);
+// **Só as MARCAS saem do catálogo.** O resto da árvore desenha com `codicon`,
+// que acompanha a cor do tema do editor sozinho — e por isso os 60 arquivos
+// `lucide-*.svg` que este script gerava iam no `.vsix` sem ninguém usar.
 const completos = new Set([
-  ...[...logicos].map((n) => resolverIcone(n)),
   ...Object.values(ICONES_DE_SERVICO ?? {}),
   ICONE_DE_SSH,
   ICONE_DE_FTP,
@@ -81,4 +82,21 @@ for (const [prefixo, nomes] of porConjunto) {
   }
 }
 
-console.log(`  ${escritos} arquivos em recursos/icones (${completos.size} ícones × 2 temas)`);
+// **Os ícones DELE, que ganham de tudo.** Vão como `proprio-<nome>-<tema>.svg`,
+// e a árvore os prefere ao codicon (`arvore.ts`).
+const validos = new Set([
+  ...NODE_ICONS,
+  'query', 'folder', 'file', 'link', 'terminal',
+  ...Object.keys(ICONES_DE_SERVICO ?? {}),
+]);
+const proprios = lerIconesProprios(validos);
+for (const [nome, par] of proprios) {
+  fs.writeFileSync(path.join(SAIDA, `proprio-${nome}-light.svg`), par.claro);
+  fs.writeFileSync(path.join(SAIDA, `proprio-${nome}-dark.svg`), par.escuro);
+  escritos += 2;
+}
+
+console.log(
+  `  ${escritos} arquivos em recursos/icones ` +
+    `(${completos.size} marcas + ${proprios.size} próprio(s), × 2 temas)`
+);

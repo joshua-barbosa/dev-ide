@@ -15,8 +15,9 @@
 // campo a campo — o motor não muda uma linha por causa deste arquivo.
 import * as vscode from 'vscode';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import type { Motor } from './motor';
-import { codiconDe, svgDaMarca } from './icones-do-editor';
+import { codiconDe, nomeLogico, svgDaMarca } from './icones-do-editor';
 import { comandoDaAcao as comandoDaAcaoDoNo } from './acoesDoMenu';
 import { padraoDeFiltro } from './filtro';
 import { arquivosSoltos } from './soltura';
@@ -73,10 +74,17 @@ export function definirRecursos(uri: vscode.Uri): void {
 }
 
 function svgDeMarca(marca: string): { light: vscode.Uri; dark: vscode.Uri } | null {
+  return svgDosRecursos(`devicon-${marca}`);
+}
+
+/** O par claro/escuro de um SVG de `recursos/icones`, se ele existir. */
+function svgDosRecursos(base: string): { light: vscode.Uri; dark: vscode.Uri } | null {
   if (raizDosRecursos === null) return null;
   const arquivo = (tema: 'light' | 'dark'): vscode.Uri =>
-    vscode.Uri.joinPath(raizDosRecursos as vscode.Uri, 'icones', `devicon-${marca}-${tema}.svg`);
-  return { light: arquivo('light'), dark: arquivo('dark') };
+    vscode.Uri.joinPath(raizDosRecursos as vscode.Uri, 'icones', `${base}-${tema}.svg`);
+  const claro = arquivo('light');
+  if (!fs.existsSync(claro.fsPath)) return null;
+  return { light: claro, dark: arquivo('dark') };
 }
 
 export class ItemDaArvore extends vscode.TreeItem {
@@ -144,9 +152,12 @@ export class ItemDaArvore extends vscode.TreeItem {
       this.iconPath = remoto.ehPasta ? vscode.ThemeIcon.Folder : vscode.ThemeIcon.File;
     } else {
       const marca = svgDaMarca(icone);
-      const svg = marca === null ? null : svgDeMarca(marca);
-      // Marca fica colorida de propósito: é por ela que ele acha uma conexão de
-      // relance na lista. O resto é `ThemeIcon`, que muda de cor com o tema.
+      // **O desenho DELE ganha de tudo** (`icones/<nome>.svg` na raiz do
+      // repositório). Depois a marca, colorida de propósito: é por ela que ele
+      // acha uma conexão de relance. Sobrando, o `ThemeIcon`, que muda de cor
+      // com o tema do editor sozinho.
+      const proprio = svgDosRecursos(`proprio-${nomeLogico(icone)}`);
+      const svg = proprio ?? (marca === null ? null : svgDeMarca(marca));
       this.iconPath = svg ?? new vscode.ThemeIcon(codiconDe(icone));
     }
 

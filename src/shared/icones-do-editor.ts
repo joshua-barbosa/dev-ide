@@ -104,6 +104,17 @@ const MAPA: Readonly<Record<string, string>> = {
  * árvore recebe as duas: o driver declara a curta, e alguns nós nossos já
  * nascem qualificados.
  */
+/**
+ * O nome LÓGICO de um ícone: `lucide:table` e `table` viram os dois `table`.
+ *
+ * É por ele que o desenho próprio dele é achado — o arquivo em `icones/` se
+ * chama `table.svg`, não `lucide-table.svg`, porque quem escolhe o desenho não
+ * precisa saber de que catálogo ele teria vindo.
+ */
+export function nomeLogico(icone: string): string {
+  return icone.replace(/^(lucide|devicon):/, '');
+}
+
 export function codiconDe(icone: string): string {
   // Marca sempre cai em `server` aqui — foi a escolha dele para o que o editor
   // não tem. Quem quiser o SVG colorido pergunta ao `svgDaMarca` ANTES.
