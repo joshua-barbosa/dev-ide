@@ -31,7 +31,13 @@ class Uri {
     this.scheme = esquema;
   }
   static file(p) { return new Uri(p); }
-  static parse(p) { return new Uri(p); }
+  // `file:///tmp/x` vira `/tmp/x`, como no editor: a soltura entrega URI, e um
+  // `fsPath` com `file://` colado na frente não abriria arquivo nenhum.
+  static parse(p) {
+    const m = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/(.*)$/.exec(String(p));
+    if (m === null) return new Uri(String(p));
+    return new Uri(decodeURIComponent(m[2]), m[1]);
+  }
   static from(o) { return new Uri(o.path, o.scheme); }
   static joinPath(base, ...pedacos) { return new Uri([base.fsPath, ...pedacos].join('/')); }
   toString() { return `${this.scheme}:${this.fsPath}`; }
@@ -115,12 +121,24 @@ module.exports = {
     registerFileSystemProvider: () => ({ dispose() {} }),
     fs: {
       readFile: async (u) => new Uint8Array(await fs.readFile(u.fsPath)),
+      // `stat` e `readDirectory` existem para a SOLTURA: uma pasta arrastada
+      // sobe inteira, e quem a percorre é o `workspace.fs` — o mesmo que o
+      // editor de verdade oferece.
+      stat: async (u) => {
+        const st = await fs.stat(u.fsPath);
+        return { type: st.isDirectory() ? 2 : 1, size: st.size, ctime: 0, mtime: 0 };
+      },
+      readDirectory: async (u) => {
+        const nomes = await fs.readdir(u.fsPath, { withFileTypes: true });
+        return nomes.map((n) => [n.name, n.isDirectory() ? 2 : 1]);
+      },
       writeFile: async (u, b) => {
         anota({ o: 'writeFile', caminho: u.fsPath, bytes: b.length });
         await fs.writeFile(u.fsPath, Buffer.from(b));
       },
     },
   },
+  FileType: { Unknown: 0, File: 1, Directory: 2, SymbolicLink: 64 },
   languages: { registerCompletionItemProvider: () => ({ dispose() {} }) },
   env: {
     clipboard: { writeText: async (t) => anota({ o: 'clipboard', t }) },

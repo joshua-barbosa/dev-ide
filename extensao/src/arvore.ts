@@ -19,6 +19,7 @@ import type { Motor } from './motor';
 import { codiconDe, svgDaMarca } from './icones-do-editor';
 import { comandoDaAcao as comandoDaAcaoDoNo } from './acoesDoMenu';
 import { padraoDeFiltro } from './filtro';
+import { arquivosSoltos } from './soltura';
 import {
   estaVazio, interpretarData, interpretarTamanho, type FiltroDaArvore,
 } from './filtro-da-arvore';
@@ -253,7 +254,13 @@ export class ArvoreDeConexoes
    * oficial de soltura em árvore — a mesma que a extensão de referência usa, e
    * a que não existe para webview.
    */
-  readonly dropMimeTypes = ['files'];
+  //
+  // **`text/uri-list` também, e é o que faltava.** O editor só ENTREGA a
+  // soltura se o tipo estiver declarado aqui: arrastar do Explorer dele, ou do
+  // gerenciador de arquivos do sistema, chega como `uri-list` — e a árvore,
+  // declarando só `files`, recusava antes de qualquer código meu rodar. Era
+  // por isso que o arraste falhava CALADO.
+  readonly dropMimeTypes = ['files', 'text/uri-list'];
   /** Arrastar de dentro da árvore ainda não faz nada — declarado vazio. */
   readonly dragMimeTypes: string[] = [];
 
@@ -317,10 +324,21 @@ export class ArvoreDeConexoes
       return;
     }
 
-    const item = dados.get('files');
-    const arquivos = await arquivosSoltos(item);
+    const arquivos = await arquivosSoltos(dados);
     if (arquivos.length === 0) {
-      void vscode.window.showWarningMessage('O que foi solto não trouxe arquivo nenhum.');
+      // **Diz o que chegou.** Um aviso genérico manda procurar às cegas; com
+      // os tipos à vista dá para saber se o editor entregou outra coisa.
+      const tipos: string[] = [];
+      try {
+        dados.forEach((_v, mime) => tipos.push(mime));
+      } catch {
+        // Sem a lista, o aviso sai genérico — e sai.
+      }
+      void vscode.window.showWarningMessage(
+        tipos.length === 0
+          ? 'O que foi solto não trouxe arquivo nenhum.'
+          : `O que foi solto não trouxe arquivo: veio ${tipos.join(', ')}.`
+      );
       return;
     }
 
@@ -372,6 +390,9 @@ export class ArvoreDeConexoes
         let feitos = 0;
         for (const arquivo of arquivos) {
           progresso.report({ message: `${feitos + 1} de ${arquivos.length}` });
+          // `arquivo.nome` pode trazer barra (pasta solta): o caminho
+          // relativo recria a estrutura do outro lado, e o `mkdir=1` abaixo
+          // cria o que faltar.
           const destino = `${pasta === '/' ? '' : pasta}/${arquivo.nome}`;
           // Um de cada vez: SFTP e FTP têm um canal só, e cem gravações
           // simultâneas viram cem canais que o servidor recusa.
@@ -721,28 +742,6 @@ export class ArvoreDeConexoes
       });
     return this.drivers;
   }
-}
-
-/** O que veio no `dataTransfer`, já lido em bytes. */
-async function arquivosSoltos(
-  item: vscode.DataTransferItem | undefined
-): Promise<readonly { nome: string; bytes: Uint8Array }[]> {
-  if (item === undefined) return [];
-  const lidos: { nome: string; bytes: Uint8Array }[] = [];
-  // A API entrega UM arquivo por item; vários vêm como vários itens, e o
-  // `asFile` do item agregado devolve o primeiro. Percorrer o `value` cobre os
-  // dois formatos que o editor já usou.
-  const candidatos: unknown[] = Array.isArray(item.value) ? item.value : [item];
-  for (const bruto of candidatos) {
-    const arquivo =
-      typeof (bruto as vscode.DataTransferItem).asFile === 'function'
-        ? (bruto as vscode.DataTransferItem).asFile()
-        : (bruto as vscode.DataTransferFile | undefined);
-    if (arquivo === undefined) continue;
-    const dados = await arquivo.data();
-    lidos.push({ nome: path.basename(arquivo.name), bytes: dados });
-  }
-  return lidos;
 }
 
 /** "12.0K", "3.4M" — o mesmo formato do detalhe da árvore. */

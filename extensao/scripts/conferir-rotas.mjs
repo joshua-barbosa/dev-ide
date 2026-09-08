@@ -386,9 +386,63 @@ try {
   marcar('soltar fora de uma pasta AVISA, em vez de sumir',
     semPasta === undefined && String(ultimoAviso?.m).includes('PASTA'), String(ultimoAviso?.m));
 
-  marcar('a árvore declara `files` como tipo de soltura',
-    arvore.dropMimeTypes.length === 1 && arvore.dropMimeTypes[0] === 'files',
+  // **`text/uri-list` também.** O editor só ENTREGA a soltura se o tipo estiver
+  // declarado: arrastar do Explorer, ou do gerenciador de arquivos do sistema,
+  // chega como `uri-list`, e a árvore declarando só `files` recusava antes de
+  // qualquer código meu rodar. Ele: *"eu arrasto e posiciono na pasta que eu
+  // quero subir e não vai"* — soltura calada, sem erro nenhum.
+  marcar('a árvore aceita `files` E `text/uri-list`',
+    ['files', 'text/uri-list'].every((t) => arvore.dropMimeTypes.includes(t)),
     arvore.dropMimeTypes.join(', '));
+
+  // **A soltura, EXECUTADA**: um arquivo e uma PASTA, por `uri-list`, com o
+  // motor espionado. É o único jeito de provar daqui o que o gesto dele faz.
+  {
+    const disco = await import('node:fs/promises');
+    const base = path.join(pasta, 'soltura');
+    await disco.mkdir(path.join(base, 'projeto', 'dentro'), { recursive: true });
+    await disco.writeFile(path.join(base, 'solto.txt'), 'um arquivo inventado');
+    await disco.writeFile(path.join(base, 'projeto', 'raiz.txt'), 'a');
+    await disco.writeFile(path.join(base, 'projeto', 'dentro', 'fundo.txt'), 'b');
+
+    const subidas = [];
+    const motorEspiao = {
+      porta: 0,
+      pedir: async () => null,
+      pedirBytes: async (metodo, rotaApi, corpo) => {
+        subidas.push({ metodo, rota: rotaApi, bytes: corpo?.length ?? 0 });
+        return new Uint8Array();
+      },
+    };
+    const arvoreDrop = new ArvoreDeConexoes(motorEspiao, 'service');
+    const Item = require_(`${RAIZ}/extensao/dist/arvore.js`).ItemDaArvore;
+    const pastaAlvo = new Item(
+      'no', 'c1', ['/mnt', 'apl'], '', 'apl', undefined, true, 'folder', [],
+      { remotePath: '/mnt/apl', kind: 'dir' }, false
+    );
+    const soltar = async (urls) => {
+      subidas.length = 0;
+      global.__RESPOSTAS = { showWarningMessage: 'Subir' };
+      const item = { asString: async () => urls.join('\r\n'), value: urls.join('\r\n') };
+      await arvoreDrop.handleDrop(
+        pastaAlvo,
+        { get: (m) => (m === 'text/uri-list' ? item : undefined), forEach: () => {} },
+        {}
+      );
+      return subidas.map((s) => decodeURIComponent(s.rota.replace(/^.*[?&]path=/, '').split('&')[0]));
+    };
+
+    const umArquivo = await soltar([`file://${path.join(base, 'solto.txt')}`]);
+    marcar('soltar um ARQUIVO por uri-list sobe para a pasta alvo',
+      umArquivo.length === 1 && umArquivo[0] === '/mnt/apl/solto.txt', umArquivo.join(', '));
+
+    const umaPasta = await soltar([`file://${path.join(base, 'projeto')}`]);
+    marcar('soltar uma PASTA sobe tudo, com a estrutura de dentro',
+      umaPasta.length === 2 &&
+        umaPasta.includes('/mnt/apl/projeto/raiz.txt') &&
+        umaPasta.includes('/mnt/apl/projeto/dentro/fundo.txt'),
+      umaPasta.join(', '));
+  }
 
   // Cofre trancado não pode virar árvore vazia sem motivo.
   await api('/api/connections/vault/lock', {});
