@@ -126,11 +126,11 @@ const FIXOS = [
   // --- arquivo e pasta remotos (spec 053) ---
   { cmd: 'copiarCaminho', t: 'Copiar caminho',
     when: 'viewItem =~ /(pastaRemota|arquivoRemoto)/', g: '1_copiar' },
-  { cmd: 'novoArquivoRemoto', t: 'Novo arquivo…', when: 'viewItem =~ /pastaRemota/', g: '4_criar' },
-  { cmd: 'novaPastaRemota', t: 'Nova pasta…', when: 'viewItem =~ /pastaRemota/', g: '4_criar' },
-  { cmd: 'renomearRemoto', t: 'Renomear…',
+  { semEscrita: true, cmd: 'novoArquivoRemoto', t: 'Novo arquivo…', when: 'viewItem =~ /pastaRemota/', g: '4_criar' },
+  { semEscrita: true, cmd: 'novaPastaRemota', t: 'Nova pasta…', when: 'viewItem =~ /pastaRemota/', g: '4_criar' },
+  { semEscrita: true, cmd: 'renomearRemoto', t: 'Renomear…',
     when: 'viewItem =~ /(pastaRemota|arquivoRemoto)/', g: '9_editar' },
-  { cmd: 'apagarRemoto', t: 'Apagar',
+  { semEscrita: true, cmd: 'apagarRemoto', t: 'Apagar',
     when: 'viewItem =~ /(pastaRemota|arquivoRemoto)/', g: '9_editar' },
   { cmd: 'recarregarRemoto', t: 'Recarregar', icone: '$(refresh)', real: 'recarregarNo',
     when: 'viewItem =~ /pastaRemota/', g: '2_estado', inline: true },
@@ -138,15 +138,25 @@ const FIXOS = [
     when: 'viewItem =~ /(pastaRemota|arquivoRemoto)/', g: '3_ver', inline: true },
   { cmd: 'baixarRemoto', t: 'Baixar', icone: '$(cloud-download)',
     when: 'viewItem =~ /arquivoRemoto/', g: '5_transferir', inline: true },
-  { cmd: 'executarRemoto', t: 'Executar no servidor…', icone: '$(play)',
+  { semEscrita: true, cmd: 'executarRemoto', t: 'Executar no servidor…', icone: '$(play)',
     when: 'viewItem =~ /executavel/', g: '5_transferir', inline: true },
-  { cmd: 'enviarArquivos', t: 'Enviar arquivos para esta pasta', icone: '$(cloud-upload)',
+  { semEscrita: true, cmd: 'enviarArquivos', t: 'Enviar arquivos para esta pasta', icone: '$(cloud-upload)',
     when: 'viewItem =~ /pastaRemota/', g: '5_transferir', inline: true },
 ];
 
 
 // Preserva o que NÃO é ação (o `Enviar arquivos`, por exemplo): o gerador é
 // dono das entradas `braytech.acao.*` e de mais nada.
+// **O que ESCREVE some com a conexão trancada.**
+//
+// A mesma regra do painel (`useAcoesRemotas`): a trava de valer está na rota,
+// mas oferecer o que vai ser recusado é pior que não oferecer. A minha árvore
+// mostrava criar, renomear, apagar e executar numa conexão somente-leitura.
+for (const f of FIXOS) {
+  if (f.semEscrita !== true) continue;
+  f.when = `${f.when} && !(viewItem =~ /\\.trancada/)`;
+}
+
 const nomeReal = (f) => `braytech.${f.real ?? f.cmd}`;
 const fixosNaPaleta = [...new Set(FIXOS.map(nomeReal))];
 

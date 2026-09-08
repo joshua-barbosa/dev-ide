@@ -99,7 +99,15 @@ export class ItemDaArvore extends vscode.TreeItem {
     /** O que o driver declara que se pode fazer com este nó. */
     readonly acoes: readonly AcaoDoNo[] = [],
     /** O `meta` que o driver mandou — é dele que sai `remotePath` e `object`. */
-    readonly meta: Readonly<Record<string, unknown>> = {}
+    readonly meta: Readonly<Record<string, unknown>> = {},
+    /**
+     * A conexão é somente-leitura?
+     *
+     * Vira `.trancada` no `contextValue`, e é o que ESCONDE criar, renomear,
+     * apagar e executar — a mesma regra do painel (`useAcoesRemotas`). A trava
+     * de valer está na rota; isto evita oferecer o que vai ser recusado.
+     */
+    readonly trancada = false
   ) {
     super(
       rotulo,
@@ -127,7 +135,7 @@ export class ItemDaArvore extends vscode.TreeItem {
       this.iconPath = svg ?? new vscode.ThemeIcon(codiconDe(icone));
     }
 
-    this.contextValue = contextoDe(especie, acoes, remoto, meta);
+    this.contextValue = contextoDe(especie, acoes, remoto, meta, trancada);
   }
 
   /** A pasta remota que este nó representa, ou `null`. */
@@ -160,7 +168,8 @@ function contextoDe(
   especie: Especie,
   acoes: readonly AcaoDoNo[],
   remoto: Remoto | null,
-  meta: Readonly<Record<string, unknown>> = {}
+  meta: Readonly<Record<string, unknown>> = {},
+  trancada = false
 ): string {
   // As CAPACIDADES do nó, como o driver as declara. São elas que decidem quais
   // itens de menu aparecem — do mesmo jeito que decidem na IDE, onde o menu é
@@ -192,6 +201,7 @@ function contextoDe(
     // Estes dois são NOSSOS, e por isso vêm da espécie e não do `meta`.
     ...(especie === 'query' ? ['queries'] : []),
     ...(especie === 'arquivo' ? ['arquivoDeQuery'] : []),
+    ...(trancada ? ['trancada'] : []),
   ];
   const base = [`braytech.${especie}`, ...capacidades].join('.');
   // Cada ação vira `[id]`, e o `when` de cada item de menu casa com o dela.
@@ -240,6 +250,7 @@ export class ArvoreDeConexoes
     this.raiz = null;
     this.comFiltrosLidos.clear();
     this.descricoes.clear();
+    this.somenteLeitura.clear();
     this.mudou.fire(undefined);
   }
 
@@ -376,7 +387,8 @@ export class ArvoreDeConexoes
     const itens = nos.map((n) => {
       const item = new ItemDaArvore(
         'no', pai.conexao, [...pai.nodePath, n.id], '',
-        n.label, n.detail, n.hasChildren, n.icon, n.actions ?? [], n.meta ?? {}
+        n.label, n.detail, n.hasChildren, n.icon, n.actions ?? [], n.meta ?? {},
+        this.somenteLeitura.has(pai.conexao)
       );
       // **Quem tem linhas é quem o driver marcou com `meta.object`.** Testar
       // `hasChildren` seria errado: uma tabela TEM filhos (as colunas), então a
@@ -486,6 +498,7 @@ export class ArvoreDeConexoes
         // grupo e rótulo, e `Conectar`/`Desconectar` são itens diferentes.
         { grupo: grupo.path, rotulo: c.label, tipo: c.type, aberta: this.abertas.has(c.id) }
       );
+      if (c.readOnly === true) this.somenteLeitura.add(c.id);
       const pode = this.capacidadesPorTipo.get(c.type);
       item.contextValue =
         `braytech.conexao.${this.abertas.has(c.id) ? 'aberta' : 'fechada'}` +
@@ -553,6 +566,9 @@ export class ArvoreDeConexoes
 
   /** A linha do servidor por conexão — `GET /:id/describe`, como no painel. */
   private descricoes = new Map<string, string>();
+
+  /** Conexões marcadas somente-leitura, por id. */
+  private somenteLeitura = new Set<string>();
 
   /**
    * Busca a descrição das conexões ABERTAS, uma vez por desenho.

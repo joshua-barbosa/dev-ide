@@ -696,8 +696,14 @@ try {
   const iconesDe = (contextValue) =>
     inline
       .filter((m) => {
-        const re = /viewItem =~ \/(.+)\/$/.exec(m.when);
-        return re === null ? false : new RegExp(re[1]).test(contextValue ?? '');
+        // `A && !(B)` — a negação é o que esconde escrita em conexão trancada,
+        // e ignorá-la aqui faria o guarda aprovar justamente o defeito.
+        const partes = /^(.+?)(?: && !\((.+)\))?$/.exec(m.when ?? '');
+        const casa = (expr) => {
+          const re = /viewItem =~ \/(.+)\/$/.exec(expr ?? '');
+          return re === null ? false : new RegExp(re[1]).test(contextValue ?? '');
+        };
+        return casa(partes?.[1]) && !(partes?.[2] !== undefined && casa(partes[2]));
       })
       .map((m) => m.command.replace('braytech.', ''))
       .sort();
@@ -719,6 +725,56 @@ try {
   // NÃO podem aparecer aqui — foi o outro defeito que ele viu.
   conferirLinha('conexão de banco (SQLite)', conexao3,
     ['recarregarConexao', 'excluirConexao']);
+
+  // (i) SOMENTE-LEITURA esconde o que escreve — inclusive na árvore remota.
+  //
+  // Ele ainda nem chegou nos SERVICES, e este já estava errado: eu mostrava
+  // criar, renomear, apagar e executar numa conexão trancada. A trava de valer
+  // está na rota, mas oferecer o que vai ser recusado é pior que não oferecer.
+  //
+  // Sem servidor remoto aqui, o `contextValue` é montado à mão a partir da
+  // MESMA função que a árvore usa — é ela que decide, e é ela que se confere.
+  const { ItemDaArvore } = require_(`${RAIZ}/extensao/dist/arvore.js`);
+  const pastaLivre = new ItemDaArvore(
+    'no', 'c1', ['/mnt'], '', 'mnt', undefined, true, 'folder', [],
+    { remotePath: '/mnt', kind: 'dir' }, false
+  );
+  const pastaTrancada = new ItemDaArvore(
+    'no', 'c1', ['/mnt'], '', 'mnt', undefined, true, 'folder', [],
+    { remotePath: '/mnt', kind: 'dir' }, true
+  );
+  const scriptTrancado = new ItemDaArvore(
+    'no', 'c1', ['/a.sh'], '', 'a.sh', undefined, false, 'file', [],
+    { remotePath: '/a.sh', kind: 'file', executable: true }, true
+  );
+
+  conferirLinha('pasta remota (livre)', pastaLivre,
+    ['recarregarNo', 'favoritarRemoto', 'enviarArquivos']);
+  conferirLinha('pasta remota (SOMENTE-LEITURA)', pastaTrancada,
+    ['recarregarNo', 'favoritarRemoto']);
+  conferirLinha('script executável (SOMENTE-LEITURA)', scriptTrancado,
+    ['favoritarRemoto', 'baixarRemoto']);
+
+  const doMenu = (contextValue) =>
+    itens
+      .filter((m) => {
+        // `A && !(B)` — avalia as duas metades, como o editor faz.
+        const partes = /^(.+?)(?: && !\((.+)\))?$/.exec(m.when ?? '');
+        const casa = (expr) => {
+          const re = /viewItem =~ \/(.+)\/$/.exec(expr ?? '');
+          return re === null ? false : new RegExp(re[1]).test(contextValue ?? '');
+        };
+        return casa(partes?.[1]) && !(partes?.[2] !== undefined && casa(partes[2]));
+      })
+      .map((m) => m.command.replace('braytech.', ''));
+
+  const escrevemNaTrancada = doMenu(pastaTrancada.contextValue).filter((c) =>
+    ['novoArquivoRemoto', 'novaPastaRemota', 'renomearRemoto', 'apagarRemoto'].includes(c)
+  );
+  marcar('conexão trancada não oferece criar, renomear nem apagar',
+    escrevemNaTrancada.length === 0,
+    escrevemNaTrancada.length === 0 ? 'nenhum' : escrevemNaTrancada.join(', '));
+
 
   // **Nenhuma rota pode ter respondido erro.** É o guarda de verdade: qualquer
   // payload que eu escreva de cabeça cai aqui.

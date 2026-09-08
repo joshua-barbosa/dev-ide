@@ -872,22 +872,22 @@
         },
         {
           "command": "braytech.novoArquivoRemoto",
-          "when": "viewItem =~ /pastaRemota/",
+          "when": "viewItem =~ /pastaRemota/ && !(viewItem =~ /\\.trancada/)",
           "group": "4_criar"
         },
         {
           "command": "braytech.novaPastaRemota",
-          "when": "viewItem =~ /pastaRemota/",
+          "when": "viewItem =~ /pastaRemota/ && !(viewItem =~ /\\.trancada/)",
           "group": "4_criar"
         },
         {
           "command": "braytech.renomearRemoto",
-          "when": "viewItem =~ /(pastaRemota|arquivoRemoto)/",
+          "when": "viewItem =~ /(pastaRemota|arquivoRemoto)/ && !(viewItem =~ /\\.trancada/)",
           "group": "9_editar"
         },
         {
           "command": "braytech.apagarRemoto",
-          "when": "viewItem =~ /(pastaRemota|arquivoRemoto)/",
+          "when": "viewItem =~ /(pastaRemota|arquivoRemoto)/ && !(viewItem =~ /\\.trancada/)",
           "group": "9_editar"
         },
         {
@@ -907,12 +907,12 @@
         },
         {
           "command": "braytech.executarRemoto",
-          "when": "viewItem =~ /executavel/",
+          "when": "viewItem =~ /executavel/ && !(viewItem =~ /\\.trancada/)",
           "group": "inline"
         },
         {
           "command": "braytech.enviarArquivos",
-          "when": "viewItem =~ /pastaRemota/",
+          "when": "viewItem =~ /pastaRemota/ && !(viewItem =~ /\\.trancada/)",
           "group": "inline"
         },
         {
