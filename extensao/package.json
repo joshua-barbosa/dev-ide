@@ -79,7 +79,8 @@
       },
       {
         "command": "braytech.abrirNo",
-        "title": "Braytech Code: Ver linhas"
+        "title": "Braytech Code: Ver linhas",
+        "icon": "$(table)"
       },
       {
         "command": "braytech.abrirArquivoRemoto",
@@ -117,11 +118,13 @@
       },
       {
         "command": "braytech.excluirConexao",
-        "title": "Braytech: Excluir conexão"
+        "title": "Braytech: Excluir conexão",
+        "icon": "$(trash)"
       },
       {
         "command": "braytech.diagramaEr",
-        "title": "Braytech: Diagrama ER"
+        "title": "Braytech: Diagrama ER",
+        "icon": "$(type-hierarchy)"
       },
       {
         "command": "braytech.diagramaDaTabela",
@@ -129,7 +132,8 @@
       },
       {
         "command": "braytech.novaQuerySql",
-        "title": "Braytech: Nova query SQL…"
+        "title": "Braytech: Nova query SQL…",
+        "icon": "$(add)"
       },
       {
         "command": "braytech.novoQueryBook",

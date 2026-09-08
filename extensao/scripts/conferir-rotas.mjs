@@ -417,6 +417,17 @@ try {
   marcar('a extensão tem tantas afordâncias quanto o painel', temos >= esperadas,
     `painel ${esperadas} · extensão ${temos} (hover ${inline.length} + barra ${naBarra.length})`);
 
+  // **Item de hover sem `icon` é desenhado com o TÍTULO INTEIRO.** Foi o
+  // "Braytech: Excluir conexão" por extenso na linha, no lugar da lixeira. O
+  // defeito não é visível em nenhum outro lugar: o `package.json` fica válido,
+  // o comando funciona, e só a tela dele mostra.
+  const porNome = new Map(pacote.contributes.commands.map((c) => [c.command, c]));
+  const semIcone = [...inline, ...naBarra]
+    .filter((m) => porNome.get(m.command)?.icon === undefined)
+    .map((m) => m.command.replace('braytech.', ''));
+  marcar('todo ícone de barra e de hover tem `icon`', semIcone.length === 0,
+    semIcone.length === 0 ? `${inline.length + naBarra.length} com ícone` : semIcone.join(', '));
+
   marcar('a barra do topo está declarada', naBarra.length >= 6,
     naBarra.map((m) => m.command.replace('braytech.', '')).join(', '));
 

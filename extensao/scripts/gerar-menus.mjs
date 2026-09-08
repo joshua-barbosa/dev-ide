@@ -145,14 +145,24 @@ const nomeReal = (f) => `braytech.${f.real ?? f.cmd}`;
 const fixosNaPaleta = [...new Set(FIXOS.map(nomeReal))];
 
 // Comandos dos fixos: um por `cmd` REAL (dois itens podem chamar o mesmo).
+// **Sempre ESCREVE, nunca pula.** A versão anterior fazia `continue` quando o
+// comando já existia — e como quase todos já existiam, o `icon` nunca era
+// gravado. Sem `icon`, um item `inline` é desenhado com o TÍTULO INTEIRO: foi o
+// "Braytech: Excluir conexão" escrito por extenso na linha, no lugar da
+// lixeira, que ele viu na tela.
 for (const nome of fixosNaPaleta) {
-  if (contribui.commands.some((c) => c.command === nome)) continue;
-  const f = FIXOS.find((x) => nomeReal(x) === nome);
-  contribui.commands.push({
+  // Quando dois itens compartilham o comando (`copiarNome` no nó e na conexão),
+  // vale o que TEM ícone: é o que decide como o inline é desenhado.
+  const candidatos = FIXOS.filter((x) => nomeReal(x) === nome);
+  const f = candidatos.find((x) => x.icone !== undefined) ?? candidatos[0];
+  const existente = contribui.commands.find((c) => c.command === nome);
+  const declaracao = {
     command: nome,
-    title: `Braytech: ${f.t}`,
+    title: existente?.title ?? `Braytech: ${f.t}`,
     ...(f.icone === undefined ? {} : { icon: f.icone }),
-  });
+  };
+  if (existente === undefined) contribui.commands.push(declaracao);
+  else Object.assign(existente, declaracao);
 }
 
 const daBarra = FIXOS.filter((f) => f.titulo === true);
