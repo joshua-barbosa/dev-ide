@@ -22,7 +22,12 @@ export interface Transferencia {
   /** Pede um arquivo ao usuário. `null` quando ele desiste. */
   readonly escolher: (o: {
     readonly extensoes: readonly string[];
+    readonly varios?: boolean;
   }) => Promise<{ readonly nome: string; readonly carga: string } | null>;
+  /** Pede VÁRIOS arquivos. Lista vazia quando ele desiste. */
+  readonly escolherVarios: (o: {
+    readonly extensoes: readonly string[];
+  }) => Promise<readonly { readonly nome: string; readonly carga: string }[]>;
 }
 
 let transferencia: Transferencia | null = null;
@@ -35,6 +40,27 @@ let transferencia: Transferencia | null = null;
  */
 export function definirTransferencia(nova: Transferencia | null): void {
   transferencia = nova;
+}
+
+/**
+ * Abre o seletor com o input DENTRO do documento, e o tira de lá depois.
+ *
+ * Um `<input>` solto na memória abre o diálogo, mas nem todo mundo entrega o
+ * `change` de volta a um elemento que não está no documento — foi assim que o
+ * botão de enviar arquivo "funcionou" sem subir nada, e sem erro nenhum.
+ * Escondido de propósito: ele nunca é para ser visto.
+ */
+function abrirSeletor(input: HTMLInputElement): void {
+  input.style.position = 'fixed';
+  input.style.left = '-9999px';
+  input.style.width = '1px';
+  input.style.height = '1px';
+  input.style.opacity = '0';
+  document.body.appendChild(input);
+  input.click();
+  // Depois do gesto: remover na hora cancelaria o diálogo em alguns
+  // navegadores. Um minuto é folga suficiente para escolher um arquivo.
+  setTimeout(() => input.remove(), 60_000);
 }
 
 /** Baixa um arquivo. Texto ou bytes — o PNG do CodeSnap e o zip passam por aqui. */
@@ -89,7 +115,48 @@ export async function escolherArquivoDeTexto(
     };
     // Sem o `cancel` a promessa ficaria pendente para sempre quando ele
     // fechasse o diálogo sem escolher nada.
-    input.oncancel = () => resolver(null);
-    input.click();
+    // `cancel` NÃO resolve na hora: em alguns ambientes ele chega ANTES do
+    // `change` do mesmo gesto, e resolver aqui descartaria o arquivo que ele
+    // acabou de escolher — sem erro nenhum, que foi como o envio "funcionou"
+    // sem subir nada. Um tique de atraso deixa o `change` chegar primeiro.
+    input.oncancel = () => setTimeout(() => resolver(null), 0);
+    abrirSeletor(input);
+  });
+}
+
+/**
+ * Pede VÁRIOS arquivos e devolve os bytes de cada um.
+ *
+ * Existe para o envio ao servidor remoto. Arrastar da máquina para a pasta é o
+ * gesto natural, mas dentro da webview do editor ele depende do que o editor
+ * entrega no `dataTransfer` — e quando não entrega nada, o clique não faz nada.
+ * Um botão que abre o diálogo do sistema funciona nos dois lugares, sempre.
+ */
+export async function escolherArquivos(
+  extensoes: readonly string[] = []
+): Promise<readonly { readonly nome: string; readonly bytes: Uint8Array }[]> {
+  if (transferencia !== null) {
+    const r = await transferencia.escolherVarios({ extensoes });
+    return r.map((a) => ({ nome: a.nome, bytes: daCarga(a.carga) }));
+  }
+
+  return new Promise((resolver) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = extensoes.map((e) => `.${e}`).join(',');
+    input.onchange = () => {
+      const escolhidos = [...(input.files ?? [])];
+      Promise.all(
+        escolhidos.map(async (f) => ({
+          nome: f.name,
+          bytes: new Uint8Array(await f.arrayBuffer()),
+        }))
+      ).then(resolver, () => resolver([]));
+    };
+    // Ver a nota do `cancel` em `escolherArquivoDeTexto`: ele pode chegar
+    // antes do `change` do mesmo gesto.
+    input.oncancel = () => setTimeout(() => resolver([]), 0);
+    abrirSeletor(input);
   });
 }

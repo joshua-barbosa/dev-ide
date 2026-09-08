@@ -18,7 +18,7 @@ import { useDownloadDePasta } from './useDownloadDePasta';
 import type { EntradaMenu } from '../ContextMenu';
 import { decodificarCarga, MIME_DE_ARRASTE } from '../../shared/arrastar';
 import type { RemoteEntry } from '../../shared/contracts';
-import { baixarArquivo as entregarArquivo } from '../arquivos/transferencia';
+import { baixarArquivo as entregarArquivo, escolherArquivos } from '../arquivos/transferencia';
 
 interface Coluna {
   readonly id: ColunaDeOrdem;
@@ -211,6 +211,16 @@ export function SftpPanel({
               icone="lucide:file-plus-2"
               rotulo="Novo arquivo"
               onClick={() => void criar('arquivo')}
+            />
+            {/* Enviar pelo SELETOR do sistema.
+                Arrastar da máquina para a pasta continua valendo, mas depende
+                do que o navegador — ou a webview do editor — entrega no
+                `dataTransfer`, e quando não entrega nada o gesto falha sem
+                dizer. Este botão não depende de nada disso. */}
+            <Acao
+              icone="lucide:upload"
+              rotulo="Enviar arquivos"
+              onClick={() => void enviarEscolhidos()}
             />
           </>
         )}
@@ -616,6 +626,25 @@ export function SftpPanel({
       // escondido com `execCommand('copy')` — falha CALADO dentro da webview
       // do editor, o que é pior que não copiar: quem clicou vai colar o que
       // estava antes. Então diz.
+      onErro(e);
+    }
+  }
+
+  /** Envia os arquivos que ele escolher no diálogo do sistema. */
+  async function enviarEscolhidos(): Promise<void> {
+    try {
+      const arquivos = await escolherArquivos();
+      if (arquivos.length === 0) return;
+      for (const a of arquivos) {
+        const alvo = `${caminho === '/' ? '' : caminho}/${a.nome}`;
+        // Uma cópia dos bytes, e não a fatia do buffer de origem: o tipo do
+        // `buffer` de um `Uint8Array` inclui `SharedArrayBuffer`, e a rota
+        // quer um `ArrayBuffer`.
+        const copia = new Uint8Array(a.bytes);
+        await Api.enviarArquivoRemoto(conexaoId, alvo, copia.buffer as ArrayBuffer);
+      }
+      await listar(caminho);
+    } catch (e) {
       onErro(e);
     }
   }

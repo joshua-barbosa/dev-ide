@@ -35,6 +35,68 @@ export function definirTransporte(novo: Transporte | null): void {
   transporte = novo;
 }
 
+/** Quem leva um pedido BINÁRIO até o motor, quando não é o `fetch` daqui. */
+export type TransporteBinario = (
+  metodo: string,
+  url: string,
+  corpo?: Uint8Array
+) => Promise<Uint8Array>;
+
+let transporteBinario: TransporteBinario | null = null;
+
+export function definirTransporteBinario(novo: TransporteBinario | null): void {
+  transporteBinario = novo;
+}
+
+/**
+ * As DUAS rotas binárias da IDE: subir e baixar arquivo do SFTP.
+ *
+ * Elas não passam pelo envelope JSON — o corpo é binário cru, e embrulhá-lo em
+ * base64 custaria um terço a mais de tráfego numa operação que move centenas
+ * de arquivos. O preço era que elas chamavam `fetch` direto, ignorando a
+ * costura do transporte: dentro da webview do editor a URL relativa resolvia
+ * contra `vscode-webview://` e **as duas simplesmente não funcionavam** — subir
+ * arquivo e baixar arquivo, caladas.
+ *
+ * Aqui elas ganham a mesma costura que o resto. Dentro do editor a carga vai em
+ * base64 pelo host, que é Node; no navegador, `fetch`, byte por byte como antes.
+ */
+export async function requestBinario(
+  method: string,
+  url: string,
+  corpo?: Uint8Array
+): Promise<Uint8Array> {
+  if (transporteBinario !== null) return transporteBinario(method, url, corpo);
+
+  let response: Response;
+  try {
+    response = await fetch(url.startsWith('/') ? `${origem}${url}` : url, {
+      method,
+      ...(corpo === undefined
+        ? {}
+        : {
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: corpo as BodyInit,
+          }),
+    });
+  } catch (err) {
+    const detalhe = err instanceof Error ? err.message : String(err);
+    throw new Error(`Falha de conexão com o servidor da IDE: ${detalhe}`);
+  }
+
+  // Resposta em JSON numa rota binária pode ser DUAS coisas: o erro — que
+  // continua vindo no envelope de sempre — ou o sucesso do UPLOAD, que não tem
+  // bytes para devolver e responde `{success:true}`. Tratar as duas como erro
+  // fazia o envio subir o arquivo e depois anunciar falha, com HTTP 200 na
+  // mensagem. Quem decide é o `success`, não o formato.
+  if (!response.ok || (response.headers.get('Content-Type') ?? '').includes('application/json')) {
+    const payload = (await response.json()) as { success?: boolean; error: string | null };
+    if (response.ok && payload.success === true) return new Uint8Array();
+    throw new Error(payload.error ?? `Falha em ${url} (HTTP ${response.status}).`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 interface Envelope<T> {
   readonly success: boolean;
   readonly data: T;

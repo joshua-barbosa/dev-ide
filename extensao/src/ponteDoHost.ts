@@ -114,6 +114,14 @@ interface ChamadaAoHost {
 }
 
 /** Um pedido à API do motor, feito pela webview. */
+/** Um pedido às rotas binárias: a carga viaja em base64. */
+interface PedidoDeBytes {
+  readonly id: number;
+  readonly metodo: string;
+  readonly rota: string;
+  readonly carga?: string;
+}
+
 interface PedidoDeApi {
   readonly id: number;
   readonly metodo: string;
@@ -181,6 +189,10 @@ export class PonteDoHost {
         void this.repassarAoMotor(web, bruto as PedidoDeApi);
         return;
       }
+      if (m?.tipo === 'apiBytes') {
+        void this.repassarBytes(web, bruto as PedidoDeBytes);
+        return;
+      }
       if (m?.tipo === 'hostChamada') {
         void this.atenderChamada(web, bruto as ChamadaAoHost);
         return;
@@ -198,6 +210,37 @@ export class PonteDoHost {
    * que ele viu). Repassar daqui resolve **sem afrouxar a guarda do motor**:
    * este processo é Node, não tem CORS, e a superfície exposta continua a mesma.
    */
+  /**
+   * O mesmo repasse, para as rotas BINÁRIAS — subir e baixar arquivo do SFTP.
+   *
+   * A carga vai e volta em base64 porque entre a webview e este processo só
+   * passa JSON. É 33% mais tráfego dentro da própria máquina, e é o preço de
+   * essas duas rotas existirem aqui: sem isto, elas eram as ÚNICAS da IDE que
+   * a extensão não conseguia chamar — e falhavam caladas.
+   */
+  private async repassarBytes(web: vscode.Webview, p: PedidoDeBytes): Promise<void> {
+    try {
+      const enviado = await this.deps.motor.pedirBytes(
+        p.metodo,
+        p.rota,
+        p.carga === undefined ? undefined : new Uint8Array(Buffer.from(p.carga, 'base64'))
+      );
+      void web.postMessage({
+        tipo: 'apiResposta',
+        id: p.id,
+        ok: true,
+        data: Buffer.from(enviado).toString('base64'),
+      });
+    } catch (erro) {
+      void web.postMessage({
+        tipo: 'apiResposta',
+        id: p.id,
+        ok: false,
+        erro: erro instanceof Error ? erro.message : String(erro),
+      });
+    }
+  }
+
   private async repassarAoMotor(web: vscode.Webview, p: PedidoDeApi): Promise<void> {
     try {
       const data = await this.deps.motor.pedir<unknown>(p.metodo, p.rota, p.corpo);

@@ -1,4 +1,4 @@
-import { comCaminho, request } from './api-http';
+import { comCaminho, request, requestBinario } from './api-http';
 import type { Plataforma } from '../shared/plataforma';
 import type { Tarefa } from '../shared/tarefas';
 import type {
@@ -237,14 +237,14 @@ export const Api = {
       ignored: number;
       truncated: boolean;
     }>('GET', `/api/workspace/folder-files?path=${encodeURIComponent(path)}`),
-  lerBytesLocais: async (path: string): Promise<Uint8Array> => {
-    const r = await fetch(`/api/file/raw?path=${encodeURIComponent(path)}`);
-    if (!r.ok || (r.headers.get('Content-Type') ?? '').includes('application/json')) {
-      const payload = (await r.json()) as { error: string | null };
-      throw new Error(payload.error ?? `Falha ao ler "${path}".`);
-    }
-    return new Uint8Array(await r.arrayBuffer());
-  },
+  /**
+   * Os bytes de um arquivo LOCAL. Também pela costura binária.
+   *
+   * É o que alimenta arrastar da árvore da IDE para a pasta remota. Escapava
+   * pelo mesmo buraco que as duas rotas do SFTP, e pelo mesmo motivo.
+   */
+  lerBytesLocais: (path: string): Promise<Uint8Array> =>
+    requestBinario('GET', `/api/file/raw?path=${encodeURIComponent(path)}`),
   // Histórico local: o Timeline e o rascunho (T010, T035).
   historico: (path: string) =>
     request<readonly VersaoLocal[]>('GET', `/api/history?path=${encodeURIComponent(path)}`),
@@ -503,8 +503,10 @@ export const Api = {
   /**
    * Sobe um arquivo em bytes (spec 060).
    *
-   * Não passa pelo `request` genérico: aquele manda e espera JSON, e aqui o
-   * corpo é binário cru.
+   * Não passa pelo `request` genérico — aquele manda e espera JSON, e aqui o
+   * corpo é binário cru —, mas passa pelo `requestBinario`, que é a MESMA
+   * costura. Enquanto chamava `fetch` na mão, esta rota era uma das duas da
+   * IDE que não funcionavam dentro da webview do editor, e falhava calada.
    */
   enviarArquivoRemoto: async (
     id: string,
@@ -515,13 +517,7 @@ export const Api = {
     const url =
       `${conexoes}/${id}/files/upload?path=${encodeURIComponent(caminho)}` +
       `${criarPastas ? '&mkdir=1' : ''}`;
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/octet-stream' },
-      body: dados,
-    });
-    const payload = (await r.json()) as { success: boolean; error: string | null };
-    if (!payload.success) throw new Error(payload.error ?? 'Falha ao enviar.');
+    await requestBinario('POST', url, new Uint8Array(dados));
   },
   /**
    * Os bytes crus de um arquivo remoto (T089).
@@ -530,17 +526,8 @@ export const Api = {
    * JSON, e aqui o corpo é binário. Embrulhá-lo em base64 custaria um terço a
    * mais de tráfego por arquivo, numa operação que baixa centenas deles.
    */
-  lerBytesRemotos: async (id: string, caminho: string): Promise<Uint8Array> => {
-    const r = await fetch(
-      `${conexoes}/${id}/files/bytes?path=${encodeURIComponent(caminho)}`
-    );
-    // O erro continua em JSON; quem chama distingue pelo `Content-Type`.
-    if (!r.ok || (r.headers.get('Content-Type') ?? '').includes('application/json')) {
-      const payload = (await r.json()) as { error: string | null };
-      throw new Error(payload.error ?? `Falha ao ler "${caminho}".`);
-    }
-    return new Uint8Array(await r.arrayBuffer());
-  },
+  lerBytesRemotos: (id: string, caminho: string): Promise<Uint8Array> =>
+    requestBinario('GET', `${conexoes}/${id}/files/bytes?path=${encodeURIComponent(caminho)}`),
   listarRemoto: (id: string, caminho: string) =>
     request<readonly RemoteEntry[]>(
       'GET',

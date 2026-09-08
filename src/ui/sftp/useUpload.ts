@@ -113,7 +113,20 @@ export function useUpload(aoTerminar: () => void): ControleDeUpload {
         .map((i) => (i as unknown as { webkitGetAsEntry?: () => EntradaDoArraste | null })
           .webkitGetAsEntry?.() ?? null)
         .filter((x): x is EntradaDoArraste => x !== null);
-      if (itens.length === 0) return 0;
+
+      if (itens.length === 0) {
+        // Soltar e não acontecer NADA é o pior desfecho possível: quem soltou
+        // conclui que a IDE travou. Dentro da webview do editor isto acontece
+        // de verdade — o que chega no `dataTransfer` depende do que o editor
+        // resolve entregar, e às vezes não é arquivo nenhum.
+        const tipos = [...e.dataTransfer.types];
+        throw new Error(
+          'O que foi solto aqui não trouxe arquivo nenhum' +
+            (tipos.length === 0 ? '' : ` (veio: ${tipos.join(', ')})`) +
+            '.\n\nUse o botão "Enviar arquivos" da barra — ele abre o seletor do ' +
+            'sistema e funciona sempre.'
+        );
+      }
 
       const achados: ArquivoLido[] = [];
       for (const item of itens) await percorrer(item, '', achados);

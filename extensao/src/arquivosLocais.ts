@@ -18,6 +18,7 @@ interface PedidoDeSalvar {
 /** O que o painel manda ao pedir um arquivo. */
 interface PedidoDeEscolher {
   readonly extensoes?: unknown;
+  readonly varios?: unknown;
 }
 
 /** Só o nome, nunca um caminho: o nome pode ter vindo de um servidor remoto. */
@@ -53,17 +54,26 @@ export async function salvarArquivo(a: PedidoDeSalvar): Promise<null> {
  */
 export async function escolherArquivo(
   a: PedidoDeEscolher
-): Promise<{ nome: string; carga: string } | null> {
+): Promise<{ nome: string; carga: string } | null | { nome: string; carga: string }[]> {
   const extensoes = Array.isArray(a.extensoes) ? a.extensoes.map((e) => String(e)) : [];
+  const varios = a.varios === true;
 
-  const escolhido = await vscode.window.showOpenDialog({
-    canSelectMany: false,
-    openLabel: 'Usar este arquivo',
+  const escolhidos = await vscode.window.showOpenDialog({
+    canSelectMany: varios,
+    openLabel: varios ? 'Enviar estes arquivos' : 'Usar este arquivo',
     ...(extensoes.length === 0 ? {} : { filters: { [extensoes.join('/')]: extensoes } }),
   });
-  const uri = escolhido?.[0];
-  if (uri === undefined) return null;
 
-  const bytes = await vscode.workspace.fs.readFile(uri);
-  return { nome: nomeSeguro(uri.path), carga: Buffer.from(bytes).toString('base64') };
+  const ler = async (uri: vscode.Uri): Promise<{ nome: string; carga: string }> => ({
+    nome: nomeSeguro(uri.path),
+    carga: Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('base64'),
+  });
+
+  // Com `varios`, a resposta é sempre uma LISTA — vazia se ele desistiu. Sem,
+  // é um objeto ou `null`, como era. Duas formas porque quem pergunta por um
+  // arquivo não quer testar tamanho de array para saber se houve resposta.
+  if (varios) return Promise.all((escolhidos ?? []).map(ler));
+
+  const uri = escolhidos?.[0];
+  return uri === undefined ? null : ler(uri);
 }

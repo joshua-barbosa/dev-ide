@@ -14,8 +14,9 @@
 //
 // Mensagem é DADO, nunca instrução: o host confere o `tipo` contra a lista dele
 // e ignora o que não reconhece.
-import { definirTransporte } from '../api-http';
+import { definirTransporte, definirTransporteBinario } from '../api-http';
 import { definirTransferencia } from '../arquivos/transferencia';
+import { daCarga, paraCarga } from '../../shared/arquivos/carga';
 
 export type PedidoAoHost =
   | { readonly tipo: 'abrirArquivo'; readonly caminho: string }
@@ -172,12 +173,43 @@ export function ligarPonte(): void {
       })
   );
 
+  // As duas rotas BINÁRIAS — subir e baixar arquivo do SFTP. Elas chamavam
+  // `fetch` na mão e por isso escapavam do transporte: dentro da webview a URL
+  // relativa resolvia contra `vscode-webview://`, e as duas não funcionavam.
+  // Era por isso que arrastar arquivo para a pasta não subia nada.
+  definirTransporteBinario(async (metodo, url, corpo) => {
+    const carga = await pedirBytesAoHost(
+      metodo,
+      url,
+      corpo === undefined ? undefined : paraCarga(corpo)
+    );
+    return daCarga(carga);
+  });
+
   // Baixar e escolher arquivo pelo host (spec 100). Sem isto, os nove pontos
   // que entregam ou leem arquivo falhariam CALADOS dentro da webview: `<a
   // download>` e `<input type="file">` simplesmente não fazem nada aqui.
   definirTransferencia({
     salvar: (o) => chamarHost('salvarArquivo', o),
     escolher: (o) => chamarHost('escolherArquivo', o),
+    escolherVarios: (o) => chamarHost('escolherArquivo', { ...o, varios: true }),
+  });
+}
+
+/**
+ * Um pedido às rotas binárias do motor, pelo host.
+ *
+ * Usa a MESMA fila de `chamarHost` — o host responde com `apiResposta`, que o
+ * ouvinte de `ligarPonte` já trata. A carga vai e volta em base64: entre a
+ * webview e o host só passa JSON, e JSON não tem bytes.
+ */
+function pedirBytesAoHost(metodo: string, rota: string, carga?: string): Promise<string> {
+  if (canal === null) return Promise.reject(new Error('Fora do VS Code.'));
+  return new Promise<string>((resolver, recusar) => {
+    const id = proximo;
+    proximo += 1;
+    pendentes.set(id, { resolver: (v) => resolver(v as string), recusar });
+    canal?.postMessage({ tipo: 'apiBytes', id, metodo, rota, ...(carga === undefined ? {} : { carga }) });
   });
 }
 

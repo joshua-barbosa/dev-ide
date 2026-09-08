@@ -37,6 +37,22 @@ async function conectar(page: import('@playwright/test').Page): Promise<{ id: st
   });
 }
 
+/** Conecta e abre a sub-aba SFTP da aba do servidor. */
+async function abrirSftp(page: import('@playwright/test').Page): Promise<void> {
+  await painelLateral(page, 'Service').click();
+  await expandir(page, 'ACME', 'Servidores');
+  const linha = linhaArvore(page, CONEXAO_SSH);
+  await linha.click();
+  const senha = page.getByLabel('Senha mestra', { exact: true });
+  if (await senha.isVisible().catch(() => false)) await destrancarCofre(page, SENHA_MESTRA);
+  await expect(linhaArvore(page, 'aplicacao')).toBeVisible({ timeout: 30_000 });
+
+  await linha.hover();
+  await linha.getByRole('button', { name: /numa aba/ }).click();
+  await page.locator('[data-sub-aba="sftp"]').click();
+  await expect(page.locator('[data-caminho-sftp]')).toBeVisible({ timeout: 30_000 });
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await esperarIdePronta(page);
@@ -105,4 +121,44 @@ test('a tabela SFTP aceita soltura — e some com ela em somente-leitura', async
 
   // Nada de progresso antes de qualquer arraste.
   await expect(page.locator('[data-progresso-upload]')).toHaveCount(0);
+});
+
+// O botão `Enviar arquivos` (spec 103).
+//
+// Ele soltou um arquivo na pasta dentro do editor e nada aconteceu. Duas causas
+// somadas: as rotas binárias escapavam do transporte da webview, e o que o
+// editor entrega no `dataTransfer` pode não ser arquivo nenhum. A primeira foi
+// consertada; a segunda não depende de nós — daí este botão, que abre o
+// seletor do SISTEMA e não depende de gesto nenhum.
+//
+// Ao contrário do arraste, ele PODE ser testado de ponta a ponta.
+test('o botão Enviar arquivos sobe o arquivo escolhido, para a pasta em que se está', async ({
+  page,
+}, testInfo) => {
+  await abrirSftp(page);
+  const antes = await page.locator('[data-linha-sftp]').count();
+
+  const nome = `enviado-${testInfo.workerIndex}-${Date.now()}.txt`;
+  const local = testInfo.outputPath(nome);
+  await import('node:fs/promises').then((fs) => fs.writeFile(local, 'conteúdo de teste\n'));
+
+  const seletor = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Enviar arquivos' }).click();
+  await (await seletor).setFiles(local);
+  await expect(page.locator('[data-linha-sftp]').filter({ hasText: nome })).toBeVisible({
+    timeout: 30_000,
+  });
+  expect(await page.locator('[data-linha-sftp]').count()).toBe(antes + 1);
+});
+
+test('desistir do seletor não sobe nada, e não dá erro', async ({ page }) => {
+  await abrirSftp(page);
+  const antes = await page.locator('[data-linha-sftp]').count();
+
+  const seletor = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Enviar arquivos' }).click();
+  await (await seletor).setFiles([]);
+
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  expect(await page.locator('[data-linha-sftp]').count()).toBe(antes);
 });

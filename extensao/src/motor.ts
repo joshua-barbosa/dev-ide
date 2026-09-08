@@ -16,6 +16,14 @@ import * as path from 'path';
 export interface Motor {
   /** Faz um pedido à API do motor e devolve o `data` do envelope. */
   pedir<T>(metodo: string, rota: string, corpo?: unknown): Promise<T>;
+  /**
+   * O mesmo pedido, mas com corpo e resposta em BYTES.
+   *
+   * Subir e baixar arquivo do SFTP não passam pelo envelope JSON: o corpo é
+   * binário cru. Sem este caminho, as duas únicas rotas binárias da IDE eram
+   * as únicas que a webview não conseguia chamar.
+   */
+  pedirBytes(metodo: string, rota: string, corpo?: Uint8Array): Promise<Uint8Array>;
   readonly porta: number;
 }
 
@@ -41,8 +49,21 @@ function pedidoCru(
   rota: string,
   corpo?: unknown
 ): Promise<string> {
+  return pedidoBruto(metodo, porta, rota, corpo === undefined ? null : {
+    tipo: 'application/json',
+    bytes: Buffer.from(JSON.stringify(corpo), 'utf8'),
+  }).then((b) => b.toString('utf8'));
+}
+
+/** O pedido de verdade. Corpo e resposta em bytes; quem quer texto converte. */
+function pedidoBruto(
+  metodo: string,
+  porta: number,
+  rota: string,
+  corpo: { tipo: string; bytes: Buffer } | null
+): Promise<Buffer> {
   return new Promise((resolver, recusar) => {
-    const dados = corpo === undefined ? null : JSON.stringify(corpo);
+    const dados = corpo === null ? null : corpo.bytes;
     const req = http.request(
       {
         host: '127.0.0.1',
@@ -53,16 +74,16 @@ function pedidoCru(
           // A guarda de Host/Origin do motor só aceita loopback — é a mesma
           // proteção que vale para o navegador, e ela continua valendo aqui.
           Host: `127.0.0.1:${porta}`,
-          ...(dados === null
+          ...(dados === null || corpo === null
             ? {}
-            : { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(dados) }),
+            : { 'Content-Type': corpo.tipo, 'Content-Length': dados.length }),
         },
         timeout: 65_000,
       },
       (res) => {
         const pedacos: Buffer[] = [];
         res.on('data', (p: Buffer) => pedacos.push(p));
-        res.on('end', () => resolver(Buffer.concat(pedacos).toString('utf8')));
+        res.on('end', () => resolver(Buffer.concat(pedacos)));
       }
     );
     req.on('error', recusar);
@@ -125,6 +146,31 @@ export async function ligarMotor(
 
   return {
     porta,
+    async pedirBytes(metodo: string, rota: string, corpo?: Uint8Array): Promise<Uint8Array> {
+      const resposta = await pedidoBruto(
+        metodo,
+        porta,
+        rota,
+        corpo === undefined
+          ? null
+          : { tipo: 'application/octet-stream', bytes: Buffer.from(corpo) }
+      );
+      // O erro do motor continua vindo em JSON, mesmo nas rotas binárias — é o
+      // que `lerBytesRemotos` já distinguia pelo `Content-Type`. Aqui a régua é
+      // o formato: um envelope de erro é JSON válido com `success: false`.
+      if (resposta.length > 0 && resposta[0] === 0x7b) {
+        try {
+          const envelope = JSON.parse(resposta.toString('utf8')) as Envelope<unknown>;
+          if (envelope.success === false) throw new Error(envelope.error ?? 'Erro do motor.');
+        } catch (e) {
+          if (e instanceof Error && e.name !== 'SyntaxError') throw e;
+          // JSON quebrado não é envelope: são bytes que por acaso começam com
+          // `{`. Seguem como estão.
+        }
+      }
+      return new Uint8Array(resposta);
+    },
+
     async pedir<T>(metodo: string, rota: string, corpo?: unknown): Promise<T> {
       const bruto = await pedidoCru(metodo, porta, rota, corpo);
       let envelope: Envelope<T>;

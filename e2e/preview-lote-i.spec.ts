@@ -110,10 +110,17 @@ test('um bloco ```mermaid vira DESENHO, e não código', async ({ page }) => {
   // seguinte pega o `<pre>` que ainda não foi substituído. Foi assim que este
   // teste falhou uma vez na suíte inteira e passou sozinho.
   const diagrama = preview(page).locator('.mermaid-por-desenhar');
-  await expect(diagrama).toBeVisible({ timeout: 20_000 });
+  // `toBeAttached`, e não `toBeVisible` — a MESMA lição do teste do erro, logo
+  // abaixo: até o mermaid desenhar, o bloco está VAZIO, e um div vazio não tem
+  // altura. Esperar por "visível" é esperar pelo desenho por um caminho torto,
+  // e na suíte inteira, com a máquina carregada, ele estourava o prazo.
+  await expect(diagrama).toBeAttached({ timeout: 20_000 });
+  // O desenho ACABOU: enquanto o aviso está lá, ele não acabou. Esta é a
+  // espera de verdade — o SVG depois dela é consequência, não corrida.
+  await expect(diagrama).not.toHaveAttribute('data-mermaid-desenhando', 'true', {
+    timeout: 30_000,
+  });
   await expect(diagrama.locator('svg')).toBeVisible({ timeout: 15_000 });
-  // E o aviso "desenhando…" já saiu: enquanto ele está lá, o desenho não acabou.
-  await expect(diagrama).not.toHaveAttribute('data-mermaid-desenhando', 'true');
   await expect(preview(page).locator('pre code')).toHaveCount(0);
 });
 
@@ -129,6 +136,12 @@ test('diagrama com erro mostra a MENSAGEM, e não some', async ({ page }) => {
   // se alarga e o teste falhava sozinho.
   const bloco = preview(page).locator('.mermaid-por-desenhar');
   await expect(bloco).toBeAttached({ timeout: 15_000 });
+  // E ESPERA o desenho terminar antes de cobrar o desfecho. Sem esta linha o
+  // teste corria contra o carregamento do mermaid — que é um pedaço à parte,
+  // grande, e na suíte inteira chegava depois dos 15 s.
+  await expect(bloco).not.toHaveAttribute('data-mermaid-desenhando', 'true', {
+    timeout: 30_000,
+  });
   // Um bloco em branco pareceria a IDE quebrada.
   await expect(preview(page).locator('[data-mermaid-erro]')).toBeVisible({ timeout: 15_000 });
 });
