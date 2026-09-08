@@ -216,6 +216,8 @@ function contextoDe(
           ...(meta.category === 'tables' || meta.category === 'views' ? ['tabela'] : []),
           ...(typeof meta.database === 'string' ? ['database'] : []),
           ...(meta.categoria === true ? ['categoria'] : []),
+          // O `+` de CHAVE, declarado pelo driver de chave-valor.
+          ...(meta.novaChave === true ? ['novaChave'] : []),
           ...(typeof meta.template === 'string' ? ['template'] : []),
         ];
   const capacidades = [

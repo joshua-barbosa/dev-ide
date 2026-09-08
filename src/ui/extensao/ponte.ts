@@ -105,7 +105,7 @@ export type PedidoAoHost =
   | {
       // Os diálogos ricos (criar objeto, filtrar) também saem da coluna.
       readonly tipo: 'abrirDialogo';
-      readonly dialogo: 'criacao' | 'filtro';
+      readonly dialogo: 'criacao' | 'filtro' | 'chave';
       readonly pedido: unknown;
     }
   | {

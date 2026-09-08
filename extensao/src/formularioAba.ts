@@ -94,11 +94,14 @@ export function abrirFormularioDeConexao(
  */
 export function abrirDialogoEmAba(
   deps: DepsDoPainel,
-  dialogo: 'criacao' | 'filtro',
+  dialogo: 'criacao' | 'filtro' | 'chave',
   pedido: unknown
 ): void {
   const p = pedido as { id?: string; rotulo?: string; caminho?: readonly string[] };
-  const titulo = dialogo === 'criacao' ? `Criar em ${p.rotulo ?? ''}` : `Filtrar ${p.rotulo ?? ''}`;
+  const titulo =
+    dialogo === 'criacao' ? `Criar em ${p.rotulo ?? ''}`
+      : dialogo === 'chave' ? 'Nova chave'
+        : `Filtrar ${p.rotulo ?? ''}`;
   aba(deps, `${dialogo}:${p.id ?? ''}:${(p.caminho ?? []).join('/')}`, titulo, 'dialogo.js', {
     dialogo,
     pedido,

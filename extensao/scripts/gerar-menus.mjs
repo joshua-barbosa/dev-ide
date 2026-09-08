@@ -110,6 +110,10 @@ const FIXOS = [
     when: 'viewItem =~ /\\.categoria/', g: '3_ver', inline: true },
   { cmd: 'criarObjeto', t: 'Criar aqui…', icone: '$(add)',
     when: 'viewItem =~ /\\.template/', g: '4_criar', inline: true },
+  // Criar CHAVE (Redis). Comando próprio, e não o `criarObjeto`: aquele abre
+  // um esqueleto de SQL, e aqui é formulário — escolha dele em 08/09/2026.
+  { cmd: 'novaChave', t: 'Nova chave…', icone: '$(add)',
+    when: 'viewItem =~ /\\.novaChave/', g: '4_criar', inline: true, semEscrita: true },
   // O `+` PERGUNTA o tipo, como na IDE — os dois diretos ficam no botão
   // direito, para quem já sabe o que quer.
   { cmd: 'novaQuery', t: 'Nova query — SQL ou Query Book', icone: '$(add)',

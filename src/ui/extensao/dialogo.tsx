@@ -12,14 +12,17 @@ import { definirBaseDaApi } from '../api-http';
 import type { FiltroDaArvore } from '../../shared/tree/filtro-da-arvore';
 import { DialogoDeCriacao, type PedidoDeCriacao } from '../connections/DialogoDeCriacao';
 import { DialogoDeFiltro, type PedidoDeFiltro } from '../connections/DialogoDeFiltro';
+import {
+  DialogoDeNovaChave, type PedidoDeNovaChave,
+} from '../connections/DialogoDeNovaChave';
 import { ComTemaDoEditor } from './ComTemaDoEditor';
 import { ligarPonte, pedirAoHost } from './ponte';
 
 /** O que o host injeta na página antes de carregar este pacote. */
 declare const BRAYTECH: {
   readonly base: string;
-  readonly dialogo: 'criacao' | 'filtro';
-  readonly pedido: PedidoDeCriacao | PedidoDeFiltro;
+  readonly dialogo: 'criacao' | 'filtro' | 'chave';
+  readonly pedido: PedidoDeCriacao | PedidoDeFiltro | PedidoDeNovaChave;
 };
 
 /** Fecha a aba e manda o painel redesenhar SÓ o ramo mexido. */
@@ -55,6 +58,21 @@ function Aba() {
             ...(pedido.database === null ? {} : { database: pedido.database }),
           });
           // Sem isto o objeto criado só apareceria no recarregar seguinte.
+          pronto(pedido.id, pedido.caminho);
+        }}
+      />
+    );
+  }
+
+  if (BRAYTECH.dialogo === 'chave') {
+    // Criar chave é FORMULÁRIO, não comando: escolha dele em 08/09/2026.
+    const pedido = BRAYTECH.pedido as PedidoDeNovaChave;
+    return (
+      <DialogoDeNovaChave
+        pedido={pedido}
+        onCancelar={fechar}
+        onCriar={async (novo) => {
+          await Api.gravarChave(pedido.id, novo);
           pronto(pedido.id, pedido.caminho);
         }}
       />

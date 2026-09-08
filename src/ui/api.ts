@@ -471,6 +471,8 @@ export const Api = {
     ),
   gravarChave: (id: string, pedido: {
     chave: string; tipo: TipoDeChave; valor?: string; ttl?: number | null;
+    /** Em que banco gravar (`db3`). Ausente = onde a conexão está. */
+    banco?: string;
   }) => request<{ gravou: boolean }>('PUT', `${conexoes}/${id}/key`, pedido),
   apagarChave: (id: string, alvo: { chave?: string; prefixo?: string }) =>
     request<{ apagadas: number }>(

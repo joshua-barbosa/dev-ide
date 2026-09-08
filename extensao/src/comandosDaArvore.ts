@@ -35,7 +35,7 @@ export interface DepsDosComandos {
   abrirFormulario(conexaoId: string | null, grupo: string, rotulo: string): void;
   abrirAbaDaIde(tipo: string, titulo: string, dados: Record<string, unknown>): void;
   abrirDiagrama(titulo: string, markdown: string): void;
-  abrirDialogo(dialogo: 'criacao' | 'filtro', pedido: unknown): void;
+  abrirDialogo(dialogo: 'criacao' | 'filtro' | 'chave', pedido: unknown): void;
   abrirTerminal(connectionId: string, rotulo: string): void;
   /** Baixa/salva um arquivo pela costura de transferência do host. */
   salvarArquivo(nome: string, conteudo: string): Promise<void>;
@@ -456,6 +456,21 @@ export function registrarComandos(
   // O diálogo espera `{ id, caminho, rotulo, criterios, atual }` — eu mandava
   // `{ connectionId, nodePath }`, que ele não lê. Abria vazio, e clicar não
   // fazia nada. Os nomes vêm do `PedidoDeFiltro`, conferidos no fonte.
+  // **Criar CHAVE, que não é criar objeto.** Quem diz que aqui se cria chave é
+  // o driver (`meta.novaChave`), não esta tela: no Redis é chave, e num banco
+  // SQL a mesma categoria não existe (Artigo III).
+  registrar('braytech.novaChave', (item) => {
+    deps.abrirDialogo('chave', {
+      id: item.conexao,
+      caminho: item.nodePath,
+      database: item.banco,
+      prefixo: texto(item.meta.prefixo),
+      // **Do ITEM.** Criar chave é escrita, e numa conexão de leitura o
+      // diálogo nasce com o botão travado em vez de errar só ao gravar.
+      somenteLeitura: item.trancada,
+    });
+  });
+
   registrar('braytech.filtrarCategoria', async (item) => {
     const guardados = await deps.pedir<Record<string, unknown>>(
       'GET',

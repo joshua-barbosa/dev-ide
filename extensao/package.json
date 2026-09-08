@@ -262,6 +262,11 @@
         "title": "Braytech: abrirChave"
       },
       {
+        "command": "braytech.novaChave",
+        "title": "Braytech: Nova chave…",
+        "icon": "$(add)"
+      },
+      {
         "command": "braytech.acao.select",
         "title": "Braytech: Abrir consulta"
       },
@@ -576,6 +581,10 @@
           "when": "false"
         },
         {
+          "command": "braytech.novaChave",
+          "when": "false"
+        },
+        {
           "command": "braytech.novaQuery",
           "when": "false"
         },
@@ -886,6 +895,11 @@
         {
           "command": "braytech.criarObjeto",
           "when": "viewItem =~ /\\.template/",
+          "group": "inline"
+        },
+        {
+          "command": "braytech.novaChave",
+          "when": "viewItem =~ /\\.novaChave/ && !(viewItem =~ /\\.trancada/)",
           "group": "inline"
         },
         {

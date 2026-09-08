@@ -16,6 +16,7 @@ import { AcaoDoPainel } from './AcaoDoPainel';
 import { TreeRow } from '../tree/TreeRow';
 import { DialogoDeFiltro, type PedidoDeFiltro } from './DialogoDeFiltro';
 import { DialogoDeCriacao, type PedidoDeCriacao } from './DialogoDeCriacao';
+import { DialogoDeNovaChave, type PedidoDeNovaChave } from './DialogoDeNovaChave';
 import type { Criterio } from '../../shared/tree/filtro-da-arvore';
 import type { ConnectionsController } from './useConnections';
 import { baixarArquivo as entregarArquivo } from '../arquivos/transferencia';
@@ -107,6 +108,13 @@ export interface ConnectionsPanelProps {
    */
   readonly onPedirFiltro?: (pedido: PedidoDeFiltro) => void;
   readonly onPedirCriacao?: (pedido: PedidoDeCriacao) => void;
+  /**
+   * O `+` de uma categoria de CHAVES (Redis).
+   *
+   * Separado do `onPedirCriacao` porque não é SQL: criar chave é formulário,
+   * e foi o que ele escolheu em 08/09/2026.
+   */
+  readonly onPedirNovaChave?: (pedido: PedidoDeNovaChave) => void;
 }
 
 /** O vínculo do nó `Query`, que carrega o database no `meta`. */
@@ -160,6 +168,7 @@ export function ConnectionsPanel({
   onNovaConexao,
   onPedirFiltro,
   onPedirCriacao,
+  onPedirNovaChave,
   onRenomearGrupo,
   onAbrirTerminal,
   onDiagramaEr,
@@ -180,10 +189,12 @@ export function ConnectionsPanel({
   // mesmo gesto que o diálogo do cofre precisou sair de dentro para sobreviver.
   const [pedidoDeFiltro, setPedidoDeFiltro] = useState<PedidoDeFiltro | null>(null);
   const [pedidoDeCriacao, setPedidoDeCriacao] = useState<PedidoDeCriacao | null>(null);
+  const [pedidoDeChave, setPedidoDeChave] = useState<PedidoDeNovaChave | null>(null);
 
   // Sem gancho, a caixa é aqui mesmo — que é como a IDE sempre foi.
   const pedirFiltro = onPedirFiltro ?? setPedidoDeFiltro;
   const pedirCriacao = onPedirCriacao ?? setPedidoDeCriacao;
+  const pedirNovaChave = onPedirNovaChave ?? setPedidoDeChave;
 
   const aceita = (tipo: string): boolean => {
     const driver = ctrl.drivers.get(tipo);
@@ -408,6 +419,23 @@ export function ConnectionsPanel({
                       })
                     }
                   />
+                  {no.meta?.novaChave === true && (
+                    <AcaoDaLinha
+                      icone="lucide:plus"
+                      rotulo={`Nova chave em ${no.label}`}
+                      onClick={() =>
+                        pedirNovaChave({
+                          id,
+                          caminho: filho,
+                          database: bancoAqui,
+                          // O prefixo do nó clicado entra no nome: criar dentro
+                          // de `acme:aluno:` é o gesto.
+                          prefixo: typeof no.meta?.prefixo === 'string' ? no.meta.prefixo : '',
+                          somenteLeitura: somenteLeitura(id),
+                        })
+                      }
+                    />
+                  )}
                   {typeof no.meta?.template === 'string' && (
                     <AcaoDaLinha
                       icone="lucide:plus"
@@ -682,6 +710,19 @@ export function ConnectionsPanel({
           // defeito que a spec 038 teve com arquivo de query.
           await ctrl.recarregarNo(pedido.id, pedido.caminho);
           setPedidoDeCriacao(null);
+        }}
+      />
+
+      <DialogoDeNovaChave
+        pedido={pedidoDeChave}
+        onCancelar={() => setPedidoDeChave(null)}
+        onCriar={async (novo) => {
+          const pedido = pedidoDeChave;
+          if (pedido === null) return;
+          await Api.gravarChave(pedido.id, novo);
+          // Sem isto a chave criada só apareceria no F5 seguinte.
+          await ctrl.recarregarNo(pedido.id, pedido.caminho);
+          setPedidoDeChave(null);
         }}
       />
 

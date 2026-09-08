@@ -55,6 +55,8 @@ export function criarRotasDeChaves(pool: SessionPool): Router {
       // diferentes, e juntá-las apagaria o prazo de quem só editou o valor.
       ...(corpo.ttl === null ? { ttl: -1 }
         : typeof corpo.ttl === 'number' ? { ttl: Math.floor(corpo.ttl) } : {}),
+      // Ausente = grava onde a conexão está, que é o comportamento de sempre.
+      ...(typeof corpo.banco === 'string' && corpo.banco !== '' ? { banco: corpo.banco } : {}),
     });
     res.json(ok({ gravou: true }));
   }));

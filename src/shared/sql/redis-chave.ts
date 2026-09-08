@@ -203,6 +203,14 @@ export interface EscritaDeChave {
   readonly valor?: string;
   /** Segundos, ou `-1` para tirar o prazo. Ausente = o prazo não muda. */
   readonly ttl?: number;
+  /**
+   * Em que banco gravar (`db3`), quando "todos os bancos" está ligado.
+   *
+   * **Sem isto a gravação vai para o banco em que a CONEXÃO está**, que é
+   * estado que muda conforme a árvore é expandida: criar uma chave em `db3`
+   * podia gravá-la em `db0`, calado.
+   */
+  readonly banco?: string;
 }
 
 /** O que o painel de estado mostra. */

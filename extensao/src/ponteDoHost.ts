@@ -85,7 +85,7 @@ export type PedidoDoPainel =
       // Os diálogos ricos (criar objeto, filtrar) também saem da coluna: são
       // formulários, e formulário aqui é aba.
       readonly tipo: 'abrirDialogo';
-      readonly dialogo: 'criacao' | 'filtro';
+      readonly dialogo: 'criacao' | 'filtro' | 'chave';
       readonly pedido: unknown;
     }
   | {
@@ -144,7 +144,7 @@ export interface DepsDoPainel {
   /** Abre o formulário de conexão como aba do editor. */
   abrirFormulario(conexaoId: string | null, grupo: string, rotulo: string): void;
   /** Abre um diálogo rico como aba do editor. */
-  abrirDialogo(dialogo: 'criacao' | 'filtro', pedido: unknown): void;
+  abrirDialogo(dialogo: 'criacao' | 'filtro' | 'chave', pedido: unknown): void;
   /** Abre o diagrama ER desenhado, em aba própria. */
   abrirDiagrama(titulo: string, markdown: string): void;
   /** Abre o terminal da conexão no painel Terminal do editor. */

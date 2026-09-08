@@ -425,12 +425,17 @@ async function connect(config: ResolvedConfig): Promise<Session> {
           label: 'Chaves',
           icon: 'folder',
           hasChildren: true,
+          // `novaChave` é o que faz a barra de hover oferecer CRIAR — e é o
+          // driver que declara, porque é ele que sabe que aqui se cria chave e
+          // não tabela (Artigo III). Ele pediu em 08/09/2026: *"Ou adicionar
+          // uma nova chave"*.
+          //
           // `categoria: true` é o que faz a barra de hover oferecer FILTRAR, e
           // `criterios: ['nome']` diz que aqui só o nome filtra — chave de
           // Redis não tem dono nem data. Ele pediu: "precisa ter filter também
           // para listar as chaves com o padrão que eu filtrar, igual a do
           // databases".
-          meta: { categoria: true, criterios: ['nome'] },
+          meta: { categoria: true, criterios: ['nome'], novaChave: true },
         });
         return raiz;
       }
@@ -521,6 +526,17 @@ async function connect(config: ResolvedConfig): Promise<Session> {
         throw new Error(
           'Esta conexão está em somente-leitura: gravar uma chave é escrita.'
         );
+      }
+      // **O banco pedido, e não o banco em que a conexão está.** O `SELECT` do
+      // Redis é estado da conexão, e a árvore o move a cada expansão: sem
+      // isto, criar uma chave em `db3` podia gravá-la em `db0` sem avisar.
+      if (pedido.banco !== undefined && pedido.banco !== '') {
+        const numero = bancoDoRotulo(pedido.banco);
+        if (numero === null) throw new Error(`Banco desconhecido: "${pedido.banco}".`);
+        if (numero !== bancoAtual) {
+          await cliente.select(numero);
+          bancoAtual = numero;
+        }
       }
       await gravarChave(cliente, pedido);
     },
