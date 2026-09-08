@@ -518,6 +518,31 @@ export function registrarComandos(
     await abrirArquivoDeQuery(deps, caminho, item.conexao, texto(item.meta.database));
   });
 
+  // **O clique num nó comum abre uma CONSULTA**, com o schema no alvo — é o
+  // `onAbrirQuery` do painel, copiado campo a campo. A GRADE continua existindo,
+  // mas no ícone da linha, e só em tabela e view.
+  registrar('braytech.abrirQueryDoNo', async (item) => {
+    const objeto = texto(item.meta.object) || String(item.label ?? '');
+    const schema = texto(item.meta.schema);
+    const alvoSql = schema === '' ? objeto : `${schema}.${objeto}`;
+    deps.definirConexaoAtiva(item.conexao);
+    await deps.abrirQuery(
+      item.conexao,
+      typeof item.meta.database === 'string' ? item.meta.database : null,
+      `${objeto}.sql`,
+      `SELECT * FROM ${alvoSql} LIMIT 100;`
+    );
+  });
+
+  registrar('braytech.abrirChave', (item) => {
+    deps.definirConexaoAtiva(item.conexao);
+    deps.abrirAbaDaIde('chave', texto(item.meta.chave), {
+      connectionId: item.conexao,
+      chave: texto(item.meta.chave),
+      somenteLeitura: item.trancada,
+    });
+  });
+
   // ---- do arquivo REMOTO (hover) ----
   registrar('braytech.favoritarRemoto', async (item) => {
     const alvo = remotoDe(item);

@@ -19,6 +19,7 @@ import { estruturaDaTabela } from './mysql-estrutura';
 import { estruturaDoMysql, logDoMysql, metricasDoMysql } from './mysql-manager';
 import { DIALETOS, montarAlteracao, operacoesDisponiveis } from './alterar';
 import { executar, qualificar, query } from './mysql-base';
+import { acaoDeRotina } from './rotinas';
 import {
   modeloSql,
   type ColunaDeModelo,
@@ -205,6 +206,29 @@ async function acao(conn: Connection, request: ActionRequest): Promise<ActionRes
           '-- Isto ainda NÃO rodou: aperte o ▷ Run acima do comando quando tiver certeza.\n' +
           `DROP EVENT ${alvo};\n`,
       };
+
+    // Rotina: procedure, function, trigger e event. **Não tinham ação nenhuma**
+    // até 08/09/2026 — nem para LER. `SHOW CREATE TABLE` numa procedure é o
+    // "deu erro" que ele viu.
+    case 'ddl-rotina':
+    case 'atualizar-rotina':
+    case 'drop-rotina': {
+      const feito = await acaoDeRotina(
+        'mysql',
+        request.actionId,
+        { categoria: categoria ?? '', schema, objeto, citado: alvo },
+        async (sql) => {
+          const [linha] = await query<Record<string, string>>(conn, sql);
+          if (linha === undefined) return '';
+          // A coluna muda de nome conforme o objeto ("Create Procedure",
+          // "Create Trigger"): pega-se a primeira que comece com "create".
+          const chave = Object.keys(linha).find((k) => /^create/i.test(k));
+          return chave === undefined ? '' : linha[chave] ?? '';
+        }
+      );
+      if (feito === null) throw new Error(`Ação desconhecida: ${request.actionId}`);
+      return feito;
+    }
 
     case 'ddl': {
       const comando =

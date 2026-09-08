@@ -250,6 +250,18 @@
         "icon": "$(add)"
       },
       {
+        "command": "braytech.abrirArquivoDeQuery",
+        "title": "Braytech: abrirArquivoDeQuery"
+      },
+      {
+        "command": "braytech.abrirQueryDoNo",
+        "title": "Braytech: abrirQueryDoNo"
+      },
+      {
+        "command": "braytech.abrirChave",
+        "title": "Braytech: abrirChave"
+      },
+      {
         "command": "braytech.acao.select",
         "title": "Braytech: Abrir consulta"
       },
@@ -259,6 +271,10 @@
       },
       {
         "command": "braytech.acao.ddl",
+        "title": "Braytech: Ver DDL"
+      },
+      {
+        "command": "braytech.acao.ddl-rotina",
         "title": "Braytech: Ver DDL"
       },
       {
@@ -396,6 +412,14 @@
       {
         "command": "braytech.acao.drop-event",
         "title": "Braytech: Apagar (DROP)"
+      },
+      {
+        "command": "braytech.acao.atualizar-rotina",
+        "title": "Braytech: Atualizar…"
+      },
+      {
+        "command": "braytech.acao.drop-rotina",
+        "title": "Braytech: Apagar (DROP)"
       }
     ],
     "menus": {
@@ -445,6 +469,18 @@
         },
         {
           "command": "braytech.abrirArquivoRemoto",
+          "when": "false"
+        },
+        {
+          "command": "braytech.abrirArquivoDeQuery",
+          "when": "false"
+        },
+        {
+          "command": "braytech.abrirQueryDoNo",
+          "when": "false"
+        },
+        {
+          "command": "braytech.abrirChave",
           "when": "false"
         },
         {
@@ -608,6 +644,10 @@
           "when": "false"
         },
         {
+          "command": "braytech.acao.ddl-rotina",
+          "when": "false"
+        },
+        {
           "command": "braytech.acao.redis-buscar",
           "when": "false"
         },
@@ -741,6 +781,14 @@
         },
         {
           "command": "braytech.acao.drop-event",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.atualizar-rotina",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.drop-rotina",
           "when": "false"
         }
       ],
@@ -931,6 +979,11 @@
           "group": "1_abrir"
         },
         {
+          "command": "braytech.acao.ddl-rotina",
+          "when": "viewItem =~ /\\[ddl\\-rotina\\]/",
+          "group": "1_abrir"
+        },
+        {
           "command": "braytech.acao.redis-buscar",
           "when": "viewItem =~ /\\[redis\\-buscar\\]/",
           "group": "1_abrir"
@@ -1098,6 +1151,16 @@
         {
           "command": "braytech.acao.drop-event",
           "when": "viewItem =~ /\\[drop\\-event\\]/",
+          "group": "3_alterar"
+        },
+        {
+          "command": "braytech.acao.atualizar-rotina",
+          "when": "viewItem =~ /\\[atualizar\\-rotina\\]/",
+          "group": "3_alterar"
+        },
+        {
+          "command": "braytech.acao.drop-rotina",
+          "when": "viewItem =~ /\\[drop\\-rotina\\]/",
           "group": "3_alterar"
         }
       ]

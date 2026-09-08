@@ -9,6 +9,7 @@
 // precisa de `REFRESH` — chamá-la de view fazia a contagem mentir sobre o que
 // há no schema.
 import type { Client } from 'pg';
+import { ACOES_DE_ROTINA, META_DE_ROTINA } from './rotinas';
 import { TEMPLATES_POSTGRES } from '../../../shared/tree/templates';
 import { ACOES_DE_TABELA, ACOES_DE_VIEW } from './modelos';
 import {
@@ -246,7 +247,8 @@ async function listarFuncoes(
     icon: 'function' as const,
     detail: linha.retorno,
     hasChildren: false,
-    meta: { schema, object: linha.nome, category: 'functions' },
+    actions: ACOES_DE_ROTINA,
+    meta: { schema, object: linha.nome, category: 'functions', ...META_DE_ROTINA },
   }));
 }
 
@@ -270,7 +272,8 @@ async function listarProcedimentos(
     // argumentos, e é isso que vai no lugar do tipo de retorno.
     detail: linha.argumentos === '' ? undefined : linha.argumentos,
     hasChildren: false,
-    meta: { schema, object: linha.nome, category: 'procedures' },
+    actions: ACOES_DE_ROTINA,
+    meta: { schema, object: linha.nome, category: 'procedures', ...META_DE_ROTINA },
   }));
 }
 
@@ -297,7 +300,8 @@ async function listarGatilhos(
     icon: 'trigger' as const,
     detail: linha.tabela,
     hasChildren: false,
-    meta: { schema, object: linha.nome, tabela: linha.tabela, category: 'triggers' },
+    actions: ACOES_DE_ROTINA,
+    meta: { schema, object: linha.nome, tabela: linha.tabela, category: 'triggers', ...META_DE_ROTINA },
   }));
 }
 

@@ -17,6 +17,7 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import type { Motor } from './motor';
 import { codiconDe, svgDaMarca } from './icones-do-editor';
+import { comandoDaAcao as comandoDaAcaoDoNo } from './acoesDoMenu';
 import { padraoDeFiltro } from './filtro';
 import {
   estaVazio, interpretarData, interpretarTamanho, type FiltroDaArvore,
@@ -390,19 +391,38 @@ export class ArvoreDeConexoes
         n.label, n.detail, n.hasChildren, n.icon, n.actions ?? [], n.meta ?? {},
         this.somenteLeitura.has(pai.conexao)
       );
-      // **Quem tem linhas é quem o driver marcou com `meta.object`.** Testar
-      // `hasChildren` seria errado: uma tabela TEM filhos (as colunas), então a
-      // prévia nunca dispararia justamente no nó em que ela mais importa.
-      if (typeof n.meta?.object === 'string') {
-        item.command = { command: 'braytech.abrirNo', title: 'Ver linhas', arguments: [item] };
-      }
-      // Arquivo remoto abre no editor, como abre na IDE.
-      if (n.meta?.remotePath !== undefined && n.meta.kind === 'file') {
+      // **A CASCATA DO CLIQUE, na ordem exata do painel.**
+      //
+      // Eu tinha resumido tudo a "tem `meta.object`, abre a grade" — e uma
+      // PROCEDURE tem `meta.object`. Clicar numa dava erro, porque grade de
+      // procedure não existe. A grade é o ÍCONE da linha, e só em tabela e
+      // view; o clique é outra coisa, e o nó tem opinião sobre ela.
+      const meta = n.meta ?? {};
+      if (meta.atalho !== undefined) {
+        // `Users` e `Favorites` são atalhos NOSSOS: só expandem.
+      } else if (typeof meta.remotePath === 'string' && meta.kind === 'file') {
+        item.command = { command: 'braytech.abrirArquivoRemoto', title: 'Abrir', arguments: [item] };
+      } else if (typeof meta.chave === 'string') {
+        // Uma CHAVE não abre uma query (spec 089): num banco chave-valor
+        // `SELECT * FROM` não é consulta ruim, é impossível.
+        item.command = { command: 'braytech.abrirChave', title: 'Abrir chave', arguments: [item] };
+      } else if (typeof meta.acaoAoClicar === 'string') {
+        // O NÓ diz o que o clique faz, quando tem opinião — é como o índice do
+        // Redis abre a busca em vez de um SELECT.
         item.command = {
-          command: 'braytech.abrirArquivoRemoto',
+          command: comandoDaAcaoDoNo(meta.acaoAoClicar),
           title: 'Abrir',
           arguments: [item],
         };
+      } else if (meta.category === 'tables' || meta.category === 'views') {
+        // A GRADE. Tabela e view também expandem para as colunas, e o editor
+        // faz as duas coisas no mesmo clique — tirar o comando por causa do
+        // `hasChildren` foi o que apagou a grade dele.
+        item.command = { command: 'braytech.abrirNo', title: 'Abrir dados', arguments: [item] };
+      } else if (n.hasChildren) {
+        // Database, esquema, categoria: o clique só abre.
+      } else {
+        item.command = { command: 'braytech.abrirQueryDoNo', title: 'Abrir consulta', arguments: [item] };
       }
       return item;
     });

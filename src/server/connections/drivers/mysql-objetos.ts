@@ -5,6 +5,7 @@
 // `postgres-objetos.ts`, e pelo mesmo motivo: aqui está o que responde "o que
 // existe neste banco", e lá o que sabe abrir e fechar a conexão.
 import type { Connection } from 'mysql2';
+import { ACOES_DE_ROTINA, META_DE_ROTINA } from './rotinas';
 import { query } from './mysql-base';
 import { CONTAGENS_SQL, COLUNAS_ARVORE_SQL } from './mysql-sql';
 import { ACOES_DE_TABELA, ACOES_DE_VIEW } from './modelos';
@@ -267,11 +268,8 @@ export async function listarObjetos(
         .filter((p) => p !== null && p !== '')
         .join(' · ') || undefined,
       hasChildren: false,
-      actions: [
-        { id: 'ddl', label: 'Ver DDL' },
-        { id: 'drop-event', label: 'Apagar (DROP)', danger: true },
-      ],
-      meta: { schema, object: linha.EVENT_NAME, category: categoria },
+      actions: ACOES_DE_ROTINA,
+      meta: { schema, object: linha.EVENT_NAME, category: categoria, ...META_DE_ROTINA },
     }));
   }
 
@@ -297,13 +295,11 @@ export async function listarObjetos(
       // juntas são o que se procura saber ao ver a lista.
       detail: `${linha.ACTION_TIMING} ${linha.EVENT_MANIPULATION} · ${linha.EVENT_OBJECT_TABLE}`,
       hasChildren: false,
-      actions: [
-        { id: 'ddl', label: 'Ver DDL' },
-        { id: 'drop-trigger', label: 'Apagar (DROP)', danger: true },
-      ],
+      actions: ACOES_DE_ROTINA,
       meta: {
         schema, object: linha.TRIGGER_NAME,
         tabela: linha.EVENT_OBJECT_TABLE, category: categoria,
+        ...META_DE_ROTINA,
       },
     }));
   }
@@ -325,7 +321,10 @@ export async function listarObjetos(
     icon: (categoria === 'functions' ? 'function' : 'procedure') as TreeNode['icon'],
     detail: linha.DTD_IDENTIFIER ?? undefined,
     hasChildren: false,
-    meta: { schema, object: linha.ROUTINE_NAME, category: categoria },
+    // **Não tinham ação nenhuma.** A lista abria e não havia o que clicar —
+    // nem para LER a rotina. Ele foi procurar e achou o buraco.
+    actions: ACOES_DE_ROTINA,
+    meta: { schema, object: linha.ROUTINE_NAME, category: categoria, ...META_DE_ROTINA },
   }));
 }
 

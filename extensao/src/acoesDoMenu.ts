@@ -30,6 +30,8 @@ export const ACOES_DO_MENU: readonly ItemDeAcao[] = [
   { id: 'select', rotulo: 'Abrir consulta', grupo: '1_abrir' },
   { id: 'count', rotulo: 'Contar linhas (exato)', grupo: '1_abrir' },
   { id: 'ddl', rotulo: 'Ver DDL', grupo: '1_abrir' },
+  // Rotina tem caminho próprio: `SHOW CREATE TABLE` numa procedure dá erro.
+  { id: 'ddl-rotina', rotulo: 'Ver DDL', grupo: '1_abrir' },
   { id: 'redis-buscar', rotulo: 'Abrir busca', grupo: '1_abrir' },
   { id: 'mongo-find', rotulo: 'Abrir consulta', grupo: '1_abrir' },
   { id: 'pinecone-buscar', rotulo: 'Abrir busca', grupo: '1_abrir' },
@@ -67,6 +69,8 @@ export const ACOES_DO_MENU: readonly ItemDeAcao[] = [
   { id: 'drop-sequence', rotulo: 'Apagar (DROP)', grupo: '3_alterar' },
   { id: 'drop-trigger', rotulo: 'Apagar (DROP)', grupo: '3_alterar' },
   { id: 'drop-event', rotulo: 'Apagar (DROP)', grupo: '3_alterar' },
+  { id: 'atualizar-rotina', rotulo: 'Atualizar…', grupo: '3_alterar' },
+  { id: 'drop-rotina', rotulo: 'Apagar (DROP)', grupo: '3_alterar' },
 ];
 
 /** O comando que o `package.json` declara para uma ação. */

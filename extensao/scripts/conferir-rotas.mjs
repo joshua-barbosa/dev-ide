@@ -336,6 +336,21 @@ try {
     marcar('clicar na tabela abre a grade da IDE',
       materias.command?.command === 'braytech.abrirNo', String(materias.command?.command));
 
+    // **A rotina também.** Ela não aparece na árvore do SQLite — não há
+    // procedure aqui — e por isso o guarda de cima não a alcança. Sem esta
+    // conferência, `Ver DDL` de uma procedure sumiria do menu sem avisar, que
+    // é exatamente o buraco de 08/09/2026.
+    const { ACOES_DE_ROTINA } = await import(
+      new URL('../../dist/server/connections/drivers/rotinas.js', import.meta.url)
+    );
+    const rotinaSemItem = ACOES_DE_ROTINA
+      .map((a) => a.id)
+      .filter((id) => !ACOES_DO_MENU.some((a) => a.id === id));
+    marcar('as ações de ROTINA têm item de menu', rotinaSemItem.length === 0,
+      rotinaSemItem.length === 0
+        ? ACOES_DE_ROTINA.map((a) => a.id).join(', ')
+        : `sem item: ${rotinaSemItem.join(', ')}`);
+
     // **O guarda contra a lista envelhecer.** Toda ação que o driver declara
     // tem de ter item de menu; sem isto ela some da tela sem avisar.
     const declaradas = materias.acoes.map((a) => a.id);
@@ -376,6 +391,11 @@ try {
     )
   );
   const declarados = new Set(pacote.contributes.commands.map((c) => c.command));
+
+  // O clique numa ROTINA cai no comando de DDL (o `meta.acaoAoClicar` que o
+  // driver declara). Sem o comando declarado, o clique dele não faz nada.
+  marcar('o clique de uma rotina tem comando declarado',
+    declarados.has('braytech.acao.ddl-rotina'), 'braytech.acao.ddl-rotina');
   const itens = pacote.contributes.menus['view/item/context'] ?? [];
   const orfaos = itens.filter((m) => !declarados.has(m.command)).map((m) => m.command);
   marcar('todo item de menu tem comando declarado', orfaos.length === 0,

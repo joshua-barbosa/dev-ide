@@ -213,7 +213,15 @@ contribui.menus['view/item/context'] = [
 ];
 
 // Nenhuma delas faz sentido na paleta: todas precisam de um nó em mãos.
-const semNo = ['braytech.abrirNo', 'braytech.abrirArquivoRemoto', ...fixosNaPaleta];
+const semNo = [
+  'braytech.abrirNo', 'braytech.abrirArquivoRemoto', 'braytech.abrirArquivoDeQuery',
+  'braytech.abrirQueryDoNo', 'braytech.abrirChave',
+  ...fixosNaPaleta,
+];
+for (const nome of semNo) {
+  if (contribui.commands.some((c) => c.command === nome)) continue;
+  contribui.commands.push({ command: nome, title: `Braytech: ${nome.split('.').pop()}` });
+}
 contribui.menus.commandPalette = [
   ...semNo.map((command) => ({ command, when: 'false' })),
   ...acoes.map((a) => ({ command: `braytech.acao.${a.id}`, when: 'false' })),

@@ -9,6 +9,7 @@
 //    pg-cursor, que busca em blocos e permite abortar cedo.
 // 3. Somente-leitura é imposto pelo servidor com default_transaction_read_only.
 import * as fs from 'fs';
+import { acaoDeRotina } from './rotinas';
 import { Client, type ClientConfig, type FieldDef } from 'pg';
 import Cursor from 'pg-cursor';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
@@ -356,10 +357,6 @@ async function executar(
 // Ações do menu de contexto
 // ---------------------------------------------------------------------------
 
-
-
-
-
 /**
  * O DDL de uma tabela ou view.
  *
@@ -434,6 +431,29 @@ async function acao(clienteDe: ClienteDe, principal: string, request: ActionRequ
           '-- Isto ainda NÃO rodou: aperte o ▷ Run acima do comando quando tiver certeza.\n' +
           `DROP ${oQue} ${alvo};\n`,
       };
+    }
+
+    case 'ddl-rotina':
+    case 'atualizar-rotina':
+    case 'drop-rotina': {
+      // O nó do gatilho tem id `tabela.nome`: dois gatilhos de tabelas
+      // diferentes podem se chamar igual no mesmo schema.
+      const corte = categoria === 'triggers' ? objeto.lastIndexOf('.') : -1;
+      const nome = corte > 0 ? objeto.slice(corte + 1) : objeto;
+      const tabela = corte > 0 ? objeto.slice(0, corte) : undefined;
+      const q = (x: string): string => quoteIdentifier(x, 'double');
+      const feito = await acaoDeRotina(
+        'postgres',
+        request.actionId,
+        {
+          categoria: categoria ?? '', schema, objeto: nome,
+          citado: `${q(schema)}.${q(nome)}`, nomeCitado: q(nome),
+          ...(tabela === undefined ? {} : { tabela, tabelaCitada: `${q(schema)}.${q(tabela)}` }),
+        },
+        async (sql) => (await client.query<{ def: string | null }>(sql)).rows[0]?.def ?? ''
+      );
+      if (feito === null) throw new Error(`Ação desconhecida: ${request.actionId}`);
+      return feito;
     }
 
     case 'ddl':
