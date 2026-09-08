@@ -189,7 +189,7 @@ export function registrarComandos(
     });
     if (base === undefined || base.trim() === '') return;
     const nomeFinal = base.trim().endsWith(extensao) ? base.trim() : `${base.trim()}${extensao}`;
-    const database = texto(item.meta.database);
+    const database = item.banco ?? '';
     // `nome`, e não `name`/`content`: os campos da rota, conferidos no
     // `Api.createQuery`.
     const r = await deps.pedir<{ caminho: string }>('POST', '/api/queries', {
@@ -428,7 +428,7 @@ export function registrarComandos(
   // ---- do NÓ (hover) ----
   registrar('braytech.abrirQueryNoDatabase', (item) => {
     deps.definirConexaoAtiva(item.conexao);
-    void deps.abrirQuery(item.conexao, texto(item.meta.database), 'Nova consulta', '');
+    void deps.abrirQuery(item.conexao, item.banco ?? '', 'Nova consulta', '');
   });
 
   // `PedidoDeCriacao`: `{ id, caminho, rotulo, nomeBase, esqueleto, database,
@@ -442,7 +442,7 @@ export function registrarComandos(
       rotulo,
       nomeBase: `novo_${rotulo.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
       esqueleto: texto(item.meta.template),
-      database: typeof item.meta.database === 'string' ? item.meta.database : null,
+      database: item.banco,
       // Com `false` fixo o diálogo oferecia EXECUTAR numa conexão de leitura.
       // É o mesmo defeito que a spec 096 registrou no `abrirChave`, e que eu
       // reintroduzi em quatro lugares de uma vez.
@@ -481,7 +481,7 @@ export function registrarComandos(
     // NOME, não por caminho em disco.
     const r = await deps.pedir('POST', '/api/queries/rename', {
       connectionId: item.conexao,
-      database: texto(item.meta.database),
+      database: item.banco ?? '',
       de: path.basename(caminho),
       para: nome.trim(),
     });
@@ -498,7 +498,7 @@ export function registrarComandos(
     if (ok !== 'Apagar') return;
     const r = await deps.pedir('DELETE', '/api/queries', {
       connectionId: item.conexao,
-      database: texto(item.meta.database),
+      database: item.banco ?? '',
       nome: path.basename(caminho),
     });
     if (r === null) return;
@@ -515,7 +515,7 @@ export function registrarComandos(
     const caminho = texto(item.meta.arquivo);
     if (caminho === '') return;
     deps.definirConexaoAtiva(item.conexao);
-    await abrirArquivoDeQuery(deps, caminho, item.conexao, texto(item.meta.database));
+    await abrirArquivoDeQuery(deps, caminho, item.conexao, item.banco ?? '');
   });
 
   // **O clique num nó comum abre uma CONSULTA**, com o schema no alvo — é o
@@ -528,7 +528,7 @@ export function registrarComandos(
     deps.definirConexaoAtiva(item.conexao);
     await deps.abrirQuery(
       item.conexao,
-      typeof item.meta.database === 'string' ? item.meta.database : null,
+      item.banco,
       `${objeto}.sql`,
       `SELECT * FROM ${alvoSql} LIMIT 100;`
     );

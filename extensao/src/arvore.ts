@@ -108,7 +108,20 @@ export class ItemDaArvore extends vscode.TreeItem {
      * apagar e executar — a mesma regra do painel (`useAcoesRemotas`). A trava
      * de valer está na rota; isto evita oferecer o que vai ser recusado.
      */
-    readonly trancada = false
+    readonly trancada = false,
+    /**
+     * O banco a que este nó pertence, herdado do pai.
+     *
+     * **O nó fundo não repete o `meta.database` do database.** Uma procedure do
+     * PostgreSQL traz `{ schema, object, category }` e mais nada — ler o banco
+     * só do próprio nó dava vazio, e a rota que abre a query recusa: *"Campo
+     * obrigatório ausente ou inválido: database"*, que foi o que ele viu ao
+     * clicar numa procedure em 08/09/2026.
+     *
+     * O painel da IDE já fazia assim: `bancoAqui` desce na recursão. Aqui desce
+     * pelo pai, que é o mesmo caminho.
+     */
+    readonly bancoHerdado: string | null = null
   ) {
     super(
       rotulo,
@@ -137,6 +150,16 @@ export class ItemDaArvore extends vscode.TreeItem {
     }
 
     this.contextValue = contextoDe(especie, acoes, remoto, meta, trancada);
+  }
+
+  /**
+   * O banco deste nó: o dele se tiver, senão o do pai.
+   *
+   * Todo comando lê DAQUI, e não de `meta.database`: fora do nó de database
+   * o `meta` não tem esse campo, e o que chegava à rota era vazio.
+   */
+  get banco(): string | null {
+    return typeof this.meta.database === 'string' ? this.meta.database : this.bancoHerdado;
   }
 
   /** A pasta remota que este nó representa, ou `null`. */
@@ -389,7 +412,8 @@ export class ArvoreDeConexoes
       const item = new ItemDaArvore(
         'no', pai.conexao, [...pai.nodePath, n.id], '',
         n.label, n.detail, n.hasChildren, n.icon, n.actions ?? [], n.meta ?? {},
-        this.somenteLeitura.has(pai.conexao)
+        this.somenteLeitura.has(pai.conexao),
+        pai.banco
       );
       // **A CASCATA DO CLIQUE, na ordem exata do painel.**
       //

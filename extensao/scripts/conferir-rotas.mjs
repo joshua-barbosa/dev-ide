@@ -336,6 +336,20 @@ try {
     marcar('clicar na tabela abre a grade da IDE',
       materias.command?.command === 'braytech.abrirNo', String(materias.command?.command));
 
+    // **O banco DESCE a árvore.** Um nó fundo — procedure, coluna — não repete
+    // o `meta.database` do database, e o comando que lia só do próprio nó
+    // mandava vazio: *"Campo obrigatório ausente ou inválido: database"*, que
+    // é o que ele viu ao clicar numa procedure em 08/09/2026.
+    marcar('o banco desce do database para o nó fundo',
+      materias.banco !== null && materias.banco !== '',
+      String(materias.banco));
+
+    const colunas = await arvore.getChildren(materias);
+    const primeira = colunas[0];
+    marcar('e desce mais um nível ainda',
+      primeira !== undefined && primeira.banco === materias.banco,
+      primeira === undefined ? 'sem colunas' : `${primeira.label} -> ${primeira.banco}`);
+
     // **A rotina também.** Ela não aparece na árvore do SQLite — não há
     // procedure aqui — e por isso o guarda de cima não a alcança. Sem esta
     // conferência, `Ver DDL` de uma procedure sumiria do menu sem avisar, que

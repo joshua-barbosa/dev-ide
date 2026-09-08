@@ -266,9 +266,11 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
           void vscode.window.showInformationMessage(`Braytech Code: ${r.title} copiado.`);
           return;
         }
-        const database = typeof item.meta.database === 'string' ? item.meta.database : '';
+        // **Do item, herdado do pai.** Uma procedure não repete o
+        // `meta.database`: lendo só do próprio nó, o que chegava à rota era
+        // vazio — *"Campo obrigatório ausente ou inválido: database"*.
         definirConexaoAtiva(item.conexao);
-        await deps.abrirQuery(item.conexao, database, r.title, r.content);
+        await deps.abrirQuery(item.conexao, item.banco, r.title, r.content);
       })
     );
   }
@@ -305,7 +307,7 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
     // aqui. Foi um dos quatro motivos de ele derrubar a árvore nativa em 04/09:
     // a prévia de antes não tinha ordenação, paginação nem visor de célula.
     vscode.commands.registerCommand('braytech.abrirNo', (item: ItemDaArvore) => {
-      const database = typeof item.meta.database === 'string' ? item.meta.database : '';
+      const database = item.banco ?? '';
       definirConexaoAtiva(item.conexao);
       deps.abrirAbaDaIde('tabela', item.label === undefined ? '' : String(item.label), {
         connectionId: item.conexao,
