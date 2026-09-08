@@ -389,8 +389,36 @@ try {
     semRegistro.length === 0 ? `${declarados.size} comandos` : semRegistro.join(', '));
 
   const inline = itens.filter((m) => m.group === 'inline');
-  marcar('os ícones de HOVER estão declarados', inline.length === 4,
-    inline.map((m) => m.command.replace('braytech.', '')).join(', '));
+  const naBarra = pacote.contributes.menus['view/title'] ?? [];
+
+  // **O guarda contra o gotejamento.** Ele disse *"estou falando com um disco
+  // travado"* porque eu vinha achando uma família de opções por vez, com ele
+  // olhando a tela. O painel da IDE é a fonte: cada `<Acao*>` dele é uma
+  // afordância que a extensão deve ter. Contar é grosseiro de propósito —
+  // pega o SUMIÇO, que é o defeito que ele viu, sem fingir que sabe casar
+  // ícone a ícone.
+  const fs2 = await import('node:fs/promises');
+  const doPainel = (
+    await Promise.all(
+      [
+        'src/ui/connections/ConnectionsPanel.tsx',
+        'src/ui/connections/AcoesDaLinhaRemota.tsx',
+        'src/ui/connections/AcaoDoImportar.tsx',
+      ].map((f) => fs2.readFile(`${RAIZ}/${f}`, 'utf8'))
+    )
+  )
+    .join('\n')
+    .match(/<(Acao|AcaoDaLinha|AcaoDoPainel)\b/g) ?? [];
+
+  // `Recolher tudo` do painel corresponde ao `showCollapseAll` da TreeView, que
+  // não é declarado: por isso o -1.
+  const esperadas = doPainel.length - 1;
+  const temos = inline.length + naBarra.length;
+  marcar('a extensão tem tantas afordâncias quanto o painel', temos >= esperadas,
+    `painel ${esperadas} · extensão ${temos} (hover ${inline.length} + barra ${naBarra.length})`);
+
+  marcar('a barra do topo está declarada', naBarra.length >= 6,
+    naBarra.map((m) => m.command.replace('braytech.', '')).join(', '));
 
   // O contextValue da conexão precisa dizer se ela está aberta: é o que separa
   // `Conectar` de `Desconectar`. Aqui ela ESTÁ aberta — o arnês já a usou —, e

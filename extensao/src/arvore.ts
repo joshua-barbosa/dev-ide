@@ -48,7 +48,7 @@ interface RaizDoMotor {
   readonly openIds?: readonly string[];
 }
 
-type Especie = 'grupo' | 'conexao' | 'no' | 'aviso';
+type Especie = 'grupo' | 'conexao' | 'no' | 'aviso' | 'query' | 'arquivo';
 
 /**
  * O esquema das URIs de arquivo REMOTO.
@@ -167,6 +167,13 @@ function contextoDe(
     ...(meta.diagramaEr === true ? ['er'] : []),
     ...(meta.diagramaDaTabela === true ? ['erTabela'] : []),
     ...(meta.queries === true ? ['queries'] : []),
+    // As mesmas condições que o `ConnectionsPanel` usa para desenhar os ícones
+    // da linha — copiadas de lá, não lembradas.
+    ...(meta.category === 'tables' || meta.category === 'views' ? ['tabela'] : []),
+    ...(typeof meta.database === 'string' ? ['database'] : []),
+    ...(meta.categoria === true ? ['categoria'] : []),
+    ...(typeof meta.template === 'string' ? ['template'] : []),
+    ...(especie === 'arquivo' ? ['arquivoDeQuery'] : []),
   ];
   const base = [`braytech.${especie}`, ...capacidades].join('.');
   // Cada ação vira `[id]`, e o `when` de cada item de menu casa com o dela.
@@ -342,7 +349,9 @@ export class ArvoreDeConexoes
       `/api/connections/${encodeURIComponent(pai.conexao)}/children?${busca.toString()}`
     );
 
-    return nos.map((n) => {
+    if (pai.especie === 'query') return this.arquivosDeQuery(pai);
+
+    const itens = nos.map((n) => {
       const item = new ItemDaArvore(
         'no', pai.conexao, [...pai.nodePath, n.id], '',
         n.label, n.detail, n.hasChildren, n.icon, n.actions ?? [], n.meta ?? {}
@@ -361,6 +370,46 @@ export class ArvoreDeConexoes
           arguments: [item],
         };
       }
+      return item;
+    });
+
+    // **A categoria `Query` é NOSSA, não do driver.** Os arquivos são da IDE, e
+    // pedir a cada driver que liste arquivos que ele não conhece inverteria o
+    // Artigo III. O driver declara que o nó é um database (`meta.database`); a
+    // interface decide que isso merece uma pasta de queries — a mesma regra da
+    // IDE (spec 038). Sem ela os `.sqlbook` dele ficam inalcançáveis, e foi o
+    // que aconteceu quando eu a perdi na reescrita.
+    const database = typeof pai.meta.database === 'string' ? pai.meta.database : null;
+    if (database === null) return itens;
+    const pasta = new ItemDaArvore(
+      'query', pai.conexao, pai.nodePath, '', 'Query', undefined, true, 'folder', [],
+      { database, queries: true }
+    );
+    return [pasta, ...itens];
+  }
+
+  /** Os `.sql` e `.sqlbook` de um database (spec 038). */
+  private async arquivosDeQuery(pai: ItemDaArvore): Promise<ItemDaArvore[]> {
+    const database = typeof pai.meta.database === 'string' ? pai.meta.database : '';
+    const arquivos = await this.motor.pedir<
+      readonly { nome: string; caminho: string; bytes: number }[]
+    >(
+      'GET',
+      `/api/queries?connectionId=${encodeURIComponent(pai.conexao)}` +
+        `&database=${encodeURIComponent(database)}`
+    );
+    if (arquivos.length === 0) return [avisoDe('Nenhuma query ainda.', 'query')];
+    return arquivos.map((a) => {
+      const item = new ItemDaArvore(
+        'arquivo', pai.conexao, [], '', a.nome, tamanhoCurto(a.bytes), false,
+        a.nome.endsWith('.sqlbook') ? 'query' : 'file', [],
+        { database, arquivo: a.caminho }
+      );
+      item.command = {
+        command: 'braytech.abrirArquivoDeQuery',
+        title: 'Abrir',
+        arguments: [item],
+      };
       return item;
     });
   }
@@ -485,6 +534,13 @@ async function arquivosSoltos(
     lidos.push({ nome: path.basename(arquivo.name), bytes: dados });
   }
   return lidos;
+}
+
+/** "12.0K", "3.4M" — o mesmo formato do detalhe da árvore. */
+function tamanhoCurto(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}M`;
 }
 
 function avisoDe(texto: string, icone: string): ItemDaArvore {

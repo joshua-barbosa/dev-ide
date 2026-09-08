@@ -194,6 +194,17 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       abrirAbaDaIde: (tipo, titulo, dados) =>
         deps.abrirAbaDaIde(tipo as Parameters<typeof deps.abrirAbaDaIde>[0], titulo, dados),
       abrirDiagrama: (titulo, markdown) => deps.abrirDiagrama(titulo, markdown),
+      abrirDialogo: (dialogo, pedido) => deps.abrirDialogo(dialogo, pedido),
+      abrirTerminal: (id, rotulo) => deps.abrirTerminal(id, rotulo),
+      salvarArquivo: async (nome, conteudo) => {
+        const onde = await vscode.window.showSaveDialog({
+          defaultUri: vscode.Uri.file(nome),
+          saveLabel: 'Salvar',
+        });
+        if (onde === undefined) return;
+        await vscode.workspace.fs.writeFile(onde, Buffer.from(conteudo, 'utf8'));
+        void vscode.window.showInformationMessage(`Braytech Code: salvo em ${onde.fsPath}`);
+      },
       abrirQuery: (id, database, titulo, conteudo) =>
         deps.abrirQuery(id, database, titulo, conteudo),
       definirConexaoAtiva,
@@ -294,6 +305,17 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
         const caminho = item.meta.remotePath;
         if (typeof caminho !== 'string') return;
         const doc = await vscode.workspace.openTextDocument(uriRemota(item.conexao, caminho));
+        await vscode.window.showTextDocument(doc);
+      }
+    ),
+
+    vscode.commands.registerCommand(
+      'braytech.abrirArquivoDeQuery',
+      async (item: ItemDaArvore) => {
+        const caminho = item.meta.arquivo;
+        if (typeof caminho !== 'string') return;
+        definirConexaoAtiva(item.conexao);
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(caminho));
         await vscode.window.showTextDocument(doc);
       }
     ),

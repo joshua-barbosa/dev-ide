@@ -166,6 +166,81 @@
         "icon": "$(play)"
       },
       {
+        "command": "braytech.trocarSenhaMestra",
+        "title": "Braytech: Trocar a senha mestra",
+        "icon": "$(key)"
+      },
+      {
+        "command": "braytech.importarConexoes",
+        "title": "Braytech: Importar conexões de um arquivo",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "braytech.exportarConexoes",
+        "title": "Braytech: Exportar conexões COM as senhas",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "braytech.alternarCofre",
+        "title": "Braytech: Trancar / destrancar o cofre",
+        "icon": "$(lock)"
+      },
+      {
+        "command": "braytech.renomearGrupo",
+        "title": "Braytech: Renomear grupo",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "braytech.novaConexaoNoGrupo",
+        "title": "Braytech: Nova conexão neste grupo",
+        "icon": "$(add)"
+      },
+      {
+        "command": "braytech.abrirServidorDaConexao",
+        "title": "Braytech: Abrir numa aba",
+        "icon": "$(server)"
+      },
+      {
+        "command": "braytech.abrirTerminalDaConexao",
+        "title": "Braytech: Abrir no terminal",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "braytech.abrirQueryNoDatabase",
+        "title": "Braytech: Abrir Query",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "braytech.recarregarNo",
+        "title": "Braytech: Recarregar",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "braytech.filtrarCategoria",
+        "title": "Braytech: Filtrar",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "braytech.criarObjeto",
+        "title": "Braytech: Criar aqui…",
+        "icon": "$(add)"
+      },
+      {
+        "command": "braytech.renomearQuery",
+        "title": "Braytech: Renomear…",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "braytech.apagarQuery",
+        "title": "Braytech: Apagar",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "braytech.favoritarRemoto",
+        "title": "Braytech: Favoritar",
+        "icon": "$(star-empty)"
+      },
+      {
         "command": "braytech.acao.select",
         "title": "Braytech: Abrir consulta"
       },
@@ -318,8 +393,33 @@
       "view/title": [
         {
           "command": "braytech.recarregar",
-          "when": "view == braytech.databases || view == braytech.servicos || view == braytech.databases.arvore || view == braytech.servicos.arvore",
-          "group": "navigation"
+          "when": "view == braytech.databases.arvore || view == braytech.servicos.arvore || view == braytech.databases || view == braytech.servicos",
+          "group": "navigation@0"
+        },
+        {
+          "command": "braytech.novaConexao",
+          "when": "view == braytech.databases.arvore || view == braytech.servicos.arvore",
+          "group": "navigation@1"
+        },
+        {
+          "command": "braytech.trocarSenhaMestra",
+          "when": "view == braytech.databases.arvore || view == braytech.servicos.arvore",
+          "group": "navigation@2"
+        },
+        {
+          "command": "braytech.importarConexoes",
+          "when": "view == braytech.databases.arvore || view == braytech.servicos.arvore",
+          "group": "navigation@3"
+        },
+        {
+          "command": "braytech.exportarConexoes",
+          "when": "view == braytech.databases.arvore || view == braytech.servicos.arvore",
+          "group": "navigation@4"
+        },
+        {
+          "command": "braytech.alternarCofre",
+          "when": "view == braytech.databases.arvore || view == braytech.servicos.arvore",
+          "group": "navigation@5"
         }
       ],
       "editor/title": [
@@ -339,6 +439,34 @@
           "when": "false"
         },
         {
+          "command": "braytech.novaConexao",
+          "when": "false"
+        },
+        {
+          "command": "braytech.trocarSenhaMestra",
+          "when": "false"
+        },
+        {
+          "command": "braytech.importarConexoes",
+          "when": "false"
+        },
+        {
+          "command": "braytech.exportarConexoes",
+          "when": "false"
+        },
+        {
+          "command": "braytech.alternarCofre",
+          "when": "false"
+        },
+        {
+          "command": "braytech.renomearGrupo",
+          "when": "false"
+        },
+        {
+          "command": "braytech.novaConexaoNoGrupo",
+          "when": "false"
+        },
+        {
           "command": "braytech.copiarNome",
           "when": "false"
         },
@@ -355,6 +483,14 @@
           "when": "false"
         },
         {
+          "command": "braytech.abrirServidorDaConexao",
+          "when": "false"
+        },
+        {
+          "command": "braytech.abrirTerminalDaConexao",
+          "when": "false"
+        },
+        {
           "command": "braytech.verProcessos",
           "when": "false"
         },
@@ -367,6 +503,14 @@
           "when": "false"
         },
         {
+          "command": "braytech.abrirNo",
+          "when": "false"
+        },
+        {
+          "command": "braytech.abrirQueryNoDatabase",
+          "when": "false"
+        },
+        {
           "command": "braytech.diagramaEr",
           "when": "false"
         },
@@ -375,11 +519,31 @@
           "when": "false"
         },
         {
+          "command": "braytech.recarregarNo",
+          "when": "false"
+        },
+        {
+          "command": "braytech.filtrarCategoria",
+          "when": "false"
+        },
+        {
+          "command": "braytech.criarObjeto",
+          "when": "false"
+        },
+        {
           "command": "braytech.novaQuerySql",
           "when": "false"
         },
         {
           "command": "braytech.novoQueryBook",
+          "when": "false"
+        },
+        {
+          "command": "braytech.renomearQuery",
+          "when": "false"
+        },
+        {
+          "command": "braytech.apagarQuery",
           "when": "false"
         },
         {
@@ -400,6 +564,10 @@
         },
         {
           "command": "braytech.apagarRemoto",
+          "when": "false"
+        },
+        {
+          "command": "braytech.favoritarRemoto",
           "when": "false"
         },
         {
@@ -565,6 +733,16 @@
       ],
       "view/item/context": [
         {
+          "command": "braytech.renomearGrupo",
+          "when": "viewItem =~ /braytech\\.grupo/",
+          "group": "inline"
+        },
+        {
+          "command": "braytech.novaConexaoNoGrupo",
+          "when": "viewItem =~ /braytech\\.grupo/",
+          "group": "inline"
+        },
+        {
           "command": "braytech.copiarNome",
           "when": "viewItem =~ /braytech\\.conexao/",
           "group": "1_copiar"
@@ -585,6 +763,16 @@
           "group": "inline"
         },
         {
+          "command": "braytech.abrirServidorDaConexao",
+          "when": "viewItem =~ /braytech\\.conexao/",
+          "group": "inline"
+        },
+        {
+          "command": "braytech.abrirTerminalDaConexao",
+          "when": "viewItem =~ /braytech\\.conexao/",
+          "group": "inline"
+        },
+        {
           "command": "braytech.verProcessos",
           "when": "viewItem =~ /braytech\\.conexao/",
           "group": "3_ver"
@@ -597,7 +785,7 @@
         {
           "command": "braytech.excluirConexao",
           "when": "viewItem =~ /braytech\\.conexao/",
-          "group": "9_editar"
+          "group": "inline"
         },
         {
           "command": "braytech.copiarNome",
@@ -605,9 +793,19 @@
           "group": "1_copiar"
         },
         {
+          "command": "braytech.abrirNo",
+          "when": "viewItem =~ /\\.tabela/",
+          "group": "inline"
+        },
+        {
+          "command": "braytech.abrirQueryNoDatabase",
+          "when": "viewItem =~ /\\.database/",
+          "group": "inline"
+        },
+        {
           "command": "braytech.diagramaEr",
           "when": "viewItem =~ /\\.er(\\.|$|\\[)/",
-          "group": "3_ver"
+          "group": "inline"
         },
         {
           "command": "braytech.diagramaDaTabela",
@@ -615,14 +813,39 @@
           "group": "3_ver"
         },
         {
+          "command": "braytech.recarregarNo",
+          "when": "viewItem =~ /\\.categoria/",
+          "group": "inline"
+        },
+        {
+          "command": "braytech.filtrarCategoria",
+          "when": "viewItem =~ /\\.categoria/",
+          "group": "inline"
+        },
+        {
+          "command": "braytech.criarObjeto",
+          "when": "viewItem =~ /\\.template/",
+          "group": "inline"
+        },
+        {
           "command": "braytech.novaQuerySql",
           "when": "viewItem =~ /\\.queries/",
-          "group": "4_criar"
+          "group": "inline"
         },
         {
           "command": "braytech.novoQueryBook",
           "when": "viewItem =~ /\\.queries/",
           "group": "4_criar"
+        },
+        {
+          "command": "braytech.renomearQuery",
+          "when": "viewItem =~ /\\.arquivoDeQuery/",
+          "group": "inline"
+        },
+        {
+          "command": "braytech.apagarQuery",
+          "when": "viewItem =~ /\\.arquivoDeQuery/",
+          "group": "inline"
         },
         {
           "command": "braytech.copiarCaminho",
@@ -648,6 +871,16 @@
           "command": "braytech.apagarRemoto",
           "when": "viewItem =~ /(pastaRemota|arquivoRemoto)/",
           "group": "9_editar"
+        },
+        {
+          "command": "braytech.recarregarNo",
+          "when": "viewItem =~ /pastaRemota/",
+          "group": "inline"
+        },
+        {
+          "command": "braytech.favoritarRemoto",
+          "when": "viewItem =~ /(pastaRemota|arquivoRemoto)/",
+          "group": "inline"
         },
         {
           "command": "braytech.baixarRemoto",

@@ -12,6 +12,13 @@
 //   executar — o vocabulário próprio da árvore remota (spec 053), onde a ação
 //   MEXE no servidor em vez de gerar SQL
 //
+// **O inventário é FECHADO, e extraído do painel — não lembrado.** Ele disse
+// *"estou falando com um disco travado, porque está errando as mesmas coisas
+// novamente"*, e tinha razão: eu vinha descobrindo a superfície aos poucos, com
+// ele olhando a tela. As 27 afordâncias do `ConnectionsPanel`, do
+// `AcoesDaLinhaRemota` e do `AcaoDoImportar` foram listadas de uma vez, e o
+// `conferir:extensao` conta as duas listas e falha quando divergem.
+//
 // Arquivo separado por causa do Artigo IV: emendados no `extension.ts` eles o
 // levariam além das 800 linhas, e o assunto aqui é um só.
 import * as vscode from 'vscode';
@@ -27,6 +34,10 @@ export interface DepsDosComandos {
   abrirFormulario(conexaoId: string | null, grupo: string, rotulo: string): void;
   abrirAbaDaIde(tipo: string, titulo: string, dados: Record<string, unknown>): void;
   abrirDiagrama(titulo: string, markdown: string): void;
+  abrirDialogo(dialogo: 'criacao' | 'filtro', pedido: unknown): void;
+  abrirTerminal(connectionId: string, rotulo: string): void;
+  /** Baixa/salva um arquivo pela costura de transferência do host. */
+  salvarArquivo(nome: string, conteudo: string): Promise<void>;
   abrirQuery(
     connectionId: string,
     database: string | null,
@@ -225,6 +236,175 @@ export function registrarComandos(
       content: `$ ${alvo}\n(código ${r.code})\n\n${r.output}`,
     });
     await vscode.window.showTextDocument(doc);
+  });
+
+  // ---- da BARRA DO TOPO (view/title) ----
+  //
+  // Sete ícones no painel da IDE, e nenhum deles existia aqui. `Recolher tudo`
+  // não entra na lista: o `showCollapseAll` da `TreeView` já o desenha.
+  const semItem = (fn: () => unknown): ((item: ItemDaArvore) => unknown) => () => fn();
+
+  registrar('braytech.trocarSenhaMestra', semItem(async () => {
+    const atual = await vscode.window.showInputBox({
+      prompt: 'Senha-mestra ATUAL', password: true, ignoreFocusOut: true,
+    });
+    if (atual === undefined || atual === '') return;
+    const nova = await vscode.window.showInputBox({
+      prompt: 'Senha-mestra NOVA', password: true, ignoreFocusOut: true,
+    });
+    if (nova === undefined || nova === '') return;
+    const confirma = await vscode.window.showInputBox({
+      prompt: 'Repita a senha NOVA', password: true, ignoreFocusOut: true,
+    });
+    // Confere ANTES de mandar: senha trocada com erro de digitação tranca o
+    // cofre dele para sempre, e não há como desfazer.
+    if (confirma !== nova) {
+      void vscode.window.showErrorMessage('Braytech Code: as senhas não conferem.');
+      return;
+    }
+    const r = await deps.pedir('POST', '/api/connections/vault/password', {
+      current: atual, next: nova,
+    });
+    if (r === null) return;
+    void vscode.window.showInformationMessage('Braytech Code: senha-mestra trocada.');
+  }));
+
+  registrar('braytech.exportarConexoes', semItem(async () => {
+    // O aviso é o mesmo da IDE, e a palavra que importa está no rótulo do
+    // botão: o arquivo sai com as SENHAS em claro.
+    const ok = await vscode.window.showWarningMessage(
+      'Exportar as conexões COM as senhas em claro?',
+      { modal: true, detail: 'Qualquer um que abrir o arquivo lê as senhas.' },
+      'Exportar'
+    );
+    if (ok !== 'Exportar') return;
+    const r = await deps.pedir<unknown>('POST', '/api/connections/export-all', {});
+    if (r === null) return;
+    await deps.salvarArquivo('conexoes-braytech.json', JSON.stringify(r, null, 2));
+  }));
+
+  registrar('braytech.importarConexoes', semItem(async () => {
+    const escolhidos = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      filters: { JSON: ['json'] },
+      openLabel: 'Importar',
+    });
+    const arquivo = escolhidos?.[0];
+    if (arquivo === undefined) return;
+    const bytes = await vscode.workspace.fs.readFile(arquivo);
+    let conteudo: unknown;
+    try {
+      conteudo = JSON.parse(Buffer.from(bytes).toString('utf8'));
+    } catch {
+      void vscode.window.showErrorMessage('Braytech Code: o arquivo não é um JSON válido.');
+      return;
+    }
+    const r = await deps.pedir('POST', '/api/connections/import', conteudo);
+    if (r === null) return;
+    deps.recarregarTudo();
+    void vscode.window.showInformationMessage('Braytech Code: conexões importadas.');
+  }));
+
+  registrar('braytech.alternarCofre', semItem(async () => {
+    const raiz = await deps.pedir<{ vault: { unlocked: boolean } }>('GET', '/api/connections');
+    if (raiz === null) return;
+    if (raiz.vault.unlocked) {
+      const r = await deps.pedir('POST', '/api/connections/vault/lock', {});
+      if (r === null) return;
+      deps.recarregarTudo();
+      return;
+    }
+    await vscode.commands.executeCommand('braytech.destrancarCofre');
+  }));
+
+  // ---- do GRUPO ----
+  registrar('braytech.renomearGrupo', async (item) => {
+    const antigo = item.grupo;
+    const nome = await vscode.window.showInputBox({
+      prompt: 'Novo nome do grupo',
+      value: antigo.split('/').pop() ?? antigo,
+      ignoreFocusOut: true,
+    });
+    if (nome === undefined || nome.trim() === '') return;
+    const pai = antigo.includes('/') ? `${antigo.slice(0, antigo.lastIndexOf('/'))}/` : '';
+    const r = await deps.pedir('POST', '/api/connections/groups/rename', {
+      from: antigo, to: `${pai}${nome.trim()}`,
+    });
+    if (r === null) return;
+    deps.recarregarTudo();
+  });
+
+  registrar('braytech.novaConexaoNoGrupo', (item) => deps.abrirFormulario(null, item.grupo, ''));
+
+  // ---- da CONEXÃO (hover) ----
+  registrar('braytech.abrirServidorDaConexao', (item) => {
+    deps.definirConexaoAtiva(item.conexao);
+    deps.abrirAbaDaIde('servidor', String(item.label ?? ''), {
+      connectionId: item.conexao,
+      rotulo: String(item.label ?? ''),
+      somenteLeitura: false,
+    });
+  });
+
+  registrar('braytech.abrirTerminalDaConexao', (item) =>
+    deps.abrirTerminal(item.conexao, String(item.label ?? ''))
+  );
+
+  // ---- do NÓ (hover) ----
+  registrar('braytech.abrirQueryNoDatabase', (item) => {
+    deps.definirConexaoAtiva(item.conexao);
+    void deps.abrirQuery(item.conexao, texto(item.meta.database), 'Nova consulta', '');
+  });
+
+  registrar('braytech.criarObjeto', (item) =>
+    deps.abrirDialogo('criacao', {
+      connectionId: item.conexao,
+      nodePath: item.nodePath,
+      template: texto(item.meta.template),
+      rotulo: String(item.label ?? ''),
+    })
+  );
+
+  registrar('braytech.filtrarCategoria', (item) =>
+    deps.abrirDialogo('filtro', {
+      connectionId: item.conexao,
+      nodePath: item.nodePath,
+      rotulo: String(item.label ?? ''),
+    })
+  );
+
+  // ---- do arquivo de QUERY (hover) ----
+  registrar('braytech.renomearQuery', async (item) => {
+    const caminho = texto(item.meta.arquivo);
+    if (caminho === '') return;
+    const nome = await vscode.window.showInputBox({
+      prompt: 'Novo nome', value: path.basename(caminho), ignoreFocusOut: true,
+    });
+    if (nome === undefined || nome.trim() === '') return;
+    const r = await deps.pedir('POST', '/api/queries/rename', { path: caminho, name: nome.trim() });
+    if (r === null) return;
+    deps.recarregarTudo();
+  });
+
+  registrar('braytech.apagarQuery', async (item) => {
+    const caminho = texto(item.meta.arquivo);
+    if (caminho === '') return;
+    const ok = await vscode.window.showWarningMessage(
+      `Apagar "${path.basename(caminho)}"?`, { modal: true }, 'Apagar'
+    );
+    if (ok !== 'Apagar') return;
+    const r = await deps.pedir('DELETE', `/api/queries?path=${encodeURIComponent(caminho)}`);
+    if (r === null) return;
+    deps.recarregarTudo();
+  });
+
+  // ---- do arquivo REMOTO (hover) ----
+  registrar('braytech.favoritarRemoto', async (item) => {
+    const alvo = remotoDe(item);
+    if (alvo === null) return;
+    const r = await deps.pedir('POST', rota(item, '/files/favorites'), { path: alvo });
+    if (r === null) return;
+    deps.recarregarTudo();
   });
 
   registrar('braytech.recarregarNo', () => deps.recarregarTudo());
