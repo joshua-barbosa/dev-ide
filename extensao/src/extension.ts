@@ -14,12 +14,14 @@
 // executa `.sql` com Ctrl+Enter.
 
 import * as vscode from 'vscode';
-import { ArquivosRemotos } from './arquivosRemotos';
+import { ArquivosRemotos, uriRemota } from './arquivosRemotos';
 import { ligarMotor, type Motor } from './motor';
 import {
   abrirAbaDaIde, abrirDiagramaEmAba, abrirDialogoEmAba, abrirFormularioDeConexao,
 } from './formularioAba';
 import { PainelDeConexoes } from './painelWebview';
+import { ArvoreDeConexoes, definirRecursos, type ItemDaArvore } from './arvore';
+import { ACOES_DO_MENU, comandoDaAcao } from './acoesDoMenu';
 import { abrirTerminalRemoto } from './terminalRemoto';
 import type { DepsDoPainel } from './ponteDoHost';
 import type { Painel } from './paineis';
@@ -152,6 +154,73 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
     );
   }
 
+  // **As árvores NATIVAS, ao lado das webviews (spec 104).**
+  //
+  // Convivem por uma entrega, de propósito e com o acordo dele: em 04/09 ele
+  // derrubou a árvore nativa por quatro motivos concretos, e a única forma
+  // honesta de saber se eles voltaram é ele ver as duas na mesma tela. Apagar a
+  // webview agora seria eu decidir que resolvi — sem ele ter olhado.
+  definirRecursos(vscode.Uri.joinPath(contexto.extensionUri, 'recursos'));
+  const arvores: ArvoreDeConexoes[] = [];
+  for (const [painel, view] of [
+    ['database', 'braytech.databases.arvore'],
+    ['service', 'braytech.servicos.arvore'],
+  ] as const) {
+    const arvore = new ArvoreDeConexoes(motor, painel as Painel);
+    arvores.push(arvore);
+    contexto.subscriptions.push(
+      vscode.window.createTreeView<ItemDaArvore>(view, {
+        treeDataProvider: arvore,
+        // É isto que abre a porta que a webview não tem: soltura de arquivo
+        // vindo do sistema (microsoft/vscode#111092).
+        dragAndDropController: arvore,
+        showCollapseAll: true,
+      })
+    );
+  }
+  const recarregarArvores = (): void => {
+    for (const a of arvores) a.recarregar();
+  };
+
+  contexto.subscriptions.push(
+    vscode.commands.registerCommand('braytech.enviarArquivos', async (item: ItemDaArvore) => {
+      const arvore = arvores[0];
+      if (arvore === undefined) return;
+      // Qualquer uma serve para SUBIR — o caminho é o motor, não a árvore. Quem
+      // redesenha são as duas, porque daqui não dá para saber de qual veio o
+      // item, e pedir ao editor que redesenhe um nó de outra árvore não faz nada.
+      await arvore.enviarEscolhidos(item);
+      recarregarArvores();
+    })
+  );
+
+  // **Uma ação do driver = um comando.** O que ela FAZ continua sendo do
+  // driver: aqui só se chama a rota e se usa a resposta — copiar, ou abrir a
+  // query. Nenhum SQL é escrito neste arquivo (spec 040, e o Artigo III).
+  for (const acao of ACOES_DO_MENU) {
+    contexto.subscriptions.push(
+      vscode.commands.registerCommand(comandoDaAcao(acao.id), async (item: ItemDaArvore) => {
+        const r = await pedir<{ title: string; content: string }>(
+          'POST',
+          `/api/connections/${encodeURIComponent(item.conexao)}/action`,
+          { nodePath: item.nodePath, actionId: acao.id }
+        );
+        if (r === null) return;
+        const declarada = item.acoes.find((a) => a.id === acao.id);
+        if (declarada?.copiar === true) {
+          // Vai para a área de transferência, e não para uma aba: é texto para
+          // colar num `.sql` dele. Escolha DELE na P3, em 02/09.
+          await vscode.env.clipboard.writeText(r.content);
+          void vscode.window.showInformationMessage(`Braytech Code: ${r.title} copiado.`);
+          return;
+        }
+        const database = typeof item.meta.database === 'string' ? item.meta.database : '';
+        definirConexaoAtiva(item.conexao);
+        await deps.abrirQuery(item.conexao, database, r.title, r.content);
+      })
+    );
+  }
+
   barra = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   barra.command = 'braytech.recarregar';
   atualizarBarra();
@@ -160,6 +229,7 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
 
   contexto.subscriptions.push(
     vscode.commands.registerCommand('braytech.recarregar', () => {
+      recarregarArvores();
       void vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
     }),
 
@@ -174,9 +244,36 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       if (senha === undefined || senha === '') return;
       const ok = await pedir('POST', '/api/connections/vault/unlock', { password: senha });
       if (ok === null) return;
+      recarregarArvores();
       void vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
       void vscode.window.showInformationMessage('Braytech Code: cofre destrancado.');
     }),
+
+    // **Clicar num nó de dado abre a grade DA IDE** — não uma <table> montada
+    // aqui. Foi um dos quatro motivos de ele derrubar a árvore nativa em 04/09:
+    // a prévia de antes não tinha ordenação, paginação nem visor de célula.
+    vscode.commands.registerCommand('braytech.abrirNo', (item: ItemDaArvore) => {
+      const database = typeof item.meta.database === 'string' ? item.meta.database : '';
+      definirConexaoAtiva(item.conexao);
+      deps.abrirAbaDaIde('tabela', item.label === undefined ? '' : String(item.label), {
+        connectionId: item.conexao,
+        nodePath: item.nodePath,
+        database,
+        somenteLeitura: false,
+      });
+    }),
+
+    // **SSH que abre arquivo** — outro dos quatro. A URI `braytech:` é servida
+    // pelo `ArquivosRemotos`, então abre EDITÁVEL e o Ctrl+S grava no servidor.
+    vscode.commands.registerCommand(
+      'braytech.abrirArquivoRemoto',
+      async (item: ItemDaArvore) => {
+        const caminho = item.meta.remotePath;
+        if (typeof caminho !== 'string') return;
+        const doc = await vscode.workspace.openTextDocument(uriRemota(item.conexao, caminho));
+        await vscode.window.showTextDocument(doc);
+      }
+    ),
 
     vscode.commands.registerCommand('braytech.novaConexao', () => {
       abrirFormularioDeConexao(deps, null, '', '');

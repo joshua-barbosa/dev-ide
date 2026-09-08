@@ -30,16 +30,26 @@
     "views": {
       "braytech": [
         {
+          "id": "braytech.databases.arvore",
+          "name": "Databases"
+        },
+        {
           "id": "braytech.databases",
-          "name": "Databases",
-          "type": "webview"
+          "name": "Databases (painel da IDE)",
+          "type": "webview",
+          "visibility": "collapsed"
         }
       ],
       "braytech-servicos": [
         {
+          "id": "braytech.servicos.arvore",
+          "name": "Services"
+        },
+        {
           "id": "braytech.servicos",
-          "name": "Services",
-          "type": "webview"
+          "name": "Services (painel da IDE)",
+          "type": "webview",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -66,13 +76,174 @@
         "command": "braytech.novaConexao",
         "title": "Braytech Code: Nova conexão",
         "icon": "$(add)"
+      },
+      {
+        "command": "braytech.abrirNo",
+        "title": "Braytech Code: Ver linhas"
+      },
+      {
+        "command": "braytech.abrirArquivoRemoto",
+        "title": "Braytech Code: Abrir arquivo remoto"
+      },
+      {
+        "command": "braytech.enviarArquivos",
+        "title": "Braytech: Enviar arquivos para esta pasta",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "braytech.acao.select",
+        "title": "Braytech: Abrir consulta"
+      },
+      {
+        "command": "braytech.acao.count",
+        "title": "Braytech: Contar linhas (exato)"
+      },
+      {
+        "command": "braytech.acao.ddl",
+        "title": "Braytech: Ver DDL"
+      },
+      {
+        "command": "braytech.acao.redis-buscar",
+        "title": "Braytech: Abrir busca"
+      },
+      {
+        "command": "braytech.acao.mongo-find",
+        "title": "Braytech: Abrir consulta"
+      },
+      {
+        "command": "braytech.acao.pinecone-buscar",
+        "title": "Braytech: Abrir busca"
+      },
+      {
+        "command": "braytech.acao.tables",
+        "title": "Braytech: Tables"
+      },
+      {
+        "command": "braytech.acao.views",
+        "title": "Braytech: Views"
+      },
+      {
+        "command": "braytech.acao.functions",
+        "title": "Braytech: Functions"
+      },
+      {
+        "command": "braytech.acao.procedures",
+        "title": "Braytech: Procedures"
+      },
+      {
+        "command": "braytech.acao.triggers",
+        "title": "Braytech: Triggers"
+      },
+      {
+        "command": "braytech.acao.sequences",
+        "title": "Braytech: Sequences"
+      },
+      {
+        "command": "braytech.acao.matviews",
+        "title": "Braytech: Materialized Views"
+      },
+      {
+        "command": "braytech.acao.types",
+        "title": "Braytech: Types"
+      },
+      {
+        "command": "braytech.acao.events",
+        "title": "Braytech: Events"
+      },
+      {
+        "command": "braytech.acao.foreign",
+        "title": "Braytech: Foreign Tables"
+      },
+      {
+        "command": "braytech.acao.indexes",
+        "title": "Braytech: Indexes"
+      },
+      {
+        "command": "braytech.acao.roles",
+        "title": "Braytech: Roles"
+      },
+      {
+        "command": "braytech.acao.users",
+        "title": "Braytech: Users"
+      },
+      {
+        "command": "braytech.acao.copiar",
+        "title": "Braytech: Copiar tabela"
+      },
+      {
+        "command": "braytech.acao.template-select",
+        "title": "Braytech: SELECT"
+      },
+      {
+        "command": "braytech.acao.template-insert",
+        "title": "Braytech: INSERT"
+      },
+      {
+        "command": "braytech.acao.template-update",
+        "title": "Braytech: UPDATE"
+      },
+      {
+        "command": "braytech.acao.template-delete",
+        "title": "Braytech: DELETE"
+      },
+      {
+        "command": "braytech.acao.usuario-create",
+        "title": "Braytech: Copiar SQL para criar usuário"
+      },
+      {
+        "command": "braytech.acao.usuario-drop",
+        "title": "Braytech: Copiar SQL para APAGAR"
+      },
+      {
+        "command": "braytech.acao.usuario-grant",
+        "title": "Braytech: Copiar SQL de GRANT"
+      },
+      {
+        "command": "braytech.acao.usuario-revoke",
+        "title": "Braytech: Copiar SQL de REVOKE"
+      },
+      {
+        "command": "braytech.acao.truncate",
+        "title": "Braytech: Esvaziar (TRUNCATE)"
+      },
+      {
+        "command": "braytech.acao.esvaziar",
+        "title": "Braytech: Esvaziar"
+      },
+      {
+        "command": "braytech.acao.refresh-matview",
+        "title": "Braytech: REFRESH"
+      },
+      {
+        "command": "braytech.acao.drop",
+        "title": "Braytech: Apagar (DROP)"
+      },
+      {
+        "command": "braytech.acao.drop-view",
+        "title": "Braytech: Apagar view (DROP)"
+      },
+      {
+        "command": "braytech.acao.drop-matview",
+        "title": "Braytech: Apagar (DROP)"
+      },
+      {
+        "command": "braytech.acao.drop-sequence",
+        "title": "Braytech: Apagar (DROP)"
+      },
+      {
+        "command": "braytech.acao.drop-trigger",
+        "title": "Braytech: Apagar (DROP)"
+      },
+      {
+        "command": "braytech.acao.drop-event",
+        "title": "Braytech: Apagar (DROP)"
       }
     ],
     "menus": {
       "view/title": [
         {
           "command": "braytech.recarregar",
-          "when": "view == braytech.databases || view == braytech.servicos",
+          "when": "view == braytech.databases || view == braytech.servicos || view == braytech.databases.arvore || view == braytech.servicos.arvore",
           "group": "navigation"
         }
       ],
@@ -81,6 +252,356 @@
           "command": "braytech.executar",
           "when": "resourceLangId == sql",
           "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "braytech.abrirNo",
+          "when": "false"
+        },
+        {
+          "command": "braytech.abrirArquivoRemoto",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.select",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.count",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.ddl",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.redis-buscar",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.mongo-find",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.pinecone-buscar",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.tables",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.views",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.functions",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.procedures",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.triggers",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.sequences",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.matviews",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.types",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.events",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.foreign",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.indexes",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.roles",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.users",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.copiar",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.template-select",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.template-insert",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.template-update",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.template-delete",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.usuario-create",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.usuario-drop",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.usuario-grant",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.usuario-revoke",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.truncate",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.esvaziar",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.refresh-matview",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.drop",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.drop-view",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.drop-matview",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.drop-sequence",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.drop-trigger",
+          "when": "false"
+        },
+        {
+          "command": "braytech.acao.drop-event",
+          "when": "false"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "braytech.enviarArquivos",
+          "when": "viewItem =~ /pastaRemota/",
+          "group": "0_arquivos"
+        },
+        {
+          "command": "braytech.acao.select",
+          "when": "viewItem =~ /\\[select\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.count",
+          "when": "viewItem =~ /\\[count\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.ddl",
+          "when": "viewItem =~ /\\[ddl\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.redis-buscar",
+          "when": "viewItem =~ /\\[redis\\-buscar\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.mongo-find",
+          "when": "viewItem =~ /\\[mongo\\-find\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.pinecone-buscar",
+          "when": "viewItem =~ /\\[pinecone\\-buscar\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.tables",
+          "when": "viewItem =~ /\\[tables\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.views",
+          "when": "viewItem =~ /\\[views\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.functions",
+          "when": "viewItem =~ /\\[functions\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.procedures",
+          "when": "viewItem =~ /\\[procedures\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.triggers",
+          "when": "viewItem =~ /\\[triggers\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.sequences",
+          "when": "viewItem =~ /\\[sequences\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.matviews",
+          "when": "viewItem =~ /\\[matviews\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.types",
+          "when": "viewItem =~ /\\[types\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.events",
+          "when": "viewItem =~ /\\[events\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.foreign",
+          "when": "viewItem =~ /\\[foreign\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.indexes",
+          "when": "viewItem =~ /\\[indexes\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.roles",
+          "when": "viewItem =~ /\\[roles\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.users",
+          "when": "viewItem =~ /\\[users\\]/",
+          "group": "1_abrir"
+        },
+        {
+          "command": "braytech.acao.copiar",
+          "when": "viewItem =~ /\\[copiar\\]/",
+          "group": "2_copiar"
+        },
+        {
+          "command": "braytech.acao.template-select",
+          "when": "viewItem =~ /\\[template\\-select\\]/",
+          "group": "2_copiar"
+        },
+        {
+          "command": "braytech.acao.template-insert",
+          "when": "viewItem =~ /\\[template\\-insert\\]/",
+          "group": "2_copiar"
+        },
+        {
+          "command": "braytech.acao.template-update",
+          "when": "viewItem =~ /\\[template\\-update\\]/",
+          "group": "2_copiar"
+        },
+        {
+          "command": "braytech.acao.template-delete",
+          "when": "viewItem =~ /\\[template\\-delete\\]/",
+          "group": "2_copiar"
+        },
+        {
+          "command": "braytech.acao.usuario-create",
+          "when": "viewItem =~ /\\[usuario\\-create\\]/",
+          "group": "2_copiar"
+        },
+        {
+          "command": "braytech.acao.usuario-drop",
+          "when": "viewItem =~ /\\[usuario\\-drop\\]/",
+          "group": "2_copiar"
+        },
+        {
+          "command": "braytech.acao.usuario-grant",
+          "when": "viewItem =~ /\\[usuario\\-grant\\]/",
+          "group": "2_copiar"
+        },
+        {
+          "command": "braytech.acao.usuario-revoke",
+          "when": "viewItem =~ /\\[usuario\\-revoke\\]/",
+          "group": "2_copiar"
+        },
+        {
+          "command": "braytech.acao.truncate",
+          "when": "viewItem =~ /\\[truncate\\]/",
+          "group": "3_alterar"
+        },
+        {
+          "command": "braytech.acao.esvaziar",
+          "when": "viewItem =~ /\\[esvaziar\\]/",
+          "group": "3_alterar"
+        },
+        {
+          "command": "braytech.acao.refresh-matview",
+          "when": "viewItem =~ /\\[refresh\\-matview\\]/",
+          "group": "3_alterar"
+        },
+        {
+          "command": "braytech.acao.drop",
+          "when": "viewItem =~ /\\[drop\\]/",
+          "group": "3_alterar"
+        },
+        {
+          "command": "braytech.acao.drop-view",
+          "when": "viewItem =~ /\\[drop\\-view\\]/",
+          "group": "3_alterar"
+        },
+        {
+          "command": "braytech.acao.drop-matview",
+          "when": "viewItem =~ /\\[drop\\-matview\\]/",
+          "group": "3_alterar"
+        },
+        {
+          "command": "braytech.acao.drop-sequence",
+          "when": "viewItem =~ /\\[drop\\-sequence\\]/",
+          "group": "3_alterar"
+        },
+        {
+          "command": "braytech.acao.drop-trigger",
+          "when": "viewItem =~ /\\[drop\\-trigger\\]/",
+          "group": "3_alterar"
+        },
+        {
+          "command": "braytech.acao.drop-event",
+          "when": "viewItem =~ /\\[drop\\-event\\]/",
+          "group": "3_alterar"
         }
       ]
     },

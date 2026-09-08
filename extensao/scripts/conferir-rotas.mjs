@@ -260,6 +260,106 @@ try {
   const recusa = await mandarAoEco({ tipo: 'apiBytes', metodo: 'GET', rota: '/api/x/files/bytes?erro=1' });
   marcar('erro do motor chega com a mensagem',
     recusa.ok === false && String(recusa.erro).includes('o motor recusou'), String(recusa.erro));
+  // ---- 6. a ÁRVORE NATIVA (spec 104) ----
+  //
+  // Aqui está o buraco que a webview deixava: a lateral nunca foi exercitada
+  // fora do editor. Agora ela é código que roda em Node puro, e um `TreeItem`
+  // errado FALHA aqui em vez de aparecer torto na tela dele.
+  const { ArvoreDeConexoes, definirRecursos } = require_(`${RAIZ}/extensao/dist/arvore.js`);
+  const { codiconDe } = require_(`${RAIZ}/extensao/dist/icones-do-editor.js`);
+  const { ACOES_DO_MENU } = require_(`${RAIZ}/extensao/dist/acoesDoMenu.js`);
+  const vsc = require_(path.join(import.meta.dirname, 'vscode-de-mentira.cjs'));
+
+  definirRecursos(vsc.Uri.file(`${RAIZ}/extensao/recursos`));
+  const motorDaArvore = await ligarMotor(PORTA_MOTOR, '');
+  const arvore = new ArvoreDeConexoes(motorDaArvore, 'database');
+
+  const raizes = await arvore.getChildren(undefined);
+  marcar('a árvore abre no grupo do cofre',
+    raizes.length === 1 && raizes[0].especie === 'grupo' && raizes[0].label === 'ACME',
+    raizes.map((r) => `${r.especie}:${r.label}`).join(', '));
+
+  // O grupo é `ACME/Bancos`: a conexão está um nível abaixo, e descer é o que
+  // prova que grupo ANINHADO desenha. (Eu tinha suposto um nível só, e o arnês
+  // pegou — que é para isso que ele existe.)
+  const primeiraConexao = async (itens, fundo = 0) => {
+    const direta = itens.find((i) => i.especie === 'conexao');
+    if (direta !== undefined) return direta;
+    if (fundo >= 4) return null;
+    for (const grupo of itens.filter((i) => i.especie === 'grupo')) {
+      const achada = await primeiraConexao(await arvore.getChildren(grupo), fundo + 1);
+      if (achada !== null) return achada;
+    }
+    return null;
+  };
+  const aConexao = await primeiraConexao(raizes);
+  marcar('a conexão aparece no grupo ANINHADO',
+    aConexao !== null && aConexao.conexao === conexao.id,
+    aConexao === null ? 'nenhuma' : String(aConexao.label));
+
+  // O ícone da conexão vem do DRIVER: `devicon:sqlite`, que temos em SVG.
+  marcar('a conexão usa o SVG de marca do driver',
+    aConexao?.iconPath?.dark !== undefined &&
+      String(aConexao.iconPath.dark).includes('devicon-sqlite-dark.svg'),
+    String(aConexao?.iconPath?.dark ?? aConexao?.iconPath?.id));
+
+  const dentroDaConexao = aConexao === null ? [] : await arvore.getChildren(aConexao);
+  marcar('abrir a conexão lista os filhos do driver', dentroDaConexao.length > 0,
+    `${dentroDaConexao.length} nó(s)`);
+
+  // Desce até achar a tabela inventada, para conferir ícone, ação e comando.
+  const achar = async (itens, alvoLabel, fundo = 0) => {
+    for (const item of itens) {
+      if (item.label === alvoLabel) return item;
+      if (fundo >= 3 || item.collapsibleState === 0) continue;
+      const achado = await achar(await arvore.getChildren(item), alvoLabel, fundo + 1);
+      if (achado !== null) return achado;
+    }
+    return null;
+  };
+  const materias = await achar(dentroDaConexao, 'materias');
+  marcar('a tabela inventada é achada na árvore', materias !== null,
+    materias === null ? 'não achei' : materias.nodePath.join('/'));
+
+  if (materias !== null) {
+    marcar('o ícone do nó é ThemeIcon, e segue o tema DELE',
+      materias.iconPath?.id === codiconDe('table'), String(materias.iconPath?.id));
+    marcar('clicar na tabela abre a grade da IDE',
+      materias.command?.command === 'braytech.abrirNo', String(materias.command?.command));
+
+    // **O guarda contra a lista envelhecer.** Toda ação que o driver declara
+    // tem de ter item de menu; sem isto ela some da tela sem avisar.
+    const declaradas = materias.acoes.map((a) => a.id);
+    const semItem = declaradas.filter((id) => !ACOES_DO_MENU.some((a) => a.id === id));
+    marcar('toda ação declarada tem item de menu', semItem.length === 0,
+      semItem.length === 0 ? declaradas.join(', ') : `sem item: ${semItem.join(', ')}`);
+
+    const contexto = materias.contextValue ?? '';
+    marcar('o contextValue carrega as ações, com colchetes',
+      declaradas.every((id) => contexto.includes(`[${id}]`)), contexto);
+    // `drop` não pode casar em `drop-view`: era o menu com dois "Apagar".
+    marcar('`[drop]` não casa com `[drop-view]`',
+      !/\[drop\]/.test('braytech.no[drop-view]'), 'delimitado');
+  }
+
+  // Soltura: o alvo tem de ser uma PASTA remota, e o SQLite não tem nenhuma.
+  const semPasta = await arvore.handleDrop(materias, { get: () => undefined }, {});
+  const ultimoAviso = [...global.__CHAMADAS].reverse().find((c) => c.o === 'warn');
+  marcar('soltar fora de uma pasta AVISA, em vez de sumir',
+    semPasta === undefined && String(ultimoAviso?.m).includes('PASTA'), String(ultimoAviso?.m));
+
+  marcar('a árvore declara `files` como tipo de soltura',
+    arvore.dropMimeTypes.length === 1 && arvore.dropMimeTypes[0] === 'files',
+    arvore.dropMimeTypes.join(', '));
+
+  // Cofre trancado não pode virar árvore vazia sem motivo.
+  await api('/api/connections/vault/lock', {});
+  arvore.recarregar();
+  const trancada = await arvore.getChildren(undefined);
+  marcar('cofre trancado vira uma linha que se clica',
+    trancada.length === 1 && trancada[0].command?.command === 'braytech.destrancarCofre',
+    String(trancada[0]?.label));
+
 } finally {
   console.log(linhas.join('\n'));
   const falhas = linhas.filter((l) => l.startsWith('FALHA')).length;

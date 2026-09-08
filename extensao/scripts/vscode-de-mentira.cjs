@@ -22,20 +22,38 @@ const resposta = (chave, padrao) => {
 };
 
 class Uri {
-  constructor(caminho) {
+  constructor(caminho, esquema = 'file') {
     this.fsPath = caminho;
     this.path = caminho;
-    this.scheme = 'file';
+    this.scheme = esquema;
   }
   static file(p) { return new Uri(p); }
   static parse(p) { return new Uri(p); }
+  static from(o) { return new Uri(o.path, o.scheme); }
   static joinPath(base, ...pedacos) { return new Uri([base.fsPath, ...pedacos].join('/')); }
-  toString() { return this.fsPath; }
+  toString() { return `${this.scheme}:${this.fsPath}`; }
 }
+
+/** O que o `TreeItem` do editor guarda, e que a árvore preenche. */
+class TreeItem {
+  constructor(rotulo, estado) {
+    this.label = rotulo;
+    this.collapsibleState = estado;
+  }
+}
+
+class ThemeIcon {
+  constructor(id) { this.id = id; }
+}
+ThemeIcon.File = new ThemeIcon('file');
+ThemeIcon.Folder = new ThemeIcon('folder');
 
 module.exports = {
   Uri,
-  ThemeIcon: class { constructor(id) { this.id = id; } },
+  TreeItem,
+  ThemeIcon,
+  TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+  ProgressLocation: { Notification: 15, Window: 10 },
   ViewColumn: { Active: -1, One: 1, Beside: -2 },
   ColorThemeKind: { Light: 1, Dark: 2, HighContrastLight: 4 },
   TerminalLocation: { Editor: 2, Panel: 1 },
@@ -74,7 +92,11 @@ module.exports = {
     createTerminal: (o) => (anota({ o: 'createTerminal', nome: o?.name }), { show() {}, dispose() {} }),
     showTextDocument: async (d) => anota({ o: 'showTextDocument', d: String(d?.uri ?? d) }),
     registerTreeDataProvider: () => ({ dispose() {} }),
-    createTreeView: () => ({ dispose() {}, onDidChangeVisibility() {} }),
+    createTreeView: (id, o) => (
+      anota({ o: 'createTreeView', id, temSoltura: o?.dragAndDropController !== undefined }),
+      { dispose() {}, onDidChangeVisibility() {} }
+    ),
+    withProgress: async (_o, tarefa) => tarefa({ report() {} }, { isCancellationRequested: false }),
   },
   workspace: {
     getConfiguration: () => ({
