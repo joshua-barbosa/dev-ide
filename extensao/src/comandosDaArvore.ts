@@ -463,6 +463,19 @@ export function registrarComandos(
     deps.recarregarTudo();
   });
 
+  // **O CLIQUE no arquivo de query.**
+  //
+  // Existia um segundo caminho, registrado no `extension.ts`, que abria tudo
+  // como TEXTO — e era esse que o clique usava. Eu tinha consertado só o da
+  // criação e dito que estava resolvido; o `.sqlbook` continuou virando JSON na
+  // tela dele. Agora é UM caminho só, e não há como divergirem.
+  registrar('braytech.abrirArquivoDeQuery', async (item) => {
+    const caminho = texto(item.meta.arquivo);
+    if (caminho === '') return;
+    deps.definirConexaoAtiva(item.conexao);
+    await abrirArquivoDeQuery(deps, caminho, item.conexao, texto(item.meta.database));
+  });
+
   // ---- do arquivo REMOTO (hover) ----
   registrar('braytech.favoritarRemoto', async (item) => {
     const alvo = remotoDe(item);

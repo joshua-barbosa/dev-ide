@@ -309,17 +309,6 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       }
     ),
 
-    vscode.commands.registerCommand(
-      'braytech.abrirArquivoDeQuery',
-      async (item: ItemDaArvore) => {
-        const caminho = item.meta.arquivo;
-        if (typeof caminho !== 'string') return;
-        definirConexaoAtiva(item.conexao);
-        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(caminho));
-        await vscode.window.showTextDocument(doc);
-      }
-    ),
-
     vscode.commands.registerCommand('braytech.novaConexao', () => {
       abrirFormularioDeConexao(deps, null, '', '');
     }),

@@ -161,18 +161,32 @@ function contextoDe(
   // As CAPACIDADES do nó, como o driver as declara. São elas que decidem quais
   // itens de menu aparecem — do mesmo jeito que decidem na IDE, onde o menu é
   // montado com `...(no.meta?.queries === true ? [...] : [])`.
+  // **As capacidades valem por ESPÉCIE, e não pelo `meta` inteiro.**
+  //
+  // O erro: os itens que a interface cria — a pasta `Query` e os arquivos dela
+  // — carregam `database` no `meta` para guardar o VÍNCULO. Derivar a
+  // capacidade `.database` disso fazia um `.sqlbook` ganhar o botão de
+  // `Abrir Query`, que nenhum arquivo tem no painel. Ele viu na tela.
+  //
+  // No painel essas condições são lidas de um NÓ DO DRIVER. Aqui é igual: só
+  // `especie === 'no'` as consulta.
+  const doDriver =
+    especie !== 'no'
+      ? []
+      : [
+          ...(meta.diagramaEr === true ? ['er'] : []),
+          ...(meta.diagramaDaTabela === true ? ['erTabela'] : []),
+          ...(meta.category === 'tables' || meta.category === 'views' ? ['tabela'] : []),
+          ...(typeof meta.database === 'string' ? ['database'] : []),
+          ...(meta.categoria === true ? ['categoria'] : []),
+          ...(typeof meta.template === 'string' ? ['template'] : []),
+        ];
   const capacidades = [
     ...(remoto === null ? [] : [remoto.ehPasta ? 'pastaRemota' : 'arquivoRemoto']),
     ...(meta.executable === true ? ['executavel'] : []),
-    ...(meta.diagramaEr === true ? ['er'] : []),
-    ...(meta.diagramaDaTabela === true ? ['erTabela'] : []),
-    ...(meta.queries === true ? ['queries'] : []),
-    // As mesmas condições que o `ConnectionsPanel` usa para desenhar os ícones
-    // da linha — copiadas de lá, não lembradas.
-    ...(meta.category === 'tables' || meta.category === 'views' ? ['tabela'] : []),
-    ...(typeof meta.database === 'string' ? ['database'] : []),
-    ...(meta.categoria === true ? ['categoria'] : []),
-    ...(typeof meta.template === 'string' ? ['template'] : []),
+    ...doDriver,
+    // Estes dois são NOSSOS, e por isso vêm da espécie e não do `meta`.
+    ...(especie === 'query' ? ['queries'] : []),
     ...(especie === 'arquivo' ? ['arquivoDeQuery'] : []),
   ];
   const base = [`braytech.${especie}`, ...capacidades].join('.');

@@ -509,8 +509,42 @@ try {
   const criou = feitos.find((f) => f.rota === '/api/queries' && f.metodo === 'POST');
   marcar('criar query usa os campos que a rota espera', criou?.ok === true, criou?.erro ?? 'ok');
   const oCaderno = feitos.find((f) => f.aba === 'caderno');
-  marcar('`.sqlbook` abre como CADERNO, não como JSON', oCaderno !== undefined,
+  marcar('criar `.sqlbook` abre como CADERNO', oCaderno !== undefined,
     oCaderno === undefined ? 'abriu como texto' : String(oCaderno.d.caminho));
+
+  // **O CLIQUE, que é o caminho que ele usa.**
+  //
+  // Eu tinha consertado só a criação e dito que estava resolvido — o clique
+  // passava por outro comando, registrado noutro arquivo, que abria tudo como
+  // texto. O arnês checava a criação e passava. Agora ele CLICA.
+  arvore.recarregar();
+  const raizes3 = await arvore.getChildren(undefined);
+  const conexao3 = await primeiraConexao(raizes3);
+  const dentro3 = await arvore.getChildren(conexao3);
+  const comDatabase = dentro3.find((i) => typeof i.meta.database === 'string');
+  const filhos3 = comDatabase === undefined ? [] : await arvore.getChildren(comDatabase);
+  const pastaQuery = filhos3.find((i) => i.especie === 'query');
+  marcar('a pasta `Query` existe no database', pastaQuery !== undefined,
+    filhos3.map((i) => String(i.label)).slice(0, 4).join(', '));
+
+  const arquivos3 = pastaQuery === undefined ? [] : await arvore.getChildren(pastaQuery);
+  const oSqlbook = arquivos3.find((i) => String(i.label).endsWith('.sqlbook'));
+  marcar('o `.sqlbook` criado aparece na pasta Query', oSqlbook !== undefined,
+    arquivos3.map((i) => String(i.label)).join(', '));
+
+  const antesDoClique = feitos.length;
+  if (oSqlbook !== undefined) {
+    marcar('o clique no `.sqlbook` chama o comando certo',
+      oSqlbook.command?.command === 'braytech.abrirArquivoDeQuery',
+      String(oSqlbook.command?.command));
+    await registrados.get(String(oSqlbook.command?.command))?.(oSqlbook);
+  }
+  const cadernoDoClique = feitos.slice(antesDoClique).find((f) => f.aba === 'caderno');
+  marcar('CLICAR no `.sqlbook` abre o caderno, e não texto',
+    cadernoDoClique !== undefined,
+    cadernoDoClique === undefined
+      ? 'abriu como texto — é o JSON cru que ele viu'
+      : String(cadernoDoClique.d.caminho));
 
   // (c) a troca de senha-mestra, com os nomes certos.
   global.__RESPOSTAS = { showInputBox: SENHA };
@@ -527,9 +561,48 @@ try {
 
   // (e) recarregar metadados e conectar.
   await registrados.get('braytech.recarregarConexao')?.(conexao2);
-  const reconectou = feitos.find((f) => f.rota.endsWith('/connect'));
+  // `f.rota?.` — nem toda entrada de `feitos` é uma chamada de rota: algumas
+  // são `{aba}` e `{diagrama}`. Sem o `?.` isto lançava, e o arnês morria aqui
+  // levando junto tudo o que vinha depois.
+  const reconectou = feitos.find((f) => f.rota?.endsWith('/connect') === true);
   marcar('recarregar metadados chama `connect`', reconectou?.ok === true,
     reconectou?.erro ?? 'ok');
+
+  // ---- 9. os ícones que CADA LINHA ganha (D308) ----
+  //
+  // Ele: *"você adicionou o botão Adicionar quando coloca o mouse em cima dos
+  // .sqlbook e .sql, eles não têm isso"*. Os guardas anteriores contavam os
+  // itens e conferiam ícone — nenhum perguntava QUAIS aparecem em QUAL linha.
+  //
+  // Aqui os `when` são APLICADOS ao `contextValue` de itens de verdade, e o
+  // resultado é comparado com a lista esperada. Ícone a mais é tão defeito
+  // quanto ícone a menos.
+  const iconesDe = (contextValue) =>
+    inline
+      .filter((m) => {
+        const re = /viewItem =~ \/(.+)\/$/.exec(m.when);
+        return re === null ? false : new RegExp(re[1]).test(contextValue ?? '');
+      })
+      .map((m) => m.command.replace('braytech.', ''))
+      .sort();
+
+  const conferirLinha = (nome, item, esperado) => {
+    const tem = iconesDe(item?.contextValue);
+    const sobrando = tem.filter((x) => !esperado.includes(x));
+    const faltando = esperado.filter((x) => !tem.includes(x));
+    marcar(`ícones da linha: ${nome}`, sobrando.length === 0 && faltando.length === 0,
+      sobrando.length === 0 && faltando.length === 0
+        ? tem.join(', ') || '(nenhum)'
+        : `sobrando [${sobrando.join(', ')}] faltando [${faltando.join(', ')}]`);
+  };
+
+  conferirLinha('arquivo .sqlbook', oSqlbook, ['renomearQuery', 'apagarQuery']);
+  conferirLinha('pasta Query', pastaQuery, ['novaQuerySql']);
+  conferirLinha('grupo', raizes3[0], ['renomearGrupo', 'novaConexaoNoGrupo']);
+  // SQLite não tem terminal nem arquivos: `abrirServidor` e `abrirTerminal`
+  // NÃO podem aparecer aqui — foi o outro defeito que ele viu.
+  conferirLinha('conexão de banco (SQLite)', conexao3,
+    ['recarregarConexao', 'excluirConexao']);
 
   // **Nenhuma rota pode ter respondido erro.** É o guarda de verdade: qualquer
   // payload que eu escreva de cabeça cai aqui.
@@ -539,6 +612,15 @@ try {
       ? `${feitos.filter((f) => f.ok !== undefined).length} chamadas`
       : comErro.map((f) => `${f.rota}: ${f.erro}`).join(' | '));
 
+} catch (erro) {
+  // **Sem este `catch` o arnês MENTIA.** O `process.exit` do `finally` engolia
+  // a exceção inteira: uma verificação que quebrasse no meio levava junto todas
+  // as seguintes, e o resumo dizia "0 falhas". Foi assim que quatro
+  // verificações novas simplesmente não apareceram.
+  marcar('o arnês rodou até o fim', false, erro instanceof Error ? erro.message : String(erro));
+  if (erro instanceof Error && erro.stack !== undefined) {
+    linhas.push(erro.stack.split('\n').slice(0, 4).join('\n'));
+  }
 } finally {
   console.log(linhas.join('\n'));
   const falhas = linhas.filter((l) => l.startsWith('FALHA')).length;
