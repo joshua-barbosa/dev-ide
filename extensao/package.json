@@ -32,24 +32,12 @@
         {
           "id": "braytech.databases.arvore",
           "name": "Databases"
-        },
-        {
-          "id": "braytech.databases",
-          "name": "Databases (painel da IDE)",
-          "type": "webview",
-          "visibility": "collapsed"
         }
       ],
       "braytech-servicos": [
         {
           "id": "braytech.servicos.arvore",
           "name": "Services"
-        },
-        {
-          "id": "braytech.servicos",
-          "name": "Services (painel da IDE)",
-          "type": "webview",
-          "visibility": "collapsed"
         }
       ]
     },

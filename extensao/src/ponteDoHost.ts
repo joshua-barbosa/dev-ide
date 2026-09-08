@@ -1,9 +1,12 @@
 // O que atravessa entre uma webview da Braytech Code e o VS Code.
 //
-// Existe separado porque agora são DOIS hospedeiros com a mesma fiação: a barra
-// lateral (`painelWebview.ts`) e a aba de formulário (`formularioAba.ts`). Sem
-// isto, o formulário só ganharia metade dos gestos — e a metade que falta é
-// sempre a que ele descobre depois.
+// Existe separado porque são VÁRIAS abas com a mesma fiação, todas montadas
+// por `formularioAba.ts`: grade, chave, servidor, processos, caderno, diagrama,
+// formulário de conexão e os diálogos. Sem isto, cada uma ganharia metade dos
+// gestos — e a metade que falta é sempre a que ele descobre depois.
+//
+// Serviu também a webview de painel da barra lateral, que saiu em 08/09/2026
+// quando a árvore nativa passou no uso dele.
 //
 // Três canais:
 //  - `api`         → pedido ao motor, respondido com `apiResposta`;
@@ -590,7 +593,7 @@ export class PonteDoHost {
 export function htmlDaWebview(
   web: vscode.Webview,
   extensionUri: vscode.Uri,
-  arquivo: 'painel.js' | 'formulario.js' | 'dialogo.js' | 'diagrama.js' | 'aba.js' | 'caderno.js',
+  arquivo: 'formulario.js' | 'dialogo.js' | 'diagrama.js' | 'aba.js' | 'caderno.js',
   config: Record<string, unknown>
 ): string {
   const script = web.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'webview', arquivo));

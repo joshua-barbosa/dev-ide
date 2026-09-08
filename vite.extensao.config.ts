@@ -13,7 +13,6 @@ import react from '@vitejs/plugin-react';
  * para cadastrar uma conexão.
  */
 const alvos = {
-  painel: { entrada: 'extensao/painel.tsx', nome: 'BraytechPainel', arquivo: 'painel.js' },
   formulario: {
     entrada: 'extensao/formulario.tsx',
     nome: 'BraytechFormulario',
@@ -29,7 +28,7 @@ const alvos = {
   },
 } as const;
 
-const alvo = alvos[(process.env.BRAYTECH_ALVO ?? 'painel') as keyof typeof alvos];
+const alvo = alvos[(process.env.BRAYTECH_ALVO ?? 'formulario') as keyof typeof alvos];
 
 export default defineConfig({
   root: 'src/ui',
@@ -38,7 +37,8 @@ export default defineConfig({
   build: {
     outDir: '../../extensao/webview',
     // Só o primeiro build limpa: o segundo apagaria o pacote do primeiro.
-    emptyOutDir: alvo.arquivo === 'painel.js',
+    // O PRIMEIRO alvo da série limpa a pasta; os outros escrevem ao lado.
+    emptyOutDir: alvo.arquivo === 'formulario.js',
     lib: { entry: alvo.entrada, formats: ['iife'], name: alvo.nome, fileName: () => alvo.arquivo },
     // Um CSS por pacote, com o nome dele. Com um nome só, cada build
     // sobrescrevia o do anterior e as páginas ficavam com a folha errada.

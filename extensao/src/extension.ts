@@ -1,25 +1,31 @@
 // Braytech Code dentro do VS Code e do Cursor.
 //
-// **A barra lateral é o painel da IDE, não uma imitação dele.** `Databases` e
-// `Services` são webviews que carregam o `ConnectionsPanel` de verdade, com os
-// menus, os ícones e os diálogos da IDE — porque é o mesmo código. Ver
-// `painelWebview.ts` e `src/ui/extensao/painel.tsx`.
+// **A barra lateral é ÁRVORE NATIVA do editor** (`arvore.ts`): ícone que segue
+// o tema dele, menu de botão direito de verdade, ícones ao passar o mouse e
+// soltura de arquivo vinda do sistema — que é o gesto que a webview nunca pôde
+// receber (microsoft/vscode#111092).
 //
-// A árvore nativa do editor foi a tentativa anterior, e ele a derrubou em
-// minutos de uso: ícone traduzido à mão que não batia, menu de contexto virando
-// lista de opções, hover sem ação nenhuma. Nada disso era um defeito solto — era
-// o custo permanente de manter uma imitação em dia com o original.
+// Houve uma tentativa anterior de árvore nativa, e ele a derrubou em minutos:
+// ícone traduzido à mão que não batia, menu de contexto virando lista de
+// opções, hover sem ação nenhuma. A troca só se sustenta porque nada disso é
+// escrito à mão: o ícone vem do mapa de codicons, o menu é GERADO das ações
+// que o driver declara, e um arnês percorre uma árvore de verdade e falha
+// quando alguma afordância some.
 //
-// A extensão em si faz três coisas: sobe o motor, abre o que o painel pedir, e
+// Entre 04/09 e 08/09 a árvore conviveu com as webviews de painel, lado a
+// lado, para ele comparar. Em 08/09 ele olhou e disse *"pode remover o
+// antigo"* — e elas saíram. O que continua sendo webview são as ABAS, onde a
+// IDE de verdade roda dentro do editor: grade, chave, servidor, processos,
+// caderno, diagrama, formulário de conexão e os diálogos.
+//
+// A extensão em si faz três coisas: sobe o motor, abre o que a árvore pedir, e
 // executa `.sql` com Ctrl+Enter.
-
 import * as vscode from 'vscode';
 import { ArquivosRemotos, uriRemota } from './arquivosRemotos';
 import { ligarMotor, type Motor } from './motor';
 import {
   abrirAbaDaIde, abrirDiagramaEmAba, abrirDialogoEmAba, abrirFormularioDeConexao,
 } from './formularioAba';
-import { PainelDeConexoes } from './painelWebview';
 import { ArvoreDeConexoes, definirRecursos, type ItemDaArvore } from './arvore';
 import { ACOES_DO_MENU, comandoDaAcao } from './acoesDoMenu';
 import type { FiltroDaArvore } from './filtro-da-arvore';
@@ -138,8 +144,7 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       })();
     },
     recarregarPaineis: (conexaoId, caminho, filtro) => {
-      PainelDeConexoes.recarregarTodos(conexaoId, caminho, filtro);
-      // **E as ÁRVORES também.** O diálogo de filtro devolve a escolha por
+      // **As ÁRVORES.** O diálogo de filtro devolve a escolha por
       // esta mensagem; sem esta linha ele guardava e a árvore continuava
       // mostrando as 95 tabelas. Era o "filtro de tables não está sendo
       // aplicado" — o diálogo funcionava, e ninguém escutava a resposta.
@@ -158,27 +163,14 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
     },
   };
 
-  for (const [painel, view] of [
-    ['database', 'braytech.databases'],
-    ['service', 'braytech.servicos'],
-  ] as const) {
-    contexto.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(
-        view,
-        new PainelDeConexoes(painel as Painel, deps),
-        // O painel guarda o que está expandido; redesenhar do zero a cada troca
-        // de aba da barra lateral recolheria a árvore inteira.
-        { webviewOptions: { retainContextWhenHidden: true } }
-      )
-    );
-  }
-
-  // **As árvores NATIVAS, ao lado das webviews (spec 104).**
+  // **As árvores NATIVAS da barra lateral (spec 104).**
   //
-  // Convivem por uma entrega, de propósito e com o acordo dele: em 04/09 ele
-  // derrubou a árvore nativa por quatro motivos concretos, e a única forma
-  // honesta de saber se eles voltaram é ele ver as duas na mesma tela. Apagar a
-  // webview agora seria eu decidir que resolvi — sem ele ter olhado.
+  // Conviveram por uma entrega com as webviews antigas, de propósito: em 04/09
+  // ele derrubou a árvore nativa por quatro motivos concretos, e a única forma
+  // honesta de saber se eles voltaram era ele ver as duas na mesma tela. Em
+  // 08/09 ele olhou e disse *"pode remover o antigo"* — e por isso a webview de
+  // painel saiu. As abas (formulário, diálogo, grade, caderno, diagrama)
+  // continuam sendo webview, e não mudaram.
   definirRecursos(vscode.Uri.joinPath(contexto.extensionUri, 'recursos'));
   const arvores: ArvoreDeConexoes[] = [];
   for (const [painel, view] of [
@@ -226,10 +218,10 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       abrirQuery: (id, database, titulo, conteudo) =>
         deps.abrirQuery(id, database, titulo, conteudo),
       definirConexaoAtiva,
-      recarregarTudo: () => {
-        recarregarArvores();
-        void vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
-      },
+      // Sem a webview de painel, recarregar é recarregar as ÁRVORES: mandar o
+      // editor recarregar webview aqui redesenharia as ABAS abertas dele —
+      // grade, caderno, diagrama — e jogaria fora o que estivesse na tela.
+      recarregarTudo: recarregarArvores,
     },
     arvores
   );
@@ -282,14 +274,11 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
   contexto.subscriptions.push(barra);
 
   contexto.subscriptions.push(
-    vscode.commands.registerCommand('braytech.recarregar', () => {
-      recarregarArvores();
-      void vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
-    }),
+    vscode.commands.registerCommand('braytech.recarregar', recarregarArvores),
 
     vscode.commands.registerCommand('braytech.destrancarCofre', async () => {
-      // O cofre também se destranca DENTRO do painel, com o diálogo da IDE.
-      // Este comando existe para a paleta, que é onde se procura por nome.
+      // O cofre também se destranca pelo cadeado da barra da árvore. Este
+      // comando existe para a paleta, que é onde se procura por nome.
       const senha = await vscode.window.showInputBox({
         prompt: 'Senha-mestra do cofre da Braytech Code',
         password: true,
@@ -299,7 +288,6 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       const ok = await pedir('POST', '/api/connections/vault/unlock', { password: senha });
       if (ok === null) return;
       recarregarArvores();
-      void vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
       void vscode.window.showInformationMessage('Braytech Code: cofre destrancado.');
     }),
 
