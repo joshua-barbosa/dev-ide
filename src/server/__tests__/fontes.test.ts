@@ -198,3 +198,34 @@ test('nenhum arquivo-fonte passa do teto de 800 linhas', () => {
     `passaram do teto absoluto do Artigo IV (${MAX_LINHAS} linhas):\n  ${grandes.join('\n  ')}`
   );
 });
+
+/**
+ * O `node-pty` é a ÚNICA dependência nativa do motor, e por isso é ela que
+ * decide se a extensão precisa de um pacote por sistema operacional ou de um
+ * só para Linux, Windows e macOS.
+ *
+ * Ele, em 08/09/2026, sobre o terminal: *"é inegociável, precisa ter
+ * funcionando, pois é um dos principais a serem usados, indiferente da OS da
+ * máquina"*. O terminal que a extensão usa é o de SSH — canal do `ssh2`, sem
+ * nada nativo. Um `import` de topo do `node-pty` faria o motor INTEIRO exigir
+ * o módulo nativo para subir, e derrubaria o terminal SSH junto num sistema
+ * onde ele não compilasse.
+ *
+ * Provado: com o `node-pty` escondido, o motor sobe, o terminal SSH responde e
+ * o local recusa com mensagem — em vez de o processo morrer no `require`.
+ */
+test('o `node-pty` só é carregado quando alguém abre um terminal LOCAL', () => {
+  const errados: string[] = [];
+  for (const caminho of arquivos(path.join(RAIZ, 'src'))) {
+    const texto = fs.readFileSync(caminho, 'utf8');
+    // `import type` não existe em tempo de execução: ele não força o require.
+    const estatico = /^import\s+(?!type\b)[^;]*from\s+'node-pty'/m.test(texto);
+    if (estatico) errados.push(path.relative(RAIZ, caminho));
+  }
+  assert.deepEqual(
+    errados,
+    [],
+    'importe com `require` dentro da função — um import de topo faz o motor ' +
+      'inteiro depender de um módulo nativo para subir.'
+  );
+});

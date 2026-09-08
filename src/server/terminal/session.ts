@@ -15,7 +15,7 @@ import { existeNoCaminho } from '../programas';
 import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import * as pty from 'node-pty';
+import type * as pty from 'node-pty';
 import { arquivoDeDados } from '../paths';
 import type { ComandoDeTerminal } from '../../shared/terminal/comando';
 
@@ -27,6 +27,29 @@ import type { ComandoDeTerminal } from '../../shared/terminal/comando';
  * por dois módulos.
  */
 export const MARCADOR_DE_CREDENCIAL = '__ARQUIVO_DE_CREDENCIAL__';
+
+/**
+ * O `node-pty`, carregado só quando alguém ABRE um terminal LOCAL.
+ *
+ * **É a única dependência nativa do motor**, e é ela que decidiria se a
+ * extensão precisa de um pacote por sistema operacional ou de um só para
+ * Linux, Windows e macOS. Carregando tarde, o motor sobe sem ela — e o
+ * terminal que a extensão usa é o de SSH, que é canal do `ssh2` e não passa
+ * por aqui.
+ *
+ * O erro, quando não houver, diz o que fazer em vez de um `MODULE_NOT_FOUND`.
+ */
+function carregarPty(): typeof pty {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('node-pty') as typeof pty;
+  } catch {
+    throw new Error(
+      'O terminal LOCAL precisa do `node-pty`, que não está instalado aqui. ' +
+        'O terminal de uma conexão SSH não depende dele e continua funcionando.'
+    );
+  }
+}
 
 /** Espera antes de matar à força quem ignorou o pedido de encerrar. */
 const PRAZO_ATE_MATAR_MS = 2_000;
@@ -92,7 +115,7 @@ export class TerminalSession {
     );
 
     try {
-      this.proc = pty.spawn(comando.exec, args, {
+      this.proc = carregarPty().spawn(comando.exec, args, {
         name: 'xterm-256color',
         cols: opcoes.cols ?? 80,
         rows: opcoes.rows ?? 24,
