@@ -768,6 +768,27 @@ try {
       })
       .map((m) => m.command.replace('braytech.', ''));
 
+  // **`somenteLeitura` nunca pode ser `false` fixo.**
+  //
+  // Era em QUATRO lugares — grade, processos, aba do servidor e diálogo de
+  // criação —, e é o mesmo defeito que a spec 096 já tinha registrado uma vez
+  // no visor de chave: a aba nascia EDITÁVEL numa conexão de leitura.
+  const fontesDosComandos =
+    (await fs2.readFile(`${RAIZ}/extensao/dist/comandosDaArvore.js`, 'utf8')) +
+    (await fs2.readFile(`${RAIZ}/extensao/dist/extension.js`, 'utf8'));
+  const fixos = (fontesDosComandos.match(/somenteLeitura:\s*false/g) ?? []).length;
+  marcar('nenhum `somenteLeitura: false` fixo', fixos === 0,
+    fixos === 0 ? 'todos vêm do item' : `${fixos} lugar(es)`);
+
+  // E o item precisa REALMENTE carregar a marca.
+  const noTrancado = new ItemDaArvore(
+    'no', 'c1', ['t'], '', 'tabela', undefined, true, 'table', [],
+    { object: 'tabela', database: 'main' }, true
+  );
+  marcar('o nó de uma conexão trancada carrega a marca',
+    noTrancado.trancada === true && (noTrancado.contextValue ?? '').includes('trancada'),
+    String(noTrancado.contextValue));
+
   const escrevemNaTrancada = doMenu(pastaTrancada.contextValue).filter((c) =>
     ['novoArquivoRemoto', 'novaPastaRemota', 'renomearRemoto', 'apagarRemoto'].includes(c)
   );

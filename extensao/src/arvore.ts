@@ -417,7 +417,7 @@ export class ArvoreDeConexoes
     if (database === null) return itens;
     const pasta = new ItemDaArvore(
       'query', pai.conexao, pai.nodePath, '', 'Query', undefined, true, 'folder', [],
-      { database, queries: true }
+      { database, queries: true }, this.somenteLeitura.has(pai.conexao)
     );
     return [pasta, ...itens];
   }
@@ -437,7 +437,7 @@ export class ArvoreDeConexoes
       const item = new ItemDaArvore(
         'arquivo', pai.conexao, [], '', a.nome, tamanhoCurto(a.bytes), false,
         a.nome.endsWith('.sqlbook') ? 'query' : 'file', [],
-        { database, arquivo: a.caminho }
+        { database, arquivo: a.caminho }, this.somenteLeitura.has(pai.conexao)
       );
       item.command = {
         command: 'braytech.abrirArquivoDeQuery',
@@ -496,7 +496,8 @@ export class ArvoreDeConexoes
         [],
         // O `meta` da conexão carrega o que os comandos precisam: editar pede
         // grupo e rótulo, e `Conectar`/`Desconectar` são itens diferentes.
-        { grupo: grupo.path, rotulo: c.label, tipo: c.type, aberta: this.abertas.has(c.id) }
+        { grupo: grupo.path, rotulo: c.label, tipo: c.type, aberta: this.abertas.has(c.id) },
+        c.readOnly === true
       );
       if (c.readOnly === true) this.somenteLeitura.add(c.id);
       const pode = this.capacidadesPorTipo.get(c.type);

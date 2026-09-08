@@ -133,7 +133,9 @@ export function registrarComandos(
     deps.abrirAbaDaIde('processos', `Processos — ${String(item.label ?? '')}`, {
       connectionId: item.conexao,
       titulo: String(item.label ?? ''),
-      somenteLeitura: false,
+      // **Do ITEM, nunca `false` fixo.** Matar processo MUDA o servidor, e a
+      // rota recusa — mas oferecer o botão faz o clique parecer defeito.
+      somenteLeitura: item.trancada,
     });
   });
 
@@ -415,7 +417,7 @@ export function registrarComandos(
     deps.abrirAbaDaIde('servidor', String(item.label ?? ''), {
       connectionId: item.conexao,
       rotulo: String(item.label ?? ''),
-      somenteLeitura: false,
+      somenteLeitura: item.trancada,
     });
   });
 
@@ -441,7 +443,10 @@ export function registrarComandos(
       nomeBase: `novo_${rotulo.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
       esqueleto: texto(item.meta.template),
       database: typeof item.meta.database === 'string' ? item.meta.database : null,
-      somenteLeitura: false,
+      // Com `false` fixo o diálogo oferecia EXECUTAR numa conexão de leitura.
+      // É o mesmo defeito que a spec 096 registrou no `abrirChave`, e que eu
+      // reintroduzi em quatro lugares de uma vez.
+      somenteLeitura: item.trancada,
     });
   });
 

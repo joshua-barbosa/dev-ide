@@ -311,7 +311,10 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
         connectionId: item.conexao,
         nodePath: item.nodePath,
         database,
-        somenteLeitura: false,
+        // **Do ITEM.** Com `false` fixo a grade nascia EDITÁVEL numa conexão
+        // somente-leitura — exatamente o defeito que a spec 096 já tinha
+        // registrado no visor de chave, e que eu repeti aqui.
+        somenteLeitura: item.trancada,
       });
     }),
 
