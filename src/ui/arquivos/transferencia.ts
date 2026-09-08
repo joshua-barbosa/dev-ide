@@ -43,6 +43,24 @@ export function definirTransferencia(nova: Transferencia | null): void {
 }
 
 /**
+ * Estamos dentro da webview do editor?
+ *
+ * A costura acima é instalada num lugar só — a subida da ponte —, então ela é
+ * a resposta honesta para a pergunta, sem ninguém precisar consultar o
+ * `acquireVsCodeApi` de novo.
+ *
+ * Existe por um motivo específico: **arrastar arquivo do sistema para dentro
+ * de uma webview do VS Code não é suportado.** O pedido de API foi fechado
+ * como fora de escopo (microsoft/vscode#111092), e o `drop` sequer chega ao
+ * documento da webview — o workbench o intercepta antes. Quem arrasta não vê
+ * erro nenhum, porque não há evento nenhum para transformar em erro. A única
+ * saída é DIZER isso onde o gesto seria tentado.
+ */
+export function dentroDoEditor(): boolean {
+  return transferencia !== null;
+}
+
+/**
  * Abre o seletor com o input DENTRO do documento, e o tira de lá depois.
  *
  * Um `<input>` solto na memória abre o diálogo, mas nem todo mundo entrega o

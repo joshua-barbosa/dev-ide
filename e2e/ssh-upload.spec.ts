@@ -162,3 +162,10 @@ test('desistir do seletor não sobe nada, e não dá erro', async ({ page }) => 
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
   expect(await page.locator('[data-linha-sftp]').count()).toBe(antes);
 });
+
+// O aviso de arraste é SÓ da webview do editor. Aqui, no navegador, arrastar
+// funciona — e uma linha dizendo o contrário seria mentira na tela dele.
+test('o aviso de arraste não aparece fora do editor', async ({ page }) => {
+  await abrirSftp(page);
+  await expect(page.locator('[data-aviso-arraste]')).toHaveCount(0);
+});

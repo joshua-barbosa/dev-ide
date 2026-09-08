@@ -18,7 +18,11 @@ import { useDownloadDePasta } from './useDownloadDePasta';
 import type { EntradaMenu } from '../ContextMenu';
 import { decodificarCarga, MIME_DE_ARRASTE } from '../../shared/arrastar';
 import type { RemoteEntry } from '../../shared/contracts';
-import { baixarArquivo as entregarArquivo, escolherArquivos } from '../arquivos/transferencia';
+import {
+  baixarArquivo as entregarArquivo,
+  dentroDoEditor,
+  escolherArquivos,
+} from '../arquivos/transferencia';
 
 interface Coluna {
   readonly id: ColunaDeOrdem;
@@ -244,6 +248,28 @@ export function SftpPanel({
           </Box>
         )}
       </Box>
+
+      {/*
+        Arrastar do sistema NÃO chega aqui dentro (microsoft/vscode#111092,
+        fechada como fora de escopo): o workbench intercepta antes da webview,
+        então não há `drop`, não há erro e o gesto morre calado. Foi assim que
+        ele perdeu tempo — soltou o arquivo, recarregou a árvore, e nada.
+
+        Dizer isso em tela é o único conserto possível, e ele fica ONDE o gesto
+        seria tentado. Fora do editor a linha não existe: lá o arraste funciona.
+      */}
+      {dentroDoEditor() && !somenteLeitura && (
+        <Box
+          data-aviso-arraste
+          sx={{
+            px: 1.25, py: 0.5, borderBottom: 1, borderColor: 'divider',
+            fontSize: 11, color: 'text.secondary',
+          }}
+        >
+          Arrastar da sua máquina não chega até aqui — é um limite da webview do
+          editor. Use <strong>Enviar arquivos</strong> na barra acima.
+        </Box>
+      )}
 
       {/*
         O andamento do download da pasta (T089), com o cancelar ao lado. Ocupa
