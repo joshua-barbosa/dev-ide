@@ -75,18 +75,29 @@ test('o ícone que cada DRIVER declara também tem codicon', () => {
   }
 });
 
-test('a cópia da extensão é IDÊNTICA à daqui', () => {
+test('as cópias da extensão são IDÊNTICAS às daqui', () => {
   // A extensão compila com `rootDir` próprio e não alcança `src/shared`, então
-  // o mapa vive nos dois lugares. Cópia sem guarda vira divergência: um driver
-  // novo ganharia ícone na IDE e um círculo vazio na extensão, e ninguém
-  // perceberia até ele abrir a árvore.
-  // O teste roda de `dist/shared/__tests__`; a fonte está em `src/`.
+  // estes arquivos vivem nos dois lugares. Cópia sem guarda vira divergência:
+  // um driver novo ganharia ícone na IDE e um círculo vazio na extensão, e o
+  // mesmo banco sairia com dois diagramas diferentes.
   const raiz = path.resolve(__dirname, '..', '..', '..');
-  const daqui = path.join(raiz, 'src', 'shared', 'icones-do-editor.ts');
-  const la = path.join(raiz, 'extensao', 'src', 'icones-do-editor.ts');
-  assert.equal(
-    readFileSync(la, 'utf8'),
-    readFileSync(daqui, 'utf8'),
-    'copie `src/shared/icones-do-editor.ts` para `extensao/src/` — os dois têm de ser iguais'
-  );
+  const copias = [
+    ['src/shared/icones-do-editor.ts', 'extensao/src/icones-do-editor.ts'],
+    ['src/shared/sql/diagrama-er.ts', 'extensao/src/diagrama-er.ts'],
+  ] as const;
+  for (const [de, para] of copias) {
+    assert.equal(
+      readFileSync(path.join(raiz, para), 'utf8'),
+      readFileSync(path.join(raiz, de), 'utf8'),
+      `rode \`node extensao/scripts/copiar-compartilhado.mjs\` — ${para} está fora de dia`
+    );
+  }
+});
+
+test('arquivo copiado não pode ter `import` — a cadeia não vai junto', () => {
+  const raiz = path.resolve(__dirname, '..', '..', '..');
+  for (const arquivo of ['src/shared/icones-do-editor.ts', 'src/shared/sql/diagrama-er.ts']) {
+    const fonte = readFileSync(path.join(raiz, arquivo), 'utf8');
+    assert.equal(/^\s*import\s/m.test(fonte), false, arquivo);
+  }
 });

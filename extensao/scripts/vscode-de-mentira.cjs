@@ -16,6 +16,9 @@ const anota = (o) => {
   chamadas.push(o);
   return o;
 };
+/** O primeiro BOTÃO, pulando o objeto de opções do modal. */
+const primeiroBotao = (args) => args.find((a) => typeof a === 'string');
+
 const resposta = (chave, padrao) => {
   const r = global.__RESPOSTAS ?? {};
   return Object.prototype.hasOwnProperty.call(r, chave) ? r[chave] : padrao;
@@ -70,9 +73,15 @@ module.exports = {
       (anota({ o: 'showQuickPick', itens, ...o }), resposta('showQuickPick', itens?.[0])),
     showSaveDialog: async (o) => (anota({ o: 'showSaveDialog', ...o }), resposta('showSaveDialog', undefined)),
     showOpenDialog: async (o) => (anota({ o: 'showOpenDialog', ...o }), resposta('showOpenDialog', undefined)),
+    // O primeiro argumento depois da mensagem pode ser o objeto de OPÇÕES
+    // (`{ modal: true }`) — e devolvê-lo como se fosse o botão fazia toda
+    // confirmação modal ser lida como "cancelou". Foi assim que `Exportar
+    // conexões` apareceu como "nem chamou" no arnês, sem defeito nenhum no
+    // código de verdade.
     showInformationMessage: async (m, ...b) =>
-      (anota({ o: 'info', m }), resposta('showInformationMessage', b[0])),
-    showWarningMessage: async (m, ...b) => (anota({ o: 'warn', m }), resposta('showWarningMessage', b[0])),
+      (anota({ o: 'info', m }), resposta('showInformationMessage', primeiroBotao(b))),
+    showWarningMessage: async (m, ...b) =>
+      (anota({ o: 'warn', m }), resposta('showWarningMessage', primeiroBotao(b))),
     showErrorMessage: async (m) => anota({ o: 'erro', m }),
     setStatusBarMessage: (m) => (anota({ o: 'statusBar', m }), { dispose() {} }),
     createOutputChannel: () => ({ appendLine() {}, append() {}, show() {}, dispose() {} }),

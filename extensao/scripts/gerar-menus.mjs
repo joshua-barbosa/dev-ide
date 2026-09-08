@@ -82,10 +82,13 @@ const FIXOS = [
   { cmd: 'desconectar', t: 'Desconectar', when: 'viewItem =~ /braytech\\.conexao\\.aberta/', g: '2_estado' },
   { cmd: 'recarregarConexao', t: 'Recarregar metadados', icone: '$(refresh)',
     when: 'viewItem =~ /braytech\\.conexao/', g: '2_estado', inline: true },
+  // Só onde o DRIVER diz que há arquivos / terminal — a mesma condição do
+  // painel (`driver?.kind === 'files'`, `driver?.hasTerminal === true`). Sem
+  // ela os dois apareciam em conexão de banco, onde a aba não tem nada dentro.
   { cmd: 'abrirServidorDaConexao', t: 'Abrir numa aba', icone: '$(server)',
-    when: 'viewItem =~ /braytech\\.conexao/', g: '3_ver', inline: true },
+    when: 'viewItem =~ /\\.comArquivos/', g: '3_ver', inline: true },
   { cmd: 'abrirTerminalDaConexao', t: 'Abrir no terminal', icone: '$(terminal)',
-    when: 'viewItem =~ /braytech\\.conexao/', g: '3_ver', inline: true },
+    when: 'viewItem =~ /\\.comTerminal/', g: '3_ver', inline: true },
   { cmd: 'verProcessos', t: 'Ver processos…', when: 'viewItem =~ /braytech\\.conexao/', g: '3_ver' },
   { cmd: 'editarConexao', t: 'Editar conexão…', when: 'viewItem =~ /braytech\\.conexao/', g: '9_editar' },
   { cmd: 'excluirConexao', t: 'Excluir conexão', icone: '$(trash)',

@@ -71,6 +71,11 @@ try {
       env: {
         ...process.env,
         PORT: String(PORTA_MOTOR),
+        // **`DEV_IDE_HOME` move o estado INTEIRO.** Sem ele o motor de teste
+        // grava as queries em `~/.dev-ide` — a pasta de verdade dele. Foi o que
+        // aconteceu na primeira execução da verificação 8: um `.sqlbook` de
+        // teste apareceu no diretório real. Nunca mais.
+        DEV_IDE_HOME: path.join(pasta, 'casa'),
         DEV_IDE_VAULT: path.join(pasta, 'vault.json'),
         DEV_IDE_SESSION: path.join(pasta, 'sessao.json'),
       },
@@ -437,6 +442,102 @@ try {
   // escrito `fechada` e o arnês me corrigiu.)
   marcar('a conexão diz se está aberta ou fechada',
     aConexao?.contextValue === 'braytech.conexao.aberta', String(aConexao?.contextValue));
+
+  // ---- 8. os comandos EXECUTADOS de verdade (spec 104, D305) ----
+  //
+  // Ele: *"o Diagrama ER não está funcionando, só na outra versão"*,
+  // *".sqlbook abre como JSON"*, *"as outras opções também estão dando o mesmo
+  // problema"*. A causa era uma só: eu escrevi os payloads DE CABEÇA, e quase
+  // todos estavam errados — `{current,next}` no lugar de `{atual,nova}`,
+  // `name` no lugar de `nome`, `r.markdown` num objeto que não tem markdown.
+  //
+  // Nenhum guarda anterior pegava isso: o comando existia, o item aparecia, e a
+  // rota respondia erro que sumia. Só EXECUTAR pega.
+  const { registrarComandos } = require_(`${RAIZ}/extensao/dist/comandosDaArvore.js`);
+
+  const feitos = [];
+  const contextoFalso = { subscriptions: [] };
+  const registrados = new Map();
+  const cmdOriginal = vsc.commands.registerCommand;
+  vsc.commands.registerCommand = (nome, fn) => {
+    registrados.set(nome, fn);
+    return { dispose() {} };
+  };
+  const pedirDeVerdade = async (metodo, rotaApi, corpo) => {
+    const r = await fetch(`http://127.0.0.1:${PORTA_MOTOR}${rotaApi}`, {
+      method: metodo,
+      ...(corpo === undefined
+        ? {}
+        : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) }),
+    }).then((x) => x.json());
+    feitos.push({ metodo, rota: rotaApi, ok: r.success === true, erro: r.error });
+    return r.success === true ? r.data : null;
+  };
+  registrarComandos(
+    contextoFalso,
+    {
+      motor: motorDaArvore,
+      pedir: pedirDeVerdade,
+      abrirFormulario() {}, abrirAbaDaIde: (t, titulo, d) => feitos.push({ aba: t, d }),
+      abrirDiagrama: (t, md) => feitos.push({ diagrama: t, markdown: md }),
+      abrirDialogo() {}, abrirTerminal() {}, salvarArquivo: async () => {},
+      abrirQuery: async () => {}, definirConexaoAtiva() {}, recarregarTudo() {},
+    },
+    [arvore]
+  );
+  vsc.commands.registerCommand = cmdOriginal;
+
+  // O cofre foi trancado na verificação 6: destranca para os comandos rodarem.
+  await api('/api/connections/vault/unlock', { password: SENHA });
+  arvore.recarregar();
+  const raizes2 = await arvore.getChildren(undefined);
+  const conexao2 = await primeiraConexao(raizes2);
+  const dentro2 = await arvore.getChildren(conexao2);
+  const main = dentro2.find((i) => typeof i.meta.database === 'string') ?? dentro2[0];
+
+  // (a) Diagrama ER — o que ele disse que não funciona.
+  global.__RESPOSTAS = {};
+  await registrados.get('braytech.diagramaEr')?.(main);
+  const oDiagrama = feitos.find((f) => f.diagrama !== undefined);
+  marcar('Diagrama ER produz o markdown do Mermaid',
+    typeof oDiagrama?.markdown === 'string' && oDiagrama.markdown.includes('erDiagram'),
+    oDiagrama === undefined ? 'não abriu' : `${oDiagrama.markdown.length} caracteres`);
+
+  // (b) criar query com os campos certos, e o `.sqlbook` indo para o CADERNO.
+  global.__RESPOSTAS = { showInputBox: 'do-teste.sqlbook' };
+  await registrados.get('braytech.novoQueryBook')?.(main);
+  const criou = feitos.find((f) => f.rota === '/api/queries' && f.metodo === 'POST');
+  marcar('criar query usa os campos que a rota espera', criou?.ok === true, criou?.erro ?? 'ok');
+  const oCaderno = feitos.find((f) => f.aba === 'caderno');
+  marcar('`.sqlbook` abre como CADERNO, não como JSON', oCaderno !== undefined,
+    oCaderno === undefined ? 'abriu como texto' : String(oCaderno.d.caminho));
+
+  // (c) a troca de senha-mestra, com os nomes certos.
+  global.__RESPOSTAS = { showInputBox: SENHA };
+  await registrados.get('braytech.trocarSenhaMestra')?.({});
+  const senha = feitos.find((f) => f.rota === '/api/connections/vault/password');
+  marcar('trocar a senha-mestra chega com `atual` e `nova`', senha?.ok === true,
+    senha === undefined ? 'nem chamou' : (senha.erro ?? 'ok'));
+
+  // (d) exportar: a rota tem de aceitar, senão o arquivo sai vazio.
+  await registrados.get('braytech.exportarConexoes')?.({});
+  const exportou = feitos.find((f) => f.rota === '/api/connections/export-all');
+  marcar('exportar conexões responde com sucesso', exportou?.ok === true,
+    exportou === undefined ? 'nem chamou' : (exportou.erro ?? 'ok'));
+
+  // (e) recarregar metadados e conectar.
+  await registrados.get('braytech.recarregarConexao')?.(conexao2);
+  const reconectou = feitos.find((f) => f.rota.endsWith('/connect'));
+  marcar('recarregar metadados chama `connect`', reconectou?.ok === true,
+    reconectou?.erro ?? 'ok');
+
+  // **Nenhuma rota pode ter respondido erro.** É o guarda de verdade: qualquer
+  // payload que eu escreva de cabeça cai aqui.
+  const comErro = feitos.filter((f) => f.ok === false);
+  marcar('nenhum comando executado deu erro no motor', comErro.length === 0,
+    comErro.length === 0
+      ? `${feitos.filter((f) => f.ok !== undefined).length} chamadas`
+      : comErro.map((f) => `${f.rota}: ${f.erro}`).join(' | '));
 
 } finally {
   console.log(linhas.join('\n'));

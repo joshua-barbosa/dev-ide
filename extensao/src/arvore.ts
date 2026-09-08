@@ -453,8 +453,11 @@ export class ArvoreDeConexoes
         // grupo e rótulo, e `Conectar`/`Desconectar` são itens diferentes.
         { grupo: grupo.path, rotulo: c.label, tipo: c.type, aberta: this.abertas.has(c.id) }
       );
+      const pode = this.capacidadesPorTipo.get(c.type);
       item.contextValue =
-        `braytech.conexao.${this.abertas.has(c.id) ? 'aberta' : 'fechada'}`;
+        `braytech.conexao.${this.abertas.has(c.id) ? 'aberta' : 'fechada'}` +
+        (pode?.arquivos === true ? '.comArquivos' : '') +
+        (pode?.terminal === true ? '.comTerminal' : '');
       return item;
     });
     return [...pastas, ...conexoes];
@@ -471,6 +474,15 @@ export class ArvoreDeConexoes
   }
 
   private catalogo = new Map<string, string>();
+
+  /**
+   * O que cada driver SABE fazer, por tipo.
+   *
+   * É o mesmo `kind`/`hasTerminal` que o painel da IDE consulta para decidir se
+   * desenha `Abrir numa aba` e `Abrir no terminal`. Sem isto os dois apareciam
+   * em conexão de BANCO, onde a aba não teria nada dentro — foi o que ele viu.
+   */
+  private capacidadesPorTipo = new Map<string, { arquivos: boolean; terminal: boolean }>();
 
   /**
    * As conexões abertas, para o menu dizer `Desconectar` em vez de `Conectar`.
@@ -500,13 +512,25 @@ export class ArvoreDeConexoes
   private lerDrivers(): Promise<readonly DriverPublico[]> {
     // O catálogo de drivers não muda enquanto o motor vive: uma vez basta.
     this.drivers ??= this.motor
-      .pedir<readonly (DriverPublico & { readonly icon?: string })[]>(
+      .pedir<
+        readonly (DriverPublico & {
+          readonly icon?: string;
+          readonly kind?: string;
+          readonly hasTerminal?: boolean;
+        })[]
+      >(
         'GET',
         '/api/connections/drivers'
       )
       .then((lista) => {
         this.catalogo = new Map(
           lista.flatMap((d) => (d.icon === undefined ? [] : [[d.type, d.icon] as const]))
+        );
+        this.capacidadesPorTipo = new Map(
+          lista.map((d) => [
+            d.type,
+            { arquivos: d.kind === 'files', terminal: d.hasTerminal === true },
+          ])
         );
         return lista;
       });

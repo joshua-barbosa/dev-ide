@@ -25,6 +25,7 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import type { Motor } from './motor';
 import type { ArvoreDeConexoes, ItemDaArvore } from './arvore';
+import { documentoDoDiagrama, type DiagramaER } from './diagrama-er';
 
 /** O que os comandos precisam do resto da extensão. */
 export interface DepsDosComandos {
@@ -49,6 +50,32 @@ export interface DepsDosComandos {
 }
 
 const texto = (v: unknown): string => (typeof v === 'string' ? v : '');
+
+/**
+ * Abre um arquivo de query — e `.sqlbook` NÃO é texto.
+ *
+ * Ele viu: *".sqlbook abre como JSON e não igual o outro"*. O caderno tem
+ * formato próprio, e mostrado como texto vira o JSON cru. A IDE manda
+ * `abrirCaderno`, com o VÍNCULO junto: sem ele o bloco de SQL não teria contra
+ * quem rodar.
+ */
+async function abrirArquivoDeQuery(
+  deps: DepsDosComandos,
+  caminho: string,
+  connectionId: string,
+  database: string
+): Promise<void> {
+  if (caminho.endsWith('.sqlbook')) {
+    deps.abrirAbaDaIde('caderno', caminho.split('/').pop() ?? 'Caderno', {
+      caminho,
+      connectionId,
+      database,
+    });
+    return;
+  }
+  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(caminho));
+  await vscode.window.showTextDocument(doc);
+}
 
 /** O caminho remoto do item, ou `null` quando ele não é um nó de arquivo. */
 function remotoDe(item: ItemDaArvore): string | null {
@@ -94,7 +121,9 @@ export function registrarComandos(
   // Recarregar metadados é `connect` de novo: é o que a IDE faz, e o que
   // devolve a árvore em dia depois de um `CREATE TABLE` feito fora daqui.
   registrar('braytech.recarregarConexao', async (item) => {
-    const r = await deps.pedir('POST', rota(item, '/connect'), { refresh: true });
+    // `connect` puro: a rota não tem `refresh`, e mandar um campo que ela
+    // ignora dava a impressão de recarregar sem recarregar.
+    const r = await deps.pedir('POST', rota(item, '/connect'));
     if (r === null) return;
     deps.recarregarTudo();
   });
@@ -143,15 +172,15 @@ export function registrarComandos(
       if (base === undefined || base.trim() === '') return;
       const nomeFinal = base.endsWith(extensao) ? base : `${base}${extensao}`;
       const database = texto(item.meta.database);
-      const r = await deps.pedir<{ path: string }>('POST', '/api/queries', {
+      // `nome`, e não `name`/`content`: os campos da rota, conferidos no
+      // `Api.createQuery`. Com os errados a criação falhava sem dizer.
+      const r = await deps.pedir<{ caminho: string }>('POST', '/api/queries', {
         connectionId: item.conexao,
         database,
-        name: nomeFinal,
-        content: '',
+        nome: nomeFinal,
       });
       if (r === null) return;
-      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(r.path));
-      await vscode.window.showTextDocument(doc);
+      await abrirArquivoDeQuery(deps, r.caminho, item.conexao, database);
       deps.recarregarTudo();
     });
   }
@@ -226,14 +255,18 @@ export function registrarComandos(
       'Executar'
     );
     if (ok !== 'Executar') return;
-    const r = await deps.pedir<{ output: string; code: number }>(
+    // A rota devolve `{ stdout, stderr, code }` — não um `output` só, que era
+    // o que eu lia. Com o campo errado a saída vinha sempre vazia.
+    const r = await deps.pedir<{ stdout: string; stderr: string; code: number | null }>(
       'POST',
       rota(item, '/files/execute'),
       { path: alvo }
     );
     if (r === null) return;
     const doc = await vscode.workspace.openTextDocument({
-      content: `$ ${alvo}\n(código ${r.code})\n\n${r.output}`,
+      content:
+        `$ ${alvo}\n(código ${r.code ?? '?'})\n\n${r.stdout}` +
+        (r.stderr === '' ? '' : `\n--- stderr ---\n${r.stderr}`),
     });
     await vscode.window.showTextDocument(doc);
   });
@@ -262,8 +295,10 @@ export function registrarComandos(
       void vscode.window.showErrorMessage('Braytech Code: as senhas não conferem.');
       return;
     }
+    // `{ atual, nova }` — os nomes que a rota espera. Eu tinha escrito
+    // `{ current, next }` de cabeça, e a troca falhava calada.
     const r = await deps.pedir('POST', '/api/connections/vault/password', {
-      current: atual, next: nova,
+      atual, nova,
     });
     if (r === null) return;
     void vscode.window.showInformationMessage('Braytech Code: senha-mestra trocada.');
@@ -278,7 +313,7 @@ export function registrarComandos(
       'Exportar'
     );
     if (ok !== 'Exportar') return;
-    const r = await deps.pedir<unknown>('POST', '/api/connections/export-all', {});
+    const r = await deps.pedir<unknown>('POST', '/api/connections/export-all');
     if (r === null) return;
     await deps.salvarArquivo('conexoes-braytech.json', JSON.stringify(r, null, 2));
   }));
@@ -299,10 +334,29 @@ export function registrarComandos(
       void vscode.window.showErrorMessage('Braytech Code: o arquivo não é um JSON válido.');
       return;
     }
-    const r = await deps.pedir('POST', '/api/connections/import', conteudo);
+    // A rota espera `{ conexoes, politica }` — mandar o arquivo cru, como eu
+    // fazia, importava ZERO conexões e não dizia por quê.
+    const lista = Array.isArray(conteudo)
+      ? conteudo
+      : ((conteudo as { conexoes?: unknown }).conexoes ?? []);
+    if (!Array.isArray(lista) || lista.length === 0) {
+      void vscode.window.showErrorMessage('Braytech Code: o arquivo não tem conexões.');
+      return;
+    }
+    const politica = await vscode.window.showQuickPick(
+      ['pular', 'substituir', 'duplicar'],
+      { placeHolder: 'O que fazer com as conexões que já existem?' }
+    );
+    if (politica === undefined) return;
+    const r = await deps.pedir<{ criadas: number; substituidas: number; puladas: number }>(
+      'POST', '/api/connections/import', { conexoes: lista, politica }
+    );
     if (r === null) return;
     deps.recarregarTudo();
-    void vscode.window.showInformationMessage('Braytech Code: conexões importadas.');
+    void vscode.window.showInformationMessage(
+      `Braytech Code: ${r.criadas} criada(s), ${r.substituidas} substituída(s), ` +
+        `${r.puladas} pulada(s).`
+    );
   }));
 
   registrar('braytech.alternarCofre', semItem(async () => {
@@ -381,7 +435,14 @@ export function registrarComandos(
       prompt: 'Novo nome', value: path.basename(caminho), ignoreFocusOut: true,
     });
     if (nome === undefined || nome.trim() === '') return;
-    const r = await deps.pedir('POST', '/api/queries/rename', { path: caminho, name: nome.trim() });
+    // `{ connectionId, database, de, para }` — a rota trabalha por VÍNCULO e
+    // NOME, não por caminho em disco.
+    const r = await deps.pedir('POST', '/api/queries/rename', {
+      connectionId: item.conexao,
+      database: texto(item.meta.database),
+      de: path.basename(caminho),
+      para: nome.trim(),
+    });
     if (r === null) return;
     deps.recarregarTudo();
   });
@@ -393,7 +454,11 @@ export function registrarComandos(
       `Apagar "${path.basename(caminho)}"?`, { modal: true }, 'Apagar'
     );
     if (ok !== 'Apagar') return;
-    const r = await deps.pedir('DELETE', `/api/queries?path=${encodeURIComponent(caminho)}`);
+    const r = await deps.pedir('DELETE', '/api/queries', {
+      connectionId: item.conexao,
+      database: texto(item.meta.database),
+      nome: path.basename(caminho),
+    });
     if (r === null) return;
     deps.recarregarTudo();
   });
@@ -402,7 +467,9 @@ export function registrarComandos(
   registrar('braytech.favoritarRemoto', async (item) => {
     const alvo = remotoDe(item);
     if (alvo === null) return;
-    const r = await deps.pedir('POST', rota(item, '/files/favorites'), { path: alvo });
+    const r = await deps.pedir<readonly string[]>(
+      'POST', rota(item, '/files/favorites'), { path: alvo }
+    );
     if (r === null) return;
     deps.recarregarTudo();
   });
@@ -422,12 +489,18 @@ async function abrirEr(
   const rotulo = String(item.label ?? '');
   const busca = new URLSearchParams();
   for (const p of item.nodePath) busca.append('path', p);
-  const r = await deps.pedir<{ markdown: string }>(
+  // **A rota devolve o DIAGRAMA, não o markdown.** Eu lia `r.markdown`, que não
+  // existe, e o diagrama abria vazio — foi o "só funciona na outra versão".
+  // Quem transforma um no outro é `documentoDoDiagrama`, o MESMO que a IDE usa.
+  const r = await deps.pedir<DiagramaER>(
     'GET',
     `/api/connections/${encodeURIComponent(item.conexao)}/er?${busca.toString()}`
   );
   if (r === null) return;
-  deps.abrirDiagrama(daTabela ? `${rotulo} e vizinhos` : rotulo, r.markdown);
+  deps.abrirDiagrama(
+    `Diagrama ER — ${daTabela ? `${rotulo} e vizinhos` : rotulo}`,
+    documentoDoDiagrama(r)
+  );
 }
 
 async function criarRemoto(
@@ -443,10 +516,12 @@ async function criarRemoto(
   });
   if (nome === undefined || nome.trim() === '') return;
   const destino = path.posix.join(pasta, nome.trim());
+  // Arquivo vai por `POST /files` com `content`; pasta por `POST /files/mkdir`.
+  // Sem o `content`, criar arquivo respondia erro de corpo inválido.
   const r = await deps.pedir(
     'POST',
     `/api/connections/${encodeURIComponent(item.conexao)}/files${tipo === 'pasta' ? '/mkdir' : ''}`,
-    { path: destino }
+    tipo === 'pasta' ? { path: destino } : { path: destino, content: '' }
   );
   if (r === null) return;
   deps.recarregarTudo();

@@ -768,12 +768,12 @@
         },
         {
           "command": "braytech.abrirServidorDaConexao",
-          "when": "viewItem =~ /braytech\\.conexao/",
+          "when": "viewItem =~ /\\.comArquivos/",
           "group": "inline"
         },
         {
           "command": "braytech.abrirTerminalDaConexao",
-          "when": "viewItem =~ /braytech\\.conexao/",
+          "when": "viewItem =~ /\\.comTerminal/",
           "group": "inline"
         },
         {
