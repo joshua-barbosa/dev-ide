@@ -17,8 +17,13 @@
       "activitybar": [
         {
           "id": "braytech",
-          "title": "Braytech Code",
+          "title": "Databases",
           "icon": "recursos/barra.svg"
+        },
+        {
+          "id": "braytech-servicos",
+          "title": "Services",
+          "icon": "recursos/barra-servicos.svg"
         }
       ]
     },
@@ -28,7 +33,9 @@
           "id": "braytech.databases",
           "name": "Databases",
           "type": "webview"
-        },
+        }
+      ],
+      "braytech-servicos": [
         {
           "id": "braytech.servicos",
           "name": "Services",
