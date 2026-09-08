@@ -568,6 +568,73 @@ try {
   marcar('recarregar metadados chama `connect`', reconectou?.ok === true,
     reconectou?.erro ?? 'ok');
 
+  // (f) o `+` da pasta Query PERGUNTA o tipo, e os diálogos recebem o pedido
+  //     que eles realmente leem.
+  const perguntas = [];
+  const quickOriginal = vsc.window.showQuickPick;
+  vsc.window.showQuickPick = async (itens, o) => {
+    perguntas.push({ itens, o });
+    return itens?.[1];  // escolhe "Caderno", para o caminho do .sqlbook
+  };
+  global.__RESPOSTAS = { showInputBox: 'perguntado.sqlbook' };
+  await registrados.get('braytech.novaQuery')?.(pastaQuery);
+  vsc.window.showQuickPick = quickOriginal;
+  const aPergunta = perguntas.find((p) => (p.itens ?? []).some((i) => i.valor === 'sqlbook'));
+  marcar('o `+` da Query pergunta SQL ou Query Book', aPergunta !== undefined,
+    aPergunta === undefined
+      ? 'não perguntou — criou direto'
+      : aPergunta.itens.map((i) => i.label).join(' / '));
+
+  // (g) os DIÁLOGOS recebem o pedido que o webview realmente lê.
+  //
+  // Eu mandava `{connectionId, nodePath}` e o diálogo lê `{id, caminho, ...}`:
+  // abria vazio, e clicar não fazia nada. Aqui os campos são conferidos pelo
+  // NOME, que é o que estava errado.
+  const pedidos = [];
+  const registradosComDialogo = new Map();
+  vsc.commands.registerCommand = (nome, fn) => {
+    registradosComDialogo.set(nome, fn);
+    return { dispose() {} };
+  };
+  registrarComandos(
+    { subscriptions: [] },
+    {
+      motor: motorDaArvore, pedir: pedirDeVerdade,
+      abrirFormulario() {}, abrirAbaDaIde() {}, abrirDiagrama() {},
+      abrirDialogo: (qual, pedido) => pedidos.push({ qual, pedido }),
+      abrirTerminal() {}, salvarArquivo: async () => {}, abrirQuery: async () => {},
+      definirConexaoAtiva() {}, recarregarTudo() {},
+    },
+    [arvore]
+  );
+  vsc.commands.registerCommand = cmdOriginal;
+
+  const filhosDoDb = await arvore.getChildren(comDatabase);
+  const categoria = filhosDoDb.find((i) => i.meta.categoria === true);
+  const comTemplate = filhosDoDb.find((i) => typeof i.meta.template === 'string');
+  marcar('existe categoria com filtro na árvore', categoria !== undefined,
+    categoria === undefined ? 'nenhuma' : String(categoria.label));
+
+  if (categoria !== undefined) {
+    await registradosComDialogo.get('braytech.filtrarCategoria')?.(categoria);
+    const oFiltro = pedidos.find((p) => p.qual === 'filtro');
+    const faltam = ['id', 'caminho', 'rotulo', 'criterios'].filter(
+      (c) => oFiltro?.pedido?.[c] === undefined
+    );
+    marcar('o diálogo de FILTRO recebe os campos que lê', oFiltro !== undefined && faltam.length === 0,
+      oFiltro === undefined ? 'não abriu' : (faltam.length === 0 ? 'id, caminho, rotulo, criterios' : `faltam: ${faltam.join(', ')}`));
+  }
+
+  if (comTemplate !== undefined) {
+    await registradosComDialogo.get('braytech.criarObjeto')?.(comTemplate);
+    const aCriacao = pedidos.find((p) => p.qual === 'criacao');
+    const faltam = ['id', 'caminho', 'rotulo', 'nomeBase', 'esqueleto'].filter(
+      (c) => aCriacao?.pedido?.[c] === undefined
+    );
+    marcar('o diálogo de CRIAÇÃO recebe o esqueleto', aCriacao !== undefined && faltam.length === 0,
+      aCriacao === undefined ? 'não abriu' : (faltam.length === 0 ? String(aCriacao.pedido.nomeBase) : `faltam: ${faltam.join(', ')}`));
+  }
+
   // ---- 9. os ícones que CADA LINHA ganha (D308) ----
   //
   // Ele: *"você adicionou o botão Adicionar quando coloca o mouse em cima dos
@@ -597,7 +664,7 @@ try {
   };
 
   conferirLinha('arquivo .sqlbook', oSqlbook, ['renomearQuery', 'apagarQuery']);
-  conferirLinha('pasta Query', pastaQuery, ['novaQuerySql']);
+  conferirLinha('pasta Query', pastaQuery, ['novaQuery']);
   conferirLinha('grupo', raizes3[0], ['renomearGrupo', 'novaConexaoNoGrupo']);
   // SQLite não tem terminal nem arquivos: `abrirServidor` e `abrirTerminal`
   // NÃO podem aparecer aqui — foi o outro defeito que ele viu.

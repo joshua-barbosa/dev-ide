@@ -110,8 +110,11 @@ const FIXOS = [
     when: 'viewItem =~ /\\.categoria/', g: '3_ver', inline: true },
   { cmd: 'criarObjeto', t: 'Criar aqui…', icone: '$(add)',
     when: 'viewItem =~ /\\.template/', g: '4_criar', inline: true },
-  { cmd: 'novaQuerySql', t: 'Nova query SQL…', icone: '$(add)',
+  // O `+` PERGUNTA o tipo, como na IDE — os dois diretos ficam no botão
+  // direito, para quem já sabe o que quer.
+  { cmd: 'novaQuery', t: 'Nova query — SQL ou Query Book', icone: '$(add)',
     when: 'viewItem =~ /\\.queries/', g: '4_criar', inline: true },
+  { cmd: 'novaQuerySql', t: 'Nova query SQL…', when: 'viewItem =~ /\\.queries/', g: '4_criar' },
   { cmd: 'novoQueryBook', t: 'Novo Query Book…', when: 'viewItem =~ /\\.queries/', g: '4_criar' },
 
   // --- arquivo de query ---

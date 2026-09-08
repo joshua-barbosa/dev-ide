@@ -245,6 +245,11 @@
         "icon": "$(star-empty)"
       },
       {
+        "command": "braytech.novaQuery",
+        "title": "Braytech: Nova query — SQL ou Query Book",
+        "icon": "$(add)"
+      },
+      {
         "command": "braytech.acao.select",
         "title": "Braytech: Abrir consulta"
       },
@@ -532,6 +537,10 @@
         },
         {
           "command": "braytech.criarObjeto",
+          "when": "false"
+        },
+        {
+          "command": "braytech.novaQuery",
           "when": "false"
         },
         {
@@ -832,9 +841,14 @@
           "group": "inline"
         },
         {
-          "command": "braytech.novaQuerySql",
+          "command": "braytech.novaQuery",
           "when": "viewItem =~ /\\.queries/",
           "group": "inline"
+        },
+        {
+          "command": "braytech.novaQuerySql",
+          "when": "viewItem =~ /\\.queries/",
+          "group": "4_criar"
         },
         {
           "command": "braytech.novoQueryBook",

@@ -159,31 +159,50 @@ export function registrarComandos(
   registrar('braytech.diagramaEr', (item) => abrirEr(deps, item, false));
   registrar('braytech.diagramaDaTabela', (item) => abrirEr(deps, item, true));
 
-  for (const [nome, extensao] of [
-    ['braytech.novaQuerySql', '.sql'],
-    ['braytech.novoQueryBook', '.sqlbook'],
-  ] as const) {
-    registrar(nome, async (item) => {
-      const base = await vscode.window.showInputBox({
-        prompt: `Nome do arquivo (${extensao})`,
-        value: `consulta${extensao}`,
-        ignoreFocusOut: true,
-      });
-      if (base === undefined || base.trim() === '') return;
-      const nomeFinal = base.endsWith(extensao) ? base : `${base}${extensao}`;
-      const database = texto(item.meta.database);
-      // `nome`, e não `name`/`content`: os campos da rota, conferidos no
-      // `Api.createQuery`. Com os errados a criação falhava sem dizer.
-      const r = await deps.pedir<{ caminho: string }>('POST', '/api/queries', {
-        connectionId: item.conexao,
-        database,
-        nome: nomeFinal,
-      });
-      if (r === null) return;
-      await abrirArquivoDeQuery(deps, r.caminho, item.conexao, database);
-      deps.recarregarTudo();
+  // **O `+` da pasta Query PERGUNTA o que criar.**
+  //
+  // Ele: *"quando clica para adicionar algum novo no Query ele também não
+  // pergunta se é SQL ou SQLBOOK"*. A IDE pergunta — `acoes.ts`, `novaQuery` —
+  // e o rótulo dela diz por quê: *"um `+` que não diz o que acrescenta só serve
+  // para quem já sabe"*. Eu tinha amarrado o botão em `.sql`.
+  const criarQuery = async (item: ItemDaArvore, tipo?: 'sql' | 'sqlbook'): Promise<void> => {
+    const escolhido =
+      tipo ??
+      (
+        await vscode.window.showQuickPick(
+          [
+            { label: 'Query SQL', detail: 'Um arquivo .sql', valor: 'sql' as const },
+            { label: 'Caderno', detail: 'Um .sqlbook, com blocos', valor: 'sqlbook' as const },
+          ],
+          { placeHolder: 'O que criar nesta conexão?' }
+        )
+      )?.valor;
+    if (escolhido === undefined) return;
+
+    const extensao = escolhido === 'sqlbook' ? '.sqlbook' : '.sql';
+    const base = await vscode.window.showInputBox({
+      prompt: 'Nome do arquivo',
+      value: `consulta${extensao}`,
+      ignoreFocusOut: true,
     });
-  }
+    if (base === undefined || base.trim() === '') return;
+    const nomeFinal = base.trim().endsWith(extensao) ? base.trim() : `${base.trim()}${extensao}`;
+    const database = texto(item.meta.database);
+    // `nome`, e não `name`/`content`: os campos da rota, conferidos no
+    // `Api.createQuery`.
+    const r = await deps.pedir<{ caminho: string }>('POST', '/api/queries', {
+      connectionId: item.conexao,
+      database,
+      nome: nomeFinal,
+    });
+    if (r === null) return;
+    await abrirArquivoDeQuery(deps, r.caminho, item.conexao, database);
+    deps.recarregarTudo();
+  };
+
+  registrar('braytech.novaQuery', (item) => criarQuery(item));
+  registrar('braytech.novaQuerySql', (item) => criarQuery(item, 'sql'));
+  registrar('braytech.novoQueryBook', (item) => criarQuery(item, 'sqlbook'));
 
   // ---- do arquivo remoto (spec 053) ----
   registrar('braytech.copiarCaminho', (item) => {
@@ -410,22 +429,40 @@ export function registrarComandos(
     void deps.abrirQuery(item.conexao, texto(item.meta.database), 'Nova consulta', '');
   });
 
-  registrar('braytech.criarObjeto', (item) =>
+  // `PedidoDeCriacao`: `{ id, caminho, rotulo, nomeBase, esqueleto, database,
+  // somenteLeitura }`. O ESQUELETO é o `meta.template` do driver — sem ele o
+  // diálogo abria em branco.
+  registrar('braytech.criarObjeto', (item) => {
+    const rotulo = String(item.label ?? '');
     deps.abrirDialogo('criacao', {
-      connectionId: item.conexao,
-      nodePath: item.nodePath,
-      template: texto(item.meta.template),
-      rotulo: String(item.label ?? ''),
-    })
-  );
+      id: item.conexao,
+      caminho: item.nodePath,
+      rotulo,
+      nomeBase: `novo_${rotulo.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+      esqueleto: texto(item.meta.template),
+      database: typeof item.meta.database === 'string' ? item.meta.database : null,
+      somenteLeitura: false,
+    });
+  });
 
-  registrar('braytech.filtrarCategoria', (item) =>
+  // O diálogo espera `{ id, caminho, rotulo, criterios, atual }` — eu mandava
+  // `{ connectionId, nodePath }`, que ele não lê. Abria vazio, e clicar não
+  // fazia nada. Os nomes vêm do `PedidoDeFiltro`, conferidos no fonte.
+  registrar('braytech.filtrarCategoria', async (item) => {
+    const guardados = await deps.pedir<Record<string, unknown>>(
+      'GET',
+      `/api/connections/${encodeURIComponent(item.conexao)}/tree-filters`
+    );
+    const chave = item.nodePath.join('\u0000');
+    const criterios = Array.isArray(item.meta.criterios) ? item.meta.criterios : ['nome'];
     deps.abrirDialogo('filtro', {
-      connectionId: item.conexao,
-      nodePath: item.nodePath,
+      id: item.conexao,
+      caminho: item.nodePath,
       rotulo: String(item.label ?? ''),
-    })
-  );
+      criterios,
+      atual: guardados?.[chave] ?? null,
+    });
+  });
 
   // ---- do arquivo de QUERY (hover) ----
   registrar('braytech.renomearQuery', async (item) => {
