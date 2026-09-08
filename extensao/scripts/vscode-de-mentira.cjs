@@ -25,10 +25,13 @@ const resposta = (chave, padrao) => {
 };
 
 class Uri {
-  constructor(caminho, esquema = 'file') {
+  // A AUTORIDADE existe: no esquema `braytech:` ela é o id da conexão, e
+  // esquecê-la aqui fazia o arquivo remoto ser lido de "conexão undefined".
+  constructor(caminho, esquema = 'file', autoridade = '') {
     this.fsPath = caminho;
     this.path = caminho;
     this.scheme = esquema;
+    this.authority = autoridade;
   }
   static file(p) { return new Uri(p); }
   // `file:///tmp/x` vira `/tmp/x`, como no editor: a soltura entrega URI, e um
@@ -38,9 +41,13 @@ class Uri {
     if (m === null) return new Uri(String(p));
     return new Uri(decodeURIComponent(m[2]), m[1]);
   }
-  static from(o) { return new Uri(o.path, o.scheme); }
+  static from(o) { return new Uri(o.path, o.scheme, o.authority ?? ''); }
   static joinPath(base, ...pedacos) { return new Uri([base.fsPath, ...pedacos].join('/')); }
-  toString() { return `${this.scheme}:${this.fsPath}`; }
+  toString() {
+    return this.authority === ''
+      ? `${this.scheme}:${this.fsPath}`
+      : `${this.scheme}://${this.authority}${this.fsPath}`;
+  }
 }
 
 /** O que o `TreeItem` do editor guarda, e que a árvore preenche. */
@@ -139,6 +146,7 @@ module.exports = {
     },
   },
   FileType: { Unknown: 0, File: 1, Directory: 2, SymbolicLink: 64 },
+  FileChangeType: { Changed: 1, Created: 2, Deleted: 3 },
   languages: { registerCompletionItemProvider: () => ({ dispose() {} }) },
   env: {
     clipboard: { writeText: async (t) => anota({ o: 'clipboard', t }) },

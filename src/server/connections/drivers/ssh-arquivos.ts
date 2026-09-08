@@ -8,6 +8,7 @@
 // Esconder o botão de subir na tela não é fronteira: qualquer chamada direta à
 // rota passaria por cima. Por isso todo caminho entra por `dentroDaCerca`.
 import type { SFTPWrapper } from 'ssh2';
+import { ordemDeApagar } from '../../../shared/arquivos/apagar-recursivo';
 import { dentroDaRaiz, normalizarRemoto } from '../../../shared/remoto/caminho';
 import {
   entradaDe,
@@ -169,11 +170,22 @@ export function criarArquivosRemotos(ctx: ContextoDeArquivos): RemoteFiles {
       const ehPasta = await prometer<boolean>((pronto) =>
         sftp.stat(alvo, (e, attrs) => pronto(e, attrs?.isDirectory() === true))
       );
-      await prometer<void>((pronto) =>
-        ehPasta
-          ? sftp.rmdir(alvo, (e) => pronto(e, undefined))
-          : sftp.unlink(alvo, (e) => pronto(e, undefined))
-      );
+
+      // **De dentro para fora.** O `rmdir` do SFTP só apaga pasta VAZIA: numa
+      // pasta com conteúdo ele responde `Failure`, que foi o que ele viu em
+      // 08/09/2026 — e a confirmação da IDE já prometia levar tudo junto.
+      const passos = await ordemDeApagar(alvo, ehPasta, async (pasta) => {
+        const entradas = await listarEntradas(ctx, pasta);
+        return entradas.map((e) => ({ nome: e.name, pasta: e.kind === 'folder' }));
+      });
+
+      for (const passo of passos) {
+        await prometer<void>((pronto) =>
+          passo.pasta
+            ? sftp.rmdir(passo.caminho, (e) => pronto(e, undefined))
+            : sftp.unlink(passo.caminho, (e) => pronto(e, undefined))
+        );
+      }
     },
 
     rename: async (from, to) => {

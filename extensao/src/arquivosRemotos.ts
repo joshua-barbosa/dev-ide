@@ -15,9 +15,8 @@
 import * as vscode from 'vscode';
 import type { Motor } from './motor';
 
-interface ArquivoRemoto {
-  readonly content: string;
-}
+/** Por quanto tempo os bytes lidos valem, entre o `stat` e o `readFile`. */
+const VALIDADE_DO_CACHE_MS = 5_000;
 
 /** O caminho POSIX dentro do servidor. Remoto é POSIX por protocolo. */
 function caminhoDe(uri: vscode.Uri): string {
@@ -36,10 +35,40 @@ export class ArquivosRemotos implements vscode.FileSystemProvider {
   private readonly mudou = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
   readonly onDidChangeFile = this.mudou.event;
 
-  /** Tamanho do que já foi lido, para o `stat` não mentir sobre o arquivo. */
-  private readonly tamanhos = new Map<string, number>();
+  /**
+   * Os bytes já lidos, por pouco tempo.
+   *
+   * O editor chama `stat` ANTES de `readFile`, e um `stat` que devolve tamanho
+   * zero faz a prévia de imagem desistir. Como não há rota de `stat` no motor,
+   * o tamanho honesto sai da própria leitura — e guardá-la por alguns segundos
+   * evita ler o mesmo arquivo duas vezes para abrir uma vez.
+   */
+  private readonly cache = new Map<string, { bytes: Uint8Array; em: number }>();
 
   constructor(private readonly motor: Motor) {}
+
+  /**
+   * Os bytes do arquivo, **como estão**.
+   *
+   * Pela rota binária, e não pela de texto: a de texto devolve o conteúdo já
+   * decodificado em UTF-8, e um PNG que passa por isso volta CORROMPIDO. Foi
+   * assim que abrir uma imagem virou *"File seems to be binary and cannot be
+   * opened as text"* — e, mesmo que abrisse, o arquivo estaria estragado.
+   */
+  private async ler(uri: vscode.Uri): Promise<Uint8Array> {
+    const chave = uri.toString();
+    const guardado = this.cache.get(chave);
+    if (guardado !== undefined && Date.now() - guardado.em < VALIDADE_DO_CACHE_MS) {
+      return guardado.bytes;
+    }
+    const bytes = await this.motor.pedirBytes(
+      'GET',
+      `/api/connections/${encodeURIComponent(uri.authority)}/files/bytes` +
+        `?path=${encodeURIComponent(caminhoDe(uri))}`
+    );
+    this.cache.set(chave, { bytes, em: Date.now() });
+    return bytes;
+  }
 
   watch(): vscode.Disposable {
     // O motor não avisa mudança em arquivo remoto, e inventar um relógio que
@@ -48,12 +77,13 @@ export class ArquivosRemotos implements vscode.FileSystemProvider {
     return new vscode.Disposable(() => undefined);
   }
 
-  stat(uri: vscode.Uri): vscode.FileStat {
+  async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
     return {
       type: vscode.FileType.File,
       ctime: 0,
       mtime: Date.now(),
-      size: this.tamanhos.get(uri.toString()) ?? 0,
+      // O tamanho de verdade: a prévia de imagem o consulta antes de desenhar.
+      size: (await this.ler(uri)).byteLength,
     };
   }
 
@@ -64,24 +94,24 @@ export class ArquivosRemotos implements vscode.FileSystemProvider {
   }
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
-    const r = await this.motor.pedir<ArquivoRemoto>(
-      'GET',
-      `/api/connections/${encodeURIComponent(uri.authority)}/files` +
-        `?path=${encodeURIComponent(caminhoDe(uri))}`
-    );
-    const bytes = new TextEncoder().encode(r.content);
-    this.tamanhos.set(uri.toString(), bytes.byteLength);
-    return bytes;
+    return this.ler(uri);
   }
 
+  /**
+   * Grava **em bytes**, pela rota de upload.
+   *
+   * A rota de texto passaria o conteúdo por UTF-8, e salvar um binário por ela
+   * o destruiria — inclusive um arquivo que ele só abriu para olhar e o editor
+   * salvou por formatação automática.
+   */
   async writeFile(uri: vscode.Uri, conteudo: Uint8Array): Promise<void> {
-    const texto = new TextDecoder().decode(conteudo);
-    await this.motor.pedir(
+    await this.motor.pedirBytes(
       'POST',
-      `/api/connections/${encodeURIComponent(uri.authority)}/files`,
-      { path: caminhoDe(uri), content: texto }
+      `/api/connections/${encodeURIComponent(uri.authority)}/files/upload` +
+        `?path=${encodeURIComponent(caminhoDe(uri))}`,
+      conteudo
     );
-    this.tamanhos.set(uri.toString(), conteudo.byteLength);
+    this.cache.set(uri.toString(), { bytes: conteudo, em: Date.now() });
     this.mudou.fire([{ type: vscode.FileChangeType.Changed, uri }]);
   }
 
@@ -91,6 +121,7 @@ export class ArquivosRemotos implements vscode.FileSystemProvider {
       `/api/connections/${encodeURIComponent(uri.authority)}/files`,
       { path: caminhoDe(uri) }
     );
+    this.cache.delete(uri.toString());
     this.mudou.fire([{ type: vscode.FileChangeType.Deleted, uri }]);
   }
 
@@ -100,6 +131,7 @@ export class ArquivosRemotos implements vscode.FileSystemProvider {
       `/api/connections/${encodeURIComponent(de.authority)}/files/rename`,
       { path: caminhoDe(de), to: caminhoDe(para) }
     );
+    this.cache.delete(de.toString());
     this.mudou.fire([
       { type: vscode.FileChangeType.Deleted, uri: de },
       { type: vscode.FileChangeType.Created, uri: para },

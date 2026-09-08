@@ -327,8 +327,15 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       async (item: ItemDaArvore) => {
         const caminho = item.meta.remotePath;
         if (typeof caminho !== 'string') return;
-        const doc = await vscode.workspace.openTextDocument(uriRemota(item.conexao, caminho));
-        await vscode.window.showTextDocument(doc);
+        // **`vscode.open`, e não `openTextDocument`.** Aquele abre TUDO como
+        // texto, e uma imagem morria em *"File seems to be binary and cannot be
+        // opened as text"* (ele, 08/09/2026). Este deixa o editor escolher —
+        // prévia para imagem, editor de texto para texto —, que é o que o
+        // Explorer dele já faz com arquivo local.
+        await vscode.commands.executeCommand(
+          'vscode.open',
+          uriRemota(item.conexao, caminho)
+        );
       }
     ),
 

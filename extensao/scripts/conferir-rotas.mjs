@@ -395,6 +395,45 @@ try {
     ['files', 'text/uri-list'].every((t) => arvore.dropMimeTypes.includes(t)),
     arvore.dropMimeTypes.join(', '));
 
+  // **O arquivo remoto é BINÁRIO até prova em contrário.** A rota de texto
+  // devolve o conteúdo decodificado em UTF-8, e um PNG que passa por ela volta
+  // corrompido — ele, em 08/09/2026: *"File seems to be binary and cannot be
+  // opened as text"*. Provado com Redis? Não: provado com o motor espionado,
+  // que é o que diz QUAL rota foi chamada.
+  {
+    const { ArquivosRemotos, uriRemota } = require_(`${RAIZ}/extensao/dist/arquivosRemotos.js`);
+    const rotas = [];
+    const corpos = [];
+    const fsRemoto = new ArquivosRemotos({
+      porta: 0,
+      pedir: async (m, r) => { rotas.push(`${m} ${r}`); return { content: 'nunca' }; },
+      pedirBytes: async (m, r, corpo) => {
+        rotas.push(`${m} ${r}`);
+        if (corpo !== undefined) corpos.push(corpo);
+        return new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+      },
+    });
+    const uri = uriRemota('c1', '/mnt/apl/imagem.png');
+
+    const lidos = await fsRemoto.readFile(uri);
+    marcar('ler arquivo remoto usa a rota BINÁRIA',
+      rotas.some((r) => r.includes('/files/bytes')) && !rotas.some((r) => /GET .*\/files\?/.test(r)),
+      rotas.join(' | '));
+    marcar('os bytes voltam como estão', lidos.length === 4 && lidos[0] === 0x89,
+      `${lidos.length} bytes`);
+
+    // O `stat` precisa do tamanho de VERDADE: com zero, a prévia de imagem
+    // desiste antes de desenhar.
+    const st = await fsRemoto.stat(uri);
+    marcar('o `stat` diz o tamanho de verdade', st.size === 4, String(st.size));
+
+    rotas.length = 0;
+    await fsRemoto.writeFile(uri, new Uint8Array([1, 2, 3]));
+    marcar('gravar arquivo remoto também vai em BYTES',
+      rotas.some((r) => r.includes('/files/upload')) && corpos.some((c) => c.length === 3),
+      rotas.join(' | '));
+  }
+
   // **A soltura, EXECUTADA**: um arquivo e uma PASTA, por `uri-list`, com o
   // motor espionado. É o único jeito de provar daqui o que o gesto dele faz.
   {

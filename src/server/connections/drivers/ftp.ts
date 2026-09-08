@@ -244,6 +244,9 @@ async function connect(config: ResolvedConfig): Promise<Session> {
         // O FTP tem comandos diferentes para arquivo e para pasta, e não diz
         // qual é qual sem perguntar. Tentar o de arquivo e cair no de pasta
         // economiza uma ida ao servidor no caso comum.
+        //
+        // `removeDir` do `basic-ftp` já apaga o conteúdo junto — ao contrário
+        // do `rmdir` do SFTP, que só aceita pasta vazia e responde `Failure`.
         try {
           await client.remove(alvo);
         } catch {
