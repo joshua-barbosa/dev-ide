@@ -173,6 +173,25 @@ salvo, aviso ao fechar e histórico de notificações.
 
 ## Para quem vai mexer no código
 
+```bash
+npm run dev        # http://localhost:5173, recarregando ao salvar
+```
+
+Ele sobe as **duas metades**: o motor em `127.0.0.1:4321` e a interface no Vite,
+que repassa `/api/` para lá. Nesta ordem, e esperando o motor atender antes de
+abrir a interface — e se uma das duas cair, a outra cai junto.
+
+> Isso não é detalhe de implementação: com só a interface de pé, a página abre
+> bonita e **toda** chamada de API responde `502`, o que na tela vira "Resposta
+> inválida do servidor (HTTP 502)". Ela parece funcionar e não funciona.
+
+`PORT=4466 npm run dev` muda a porta do motor, e o proxy acompanha.
+`BRAYTECH_MOTOR=http://127.0.0.1:9000 npm run dev` aponta para um motor que já
+está rodando em outro lugar, e aí nenhum é iniciado.
+
+Para usar de verdade é `npm start`, que serve a interface já compilada pelo
+próprio motor, numa porta só.
+
 - [`docs/tecnico.md`](docs/tecnico.md) — arquitetura, API REST, drivers, o cofre
   e o modelo de segurança.
 As decisões de projeto — uma pasta por entrega, com o **porquê** de cada uma,
@@ -180,7 +199,7 @@ inclusive das recusadas — ficam em `specs/`, que **não é versionada**: ela c
 nomes de servidores e bancos reais.
 
 ```
-1914 testes de unidade  ·  568 de ponta a ponta
+2107 testes de unidade  ·  592 de ponta a ponta
 ```
 
 Além dos de sempre, a suíte tem comparação de imagem, verificação de
