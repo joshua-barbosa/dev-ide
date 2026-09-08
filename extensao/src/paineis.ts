@@ -19,6 +19,9 @@ export interface ConexaoPublica {
   readonly id: string;
   readonly label: string;
   readonly type: string;
+  /** Somente-leitura. Vira o `RO` ao lado do nome — é o aviso, não um enfeite. */
+  readonly readOnly?: boolean;
+  readonly fields?: Readonly<Record<string, unknown>>;
 }
 
 export interface Grupo {

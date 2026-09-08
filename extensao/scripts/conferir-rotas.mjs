@@ -61,7 +61,11 @@ try {
   db.exec(
     `CREATE TABLE materias(id INTEGER PRIMARY KEY, nome TEXT NOT NULL, carga INTEGER, obs TEXT);
      INSERT INTO materias(nome, carga, obs)
-     VALUES ('Redação', 4, NULL), ('Álgebra', 6, 'turma piloto'), ('História', 3, NULL);`
+     VALUES ('Redação', 4, NULL), ('Álgebra', 6, 'turma piloto'), ('História', 3, NULL);
+     -- Mais tabelas para o FILTRO ter o que descartar: com uma só, filtrar e
+     -- não filtrar dão o mesmo número, e a verificação não prova nada.
+     CREATE TABLE turmas(id INTEGER PRIMARY KEY, nome TEXT);
+     CREATE TABLE salas(id INTEGER PRIMARY KEY, andar INTEGER);`
   );
   db.close();
 
@@ -633,6 +637,51 @@ try {
     );
     marcar('o diálogo de CRIAÇÃO recebe o esqueleto', aCriacao !== undefined && faltam.length === 0,
       aCriacao === undefined ? 'não abriu' : (faltam.length === 0 ? String(aCriacao.pedido.nomeBase) : `faltam: ${faltam.join(', ')}`));
+  }
+
+  // (h1) o detalhe da conexão é a DISTRO + `RO`, não o tipo.
+  marcar('o detalhe da conexão não é o tipo do driver',
+    conexao3?.description !== 'sqlite',
+    `"${String(conexao3?.description ?? '(vazio)')}"`);
+
+  // (h) o FILTRO chega ao servidor.
+  //
+  // Ele: *"Filtro de tables não está sendo aplicada"*. O diálogo funcionava e
+  // ninguém escutava a resposta — e mesmo escutando, o `children` da árvore ia
+  // sem parâmetro nenhum. Quem filtra é o SERVIDOR, e o filtro viaja na URL.
+  //
+  // Aqui a URL é ESPIONADA: é o único lugar onde o defeito aparece.
+  if (categoria !== undefined) {
+    const antes = (await arvore.getChildren(categoria)).length;
+    await arvore.aplicarFiltro(categoria.conexao, categoria.nodePath, {
+      nome: 'materias', dono: '', tamanho: '', desde: '',
+    });
+
+    const urls = [];
+    const pedirOriginal = motorDaArvore.pedir.bind(motorDaArvore);
+    motorDaArvore.pedir = (metodo, rotaApi, corpo) => {
+      urls.push(rotaApi);
+      return pedirOriginal(metodo, rotaApi, corpo);
+    };
+    const depois = (await arvore.getChildren(categoria)).length;
+    motorDaArvore.pedir = pedirOriginal;
+
+    const aUrl = urls.find((u) => u.includes('/children'));
+    marcar('o filtro VIAJA na URL do `children`',
+      aUrl !== undefined && aUrl.includes('filter='),
+      aUrl === undefined ? 'não pediu filhos' : aUrl.slice(aUrl.indexOf('?')));
+
+    // E o efeito de verdade: a lista encolhe.
+    marcar('o filtro ENCOLHE a lista', depois < antes,
+      `${antes} tabela(s) -> ${depois}`);
+
+    // Limpa, senão as verificações seguintes veem a árvore filtrada.
+    await arvore.aplicarFiltro(categoria.conexao, categoria.nodePath, {
+      nome: '', dono: '', tamanho: '', desde: '',
+    });
+    const semFiltro = (await arvore.getChildren(categoria)).length;
+    marcar('limpar o filtro devolve a lista inteira', semFiltro === antes,
+      `${semFiltro} de ${antes}`);
   }
 
   // ---- 9. os ícones que CADA LINHA ganha (D308) ----

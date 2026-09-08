@@ -17,6 +17,10 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import type { Motor } from './motor';
 import { codiconDe, svgDaMarca } from './icones-do-editor';
+import { padraoDeFiltro } from './filtro';
+import {
+  estaVazio, interpretarData, interpretarTamanho, type FiltroDaArvore,
+} from './filtro-da-arvore';
 import {
   filtrarPorPainel, painelPorTipo,
   type ConexaoPublica, type DriverPublico, type Grupo, type Painel,
@@ -234,6 +238,8 @@ export class ArvoreDeConexoes
 
   recarregar(): void {
     this.raiz = null;
+    this.comFiltrosLidos.clear();
+    this.descricoes.clear();
     this.mudou.fire(undefined);
   }
 
@@ -356,11 +362,13 @@ export class ArvoreDeConexoes
     }
 
     // Daqui para baixo quem responde é o driver, e a extensão só desenha.
+    await this.lerFiltros(pai.conexao);
     const busca = new URLSearchParams();
     for (const p of pai.nodePath) busca.append('path', p);
     const nos = await this.motor.pedir<NoDoMotor[]>(
       'GET',
-      `/api/connections/${encodeURIComponent(pai.conexao)}/children?${busca.toString()}`
+      `/api/connections/${encodeURIComponent(pai.conexao)}/children?${busca.toString()}` +
+        this.parametrosDoFiltro(pai.conexao, pai.nodePath)
     );
 
     if (pai.especie === 'query') return this.arquivosDeQuery(pai);
@@ -448,6 +456,7 @@ export class ArvoreDeConexoes
   private async arvoreDoPainel(): Promise<Grupo | null> {
     const raiz = await this.lerRaiz();
     const porTipo = painelPorTipo(await this.lerDrivers());
+    await this.lerDescricoes();
     return filtrarPorPainel(raiz.tree, this.painel, porTipo);
   }
 
@@ -460,8 +469,18 @@ export class ArvoreDeConexoes
     // executa o comando no clique em vez de expandir, e era isso que fazia a
     // árvore não abrir.
     const conexoes = grupo.connections.map((c: ConexaoPublica) => {
+      // **O detalhe é a DISTRO do servidor mais o `RO`, não o tipo.**
+      //
+      // É o que o painel mostra (spec 052), e o comentário dele explica por que
+      // os dois juntos: *"são duas informações, e esconder uma pela outra seria
+      // perder justamente a que avisa que a conexão não escreve"*. Eu mostrava
+      // `mysql`, que já está no ícone.
+      const detalhe =
+        [this.descricoes.get(c.id) ?? null, c.readOnly === true ? 'RO' : null]
+          .filter((p) => p !== null)
+          .join(' · ') || undefined;
       const item = new ItemDaArvore(
-        'conexao', c.id, [], grupo.path, c.label, c.type, true, this.iconeDoTipo(c.type),
+        'conexao', c.id, [], grupo.path, c.label, detalhe, true, this.iconeDoTipo(c.type),
         [],
         // O `meta` da conexão carrega o que os comandos precisam: editar pede
         // grupo e rótulo, e `Conectar`/`Desconectar` são itens diferentes.
@@ -506,6 +525,95 @@ export class ArvoreDeConexoes
    * ida por linha.
    */
   private abertas = new Set<string>();
+
+  /**
+   * Os filtros guardados, por `conexão\u0000caminho`.
+   *
+   * **Quem filtra é o SERVIDOR.** O filtro não é um `Array.filter` daqui: ele
+   * viaja como `filter`/`owner`/`minBytes`/`since` no `children`, porque uma
+   * categoria com 95 tabelas não deve trazer as 95 para a interface descartar
+   * 90. Era isso que faltava — eu abria o diálogo e nunca mandava nada.
+   */
+  private filtros = new Map<string, FiltroDaArvore>();
+
+  /** Carrega os filtros de uma conexão do disco, uma vez por desenho. */
+  private async lerFiltros(conexaoId: string): Promise<void> {
+    if (this.comFiltrosLidos.has(conexaoId)) return;
+    this.comFiltrosLidos.add(conexaoId);
+    const guardados = await this.motor.pedir<Record<string, FiltroDaArvore>>(
+      'GET',
+      `/api/connections/${encodeURIComponent(conexaoId)}/tree-filters`
+    );
+    for (const [caminho, filtro] of Object.entries(guardados)) {
+      this.filtros.set([conexaoId, caminho].join('\u0000'), filtro);
+    }
+  }
+
+  private comFiltrosLidos = new Set<string>();
+
+  /** A linha do servidor por conexão — `GET /:id/describe`, como no painel. */
+  private descricoes = new Map<string, string>();
+
+  /**
+   * Busca a descrição das conexões ABERTAS, uma vez por desenho.
+   *
+   * Só das abertas de propósito: `describe` fala com o servidor, e pedi-lo para
+   * uma conexão fechada a abriria — dez conexões viram dez sessões que ninguém
+   * pediu.
+   */
+  private async lerDescricoes(): Promise<void> {
+    const faltando = [...this.abertas].filter((id) => !this.descricoes.has(id));
+    await Promise.all(
+      faltando.map(async (id) => {
+        try {
+          const d = await this.motor.pedir<string | null>(
+            'GET',
+            `/api/connections/${encodeURIComponent(id)}/describe`
+          );
+          if (typeof d === 'string' && d !== '') this.descricoes.set(id, d);
+        } catch {
+          // Descrição é enfeite informativo: falhar aqui não pode derrubar a
+          // árvore inteira.
+        }
+      })
+    );
+  }
+
+  /**
+   * Os parâmetros do filtro deste nó, prontos para a URL.
+   *
+   * Os NOMES são os que o `Api.children` usa — `filter`, `owner`, `minBytes`,
+   * `since`. Inventar outros aqui daria uma busca que o servidor ignora, que é
+   * indistinguível de não filtrar.
+   */
+  private parametrosDoFiltro(conexaoId: string, nodePath: readonly string[]): string {
+    const filtro = this.filtros.get([conexaoId, nodePath.join('\u0000')].join('\u0000'));
+    if (filtro === undefined || estaVazio(filtro)) return '';
+    const partes = Object.entries({
+      filter: padraoDeFiltro(filtro.nome),
+      owner: filtro.dono === '' ? null : filtro.dono,
+      minBytes: filtro.tamanho === '' ? null : interpretarTamanho(filtro.tamanho),
+      since: filtro.desde === '' ? null : interpretarData(filtro.desde, new Date()),
+    })
+      .filter(([, v]) => v !== null && v !== undefined && v !== '')
+      .map(([k, v]) => `&${k}=${encodeURIComponent(String(v))}`);
+    return partes.join('');
+  }
+
+  /** Guarda o filtro escolhido e redesenha o ramo. */
+  async aplicarFiltro(
+    conexaoId: string,
+    nodePath: readonly string[],
+    filtro: FiltroDaArvore
+  ): Promise<void> {
+    await this.motor.pedir(
+      'PUT',
+      `/api/connections/${encodeURIComponent(conexaoId)}/tree-filters`,
+      { path: nodePath, filtro }
+    );
+    this.filtros.set([conexaoId, nodePath.join('\u0000')].join('\u0000'), filtro);
+    this.mudou.fire(undefined);
+  }
 
   private cofreTrancado(): ItemDaArvore {
     const item = avisoDe('Cofre trancado — clique para destrancar', 'key');

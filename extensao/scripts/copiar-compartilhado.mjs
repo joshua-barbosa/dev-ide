@@ -17,6 +17,8 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 export const COMPARTILHADOS = [
   { de: 'src/shared/icones-do-editor.ts', para: 'extensao/src/icones-do-editor.ts' },
   { de: 'src/shared/sql/diagrama-er.ts', para: 'extensao/src/diagrama-er.ts' },
+  { de: 'src/shared/tree/filtro.ts', para: 'extensao/src/filtro.ts' },
+  { de: 'src/shared/tree/filtro-da-arvore.ts', para: 'extensao/src/filtro-da-arvore.ts' },
 ];
 
 let mudou = 0;

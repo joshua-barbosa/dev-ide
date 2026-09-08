@@ -22,6 +22,7 @@ import {
 import { PainelDeConexoes } from './painelWebview';
 import { ArvoreDeConexoes, definirRecursos, type ItemDaArvore } from './arvore';
 import { ACOES_DO_MENU, comandoDaAcao } from './acoesDoMenu';
+import type { FiltroDaArvore } from './filtro-da-arvore';
 import { registrarComandos } from './comandosDaArvore';
 import { abrirTerminalRemoto } from './terminalRemoto';
 import type { DepsDoPainel } from './ponteDoHost';
@@ -136,8 +137,25 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
         abrirAbaDaIde(deps, tipo, titulo, { ...dados, conteudo: r.content });
       })();
     },
-    recarregarPaineis: (conexaoId, caminho, filtro) =>
-      PainelDeConexoes.recarregarTodos(conexaoId, caminho, filtro),
+    recarregarPaineis: (conexaoId, caminho, filtro) => {
+      PainelDeConexoes.recarregarTodos(conexaoId, caminho, filtro);
+      // **E as ÁRVORES também.** O diálogo de filtro devolve a escolha por
+      // esta mensagem; sem esta linha ele guardava e a árvore continuava
+      // mostrando as 95 tabelas. Era o "filtro de tables não está sendo
+      // aplicado" — o diálogo funcionava, e ninguém escutava a resposta.
+      if (
+        filtro !== undefined &&
+        filtro !== null &&
+        caminho !== undefined &&
+        conexaoId !== undefined
+      ) {
+        void Promise.all(
+          arvores.map((a) => a.aplicarFiltro(conexaoId, caminho, filtro as FiltroDaArvore))
+        );
+        return;
+      }
+      recarregarArvores();
+    },
   };
 
   for (const [painel, view] of [

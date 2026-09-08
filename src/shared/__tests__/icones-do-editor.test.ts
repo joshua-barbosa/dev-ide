@@ -84,6 +84,8 @@ test('as cópias da extensão são IDÊNTICAS às daqui', () => {
   const copias = [
     ['src/shared/icones-do-editor.ts', 'extensao/src/icones-do-editor.ts'],
     ['src/shared/sql/diagrama-er.ts', 'extensao/src/diagrama-er.ts'],
+    ['src/shared/tree/filtro.ts', 'extensao/src/filtro.ts'],
+    ['src/shared/tree/filtro-da-arvore.ts', 'extensao/src/filtro-da-arvore.ts'],
   ] as const;
   for (const [de, para] of copias) {
     assert.equal(
@@ -96,7 +98,13 @@ test('as cópias da extensão são IDÊNTICAS às daqui', () => {
 
 test('arquivo copiado não pode ter `import` — a cadeia não vai junto', () => {
   const raiz = path.resolve(__dirname, '..', '..', '..');
-  for (const arquivo of ['src/shared/icones-do-editor.ts', 'src/shared/sql/diagrama-er.ts']) {
+  const copiados = [
+    'src/shared/icones-do-editor.ts',
+    'src/shared/sql/diagrama-er.ts',
+    'src/shared/tree/filtro.ts',
+    'src/shared/tree/filtro-da-arvore.ts',
+  ];
+  for (const arquivo of copiados) {
     const fonte = readFileSync(path.join(raiz, arquivo), 'utf8');
     assert.equal(/^\s*import\s/m.test(fonte), false, arquivo);
   }
