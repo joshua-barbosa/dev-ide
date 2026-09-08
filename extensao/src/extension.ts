@@ -22,6 +22,7 @@ import {
 import { PainelDeConexoes } from './painelWebview';
 import { ArvoreDeConexoes, definirRecursos, type ItemDaArvore } from './arvore';
 import { ACOES_DO_MENU, comandoDaAcao } from './acoesDoMenu';
+import { registrarComandos } from './comandosDaArvore';
 import { abrirTerminalRemoto } from './terminalRemoto';
 import type { DepsDoPainel } from './ponteDoHost';
 import type { Painel } from './paineis';
@@ -181,6 +182,28 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
   const recarregarArvores = (): void => {
     for (const a of arvores) a.recarregar();
   };
+
+  // Os comandos do menu que NÃO são ação de driver — conexão, nó e arquivo
+  // remoto. Ver `comandosDaArvore.ts` para o porquê de estarem lá.
+  registrarComandos(
+    contexto,
+    {
+      motor,
+      pedir,
+      abrirFormulario: (id, grupo, rotulo) => abrirFormularioDeConexao(deps, id, grupo, rotulo),
+      abrirAbaDaIde: (tipo, titulo, dados) =>
+        deps.abrirAbaDaIde(tipo as Parameters<typeof deps.abrirAbaDaIde>[0], titulo, dados),
+      abrirDiagrama: (titulo, markdown) => deps.abrirDiagrama(titulo, markdown),
+      abrirQuery: (id, database, titulo, conteudo) =>
+        deps.abrirQuery(id, database, titulo, conteudo),
+      definirConexaoAtiva,
+      recarregarTudo: () => {
+        recarregarArvores();
+        void vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
+      },
+    },
+    arvores
+  );
 
   contexto.subscriptions.push(
     vscode.commands.registerCommand('braytech.enviarArquivos', async (item: ItemDaArvore) => {

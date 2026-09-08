@@ -360,6 +360,45 @@ try {
     trancada.length === 1 && trancada[0].command?.command === 'braytech.destrancarCofre',
     String(trancada[0]?.label));
 
+  // ---- 7. o MENU: item sem comando é item que não faz nada ----
+  const pacote = JSON.parse(
+    await import('node:fs/promises').then((fs) =>
+      fs.readFile(`${RAIZ}/extensao/package.json`, 'utf8')
+    )
+  );
+  const declarados = new Set(pacote.contributes.commands.map((c) => c.command));
+  const itens = pacote.contributes.menus['view/item/context'] ?? [];
+  const orfaos = itens.filter((m) => !declarados.has(m.command)).map((m) => m.command);
+  marcar('todo item de menu tem comando declarado', orfaos.length === 0,
+    orfaos.length === 0 ? `${itens.length} itens` : orfaos.join(', '));
+
+  // Comando declarado que ninguém registra = clique que não faz nada. Foi
+  // exatamente o sintoma que ele descreveu.
+  const fonteExt = await import('node:fs/promises').then((fs) =>
+    fs.readFile(`${RAIZ}/extensao/dist/extension.js`, 'utf8')
+  );
+  const fonteCmd = await import('node:fs/promises').then((fs) =>
+    fs.readFile(`${RAIZ}/extensao/dist/comandosDaArvore.js`, 'utf8')
+  );
+  const fontes = fonteExt + fonteCmd + ACOES_DO_MENU.map((a) => a.id).join(' ');
+  const semRegistro = [...declarados].filter((c) => {
+    if (c.startsWith('braytech.acao.')) return false; // registrados em laço
+    return !fontes.includes(`'${c}'`) && !fontes.includes(`"${c}"`);
+  });
+  marcar('todo comando declarado é registrado no host', semRegistro.length === 0,
+    semRegistro.length === 0 ? `${declarados.size} comandos` : semRegistro.join(', '));
+
+  const inline = itens.filter((m) => m.group === 'inline');
+  marcar('os ícones de HOVER estão declarados', inline.length === 4,
+    inline.map((m) => m.command.replace('braytech.', '')).join(', '));
+
+  // O contextValue da conexão precisa dizer se ela está aberta: é o que separa
+  // `Conectar` de `Desconectar`. Aqui ela ESTÁ aberta — o arnês já a usou —, e
+  // é isso que prova que o `openIds` do motor está sendo lido. (Eu tinha
+  // escrito `fechada` e o arnês me corrigiu.)
+  marcar('a conexão diz se está aberta ou fechada',
+    aConexao?.contextValue === 'braytech.conexao.aberta', String(aConexao?.contextValue));
+
 } finally {
   console.log(linhas.join('\n'));
   const falhas = linhas.filter((l) => l.startsWith('FALHA')).length;

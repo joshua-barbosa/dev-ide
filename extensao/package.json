@@ -91,6 +91,81 @@
         "icon": "$(cloud-upload)"
       },
       {
+        "command": "braytech.copiarNome",
+        "title": "Braytech: Copiar nome"
+      },
+      {
+        "command": "braytech.conectar",
+        "title": "Braytech: Conectar"
+      },
+      {
+        "command": "braytech.desconectar",
+        "title": "Braytech: Desconectar"
+      },
+      {
+        "command": "braytech.recarregarConexao",
+        "title": "Braytech: Recarregar metadados",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "braytech.verProcessos",
+        "title": "Braytech: Ver processos…"
+      },
+      {
+        "command": "braytech.editarConexao",
+        "title": "Braytech: Editar conexão…"
+      },
+      {
+        "command": "braytech.excluirConexao",
+        "title": "Braytech: Excluir conexão"
+      },
+      {
+        "command": "braytech.diagramaEr",
+        "title": "Braytech: Diagrama ER"
+      },
+      {
+        "command": "braytech.diagramaDaTabela",
+        "title": "Braytech: Diagrama desta tabela"
+      },
+      {
+        "command": "braytech.novaQuerySql",
+        "title": "Braytech: Nova query SQL…"
+      },
+      {
+        "command": "braytech.novoQueryBook",
+        "title": "Braytech: Novo Query Book…"
+      },
+      {
+        "command": "braytech.copiarCaminho",
+        "title": "Braytech: Copiar caminho"
+      },
+      {
+        "command": "braytech.novoArquivoRemoto",
+        "title": "Braytech: Novo arquivo…"
+      },
+      {
+        "command": "braytech.novaPastaRemota",
+        "title": "Braytech: Nova pasta…"
+      },
+      {
+        "command": "braytech.renomearRemoto",
+        "title": "Braytech: Renomear…"
+      },
+      {
+        "command": "braytech.apagarRemoto",
+        "title": "Braytech: Apagar"
+      },
+      {
+        "command": "braytech.baixarRemoto",
+        "title": "Braytech: Baixar",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "braytech.executarRemoto",
+        "title": "Braytech: Executar no servidor…",
+        "icon": "$(play)"
+      },
+      {
         "command": "braytech.acao.select",
         "title": "Braytech: Abrir consulta"
       },
@@ -264,6 +339,82 @@
           "when": "false"
         },
         {
+          "command": "braytech.copiarNome",
+          "when": "false"
+        },
+        {
+          "command": "braytech.conectar",
+          "when": "false"
+        },
+        {
+          "command": "braytech.desconectar",
+          "when": "false"
+        },
+        {
+          "command": "braytech.recarregarConexao",
+          "when": "false"
+        },
+        {
+          "command": "braytech.verProcessos",
+          "when": "false"
+        },
+        {
+          "command": "braytech.editarConexao",
+          "when": "false"
+        },
+        {
+          "command": "braytech.excluirConexao",
+          "when": "false"
+        },
+        {
+          "command": "braytech.diagramaEr",
+          "when": "false"
+        },
+        {
+          "command": "braytech.diagramaDaTabela",
+          "when": "false"
+        },
+        {
+          "command": "braytech.novaQuerySql",
+          "when": "false"
+        },
+        {
+          "command": "braytech.novoQueryBook",
+          "when": "false"
+        },
+        {
+          "command": "braytech.copiarCaminho",
+          "when": "false"
+        },
+        {
+          "command": "braytech.novoArquivoRemoto",
+          "when": "false"
+        },
+        {
+          "command": "braytech.novaPastaRemota",
+          "when": "false"
+        },
+        {
+          "command": "braytech.renomearRemoto",
+          "when": "false"
+        },
+        {
+          "command": "braytech.apagarRemoto",
+          "when": "false"
+        },
+        {
+          "command": "braytech.baixarRemoto",
+          "when": "false"
+        },
+        {
+          "command": "braytech.executarRemoto",
+          "when": "false"
+        },
+        {
+          "command": "braytech.enviarArquivos",
+          "when": "false"
+        },
+        {
           "command": "braytech.acao.select",
           "when": "false"
         },
@@ -414,9 +565,104 @@
       ],
       "view/item/context": [
         {
+          "command": "braytech.copiarNome",
+          "when": "viewItem =~ /braytech\\.conexao/",
+          "group": "1_copiar"
+        },
+        {
+          "command": "braytech.conectar",
+          "when": "viewItem =~ /braytech\\.conexao\\.fechada/",
+          "group": "2_estado"
+        },
+        {
+          "command": "braytech.desconectar",
+          "when": "viewItem =~ /braytech\\.conexao\\.aberta/",
+          "group": "2_estado"
+        },
+        {
+          "command": "braytech.recarregarConexao",
+          "when": "viewItem =~ /braytech\\.conexao/",
+          "group": "inline"
+        },
+        {
+          "command": "braytech.verProcessos",
+          "when": "viewItem =~ /braytech\\.conexao/",
+          "group": "3_ver"
+        },
+        {
+          "command": "braytech.editarConexao",
+          "when": "viewItem =~ /braytech\\.conexao/",
+          "group": "9_editar"
+        },
+        {
+          "command": "braytech.excluirConexao",
+          "when": "viewItem =~ /braytech\\.conexao/",
+          "group": "9_editar"
+        },
+        {
+          "command": "braytech.copiarNome",
+          "when": "viewItem =~ /braytech\\.no/",
+          "group": "1_copiar"
+        },
+        {
+          "command": "braytech.diagramaEr",
+          "when": "viewItem =~ /\\.er(\\.|$|\\[)/",
+          "group": "3_ver"
+        },
+        {
+          "command": "braytech.diagramaDaTabela",
+          "when": "viewItem =~ /\\.erTabela/",
+          "group": "3_ver"
+        },
+        {
+          "command": "braytech.novaQuerySql",
+          "when": "viewItem =~ /\\.queries/",
+          "group": "4_criar"
+        },
+        {
+          "command": "braytech.novoQueryBook",
+          "when": "viewItem =~ /\\.queries/",
+          "group": "4_criar"
+        },
+        {
+          "command": "braytech.copiarCaminho",
+          "when": "viewItem =~ /(pastaRemota|arquivoRemoto)/",
+          "group": "1_copiar"
+        },
+        {
+          "command": "braytech.novoArquivoRemoto",
+          "when": "viewItem =~ /pastaRemota/",
+          "group": "4_criar"
+        },
+        {
+          "command": "braytech.novaPastaRemota",
+          "when": "viewItem =~ /pastaRemota/",
+          "group": "4_criar"
+        },
+        {
+          "command": "braytech.renomearRemoto",
+          "when": "viewItem =~ /(pastaRemota|arquivoRemoto)/",
+          "group": "9_editar"
+        },
+        {
+          "command": "braytech.apagarRemoto",
+          "when": "viewItem =~ /(pastaRemota|arquivoRemoto)/",
+          "group": "9_editar"
+        },
+        {
+          "command": "braytech.baixarRemoto",
+          "when": "viewItem =~ /arquivoRemoto/",
+          "group": "inline"
+        },
+        {
+          "command": "braytech.executarRemoto",
+          "when": "viewItem =~ /executavel/",
+          "group": "inline"
+        },
+        {
           "command": "braytech.enviarArquivos",
           "when": "viewItem =~ /pastaRemota/",
-          "group": "0_arquivos"
+          "group": "inline"
         },
         {
           "command": "braytech.acao.select",

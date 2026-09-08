@@ -44,6 +44,8 @@ interface NoDoMotor {
 interface RaizDoMotor {
   readonly vault: { readonly exists: boolean; readonly unlocked: boolean };
   readonly tree: Grupo;
+  /** Quais conexões estão de pé — o motor já responde, e o menu usa. */
+  readonly openIds?: readonly string[];
 }
 
 type Especie = 'grupo' | 'conexao' | 'no' | 'aviso';
@@ -121,7 +123,7 @@ export class ItemDaArvore extends vscode.TreeItem {
       this.iconPath = svg ?? new vscode.ThemeIcon(codiconDe(icone));
     }
 
-    this.contextValue = contextoDe(especie, acoes, remoto);
+    this.contextValue = contextoDe(especie, acoes, remoto, meta);
   }
 
   /** A pasta remota que este nó representa, ou `null`. */
@@ -153,9 +155,20 @@ function caminhoRemotoDe(meta: Readonly<Record<string, unknown>>): Remoto | null
 function contextoDe(
   especie: Especie,
   acoes: readonly AcaoDoNo[],
-  remoto: Remoto | null
+  remoto: Remoto | null,
+  meta: Readonly<Record<string, unknown>> = {}
 ): string {
-  const base = `braytech.${especie}` + (remoto?.ehPasta === true ? '.pastaRemota' : '');
+  // As CAPACIDADES do nó, como o driver as declara. São elas que decidem quais
+  // itens de menu aparecem — do mesmo jeito que decidem na IDE, onde o menu é
+  // montado com `...(no.meta?.queries === true ? [...] : [])`.
+  const capacidades = [
+    ...(remoto === null ? [] : [remoto.ehPasta ? 'pastaRemota' : 'arquivoRemoto']),
+    ...(meta.executable === true ? ['executavel'] : []),
+    ...(meta.diagramaEr === true ? ['er'] : []),
+    ...(meta.diagramaDaTabela === true ? ['erTabela'] : []),
+    ...(meta.queries === true ? ['queries'] : []),
+  ];
+  const base = [`braytech.${especie}`, ...capacidades].join('.');
   // Cada ação vira `[id]`, e o `when` de cada item de menu casa com o dela.
   //
   // Por que assim, e não um item "Ações…" que abre uma lista: em 04/09 ele
@@ -383,12 +396,18 @@ export class ArvoreDeConexoes
     // **Sem `command` na conexão, de propósito.** Um `TreeItem` com comando
     // executa o comando no clique em vez de expandir, e era isso que fazia a
     // árvore não abrir.
-    const conexoes = grupo.connections.map(
-      (c: ConexaoPublica) =>
-        new ItemDaArvore(
-          'conexao', c.id, [], '', c.label, c.type, true, this.iconeDoTipo(c.type)
-        )
-    );
+    const conexoes = grupo.connections.map((c: ConexaoPublica) => {
+      const item = new ItemDaArvore(
+        'conexao', c.id, [], grupo.path, c.label, c.type, true, this.iconeDoTipo(c.type),
+        [],
+        // O `meta` da conexão carrega o que os comandos precisam: editar pede
+        // grupo e rótulo, e `Conectar`/`Desconectar` são itens diferentes.
+        { grupo: grupo.path, rotulo: c.label, tipo: c.type, aberta: this.abertas.has(c.id) }
+      );
+      item.contextValue =
+        `braytech.conexao.${this.abertas.has(c.id) ? 'aberta' : 'fechada'}`;
+      return item;
+    });
     return [...pastas, ...conexoes];
   }
 
@@ -404,6 +423,15 @@ export class ArvoreDeConexoes
 
   private catalogo = new Map<string, string>();
 
+  /**
+   * As conexões abertas, para o menu dizer `Desconectar` em vez de `Conectar`.
+   *
+   * Vem do mesmo `GET /api/connections` que desenha a árvore — o motor já
+   * responde quais estão de pé, e perguntar de novo por conexão custaria uma
+   * ida por linha.
+   */
+  private abertas = new Set<string>();
+
   private cofreTrancado(): ItemDaArvore {
     const item = avisoDe('Cofre trancado — clique para destrancar', 'key');
     item.command = { command: 'braytech.destrancarCofre', title: 'Destrancar o cofre' };
@@ -411,7 +439,12 @@ export class ArvoreDeConexoes
   }
 
   private lerRaiz(): Promise<RaizDoMotor> {
-    this.raiz ??= this.motor.pedir<RaizDoMotor>('GET', '/api/connections');
+    this.raiz ??= this.motor
+      .pedir<RaizDoMotor>('GET', '/api/connections')
+      .then((r) => {
+        this.abertas = new Set(r.openIds ?? []);
+        return r;
+      });
     return this.raiz;
   }
 
