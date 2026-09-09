@@ -128,10 +128,15 @@ export async function ligarMotor(
   pastasAbertas: readonly string[] = []
 ): Promise<Motor> {
   if (!(await jaEstaDePe(porta))) {
+    // A ordem é de PRECEDÊNCIA, e o desenvolvimento vem antes do pacote: com o
+    // repositório aberto, ele quer o motor que acabou de compilar — não uma
+    // cópia congelada dentro do `.vsix`. O pacote é o último, e é o que faz a
+    // extensão funcionar na máquina de quem só a instalou (spec 106).
     const candidatos = [
       ...(caminhoDoMotor === '' ? [] : [caminhoDoMotor]),
       ...pastasAbertas.map((pasta) => path.join(pasta, 'dist', 'server', 'index.js')),
       path.resolve(__dirname, '..', '..', 'dist', 'server', 'index.js'),
+      path.resolve(__dirname, '..', 'motor', 'servidor.js'),
     ];
     const achado = candidatos.find((c) => fs.existsSync(c));
     if (achado === undefined) throw new MotorNaoEncontrado(candidatos);

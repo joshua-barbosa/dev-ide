@@ -4,3 +4,7 @@ tsconfig.json
 node_modules/**
 **/*.map
 .vscodeignore
+
+# `motor/servidor.js` ENTRA: é ele que faz a extensão funcionar na máquina de
+# quem só a instalou, sem o repositório (spec 106). Nada a ignorar aqui — a
+# linha existe para dizer que a ausência é de propósito.

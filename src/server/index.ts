@@ -340,8 +340,16 @@ export function iniciarServidor(porta = PORT): Promise<void> {
     console.log(`Braytech Code rodando em http://localhost:${porta} (apenas ${HOST})`);
     console.log(`Projetos em: ${PROJECTS_DIR}`);
     if (!fs.existsSync(path.join(UI_DIR, 'index.html'))) {
-      // Acontece depois de `npm test`, que limpa dist/ e recompila só o servidor.
-      console.warn('Interface não compilada. Rode "npm run build:ui" (ou "npm run dev").');
+      // Dentro do `.vsix` a interface da IDE NÃO viaja de propósito: quem
+      // desenha a tela ali é a extensão, com as webviews dela. Mandar rodar um
+      // `npm` na máquina de quem só instalou seria conselho para um repositório
+      // que ela não tem.
+      console.warn(
+        process.env.BRAYTECH_EMPACOTADO === '1'
+          ? 'Motor embutido: só a API. A tela é a da extensão.'
+          : // Acontece depois de `npm test`, que limpa dist/ e recompila só o servidor.
+            'Interface não compilada. Rode "npm run build:ui" (ou "npm run dev").'
+      );
     }
   });
 

@@ -26,3 +26,7 @@ specs/
 
 # O pacote da extensão é artefato de build.
 *.vsix
+
+# O motor empacotado: 15 MB gerados a cada build, refeitos por
+# `npm run build:extensao`. Versioná-lo encheria o histórico de binário.
+extensao/motor/

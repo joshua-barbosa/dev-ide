@@ -51,7 +51,11 @@ export function pastaDeProjetos(
   if (escolhida !== undefined && escolhida !== '') return escolhida;
   // `.asar` no caminho é a marca de estar dentro do pacote. Vale para qualquer
   // empacotador que use asar, e não só para o que usamos hoje.
-  return raiz.includes('.asar')
+  //
+  // `BRAYTECH_EMPACOTADO` é a mesma ideia para a EXTENSÃO: lá a raiz é a pasta
+  // instalada do editor, que o editor APAGA a cada atualização — os projetos
+  // dele iriam junto. A marca é gravada no pacote pelo `empacotar-motor.mjs`.
+  return raiz.includes('.asar') || env.BRAYTECH_EMPACOTADO === '1'
     ? path.join(homeDeDados(env), 'projects')
     : path.join(raiz, 'projects');
 }

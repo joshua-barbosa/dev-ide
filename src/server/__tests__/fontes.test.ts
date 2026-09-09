@@ -26,8 +26,12 @@ const ALVOS = ['src', 'e2e', 'scripts', 'extensao'].map((d) => path.join(RAIZ, d
  * reprovaria o `vscode.d.ts` — código de outra pessoa, que não é nosso para
  * encurtar — e a varredura de bytes de controle reprovaria o `painel.js`, que é
  * saída do Vite, não fonte.
+ *
+ * `motor` é o motor empacotado dentro do `.vsix` (spec 106): 14 MB de saída do
+ * esbuild, minificada e com bytes de controle das dependências. É artefato de
+ * build — está no `.gitignore` e nasce do `npm run build:extensao`.
  */
-const NAO_DESCER = new Set(['node_modules', 'dist', 'webview']);
+const NAO_DESCER = new Set(['node_modules', 'dist', 'webview', 'motor']);
 const EXTENSOES = new Set(['.ts', '.tsx', '.js', '.mjs', '.json', '.html', '.css', '.md']);
 
 /** Tudo abaixo de 0x20 exceto tab, LF e CR — o que torna o arquivo "binário". */

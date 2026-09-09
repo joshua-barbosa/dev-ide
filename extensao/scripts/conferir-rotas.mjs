@@ -13,7 +13,7 @@
 import Module from 'node:module';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, rm, mkdir, copyFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -1011,6 +1011,27 @@ try {
     semCampo.length === 0
       ? abasAbertas.map((a) => a.aba).join(', ') || '(nenhuma aba aberta)'
       : `vazio: ${semCampo.join(', ')}`);
+
+  // O motor que viaja DENTRO do `.vsix` (spec 106). Na máquina de quem só
+  // instalou não há `braytech.motor`, não há repositório aberto e não há
+  // `dist/server` ao lado — sobra o pacote. Aqui o `motor.js` é copiado para
+  // uma pasta onde NENHUM candidato existe, e o que se lê é a lista que ele
+  // tentou: o caminho do pacote tem de estar nela, e por ÚLTIMO, para o
+  // repositório aberto continuar ganhando durante o desenvolvimento.
+  const solto = path.join(pasta, 'ilha', 'dist');
+  await mkdir(solto, { recursive: true });
+  await copyFile(`${RAIZ}/extensao/dist/motor.js`, path.join(solto, 'motor.js'));
+  let tentados = [];
+  try {
+    // Porta sem ninguém: força a busca em vez de se ligar a um motor de pé.
+    await require_(path.join(solto, 'motor.js')).ligarMotor(4478, '', []);
+  } catch (e) {
+    tentados = e.tentados ?? [];
+  }
+  const ultimo = tentados[tentados.length - 1] ?? '';
+  marcar('o motor embutido no pacote é o último candidato',
+    ultimo.endsWith(path.join('motor', 'servidor.js')) && tentados.length >= 2,
+    tentados.length === 0 ? 'não devolveu a lista de tentados' : ultimo);
 
   marcar('nenhum comando executado deu erro no motor', comErro.length === 0,
     comErro.length === 0
