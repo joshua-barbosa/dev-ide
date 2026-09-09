@@ -18,12 +18,16 @@ estiver de pé, para as duas janelas não brigarem pelo cofre.
 
 ## Instalar
 
+Pelo **Cursor**: `Extensions` na barra lateral, procure por *Braytech Code* e
+clique em Install. Nada mais — o motor vem dentro do pacote.
+
+Do repositório, para desenvolver:
+
 ```bash
-npm run build                              # na RAIZ: compila o motor
-cd extensao && npm install && npm run build
-npx @vscode/vsce package --no-dependencies --allow-missing-repository
-code   --install-extension braytech-code-0.1.0.vsix --force
-cursor --install-extension braytech-code-0.1.0.vsix --force
+npm run build                 # na RAIZ: compila o motor
+npm run empacotar:extensao    # compila a extensão e gera o .vsix com o motor
+code   --install-extension extensao/braytech-code-0.1.0.vsix --force
+cursor --install-extension extensao/braytech-code-0.1.0.vsix --force
 ```
 
 **Reinicie o editor** depois de instalar. A extensão aparece na barra lateral
@@ -37,7 +41,10 @@ Nesta ordem, e a primeira que responder ganha:
 2. a configuração `braytech.motor`;
 3. o `dist/server/index.js` de **alguma pasta aberta** no editor — é o que faz
    ela funcionar sem configurar nada, com o projeto aberto;
-4. ao lado da própria extensão, para quem a roda de dentro do projeto.
+4. ao lado da própria extensão, para quem a roda de dentro do projeto;
+5. o **motor que vem dentro do pacote** — é o que faz ela funcionar na máquina
+   de quem só a instalou pela loja. É o último de propósito: com o repositório
+   aberto, ele quer o motor que você acabou de compilar.
 
 Não achando nenhum, o erro diz a configuração que resolve.
 
@@ -69,14 +76,17 @@ usuário e permissão.
 
 ## O que ela ainda NÃO faz
 
-Não é lacuna escondida — é o limite da prova de conceito:
+Não é lacuna escondida — é o limite conhecido:
 
-- **`.sqlbook` abre como TEXTO.** Desenhá-lo como caderno pede a API de Notebook
-  do editor, que é trabalho de tamanho próprio;
-- cadastrar, editar e apagar conexão (hoje se faz na IDE própria);
-- SFTP, terminal remoto, monitor, portas e processos;
-- editar célula na grade, paginar além da primeira página, exportar;
-- filtro e ordenação na árvore.
+- **arrastar arquivo do sistema para dentro da tela de SFTP não funciona.** É
+  limite do editor, não meu: webview não recebe soltura do sistema
+  ([microsoft/vscode#111092]). Arrastar para a **árvore** da barra lateral
+  funciona, e é por onde se sobe arquivo e pasta;
+- o terminal **local** do motor precisa do `node-pty`, que não viaja no pacote.
+  Dentro do editor isso não faz falta: terminal local é o do próprio editor
+  (Ctrl+`), e o da conexão é um canal SSH, que não depende de nada nativo.
+
+[microsoft/vscode#111092]: https://github.com/microsoft/vscode/issues/111092
 
 ## Configuração
 

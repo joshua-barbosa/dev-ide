@@ -4,12 +4,40 @@
   "description": "Bancos de dados e serviços remotos dentro do VS Code e do Cursor — o mesmo motor da IDE Braytech Code.",
   "version": "0.1.0",
   "publisher": "braytech",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joshua-barbosa/dev-ide.git"
+  },
+  "homepage": "https://github.com/joshua-barbosa/dev-ide#readme",
+  "bugs": {
+    "url": "https://github.com/joshua-barbosa/dev-ide/issues"
+  },
+  "icon": "recursos/icone.png",
+  "keywords": [
+    "database",
+    "mysql",
+    "postgresql",
+    "sqlite",
+    "sqlserver",
+    "mongodb",
+    "redis",
+    "pinecone",
+    "ssh",
+    "sftp",
+    "ftp",
+    "sql",
+    "banco de dados",
+    "terminal"
+  ],
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization",
+    "Notebooks"
   ],
   "main": "./dist/extension.js",
   "contributes": {
