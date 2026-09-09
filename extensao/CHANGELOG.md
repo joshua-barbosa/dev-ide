@@ -6,6 +6,9 @@
   que cada gesto faz, e os limites conhecidos antes de instalar.
 - Correção do texto: o teto da grade é de 500 linhas, ajustável por conexão —
   não 200.
+- Três imagens na página: a grade, o diagrama ER e a estrutura de uma tabela.
+  São capturas da webview da PRÓPRIA extensão, com a paleta escura do editor e
+  um banco de exemplo inventado.
 
 ## 0.1.0
 

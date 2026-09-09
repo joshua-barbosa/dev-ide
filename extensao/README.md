@@ -4,6 +4,8 @@ Bancos de dados e servidores remotos dentro do VS Code e do Cursor. Sete bancos
 e dois tipos de acesso remoto na mesma árvore, com grade de resultados, DDL,
 diagrama ER, terminal SSH e SFTP — sem sair do editor e sem instalar mais nada.
 
+![A grade de uma tabela, com filtro, paginação e a contagem real de linhas](https://raw.githubusercontent.com/joshua-barbosa/dev-ide/main/docs/imagens/extensao/01-grade.png)
+
 ## Instalar
 
 Procure por **Braytech Code** no painel de extensões e clique em Install.
@@ -32,10 +34,16 @@ Quem separa as duas visões é o próprio driver, não uma lista fixa.
 | pasta **Query** | os `.sql` e `.sqlbook` daquele banco, que abrem no editor |
 | **Ctrl+Enter** num `.sql` | executa a seleção — ou o arquivo inteiro, se não houver seleção |
 
+![Diagrama ER de um schema, com as chaves estrangeiras ligando as tabelas](https://raw.githubusercontent.com/joshua-barbosa/dev-ide/main/docs/imagens/extensao/02-diagrama.png)
+
 Cada motor mostra o que é dele: procedures, functions, triggers, events e
 foreign tables no MySQL e no Postgres; sequences, materialized views e types no
 Postgres; chaves, TTL e RedisJSON no Redis; coleções e documentos no MongoDB;
 índices e namespaces no Pinecone.
+
+A sub-aba **Estrutura** traz colunas, tipos, chaves, índices, gatilhos e o DDL:
+
+![A estrutura de uma tabela: colunas, tipos, chaves e o DDL](https://raw.githubusercontent.com/joshua-barbosa/dev-ide/main/docs/imagens/extensao/03-estrutura.png)
 
 ### Nada destrutivo roda por clique
 
