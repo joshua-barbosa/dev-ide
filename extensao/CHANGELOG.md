@@ -1,5 +1,12 @@
 # Mudanças
 
+## 0.1.1
+
+- A página da extensão reescrita para quem chega de fora: o que ela conecta, o
+  que cada gesto faz, e os limites conhecidos antes de instalar.
+- Correção do texto: o teto da grade é de 500 linhas, ajustável por conexão —
+  não 200.
+
 ## 0.1.0
 
 Primeira versão pública.
