@@ -3,7 +3,7 @@
   "displayName": "Braytech Code",
   "description": "Bancos de dados e serviços remotos dentro do VS Code e do Cursor — o mesmo motor da IDE Braytech Code.",
   "version": "0.1.0",
-  "publisher": "braytech",
+  "publisher": "braytech-code",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
