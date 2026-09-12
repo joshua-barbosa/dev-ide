@@ -21,7 +21,19 @@ export function homeDeDados(env: NodeJS.ProcessEnv = process.env): string {
   // O `env` é parâmetro para o teste poder perguntar "e se a variável fosse
   // outra?" sem mexer no ambiente do processo — mexer nele vaza para os testes
   // vizinhos, que passam a depender da ordem de execução.
-  return env.DEV_IDE_HOME ?? path.join(os.homedir(), '.dev-ide');
+  return caminhoDoAmbiente(env.DEV_IDE_HOME, path.join(os.homedir(), '.dev-ide'));
+}
+
+/**
+ * Um caminho vindo de variável de ambiente, ou o padrão.
+ *
+ * **Vazio conta como ausente.** Com `??`, `DEV_IDE_HOME=` passava como caminho
+ * e o cofre ia para `vault.json` relativo à pasta de onde o motor subiu — foi
+ * parar dentro do repositório no teste que o revelou. É o mesmo tropeço do
+ * `BRAYTECH_EMPACOTADO` vazio na spec 106.
+ */
+export function caminhoDoAmbiente(valor: string | undefined, padrao: string): string {
+  return valor === undefined || valor.trim() === '' ? padrao : valor;
 }
 
 /** Arquivo dentro da raiz de dados. */

@@ -1012,6 +1012,64 @@ try {
       ? abasAbertas.map((a) => a.aba).join(', ') || '(nenhuma aba aberta)'
       : `vazio: ${semCampo.join(', ')}`);
 
+  // ---- o cofre numa máquina NOVA ----
+  //
+  // Ele instalou a extensão num notebook sem a IDE: "Cofre não encontrado em
+  // …/.dev-ide/vault.json. Crie-o com a senha mestra — o que eu tô tentando mas
+  // ele não cria". Na extensão NÃO havia caminho que criasse o cofre: destrancar
+  // um cofre ausente só devolve 400. Aqui ele nunca apareceu porque o arnês cria
+  // o cofre pela API logo no começo — exatamente o passo que faltava na tela.
+  //
+  // Um motor SEM cofre, e o gesto que ele faz: clicar no cadeado.
+  const PORTA_SEM_COFRE = 4481;
+  filhos.push(
+    spawn(process.execPath, [`${RAIZ}/dist/server/index.js`], {
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        PORT: String(PORTA_SEM_COFRE),
+        DEV_IDE_HOME: path.join(pasta, 'casa-sem-cofre'),
+        DEV_IDE_VAULT: path.join(pasta, 'casa-sem-cofre', 'vault.json'),
+        DEV_IDE_SESSION: path.join(pasta, 'casa-sem-cofre', 'sessao.json'),
+      },
+    })
+  );
+  if (!(await esperarPorta(PORTA_SEM_COFRE))) throw new Error('o motor sem cofre não subiu');
+  const pedirSemCofre = async (metodo, rotaApi, corpo) => {
+    const r = await fetch(`http://127.0.0.1:${PORTA_SEM_COFRE}${rotaApi}`, {
+      method: metodo,
+      ...(corpo === undefined
+        ? {}
+        : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) }),
+    }).then((x) => x.json());
+    return r.success === true ? r.data : null;
+  };
+  const antesDoCadeado = await pedirSemCofre('GET', '/api/connections');
+  const semCofre = new Map();
+  vsc.commands.registerCommand = (nome, fn) => {
+    semCofre.set(nome, fn);
+    return { dispose() {} };
+  };
+  registrarComandos(
+    { subscriptions: [] },
+    {
+      motor: motorDaArvore, pedir: pedirSemCofre,
+      abrirFormulario() {}, abrirAbaDaIde() {}, abrirDiagrama() {}, abrirDialogo() {},
+      abrirTerminal() {}, salvarArquivo: async () => {}, abrirQuery: async () => {},
+      definirConexaoAtiva() {}, recarregarTudo() {},
+    },
+    [arvore]
+  );
+  vsc.commands.registerCommand = cmdOriginal;
+  // A mesma resposta para as duas perguntas: senha e confirmação.
+  global.__RESPOSTAS = { showInputBox: 'senha-nova-1234' };
+  await semCofre.get('braytech.alternarCofre')?.();
+  const depoisDoCadeado = await pedirSemCofre('GET', '/api/connections');
+  marcar('numa máquina nova, o cadeado CRIA o cofre',
+    antesDoCadeado?.vault.exists === false &&
+      depoisDoCadeado?.vault.exists === true && depoisDoCadeado?.vault.unlocked === true,
+    `antes: ${JSON.stringify(antesDoCadeado?.vault)} · depois: ${JSON.stringify(depoisDoCadeado?.vault)}`);
+
   // O motor que viaja DENTRO do `.vsix` (spec 106). Na máquina de quem só
   // instalou não há `braytech.motor`, não há repositório aberto e não há
   // `dist/server` ao lado — sobra o pacote. Aqui o `motor.js` é copiado para

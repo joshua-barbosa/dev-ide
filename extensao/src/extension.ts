@@ -31,6 +31,7 @@ import { ACOES_DO_MENU, comandoDaAcao } from './acoesDoMenu';
 import type { FiltroDaArvore } from './filtro-da-arvore';
 import { registrarComandos } from './comandosDaArvore';
 import { abrirTerminalRemoto } from './terminalRemoto';
+import { garantirCofre } from './cofre';
 import type { DepsDoPainel } from './ponteDoHost';
 import type { Painel } from './paineis';
 
@@ -279,16 +280,11 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
     vscode.commands.registerCommand('braytech.destrancarCofre', async () => {
       // O cofre também se destranca pelo cadeado da barra da árvore. Este
       // comando existe para a paleta, que é onde se procura por nome.
-      const senha = await vscode.window.showInputBox({
-        prompt: 'Senha-mestra do cofre da Braytech Code',
-        password: true,
-        ignoreFocusOut: true,
-      });
-      if (senha === undefined || senha === '') return;
-      const ok = await pedir('POST', '/api/connections/vault/unlock', { password: senha });
-      if (ok === null) return;
+      // Numa máquina nova o cofre não existe: aqui ele é CRIADO, não só
+      // destrancado. Era o único caminho que faltava para a extensão funcionar
+      // sem a IDE instalada.
+      if (!(await garantirCofre({ pedir }))) return;
       recarregarArvores();
-      void vscode.window.showInformationMessage('Braytech Code: cofre destrancado.');
     }),
 
     // **Clicar num nó de dado abre a grade DA IDE** — não uma <table> montada

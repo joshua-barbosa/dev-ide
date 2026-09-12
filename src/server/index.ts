@@ -5,7 +5,7 @@ import * as path from 'path';
 import { registerBuiltinDrivers } from './connections/drivers';
 import { SessionPool } from './connections/pool';
 import { DriverRegistry } from './connections/registry';
-import { pastaDeProjetos } from './paths';
+import { caminhoDoAmbiente, pastaDeProjetos } from './paths';
 import { Vault } from './connections/vault';
 import { diasDeLembranca, RememberedKey, restaurarCofre } from './connections/remember';
 import { errorEnvelope, requireString, wrap } from './http/handlers';
@@ -68,14 +68,14 @@ const execucoes = new RegistroDeExecucoes();
 // ---- Conexões (banco, redis, arquivos remotos, ssh) ----
 const registry = registerBuiltinDrivers(new DriverRegistry());
 const vinculos = new VinculosStore();
-const vault = new Vault(process.env.DEV_IDE_VAULT ?? Vault.defaultPath());
+const vault = new Vault(caminhoDoAmbiente(process.env.DEV_IDE_VAULT, Vault.defaultPath()));
 const pool = new SessionPool(async (connectionId) => {
   const config = vault.resolve(connectionId);
   return registry.get(config.type).connect(config);
 });
 
 const remember = new RememberedKey(
-  process.env.DEV_IDE_SESSION ?? RememberedKey.defaultPath()
+  caminhoDoAmbiente(process.env.DEV_IDE_SESSION, RememberedKey.defaultPath())
 );
 // O prazo vai junto (T101): destrancar pela lembrança RENOVA a lembrança, e
 // quem usa a IDE todo dia não redigita a senha mestra. Quem some pelo prazo

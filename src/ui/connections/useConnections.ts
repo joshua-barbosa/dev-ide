@@ -21,6 +21,7 @@ import {
   chaveDoNo, expansoesSemAConexao, filhosSemAConexao,
 } from '../../shared/connections/arvore-aberta';
 import { Api, type CriteriosDeArvore, type DriverInfo } from '../api';
+import { modoDoCofre } from '../../shared/cofre';
 import type { ArquivoDeQuery, Vinculo } from '../../shared/sql/vinculo';
 import { achatarConexoes } from '../../shared/connections/achatar';
 
@@ -225,9 +226,18 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
    * Devolve false se o usuário cancelou — aí a ação só desiste, sem alarde.
    */
   const garantirDestrancado = useCallback(async (): Promise<boolean> => {
-    if (estado?.vault.unlocked === true) return true;
-    return pedirSenha('destrancar');
-  }, [estado, pedirSenha]);
+    // Pergunta ao MOTOR, não ao estado desta tela. Na extensão o formulário é
+    // uma aba que carrega uma vez: se o cofre foi criado ou destrancado pela
+    // árvore depois, o estado daqui ainda dizia "trancado" — e o Salvar pedia
+    // senha para um cofre já aberto.
+    const atual = await Api.connections();
+    setEstado(atual);
+    const modo = modoDoCofre(atual.vault);
+    if (modo === 'pronto') return true;
+    // Cofre AUSENTE pede criar. Pedir para destrancar o que não existe foi o
+    // que travou o notebook dele: o motor só responde "Cofre não encontrado".
+    return pedirSenha(modo);
+  }, [pedirSenha]);
 
   const criarCofre = useCallback(async () => {
     await pedirSenha('criar');

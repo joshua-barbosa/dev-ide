@@ -24,6 +24,7 @@ export const COMPARTILHADOS = [
   // que o navegador monta, sem uma segunda implementação para divergir.
   { de: 'src/shared/baixar-pasta.ts', para: 'extensao/src/baixar-pasta.ts' },
   { de: 'src/shared/zip.ts', para: 'extensao/src/zip.ts' },
+  { de: 'src/shared/cofre.ts', para: 'extensao/src/modo-do-cofre.ts' },
 ];
 
 let mudou = 0;

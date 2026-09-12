@@ -26,6 +26,7 @@ import * as path from 'node:path';
 import type { Motor } from './motor';
 import type { ArvoreDeConexoes, ItemDaArvore } from './arvore';
 import { documentoDoDiagrama, type DiagramaER } from './diagrama-er';
+import { garantirCofre } from './cofre';
 import { varrerPasta, type EntradaRemota } from './baixar-pasta';
 import { montarZip, nomeDoZip, type EntradaDeZip } from './zip';
 
@@ -498,7 +499,8 @@ export function registrarComandos(
       deps.recarregarTudo();
       return;
     }
-    await vscode.commands.executeCommand('braytech.destrancarCofre');
+    // Cofre ausente é o caso de QUALQUER máquina nova: o cadeado cria.
+    if (await garantirCofre(deps)) deps.recarregarTudo();
   }));
 
   // ---- do GRUPO ----

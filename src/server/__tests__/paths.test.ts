@@ -1,7 +1,8 @@
 // Onde a IDE guarda as coisas dela.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { pastaDeProjetos } from '../paths';
+import * as path from 'node:path';
+import { caminhoDoAmbiente, homeDeDados, pastaDeProjetos } from '../paths';
 
 // ---------------------------------------------------------------------------
 // A pasta de projetos, empacotada ou não (T094)
@@ -54,4 +55,25 @@ test('empacotada na extensão, os projetos vão para a casa de dados', () => {
 test('sem a marca, a raiz manda — é o modo de desenvolvimento dele', () => {
   const r = pastaDeProjetos('/casa/repo', { DEV_IDE_HOME: '/casa/.dev-ide' });
   assert.equal(r, '/casa/repo/projects');
+});
+
+// Variável DEFINIDA e VAZIA não é caminho. Com `??` ela passava, e o cofre ia
+// para `vault.json` RELATIVO à pasta de onde o motor subiu — dentro do
+// repositório, no teste em que isso apareceu. Na extensão, a pasta de onde o
+// host sobe nem é do usuário.
+test('DEV_IDE_HOME vazio cai no padrão, em vez de virar caminho relativo', () => {
+  const r = homeDeDados({ DEV_IDE_HOME: '' });
+  assert.ok(path.isAbsolute(r), `esperava caminho absoluto, veio "${r}"`);
+  assert.ok(r.endsWith('.dev-ide'));
+});
+
+test('DEV_IDE_HOME só com espaço também cai no padrão', () => {
+  assert.ok(path.isAbsolute(homeDeDados({ DEV_IDE_HOME: '   ' })));
+});
+
+test('caminhoDoAmbiente: vazio e ausente dão o padrão; preenchido vale', () => {
+  assert.equal(caminhoDoAmbiente(undefined, '/padrao'), '/padrao');
+  assert.equal(caminhoDoAmbiente('', '/padrao'), '/padrao');
+  assert.equal(caminhoDoAmbiente('  ', '/padrao'), '/padrao');
+  assert.equal(caminhoDoAmbiente('/meu/cofre.json', '/padrao'), '/meu/cofre.json');
 });

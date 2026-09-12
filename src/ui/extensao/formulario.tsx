@@ -12,6 +12,7 @@ import { definirBaseDaApi } from '../api-http';
 import { ConnectionForm } from '../connections/ConnectionForm';
 import { useConnections } from '../connections/useConnections';
 import { dialogosNativos } from './dialogos';
+import { VaultDialog } from '../connections/VaultDialog';
 import { ComTemaDoEditor } from './ComTemaDoEditor';
 import { ligarPonte, pedirAoHost } from './ponte';
 
@@ -53,6 +54,15 @@ function Formulario() {
           pedirAoHost({ tipo: 'conexoesMudaram' });
           fechar();
         }}
+      />
+      {/* Sem ele, o Salvar num cofre trancado ou ausente esperava PARA SEMPRE:
+          o controlador pede a senha ligando um estado, e nesta aba ninguém o
+          desenhava. Nada de erro, nada gravado — foi o que ele viu. */}
+      <VaultDialog
+        pedido={ctrl.pedidoDeSenha}
+        podeLembrar={ctrl.estado?.vault.canRemember !== false}
+        onResponder={ctrl.responderSenha}
+        onCancelar={ctrl.cancelarSenha}
       />
     </>
   );

@@ -529,7 +529,11 @@ export class ArvoreDeConexoes
   private async daRaiz(): Promise<ItemDaArvore[]> {
     const raiz = await this.lerRaiz();
     if (!raiz.vault.exists) {
-      return [avisoDe('Nenhum cofre ainda — crie uma conexão.', 'key')];
+      // Clicável: "crie uma conexão" mandava para um formulário que não tinha
+      // como gravar sem cofre.
+      const aviso = avisoDe('Nenhum cofre ainda — clique para criar', 'key');
+      aviso.command = { command: 'braytech.destrancarCofre', title: 'Criar o cofre' };
+      return [aviso];
     }
     // Cofre trancado não é erro: é o primeiro passo. Uma linha que se clica
     // vale mais que uma árvore vazia sem motivo aparente.

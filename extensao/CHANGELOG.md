@@ -1,5 +1,22 @@
 # Mudanças
 
+## 0.1.3
+
+Correção para quem usa **só a extensão**, sem a IDE Braytech Code na máquina.
+
+- **O cofre agora é criado pela extensão.** Numa máquina nova não havia como
+  criá-lo: o cadeado só destrancava, e o motor respondia "Cofre não encontrado".
+  O cadeado, a paleta e o aviso "Nenhum cofre ainda" passam a criar o cofre,
+  pedindo a senha-mestra duas vezes.
+- **Salvar uma conexão sem cofre não trava mais calado.** O formulário pedia
+  para destrancar um cofre que não existia, com um diálogo que não aparecia —
+  nada era gravado e nenhum erro era mostrado. Agora o diálogo aparece, cria o
+  cofre se preciso, e a conexão é gravada.
+- O formulário confere o cofre no motor na hora de salvar, e não no estado de
+  quando a aba abriu.
+- Uma variável `DEV_IDE_HOME` definida e vazia não faz mais o cofre ir para uma
+  pasta relativa.
+
 ## 0.1.2
 
 - Três imagens na página: a grade, o diagrama ER e a estrutura de uma tabela.
