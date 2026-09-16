@@ -26,15 +26,32 @@ export class CanalSsh implements CanalDeTerminal {
   private ouvinteDeSaida: ((fim: Encerramento) => void) | null = null;
   private encerrado = false;
 
-  constructor(private readonly canal: ShellChannel) {
+  private fimAvisado = false;
+
+  /**
+   * @param aoEncerrar chamado UMA vez quando o canal acaba — pela aba ou pelo
+   *   servidor. É o que solta a sessão SSH para a varredura de ociosidade:
+   *   enquanto o terminal vive, um loop eterno lá dentro não conta como ocioso.
+   */
+  constructor(
+    private readonly canal: ShellChannel,
+    private readonly aoEncerrar?: () => void
+  ) {
     canal.onData((pedaco) => {
       this.historicoTexto = (this.historicoTexto + pedaco).slice(-MAX_HISTORICO);
       this.ouvinteDeDados?.(pedaco);
     });
     canal.onClose((code) => {
       this.encerrado = true;
+      this.avisarFim();
       this.ouvinteDeSaida?.({ exitCode: code ?? 0 });
     });
+  }
+
+  private avisarFim(): void {
+    if (this.fimAvisado) return;
+    this.fimAvisado = true;
+    this.aoEncerrar?.();
   }
 
   /** O processo é da outra máquina: não há PID deste lado. */
@@ -69,5 +86,7 @@ export class CanalSsh implements CanalDeTerminal {
     if (this.encerrado) return;
     this.encerrado = true;
     this.canal.close();
+    // Nem todo canal avisa o próprio fechamento: soltar aqui garante.
+    this.avisarFim();
   }
 }

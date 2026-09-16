@@ -30,6 +30,11 @@ const DEFAULT_CLOSE_TIMEOUT_MS = 3_000;
 interface Entry {
   readonly session: Session;
   lastUsedAt: number;
+  /**
+   * Quantos canais longos — terminal, túnel — estão usando a sessão agora.
+   * Enquanto for maior que zero, a varredura não a fecha.
+   */
+  retencoes: number;
 }
 
 /** Uma abertura em voo, com o botão de desistir. */
@@ -106,7 +111,7 @@ export class SessionPool {
           void Promise.resolve(session.close()).catch(() => undefined);
           throw new Error('A conexão foi desconectada antes de terminar de abrir.');
         }
-        this.entries.set(connectionId, { session, lastUsedAt: this.now() });
+        this.entries.set(connectionId, { session, lastUsedAt: this.now(), retencoes: 0 });
 
         // O servidor do outro lado pode encerrar a conexão sem avisar ninguém.
         // Sem despejar aqui, o pool seguiria entregando uma sessão morta até a
@@ -163,11 +168,42 @@ export class SessionPool {
     );
   }
 
+  /**
+   * Segura a sessão aberta enquanto um canal longo a usa. Devolve o "soltar".
+   *
+   * O relógio de uso só anda no `acquire`, e um terminal pede a sessão UMA vez:
+   * o que ele digita e o que o script imprime passam pelo canal sem tocar no
+   * relógio. Sem isto, aos 10 minutos a varredura fechava a sessão SSH com um
+   * loop eterno rodando lá dentro — foi o que ele viu.
+   *
+   * A retenção vale contra a VARREDURA, não contra ele: desconectar de
+   * propósito continua fechando. E pertence à sessão de agora — reconectar
+   * abre uma sessão nova, sem herdar a contagem de canais que já morreram.
+   */
+  reter(connectionId: string): () => void {
+    const entry = this.entries.get(connectionId);
+    if (entry === undefined) return () => undefined;
+    entry.retencoes += 1;
+
+    let solto = false;
+    return () => {
+      // O fechamento de um canal pode avisar mais de uma vez; descontar de
+      // novo tiraria a retenção de OUTRO terminal.
+      if (solto) return;
+      solto = true;
+      if (this.entries.get(connectionId) !== entry) return;
+      entry.retencoes = Math.max(0, entry.retencoes - 1);
+      // Fechar o terminal não derruba a conexão no mesmo instante: o prazo de
+      // ociosidade conta a partir daqui.
+      entry.lastUsedAt = this.now();
+    };
+  }
+
   /** Fecha o que passou do tempo de ociosidade. Chamado por um intervalo no servidor. */
   async sweep(): Promise<void> {
     const limite = this.now() - this.idleTimeoutMs;
     const ociosas = [...this.entries.entries()]
-      .filter(([, entry]) => entry.lastUsedAt <= limite)
+      .filter(([, entry]) => entry.retencoes === 0 && entry.lastUsedAt <= limite)
       .map(([id]) => id);
     await Promise.all(ociosas.map((id) => this.closeQuietly(id)));
   }

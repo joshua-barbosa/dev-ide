@@ -80,6 +80,22 @@ export function createConnectionsRouter(
 
   const ok = (data: unknown) => ({ success: true, data, error: null });
 
+  /**
+   * O "soltar" de cada túnel aberto, por conexão e túnel.
+   *
+   * Um túnel pede a sessão uma vez, e o tráfego que passa por ele não toca no
+   * relógio do pool: sem reter, a varredura fechava a sessão aos 10 minutos
+   * com o banco do outro lado em uso.
+   */
+  const tuneisRetidos = new Map<string, () => void>();
+  const chaveDoTunel = (conexao: string, tunel: string) => `${conexao}\u0000${tunel}`;
+  /** Desconectar derruba os túneis junto: as retenções deles não valem mais. */
+  const esquecerTuneis = (conexao: string): void => {
+    for (const chave of [...tuneisRetidos.keys()]) {
+      if (chave.startsWith(`${conexao}\u0000`)) tuneisRetidos.delete(chave);
+    }
+  };
+
   const estadoDoCofre = (): VaultState => ({
     exists: vault.exists(),
     unlocked: vault.isUnlocked(),
@@ -233,6 +249,7 @@ export function createConnectionsRouter(
 
   router.delete('/:id', wrap(async (req, res) => {
     await pool.close(req.params.id);
+    esquecerTuneis(req.params.id);
     vault.remove(req.params.id);
     res.json(ok({ id: req.params.id }));
   }));
@@ -299,6 +316,7 @@ export function createConnectionsRouter(
 
   router.post('/:id/disconnect', wrap(async (req, res) => {
     await pool.close(req.params.id);
+    esquecerTuneis(req.params.id);
     res.json(ok({ id: req.params.id, connected: false }));
   }));
 
@@ -416,12 +434,17 @@ export function createConnectionsRouter(
     const local = Number.isInteger(localPort) && localPort > 0 && localPort < 65_536
       ? localPort
       : undefined;
-    res.json(ok(await session.forwarding.open(remoteHost, remotePort, local)));
+    const aberto = await session.forwarding.open(remoteHost, remotePort, local);
+    tuneisRetidos.set(chaveDoTunel(req.params.id, aberto.id), pool.reter(req.params.id));
+    res.json(ok(aberto));
   }));
 
   router.delete('/:id/forwards/:forward', wrap(async (req, res) => {
     const session = await pool.acquire(req.params.id);
     if (session.forwarding !== undefined) await session.forwarding.close(req.params.forward);
+    const chave = chaveDoTunel(req.params.id, req.params.forward);
+    tuneisRetidos.get(chave)?.();
+    tuneisRetidos.delete(chave);
     res.json(ok({ id: req.params.forward }));
   }));
 

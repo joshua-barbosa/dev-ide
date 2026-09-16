@@ -265,3 +265,116 @@ test('close que EXPLODE também desconecta', async () => {
   await pool.close('producao');
   assert.equal(pool.isOpen('producao'), false);
 });
+
+// ---------------------------------------------------------------------------
+// Sessão RETIDA: terminal e túnel abertos não contam como ociosidade
+// ---------------------------------------------------------------------------
+//
+// Ele: "os terminais estão encerrando depois de um período considerado idle,
+// mas tem casos que eu estou rodando um script que é loop eterno". O relógio
+// de uso só andava no `acquire`; o terminal pede a sessão UMA vez, e o que
+// passa depois pelo canal não toca nele. Aos 10 minutos o varredor fechava a
+// sessão SSH, e o terminal morria junto com o script.
+
+const DEZ_MIN = 10 * 60 * 1000;
+
+test('sessão retida sobrevive à varredura, por mais tempo que passe', async () => {
+  const r = relogio();
+  const sessao = sessionFake();
+  const pool = new SessionPool(async () => sessao, { idleTimeoutMs: DEZ_MIN, now: r.now });
+
+  await pool.acquire('ssh-1');
+  pool.reter('ssh-1');
+  r.avancar(24 * 60 * 60 * 1000); // um dia inteiro de loop
+  await pool.sweep();
+
+  assert.equal(sessao.closed(), false);
+  assert.ok(pool.isOpen('ssh-1'));
+});
+
+test('soltar a última retenção devolve a sessão à ociosidade normal — contando DAQUI', async () => {
+  const r = relogio();
+  const sessao = sessionFake();
+  const pool = new SessionPool(async () => sessao, { idleTimeoutMs: DEZ_MIN, now: r.now });
+
+  await pool.acquire('ssh-1');
+  const soltar = pool.reter('ssh-1');
+  r.avancar(3 * DEZ_MIN);
+  soltar();
+
+  // Fechar o terminal não pode derrubar a conexão no mesmo instante: o prazo
+  // conta a partir de quando ele saiu.
+  await pool.sweep();
+  assert.equal(sessao.closed(), false, 'fechou logo depois de soltar');
+
+  r.avancar(DEZ_MIN + 1);
+  await pool.sweep();
+  assert.equal(sessao.closed(), true);
+});
+
+test('duas retenções: soltar uma não libera a outra', async () => {
+  const r = relogio();
+  const sessao = sessionFake();
+  const pool = new SessionPool(async () => sessao, { idleTimeoutMs: DEZ_MIN, now: r.now });
+
+  await pool.acquire('ssh-1');
+  const terminal1 = pool.reter('ssh-1');
+  pool.reter('ssh-1'); // segundo terminal, ou um túnel
+  terminal1();
+  r.avancar(5 * DEZ_MIN);
+  await pool.sweep();
+
+  assert.equal(sessao.closed(), false);
+});
+
+test('soltar duas vezes não desconta a retenção de outro', async () => {
+  const r = relogio();
+  const sessao = sessionFake();
+  const pool = new SessionPool(async () => sessao, { idleTimeoutMs: DEZ_MIN, now: r.now });
+
+  await pool.acquire('ssh-1');
+  const a = pool.reter('ssh-1');
+  pool.reter('ssh-1');
+  a();
+  a(); // o fechamento do canal pode avisar mais de uma vez
+  r.avancar(5 * DEZ_MIN);
+  await pool.sweep();
+
+  assert.equal(sessao.closed(), false);
+});
+
+test('desconectar de propósito fecha mesmo retida — a retenção é contra a VARREDURA, não contra ele', async () => {
+  const sessao = sessionFake();
+  const pool = new SessionPool(async () => sessao);
+
+  await pool.acquire('ssh-1');
+  pool.reter('ssh-1');
+  await pool.close('ssh-1');
+
+  assert.equal(sessao.closed(), true);
+  assert.equal(pool.isOpen('ssh-1'), false);
+});
+
+test('reter uma conexão que não está aberta não quebra, e soltar depois também não', async () => {
+  const pool = new SessionPool(async () => sessionFake());
+  const soltar = pool.reter('nao-aberta');
+  assert.doesNotThrow(soltar);
+});
+
+test('retenção não sobrevive a uma sessão NOVA da mesma conexão', async () => {
+  // Reconectou: a retenção era do canal que morreu com a sessão velha. Herdar
+  // a contagem deixaria a sessão nova imortal para sempre.
+  const r = relogio();
+  const sessoes = [sessionFake(), sessionFake()];
+  let i = 0;
+  const pool = new SessionPool(async () => sessoes[i++]!, { idleTimeoutMs: DEZ_MIN, now: r.now });
+
+  await pool.acquire('ssh-1');
+  pool.reter('ssh-1');
+  await pool.close('ssh-1');
+  await pool.acquire('ssh-1');
+  r.avancar(DEZ_MIN + 1);
+  await pool.sweep();
+
+  assert.equal(sessoes[1]!.closed(), true);
+});

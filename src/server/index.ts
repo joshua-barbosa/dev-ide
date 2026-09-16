@@ -369,7 +369,10 @@ export function iniciarServidor(porta = PORT): Promise<void> {
       if (sessao.shell === undefined) throw new Error('Esta conexão não tem terminal.');
       const cols = typeof p.cols === 'number' && p.cols > 0 ? Math.trunc(p.cols) : 80;
       const rows = typeof p.rows === 'number' && p.rows > 0 ? Math.trunc(p.rows) : 24;
-      return new CanalSsh(await sessao.shell.open({ cols, rows }));
+      const canal = await sessao.shell.open({ cols, rows });
+      // Enquanto este terminal viver, a sessão não é "ociosa": um script em
+      // loop não passa pelo `acquire`, e a varredura o matava aos 10 minutos.
+      return new CanalSsh(canal, pool.reter(p.connectionId));
     },
   });
   montarSocketDoVigia(server, estado);

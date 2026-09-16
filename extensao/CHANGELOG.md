@@ -1,5 +1,15 @@
 # Mudanças
 
+## 0.1.4
+
+- **O terminal SSH não fecha mais sozinho depois de 10 minutos.** A conexão
+  era considerada ociosa porque o que passa pelo terminal — o que você digita e
+  o que o script imprime — não contava como uso. Um script em loop morria junto.
+  Agora, enquanto houver um terminal aberto, a conexão fica aberta; ela só fecha
+  quando você fecha o terminal ou desconecta.
+- **O mesmo para o encaminhamento de portas:** um túnel aberto segura a conexão
+  até ser fechado.
+
 ## 0.1.3
 
 Correção para quem usa **só a extensão**, sem a IDE Braytech Code na máquina.
