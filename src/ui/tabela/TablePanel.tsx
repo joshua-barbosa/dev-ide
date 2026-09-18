@@ -14,9 +14,12 @@ import Select from '@mui/material/Select';
 import Tooltip from '@mui/material/Tooltip';
 import { Icon } from '../Icon';
 import { Api } from '../api';
+import { indicesQueCasam } from '../../shared/grade/busca-nas-linhas';
+import { remapearCortes } from '../../shared/grade/cortes';
 import { Grade } from './GradeDaTabela';
 import { CampoColorido } from '../editor/CampoColorido';
 import type { NomeDoTema } from '../../shared/temas';
+import { definirOrcamentoDeCelulas, orcamentoDeCelulas } from '../orcamento';
 import { PainelDeAparencia } from './PainelDeAparencia';
 import { APARENCIA_PADRAO, type Aparencia } from '../../shared/grade/aparencia';
 import { tokens } from '../theme';
@@ -131,6 +134,7 @@ export function TablePanel({
   // A aparência vive na ABA, como a largura da coluna: some no F5, junto com a
   // ordenação e o filtro, que também somem.
   const [aparencia, setAparencia] = useState<Aparencia>(APARENCIA_PADRAO);
+  const [orcamento, setOrcamento] = useState(orcamentoDeCelulas());
   /** A fila de `contém…` no cabeçalho: a pedido, e não sempre. */
   const [mostrarFiltro, setMostrarFiltro] = useState(false);
   // Filtro em vigor obriga a linha a aparecer: escondê-lo deixaria a tabela
@@ -144,10 +148,12 @@ export function TablePanel({
   const linhas = pagina?.resultado.rows ?? [];
   // Busca na PÁGINA, e não no banco: o filtro por coluna é que vai ao servidor.
   // Um campo que faz as duas coisas confundiria o que o total significa.
-  const visiveis =
-    busca.trim() === ''
-      ? linhas
-      : linhas.filter((l) => l.some((v) => String(v ?? '').toLowerCase().includes(busca.toLowerCase())));
+  //
+  // Por POSIÇÃO: o aviso de corte é endereçado por índice de linha, e esconder
+  // linhas embaralha os índices — sem remapear, o aviso cairia na linha errada.
+  const posicoes = indicesQueCasam(linhas, busca);
+  const visiveis = busca.trim() === '' ? linhas : posicoes.map((i) => linhas[i]);
+  const cortesVisiveis = remapearCortes(pagina?.resultado.cortes, posicoes);
 
   const [exportando, setExportando] = useState(false);
   const [avisoDaExportacao, setAvisoDaExportacao] = useState<string | null>(null);
@@ -250,6 +256,7 @@ export function TablePanel({
         <Grade
           colunas={colunas}
           linhas={visiveis}
+          cortes={cortesVisiveis}
           rascunho={rascunho}
           motivoSemEdicao={motivoSemEdicao}
           aparencia={aparencia}
@@ -279,6 +286,15 @@ export function TablePanel({
       <PainelDeAparencia
         ancora={olho}
         aparencia={aparencia}
+        orcamento={orcamento}
+        // Recarrega na hora: o SELECT desta aba foi montado pela IDE, então
+        // repeti-lo é seguro — e sem isso a mudança só valeria na próxima
+        // página, o que pareceria que o ajuste não funcionou.
+        onMudarOrcamento={(novo) => {
+          definirOrcamentoDeCelulas(novo);
+          setOrcamento(novo);
+          estado.recarregar();
+        }}
         onMudar={setAparencia}
         onFechar={() => setOlho(null)}
         onPadrao={() => setAparencia(APARENCIA_PADRAO)}

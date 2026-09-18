@@ -47,7 +47,7 @@ import type {
   Session,
   TreeNode,
 } from '../types';
-import { formatCell, quoteIdentifier, resolveRowLimit } from './sql-base';
+import { OrcamentoDeCelulas, quoteIdentifier, resolveRowLimit } from './sql-base';
 import {
   camposDeVisibilidade, filtrarCategorias, type CategoriaOpcional,
 } from '../../../shared/sql/categorias-visiveis';
@@ -278,6 +278,7 @@ function executar(
 
   // Puxa uma linha a mais que o limite: é ela que revela o truncamento.
   const rows: CellValue[][] = [];
+  const orcamento = new OrcamentoDeCelulas(request.orcamentoDeCelulas);
   let truncated = false;
   // Linhas a pular (T056), descartadas do próprio iterador.
   const pular = Math.max(0, Math.trunc(request.offset ?? 0));
@@ -292,7 +293,7 @@ function executar(
       break;
     }
     const registro = linha as Record<string, unknown>;
-    rows.push(colunas.map((coluna) => formatCell(registro[coluna.name])));
+    rows.push(orcamento.linha(rows.length, colunas.map((coluna) => registro[coluna.name])));
   }
 
   return {
@@ -301,6 +302,7 @@ function executar(
     rowCount: rows.length,
     durationMs: Date.now() - inicio,
     truncated,
+    cortes: orcamento.cortes,
   };
 }
 

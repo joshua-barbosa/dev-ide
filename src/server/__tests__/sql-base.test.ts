@@ -4,7 +4,7 @@ import {
   MAX_CELL_CHARS,
   MAX_ROW_LIMIT,
   applyVisibility,
-  formatCell,
+  OrcamentoDeCelulas,
   isVisible,
   mainFirst,
   parseNameList,
@@ -33,31 +33,35 @@ test('recusa identificador com byte nulo ou vazio', () => {
 
 // ---- normalização de célula ----
 
+const celula = (valor: unknown, orcamento?: number) =>
+  new OrcamentoDeCelulas(orcamento).linha(0, [valor])[0];
+
 test('preserva os tipos que o grid entende direto', () => {
-  assert.equal(formatCell(null), null);
-  assert.equal(formatCell(undefined), null);
-  assert.equal(formatCell('texto'), 'texto');
-  assert.equal(formatCell(42), 42);
-  assert.equal(formatCell(true), true);
+  assert.equal(celula(null), null);
+  assert.equal(celula(undefined), null);
+  assert.equal(celula('texto'), 'texto');
+  assert.equal(celula(42), 42);
+  assert.equal(celula(true), true);
 });
 
 test('converte tipos que não sobrevivem ao JSON', () => {
-  assert.equal(formatCell(10n), '10');
-  assert.equal(formatCell(new Date('2026-08-13T12:00:00.000Z')), '2026-08-13T12:00:00.000Z');
-  assert.equal(formatCell(Buffer.from([0xde, 0xad])), '0xdead');
-  assert.equal(formatCell({ a: 1 }), '{"a":1}');
-  assert.equal(formatCell([1, 2]), '[1,2]');
+  assert.equal(celula(10n), '10');
+  assert.equal(celula(new Date('2026-08-13T12:00:00.000Z')), '2026-08-13T12:00:00.000Z');
+  assert.equal(celula(Buffer.from([0xde, 0xad])), '0xdead');
+  assert.equal(celula({ a: 1 }), '{"a":1}');
+  assert.equal(celula([1, 2]), '[1,2]');
 });
 
-test('trunca célula gigante para não estourar o grid', () => {
+test('célula gigante só é cortada quando o ORÇAMENTO acaba', () => {
   const gigante = 'x'.repeat(MAX_CELL_CHARS + 500);
-  const saida = formatCell(gigante) as string;
-  assert.equal(saida.length, MAX_CELL_CHARS + 1);
-  assert.ok(saida.endsWith('…'));
+  assert.equal(celula(gigante), gigante, 'com orçamento de sobra, vem inteira');
+  const apertado = celula(gigante, 10) as string;
+  assert.equal(apertado.length, MAX_CELL_CHARS + 1);
+  assert.ok(apertado.endsWith('…'));
 });
 
-test('trunca BLOB gigante também', () => {
-  const saida = formatCell(Buffer.alloc(MAX_CELL_CHARS, 0xab)) as string;
+test('BLOB gigante também respeita o orçamento', () => {
+  const saida = celula(Buffer.alloc(MAX_CELL_CHARS, 0xab), 10) as string;
   assert.ok(saida.length <= MAX_CELL_CHARS + 1);
   assert.ok(saida.startsWith('0x'));
 });

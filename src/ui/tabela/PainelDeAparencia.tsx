@@ -11,10 +11,20 @@ import {
   ALTURA_MAXIMA, ALTURA_MINIMA, PASSO_DA_ALTURA, comAltura,
   type Alinhamento, type Aparencia, type Borda,
 } from '../../shared/grade/aparencia';
+import { ORCAMENTOS } from '../../shared/grade/cortes';
 
 export interface PainelDeAparenciaProps {
   readonly ancora: HTMLElement | null;
   readonly aparencia: Aparencia;
+  /**
+   * Quanto texto uma página pode trazer, em caracteres.
+   *
+   * Não é aparência de verdade — é quanto dado vem —, mas o painel é onde ele
+   * pediu, e o efeito é o que ele vê: com orçamento curto, a lupa mostra uma
+   * amostra; com orçamento folgado, o JSON inteiro.
+   */
+  readonly orcamento: number;
+  readonly onMudarOrcamento: (novo: number) => void;
   readonly onMudar: (nova: Aparencia) => void;
   readonly onFechar: () => void;
   /** Volta ao padrão. Sem isto, um ajuste ruim não teria desfazer. */
@@ -36,7 +46,7 @@ const BORDAS: readonly { readonly valor: Borda; readonly rotulo: string }[] = [
 ];
 
 export function PainelDeAparencia({
-  ancora, aparencia, onMudar, onFechar, onPadrao,
+  ancora, aparencia, orcamento, onMudarOrcamento, onMudar, onFechar, onPadrao,
 }: PainelDeAparenciaProps) {
   return (
     <Popover
@@ -111,8 +121,19 @@ export function PainelDeAparencia({
           onEscolher={(v) => onMudar({ ...aparencia, borda: v })}
         />
 
+        <Escolha
+          rotulo="Valores grandes"
+          opcoes={ORCAMENTOS.map((o) => ({ valor: String(o.valor), rotulo: o.rotulo }))}
+          atual={String(orcamento)}
+          onEscolher={(v) => onMudarOrcamento(Number(v))}
+        />
+
         <Box sx={{ mt: 1, color: 'text.secondary', fontSize: 10.5 }}>
-          Vale para esta aba. Fonte e tamanho ficam no <code>config.json</code>.
+          Aparência vale para esta aba; fonte e tamanho ficam no <code>config.json</code>.
+          <br />
+          <strong>Valores grandes</strong> é quanto texto uma página inteira pode trazer: o
+          que passar disso chega como amostra, e a lupa avisa. Vale da próxima consulta em
+          diante.
         </Box>
       </Box>
     </Popover>

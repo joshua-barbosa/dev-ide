@@ -169,6 +169,13 @@ export interface ExecuteRequest {
    * um `SELECT` arbitrário sem isso exigiria mentir sobre o total.
    */
   readonly offset?: number;
+  /**
+   * Quanto texto esta página pode trazer, em caracteres (`ORCAMENTO_PADRAO`).
+   *
+   * Vem da tela porque é escolha DELE, no painel de aparência: quem abre tabela
+   * de LOB quer mais, quem roda relatório de 50 colunas quer menos.
+   */
+  readonly orcamentoDeCelulas?: number;
   readonly statement: string;
   /**
    * Contra qual database rodar (spec 038).
@@ -191,6 +198,14 @@ export interface QueryResult {
   readonly durationMs: number;
   /** true quando o limite de linhas cortou o resultado. */
   readonly truncated: boolean;
+  /**
+   * As células que não couberam no orçamento da página: `"linha:coluna"` →
+   * tamanho REAL em caracteres.
+   *
+   * Sem isto o visor da lupa mentia: mostrava a amostra cortada como se fosse o
+   * valor, e um JSON de 300 KB virava um JSON quebrado sem aviso nenhum.
+   */
+  readonly cortes?: Readonly<Record<string, number>>;
   /** Mensagem para comandos sem linhas: "3 linhas afetadas". */
   readonly message?: string;
 }
@@ -214,6 +229,8 @@ export interface TableRequest {
   readonly nodePath: readonly string[];
   readonly pagina: number;
   readonly porPagina: number;
+  /** Ver `ExecuteRequest.orcamentoDeCelulas`. */
+  readonly orcamentoDeCelulas?: number;
   readonly ordenar?: OrdenacaoDeTabela | null;
   readonly filtros?: readonly FiltroDeTabela[];
 }

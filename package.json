@@ -27,7 +27,8 @@
     "empacotar:extensao": "npm run build:extensao && cd extensao && npx @vscode/vsce package --no-dependencies",
     "conferir:extensao": "npm run build:server && node extensao/scripts/copiar-compartilhado.mjs && tsc -p extensao/tsconfig.json && node extensao/scripts/conferir-rotas.mjs",
     "conferir:formulario": "node extensao/scripts/conferir-formulario.mjs",
-    "conferir:teclado": "node extensao/scripts/conferir-teclado.mjs"
+    "conferir:teclado": "node extensao/scripts/conferir-teclado.mjs",
+    "conferir:lupa": "node extensao/scripts/conferir-lupa.mjs"
   },
   "license": "MIT",
   "dependencies": {

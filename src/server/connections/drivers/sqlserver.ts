@@ -8,7 +8,7 @@
 import { Connection, Request } from 'tedious';
 import type { Driver, ResolvedConfig, Session, TreeNode } from '../types';
 import type { ExecuteRequest, FieldSpec, QueryResult } from '../../../shared/contracts';
-import { formatCell } from './sql-base';
+import { OrcamentoDeCelulas } from './sql-base';
 import { PORQUE_SEM_TRAVA, selectDeAmostra } from '../../../shared/sql/sqlserver-modelo';
 import {
   CAMPOS_DE_ARVORE, CATEGORIAS, colunasSql, contagensSql, expandeEmColunas,
@@ -241,12 +241,14 @@ async function connect(config: ResolvedConfig): Promise<Session> {
       const cortado = linhas.length > limite;
       const usadas = cortado ? linhas.slice(0, limite) : linhas;
 
+      const orcamento = new OrcamentoDeCelulas(request.orcamentoDeCelulas);
       return {
         columns: colunas.map((name) => ({ name, type: 'sqlserver' })),
-        rows: usadas.map((l) => l.colunas.map((c) => formatCell(c.valor))),
+        rows: usadas.map((l, i) => orcamento.linha(i, l.colunas.map((c) => c.valor))),
         rowCount: usadas.length,
         durationMs: Date.now() - comeco,
         truncated: cortado,
+        cortes: orcamento.cortes,
       };
     },
 

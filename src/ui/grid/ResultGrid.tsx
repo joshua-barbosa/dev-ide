@@ -21,11 +21,13 @@ import { Icon } from '../Icon';
 import { paraCsv, paraJson } from '../../shared/exportar';
 import { Grade } from '../tabela/GradeDaTabela';
 import type { Rascunho } from '../tabela/useRascunho';
+import { definirOrcamentoDeCelulas, orcamentoDeCelulas } from '../orcamento';
 import { PainelDeAparencia } from '../tabela/PainelDeAparencia';
 import { APARENCIA_PADRAO, type Aparencia } from '../../shared/grade/aparencia';
 import { LINHAS_POR_PAGINA } from '../../shared/sql/pedido-de-execucao';
 import { baixarArquivo as entregarArquivo } from '../arquivos/transferencia';
-import { linhasQueCasam, TERMO_VAZIO } from '../../shared/grade/busca-nas-linhas';
+import { indicesQueCasam, TERMO_VAZIO } from '../../shared/grade/busca-nas-linhas';
+import { remapearCortes } from '../../shared/grade/cortes';
 
 export interface ResultGridProps {
   readonly resultado: QueryResult | null;
@@ -58,6 +60,7 @@ export function ResultGrid({
   // Antes de qualquer `return`: gancho não pode viver depois de saída
   // condicional, e os dois abaixo são exatamente isso.
   const [aparencia, setAparencia] = useState<Aparencia>(APARENCIA_PADRAO);
+  const [orcamento, setOrcamento] = useState(orcamentoDeCelulas());
   const [olho, setOlho] = useState<HTMLElement | null>(null);
   /** O que ele digitou na busca do resultado. Só filtra o que já está aqui. */
   const [procura, setProcura] = useState(TERMO_VAZIO);
@@ -109,11 +112,15 @@ export function ResultGrid({
   if (erro !== null) return <Mensagem texto={erro} erro />;
   if (resultado === null) return <Mensagem texto="Execute uma consulta para ver o resultado." />;
 
-  const { columns, rows, rowCount, durationMs, truncated, message } = resultado;
+  const { columns, rows, rowCount, durationMs, truncated, message, cortes } = resultado;
   // A busca olha só o que JÁ veio. Não reescreve SQL, e por isso existe também
   // aqui, onde ordenar e filtrar por coluna não existem: quem escreveu o SELECT
   // à mão continua podendo achar uma linha no meio das 500.
-  const visiveis = linhasQueCasam(rows, procura);
+  // Por índice, e não só as linhas: o aviso de corte é endereçado por posição,
+  // e a busca embaralha as posições.
+  const posicoes = indicesQueCasam(rows, procura);
+  const visiveis = procura.trim() === TERMO_VAZIO ? rows : posicoes.map((i) => rows[i]);
+  const cortesVisiveis = remapearCortes(cortes, posicoes);
 
   return (
     // `minWidth: 0` pelo mesmo motivo da aba de tabela — ver a nota na spec 062.
@@ -262,6 +269,7 @@ export function ResultGrid({
         <Grade
           colunas={colunas}
           linhas={visiveis}
+          cortes={cortesVisiveis}
           aparencia={aparencia}
           // O tamanho da PÁGINA, e não quantas linhas vieram: a última página
           // costuma vir curta, e numerar por ela faria a página 2 começar em 4.
@@ -278,6 +286,15 @@ export function ResultGrid({
       <PainelDeAparencia
         ancora={olho}
         aparencia={aparencia}
+        orcamento={orcamento}
+        // Aqui NÃO se re-executa nada: o comando desta aba foi escrito por ele
+        // e pode não ser um `SELECT`. Rodar de novo por causa de um ajuste de
+        // tela repetiria um `UPDATE` — o ajuste vale da próxima vez, e o
+        // painel diz isso.
+        onMudarOrcamento={(novo) => {
+          definirOrcamentoDeCelulas(novo);
+          setOrcamento(novo);
+        }}
         onMudar={setAparencia}
         onFechar={() => setOlho(null)}
         onPadrao={() => setAparencia(APARENCIA_PADRAO)}

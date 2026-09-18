@@ -8,7 +8,7 @@
 import type { Connection } from 'mysql2';
 import type { CellValue, ColumnInfo, ExecuteRequest, QueryResult } from '../types';
 import { Types, type FieldPacket } from 'mysql2';
-import { formatCell, quoteIdentifier, resolveRowLimit } from './sql-base';
+import { OrcamentoDeCelulas, quoteIdentifier, resolveRowLimit } from './sql-base';
 
 /** Códigos numéricos de tipo -> nome legível, para o cabeçalho do grid. */
 const TYPE_NAMES = new Map<number, string>(
@@ -69,6 +69,7 @@ export function executar(
     });
 
     const rows: CellValue[][] = [];
+    const orcamento = new OrcamentoDeCelulas(request.orcamentoDeCelulas);
     let truncated = false;
     let afetadas = 0;
 
@@ -88,7 +89,7 @@ export function executar(
         stream.destroy(); // para de puxar do servidor em vez de baixar tudo
         return;
       }
-      rows.push(colunas.map((coluna) => formatCell(registro[coluna.name])));
+      rows.push(orcamento.linha(rows.length, colunas.map((coluna) => registro[coluna.name])));
     });
 
     stream.on('error', (err: Error) => reject(new Error(err.message)));
@@ -99,6 +100,7 @@ export function executar(
         rowCount: colunas.length === 0 ? afetadas : rows.length,
         durationMs: Date.now() - inicio,
         truncated,
+        cortes: orcamento.cortes,
         message: colunas.length === 0 ? `${afetadas} linha(s) afetada(s).` : undefined,
       });
     stream.on('end', finalizar);

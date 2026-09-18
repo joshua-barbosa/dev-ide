@@ -27,12 +27,30 @@ export function linhasQueCasam<L extends readonly unknown[]>(
 ): readonly L[] {
   const alvo = termo.trim().toLowerCase();
   if (alvo === TERMO_VAZIO) return linhas;
+  return linhas.filter((linha) => casa(linha, alvo));
+}
 
-  return linhas.filter((linha) =>
-    linha.some((celula) =>
-      celula === null || celula === undefined
-        ? false
-        : String(celula).toLowerCase().includes(alvo)
-    )
+/**
+ * As mesmas linhas, mas por POSIÇÃO na página.
+ *
+ * Quem precisa disto é o aviso de corte: ele é endereçado por índice, e filtrar
+ * embaralha os índices. Devolver a posição original é o que permite remapear
+ * (ver `remapearCortes`) em vez de avisar na linha errada.
+ */
+export function indicesQueCasam<L extends readonly unknown[]>(
+  linhas: readonly L[],
+  termo: string
+): readonly number[] {
+  const alvo = termo.trim().toLowerCase();
+  const todas = linhas.map((_, i) => i);
+  if (alvo === TERMO_VAZIO) return todas;
+  return todas.filter((i) => casa(linhas[i], alvo));
+}
+
+function casa(linha: readonly unknown[], alvo: string): boolean {
+  return linha.some((celula) =>
+    celula === null || celula === undefined
+      ? false
+      : String(celula).toLowerCase().includes(alvo)
   );
 }

@@ -54,6 +54,13 @@ export interface VisorDeCelulaProps {
    * mostra o que a grade tem, e DIZ que está cortado.
    */
   readonly buscarInteiro?: () => Promise<{ readonly valor: CellValue; readonly cortadoEm: number | null }>;
+  /**
+   * Tamanho REAL do valor, quando o orçamento da página cortou esta célula.
+   *
+   * Sem ele o aviso só podia dizer "cortado"; com ele diz de quanto para
+   * quanto, que é a diferença entre saber e desconfiar.
+   */
+  readonly tamanhoReal?: number | null;
   /** Por que não dá para editar, quando não dá. Texto, não booleano. */
   readonly motivoSemEdicao: string | null;
   readonly onFechar: () => void;
@@ -62,7 +69,8 @@ export interface VisorDeCelulaProps {
 }
 
 export function VisorDeCelula({
-  aberto, coluna, valor, motivoSemEdicao, onFechar, onSalvar, buscarInteiro,
+  aberto, coluna, valor, tamanhoReal = null, motivoSemEdicao,
+  onFechar, onSalvar, buscarInteiro,
 }: VisorDeCelulaProps) {
   const camada = useRef<HTMLPreElement>(null);
   const [buscando, setBuscando] = useState(false);
@@ -163,9 +171,9 @@ export function VisorDeCelula({
           <Box sx={{ color: 'text.secondary', fontSize: 11 }}>
             {buscando ? 'buscando o valor inteiro…' : resumoDe(texto)}
           </Box>
-          {avisoDeCorte(texto, inteiro, cortadoEm) !== null && (
+          {avisoDeCorte(texto, inteiro, cortadoEm, tamanhoReal) !== null && (
             <Box data-corte sx={{ color: 'warning.main', fontSize: 11 }}>
-              ⚠ {avisoDeCorte(texto, inteiro, cortadoEm)}
+              ⚠ {avisoDeCorte(texto, inteiro, cortadoEm, tamanhoReal)}
             </Box>
           )}
           <Box sx={{ flex: 1 }} />
@@ -300,18 +308,24 @@ function inteiroOuDaGrade(inteiro: CellValue | undefined, daGrade: CellValue): C
  *     recorte da grade;
  *   - veio do banco, mas é grande demais até para o visor.
  */
-function avisoDeCorte(
+export function avisoDeCorte(
   texto: string,
   inteiro: CellValue | undefined,
-  cortadoEm: number | null
+  cortadoEm: number | null,
+  tamanhoReal: number | null = null
 ): string | null {
   if (cortadoEm !== null) {
     return `valor cortado em ${cortadoEm.toLocaleString('pt-BR')} caracteres — é grande demais para caber na tela`;
   }
-  // As reticências do servidor no fim são o sinal de que a grade cortou. Só
-  // valem como aviso quando o inteiro NÃO chegou: com ele, o `…` pode ser
-  // simplesmente parte do texto.
-  if (inteiro === undefined && texto.endsWith('…')) {
+  if (inteiro !== undefined) return null;
+  // O tamanho real vem no resultado quando o orçamento da página estourou: aí
+  // dá para dizer DE QUANTO para quanto, em vez de só "cortado".
+  if (tamanhoReal !== null) {
+    return `mostrando ${texto.length.toLocaleString('pt-BR')} de ${tamanhoReal.toLocaleString('pt-BR')} caracteres — `
+      + 'a página encheu o orçamento; aumente-o em Aparência para trazer o valor inteiro';
+  }
+  // As reticências do servidor no fim são o sinal de que a grade cortou.
+  if (texto.endsWith('…')) {
     return 'cortado pela grade — a IDE não sabe qual linha é para buscar o resto';
   }
   return null;

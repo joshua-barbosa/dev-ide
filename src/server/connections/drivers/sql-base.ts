@@ -4,6 +4,9 @@
 // parte mais fácil de errar (quoting e normalização de valor) testável sem
 // nenhum banco de pé.
 import type { CellValue } from '../types';
+import { ORCAMENTO_PADRAO } from '../../../shared/grade/cortes';
+
+export { ORCAMENTO_PADRAO };
 
 export type QuoteStyle = 'backtick' | 'double' | 'bracket';
 
@@ -11,8 +14,58 @@ export const DEFAULT_ROW_LIMIT = 500;
 export const MAX_ROW_LIMIT = 50_000;
 export const DEFAULT_TIMEOUT_MS = 30_000;
 export const MAX_TIMEOUT_MS = 120_000;
-/** Teto de caracteres por célula: BLOB e JSON grandes travariam o grid. */
+/**
+ * Teto por célula QUANDO O ORÇAMENTO DA PÁGINA ACABA — uma amostra, não o valor.
+ *
+ * Era o teto de TODA célula, e o preço estava no lugar errado: ele abria um JSON
+ * de 14 mil caracteres na lupa e via 2048 e um "…", com o JSON quebrado. O
+ * corte não pagava o que prometia, porque o custo da grade não é o texto que
+ * atravessa a rede — é o texto que vai para o DOM, e a célula mostra uma linha.
+ * Por isso o corte mudou de lugar: o desenho recorta (ver `RECORTE_NO_DESENHO`),
+ * e o transporte gasta um orçamento de página.
+ */
 export const MAX_CELL_CHARS = 2048;
+
+
+
+/**
+ * O orçamento de UMA página de resultado.
+ *
+ * Tem estado — o que resta — e é por isso que é objeto e não função: o corte só
+ * pode ser decidido sabendo o que as células anteriores já gastaram. Vive o
+ * tempo de uma consulta e morre com ela.
+ */
+export class OrcamentoDeCelulas {
+  private restante: number;
+  private readonly cortadas = new Map<string, number>();
+
+  constructor(total: number = ORCAMENTO_PADRAO) {
+    this.restante = Number.isFinite(total) && total > 0 ? Math.trunc(total) : ORCAMENTO_PADRAO;
+  }
+
+  /** Uma linha inteira, na ordem das colunas. Devolve o que a grade recebe. */
+  linha(indice: number, valores: readonly unknown[]): CellValue[] {
+    return valores.map((valor, coluna) => this.celula(indice, coluna, valor));
+  }
+
+  /** Onde a página estourou: `"linha:coluna"` → tamanho REAL do valor. */
+  get cortes(): Record<string, number> {
+    return Object.fromEntries(this.cortadas);
+  }
+
+  private celula(linha: number, coluna: number, valor: unknown): CellValue {
+    const cru = paraCelulaCrua(valor);
+    if (typeof cru !== 'string') return cru;
+    if (cru.length <= this.restante) {
+      this.restante -= cru.length;
+      return cru;
+    }
+    // Não coube: vai uma amostra, e o tamanho de verdade fica registrado para o
+    // visor poder dizer "mostrando 2.048 de 312.904" em vez de mentir.
+    this.cortadas.set(`${linha}:${coluna}`, cru.length);
+    return `${cru.slice(0, MAX_CELL_CHARS)}…`;
+  }
+}
 
 /**
  * O par de delimitadores de cada dialeto.
@@ -44,37 +97,10 @@ export function quoteIdentifier(name: string, style: QuoteStyle): string {
   return abre + name.split(fecha).join(fecha + fecha) + fecha;
 }
 
-function truncate(text: string): string {
-  return text.length > MAX_CELL_CHARS ? `${text.slice(0, MAX_CELL_CHARS)}…` : text;
-}
-
-/** Converte um valor do driver para algo que o grid e o JSON aguentam. */
-export function formatCell(value: unknown): CellValue {
-  if (value === null || value === undefined) return null;
-  if (typeof value === 'string') return truncate(value);
-  if (typeof value === 'number' || typeof value === 'boolean') return value;
-  if (typeof value === 'bigint') return value.toString();
-  if (value instanceof Date) return value.toISOString();
-  if (value instanceof Uint8Array) {
-    // Cada byte vira dois dígitos hex, e o prefixo "0x" também ocupa o teto.
-    const maxBytes = Math.floor((MAX_CELL_CHARS - 2) / 2);
-    const bytes = value.subarray(0, maxBytes);
-    const hex = `0x${Buffer.from(bytes).toString('hex')}`;
-    return value.byteLength > bytes.byteLength ? `${hex}…` : hex;
-  }
-  try {
-    return truncate(JSON.stringify(value) ?? String(value));
-  } catch {
-    return truncate(String(value));
-  }
-}
-
 /**
- * O mesmo que `formatCell`, mas SEM cortar (spec 062, fase D).
- *
- * Existe porque `formatCell` corta em `MAX_CELL_CHARS`, e é exatamente esse
- * corte que o visor da lupa precisa contornar — ele promete "o valor inteiro".
- * Toda a normalização de tipo continua igual: quem lê a tela não pode receber
+ * Converte um valor do driver para algo que o grid e o JSON aguentam — SEM
+ * cortar. Quem decide o corte é `OrcamentoDeCelulas`, que sabe o que a página
+ * já gastou; aqui só se resolve o TIPO, porque quem lê a tela não pode receber
  * um `Buffer` nem um `bigint`.
  */
 export function paraCelulaCrua(value: unknown): CellValue {

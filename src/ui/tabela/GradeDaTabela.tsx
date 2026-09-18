@@ -18,7 +18,6 @@
 import { Fragment, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import InputBase from '@mui/material/InputBase';
-import { Icon } from '../Icon';
 import { tokens } from '../theme';
 import { LARGURA_MINIMA, larguraDoConteudo } from '../../shared/grade/larguras';
 import { explicarFiltro } from '../../shared/grade/filtro';
@@ -26,6 +25,7 @@ import {
   alinhamentoDe, bordasDe, ehTipoNumerico, type Aparencia,
 } from '../../shared/grade/aparencia';
 import { useLarguras } from './useLarguras';
+import { Celula } from './CelulaDaGrade';
 import { VisorDeCelula } from './VisorDeCelula';
 import { idDaLinha, type Rascunho } from './useRascunho';
 import type {
@@ -61,6 +61,12 @@ export interface FiltroDaGrade {
 export interface GradeProps {
   readonly colunas: readonly TableColumn[];
   readonly linhas: readonly (readonly CellValue[])[];
+  /**
+   * As células que não couberam no orçamento da página: `"linha:coluna"` →
+   * tamanho real. É o que deixa a lupa dizer "mostrando 2.048 de 312.904" em
+   * vez de mostrar a amostra como se fosse o valor.
+   */
+  readonly cortes?: Readonly<Record<string, number>>;
   readonly aparencia: Aparencia;
   /**
    * O número da primeira linha desta página, para a coluna cinza.
@@ -84,7 +90,7 @@ export interface GradeProps {
 }
 
 export function Grade({
-  colunas, linhas, rascunho, motivoSemEdicao, aparencia, primeiraLinha,
+  colunas, linhas, cortes, rascunho, motivoSemEdicao, aparencia, primeiraLinha,
   ordenacao, filtroPorColuna, buscarCelula,
 }: GradeProps) {
   const editavel = rascunho !== undefined && motivoSemEdicao === null;
@@ -135,6 +141,8 @@ export function Grade({
     readonly coluna: string;
     readonly valor: CellValue;
     readonly editavel: boolean;
+    /** Tamanho real, quando o orçamento da página cortou esta célula. */
+    readonly tamanhoReal: number | null;
   } | null>(null);
 
   // A largura TOTAL, somada aqui.
@@ -295,6 +303,7 @@ export function Grade({
                           coluna: coluna.name,
                           valor: mostrado,
                           editavel: editavel && !coluna.chave,
+                          tamanhoReal: cortes?.[`${i}:${j}`] ?? null,
                         })
                       }
                     />
@@ -374,6 +383,7 @@ export function Grade({
           aberto
           coluna={naLupa.coluna}
           valor={naLupa.valor}
+          tamanhoReal={naLupa.tamanhoReal}
           motivoSemEdicao={
             naLupa.editavel ? null : motivoDaCelula(motivoSemEdicao, colunas, naLupa.coluna)
           }
@@ -650,127 +660,3 @@ function LinhaNovaTr({
     </Box>
   );
 }
-
-function Celula({
-  valor, editavel = false, mexida = false, riscada = false, titulo, rotulo, onEditar, onAbrir,
-  alinhamento = 'left', nomeDaColuna,
-}: {
-  readonly valor: CellValue;
-  readonly editavel?: boolean;
-  readonly mexida?: boolean;
-  readonly riscada?: boolean;
-  readonly titulo?: string;
-  readonly rotulo?: string;
-  readonly onEditar?: (novo: CellValue) => void;
-  /** Abre o visor. Ausente na linha nova, que ainda não tem valor guardado. */
-  readonly onAbrir?: () => void;
-  readonly alinhamento?: 'left' | 'center' | 'right';
-  /**
-   * A coluna a que esta célula pertence, escrita no DOM.
-   *
-   * Sem ela, quem lê a grade — inclusive os testes — só consegue apontar uma
-   * célula pela POSIÇÃO. Acrescentar uma coluna de controle à esquerda
-   * quebrava tudo que fazia isso, e a quebra não dizia o que tinha mudado.
-   */
-  readonly nomeDaColuna?: string;
-}) {
-  const nulo = valor === null;
-  const [editando, setEditando] = useState(false);
-
-  if (editando && editavel) {
-    return (
-      <Box component="td" sx={{ p: 0 }}>
-        <Box
-          component="input"
-          autoFocus
-          aria-label={rotulo ?? 'Valor da célula'}
-          defaultValue={nulo ? '' : String(valor)}
-          onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
-            setEditando(false);
-            onEditar?.(e.target.value);
-          }}
-          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-            if (e.key === 'Enter') e.currentTarget.blur();
-            // `Escape` desiste: sai sem chamar `onEditar`, e o valor fica como
-            // estava. Sem isto, começar a editar por engano já sujaria o rascunho.
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              setEditando(false);
-            }
-            // `Ctrl+0` põe NULL. Um botão por célula seria ruído; digitar a
-            // palavra "NULL" gravaria o TEXTO, que é outra coisa.
-            if (e.key === '0' && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              setEditando(false);
-              onEditar?.(null);
-            }
-          }}
-          sx={{
-            width: '100%', border: 0, outline: 'none', px: 1, py: '3px',
-            bgcolor: 'primary.main', color: 'background.default',
-            font: 'inherit', fontFamily: tokens.fontMono, fontSize: 12,
-          }}
-        />
-      </Box>
-    );
-  }
-
-  return (
-    <Box
-      component="td"
-      {...(nomeDaColuna === undefined ? {} : { 'data-celula-da-coluna': nomeDaColuna })}
-      title={titulo ?? (nulo ? '(NULL)' : String(valor))}
-      onDoubleClick={editavel ? () => setEditando(true) : undefined}
-      // Clicar copia: o caso mais comum é levar um id para a próxima consulta.
-      // Editar é DUPLO clique, para não brigar com isso.
-      onClick={() => void navigator.clipboard?.writeText(nulo ? '' : String(valor))}
-      sx={{
-        cursor: 'pointer',
-        textAlign: alinhamento,
-        // `relative` para a lupa se pendurar no canto direito da célula.
-        position: 'relative',
-        color: nulo ? 'text.secondary' : 'text.primary',
-        fontStyle: nulo ? 'italic' : 'normal',
-        textDecoration: riscada ? 'line-through' : 'none',
-        opacity: riscada ? 0.5 : 1,
-        bgcolor: mexida ? 'warning.main' : undefined,
-        ...(mexida ? { color: 'background.default' } : {}),
-        '&:hover': { bgcolor: mexida ? 'warning.main' : 'action.hover' },
-        // A lupa só sob o mouse: uma por célula, sempre visível, encheria a
-        // grade de ícones e roubaria a leitura do dado, que é o que importa.
-        '& [data-lupa]': { opacity: 0 },
-        '&:hover [data-lupa]': { opacity: 1 },
-      }}
-    >
-      {/* `(NULL)` com parênteses, como na ferramenta que ele usava. Os
-          parênteses fazem o trabalho que o itálico sozinho não fazia: dizer que
-          aquilo é a AUSÊNCIA de valor, e não uma célula cujo texto é "NULL" —
-          que é uma coisa que existe e que a grade precisa saber distinguir. */}
-      {nulo ? '(NULL)' : String(valor)}
-      {onAbrir !== undefined && (
-        <Box
-          component="button"
-          type="button"
-          data-lupa
-          aria-label="Ver o valor inteiro"
-          title="Ver o valor inteiro"
-          onClick={(e: React.MouseEvent) => {
-            // Sem isto o clique da célula copia o valor no mesmo gesto.
-            e.stopPropagation();
-            onAbrir();
-          }}
-          onDoubleClick={(e: React.MouseEvent) => e.stopPropagation()}
-          sx={{
-            position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
-            border: 0, borderRadius: 0.5, p: 0.2, display: 'flex', cursor: 'pointer',
-            bgcolor: 'background.paper', color: 'text.secondary',
-            '&:hover': { color: 'primary.main' },
-          }}
-        >
-          <Icon name="lucide:zoom-in" size={13} />
-        </Box>
-      )}
-    </Box>
-  );
-}
-

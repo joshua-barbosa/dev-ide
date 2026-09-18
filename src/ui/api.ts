@@ -1,4 +1,5 @@
 import { comCaminho, request, requestBinario } from './api-http';
+import { orcamentoDeCelulas } from './orcamento';
 import type { Plataforma } from '../shared/plataforma';
 import type { Tarefa } from '../shared/tarefas';
 import type {
@@ -603,10 +604,20 @@ export const Api = {
       path: [...nodePath],
       filtro,
     }),
+  // O orçamento entra AQUI, num lugar só: toda consulta da IDE e da extensão
+  // passa por estas duas rotas, e quem chama não precisa saber que ele existe.
+  // Um `payload` que traga o seu próprio vence — é o que permite pedir uma
+  // página mais generosa sem mexer na escolha dele.
   execute: (id: string, payload: ExecuteRequest) =>
-    request<QueryResult>('POST', `${conexoes}/${id}/execute`, payload),
+    request<QueryResult>('POST', `${conexoes}/${id}/execute`, {
+      orcamentoDeCelulas: orcamentoDeCelulas(),
+      ...payload,
+    }),
   readTable: (id: string, payload: TableRequest) =>
-    request<TablePage>('POST', `${conexoes}/${id}/table`, payload),
+    request<TablePage>('POST', `${conexoes}/${id}/table`, {
+      orcamentoDeCelulas: orcamentoDeCelulas(),
+      ...payload,
+    }),
   /**
    * A senha guardada de UMA conexão, para o olho do formulário (N001).
    *

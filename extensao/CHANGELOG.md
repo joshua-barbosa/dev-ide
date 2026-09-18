@@ -1,5 +1,20 @@
 # Mudanças
 
+## 0.1.6
+
+- **A lupa mostra o valor inteiro.** Um JSON de 12 mil caracteres aparecia com
+  2.048 e um `…`, quebrado no meio — em toda tela de resultado de banco SQL. O
+  corte era feito no driver, antes de o valor sair do banco, e por isso nem a
+  lupa podia contorná-lo. Agora o corte é do DESENHO da célula (que mostra uma
+  linha só), e o que atravessa é o valor inteiro, dentro de um orçamento por
+  página.
+- **Novo ajuste "Valores grandes"**, no painel de aparência (o `👁`): quanto
+  texto uma página inteira pode trazer — 2, 8 (padrão), 32 ou 128 MB. O que
+  passar disso chega como amostra, e aí a lupa diz *"mostrando 2.049 de 11.608
+  caracteres"* em vez de mostrar o pedaço calada.
+- A grade ficou mais rápida de desenhar: 63 ms → 27 ms por página de 500 linhas,
+  porque a célula não pinta mais 2.048 caracteres para exibir uma linha.
+
 ## 0.1.5
 
 - **Ctrl+C, Ctrl+X e Ctrl+V voltam a funcionar dentro das telas da extensão** —

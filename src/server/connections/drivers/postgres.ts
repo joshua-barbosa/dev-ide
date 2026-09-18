@@ -13,11 +13,10 @@ import { acaoDeRotina } from './rotinas';
 import { Client, type ClientConfig, type FieldDef } from 'pg';
 import Cursor from 'pg-cursor';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
+import { listarBancos, listarSchemas } from './postgres-arvore';
 import {
-  BANCOS_SQL,
   COLUNAS_MODELO_SQL,
   PROCESSOS_SQL,
-  SCHEMAS_SQL,
 } from './postgres-sql';
 import {
   CAMPOS_DE_ARVORE,
@@ -62,10 +61,8 @@ import type {
   TreeNode,
 } from '../types';
 import {
-  applyVisibility,
-  formatCell,
+  OrcamentoDeCelulas,
   quoteIdentifier,
-  mainFirst,
   parseNameList,
   resolveRowLimit,
   resolveTimeout,
@@ -76,7 +73,7 @@ const SERVER_ID = 'server';
 /** Schemas mantidos pelo próprio Postgres; escondidos por padrão. */
 const SCHEMAS_SISTEMA = ['pg_catalog', 'information_schema'];
 
-interface Exibicao {
+export interface Exibicao {
   readonly main: string;
   readonly bancos: VisibilityOptions;
   readonly schemas: VisibilityOptions;
@@ -198,36 +195,6 @@ function criarPool(base: ClientConfig, config: ResolvedConfig, startupSql: strin
 // Navegação
 // ---------------------------------------------------------------------------
 
-async function listarBancos(client: Client, exibicao: Exibicao): Promise<TreeNode[]> {
-  const { rows } = await client.query<{ nome: string; tamanho: string | null }>(BANCOS_SQL);
-  const visiveis = applyVisibility(rows, (linha) => linha.nome, exibicao.bancos);
-
-  return mainFirst(visiveis, exibicao.main, (linha) => linha.nome).map((linha) => ({
-    id: linha.nome,
-    label: linha.nome,
-    icon: 'database' as const,
-    detail: linha.tamanho ?? undefined,
-    hasChildren: true,
-    meta: { database: linha.nome, main: linha.nome === exibicao.main },
-  }));
-}
-
-async function listarSchemas(client: Client, exibicao: Exibicao): Promise<TreeNode[]> {
-  const { rows } = await client.query<{ schema: string; tamanho: string }>(SCHEMAS_SQL);
-  const visiveis = applyVisibility(rows, (linha) => linha.schema, exibicao.schemas);
-
-  return visiveis.map((linha) => ({
-    id: linha.schema,
-    label: linha.schema,
-    icon: 'schema' as const,
-    detail: linha.tamanho === '0 bytes' ? undefined : linha.tamanho,
-    hasChildren: true,
-    // T064: o diagrama é do SCHEMA. Quem diz ONDE ele cabe é o nó — a interface
-    // não conhece a forma do caminho de cada driver, e não deve conhecer.
-    meta: { schema: linha.schema, diagramaEr: true },
-  }));
-}
-
 async function navegar(
   clienteDe: ClienteDe,
   rotulo: string,
@@ -338,7 +305,8 @@ async function executar(
 
     const truncated = lote.length > limite;
     const usadas = truncated ? lote.slice(0, limite) : lote;
-    const rows: CellValue[][] = usadas.map((linha) => linha.map(formatCell));
+    const orcamento = new OrcamentoDeCelulas(request.orcamentoDeCelulas);
+    const rows: CellValue[][] = usadas.map((linha, i) => orcamento.linha(i, linha));
 
     return {
       columns: colunas,
@@ -346,6 +314,7 @@ async function executar(
       rowCount: rows.length,
       durationMs: Date.now() - inicio,
       truncated,
+      cortes: orcamento.cortes,
     };
   } finally {
     await cursor.close().catch(() => undefined);

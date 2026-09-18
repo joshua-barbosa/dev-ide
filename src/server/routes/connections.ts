@@ -521,6 +521,10 @@ export function createConnectionsRouter(
       nodePath: Array.isArray(body.nodePath) ? body.nodePath.map(String) : [],
       pagina: typeof body.pagina === 'number' ? body.pagina : 1,
       porPagina: typeof body.porPagina === 'number' ? body.porPagina : 0,
+      // Quanto texto esta página pode trazer: escolha dele, no painel de
+      // aparência. Ausente, o driver usa `ORCAMENTO_PADRAO`.
+      orcamentoDeCelulas:
+        typeof body.orcamentoDeCelulas === 'number' ? body.orcamentoDeCelulas : undefined,
       // `ordenar` e `filtros` são conferidos contra as colunas REAIS dentro do
       // driver — aqui só se repassa a forma.
       ordenar: (body.ordenar ?? null) as never,
@@ -732,6 +736,8 @@ export function createConnectionsRouter(
         // Paginação do resultado (T056). Negativo e fracionário são aparados no
         // driver; aqui só se repassa a forma.
         offset: typeof body.offset === 'number' ? body.offset : undefined,
+        orcamentoDeCelulas:
+          typeof body.orcamentoDeCelulas === 'number' ? body.orcamentoDeCelulas : undefined,
         timeoutMs: typeof body.timeoutMs === 'number' ? body.timeoutMs : undefined,
       }),
       doPedido,
