@@ -1,5 +1,16 @@
 # Mudanças
 
+## 0.1.5
+
+- **Ctrl+C, Ctrl+X e Ctrl+V voltam a funcionar dentro das telas da extensão** —
+  no caderno `.sqlbook`, na grade de resultado e nos formulários. A moldura de
+  webview do editor cancela essas três teclas quando roda no Electron (vale para
+  VS Code e Cursor) esperando que o próprio editor faça o serviço, mas o comando
+  dele age no campo do editor, não dentro da tela da extensão: a tecla morria no
+  caminho e só o botão direito copiava. Agora as telas atendem o gesto por conta
+  própria, com o multi-cursor e o "copiar a linha inteira sem seleção" do editor
+  de blocos preservados.
+
 ## 0.1.4
 
 - **O terminal SSH não fecha mais sozinho depois de 10 minutos.** A conexão

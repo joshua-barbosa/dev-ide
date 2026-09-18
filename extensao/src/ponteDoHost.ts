@@ -280,6 +280,16 @@ export class PonteDoHost {
   private async executarChamada(c: ChamadaAoHost): Promise<unknown> {
     const a = c.args;
     switch (c.acao) {
+      // A área de transferência DO EDITOR, que não depende de permissão do
+      // navegador. É a reserva de `areaDeTransferencia.ts`: a webview tenta
+      // primeiro a área do próprio Chromium e cai aqui quando ela é negada.
+      case 'lerAreaDeTransferencia':
+        return await vscode.env.clipboard.readText();
+
+      case 'escreverNaAreaDeTransferencia':
+        await vscode.env.clipboard.writeText(String(a.texto ?? ''));
+        return null;
+
       case 'pedirTexto':
         return (
           (await vscode.window.showInputBox({

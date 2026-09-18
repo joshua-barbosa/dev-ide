@@ -217,6 +217,17 @@ try {
   marcar('host escolherArquivo (vários)', varios.ok && Array.isArray(varios.data),
     varios.ok ? JSON.stringify(varios.data?.map?.((a) => a.nome)) : varios.erro);
 
+  // A RESERVA da área de transferência: a webview cai aqui quando o Chromium
+  // nega a área dele. A tecla em si é do `conferir:teclado` — este é o outro
+  // lado da ponte, que navegador nenhum alcança.
+  const escreveu = await mandar({
+    tipo: 'hostChamada', acao: 'escreverNaAreaDeTransferencia', args: { texto: 'texto copiado' },
+  });
+  marcar('host escreve na área de transferência', escreveu.ok === true, escreveu.ok ? '' : escreveu.erro);
+  const leu = await mandar({ tipo: 'hostChamada', acao: 'lerAreaDeTransferencia', args: {} });
+  marcar('host lê da área de transferência o que foi escrito',
+    leu.ok === true && leu.data === 'texto copiado', JSON.stringify(leu.data ?? leu.erro));
+
   const inventada = await mandar({ tipo: 'hostChamada', acao: 'inventada', args: {} });
   marcar('ação desconhecida é RECUSADA', inventada.ok === false, String(inventada.erro));
 

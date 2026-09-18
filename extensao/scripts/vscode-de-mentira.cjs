@@ -64,6 +64,9 @@ class ThemeIcon {
 ThemeIcon.File = new ThemeIcon('file');
 ThemeIcon.Folder = new ThemeIcon('folder');
 
+/** A área de transferência do editor falso: guarda o que foi escrito. */
+let area = '';
+
 module.exports = {
   Uri,
   TreeItem,
@@ -149,7 +152,16 @@ module.exports = {
   FileChangeType: { Changed: 1, Created: 2, Deleted: 3 },
   languages: { registerCompletionItemProvider: () => ({ dispose() {} }) },
   env: {
-    clipboard: { writeText: async (t) => anota({ o: 'clipboard', t }) },
+    // Guarda o que foi escrito: a reserva da webview (`areaDeTransferencia.ts`)
+    // LÊ daqui quando o navegador nega a área dele, e sem estado não dava para
+    // conferir que ela devolve o texto certo.
+    clipboard: {
+      writeText: async (t) => {
+        area = String(t);
+        anota({ o: 'clipboard', t });
+      },
+      readText: async () => area,
+    },
     openExternal: async () => true,
   },
 };
