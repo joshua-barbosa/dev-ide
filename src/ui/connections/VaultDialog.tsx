@@ -49,10 +49,16 @@ export function VaultDialog({ pedido, podeLembrar, onResponder, onCancelar }: Va
   if (pedido === null) return null;
   const criando = pedido.modo === 'criar';
   const trocando = pedido.modo === 'trocar';
+  // Spec 109: os dois caminhos da decisão dele. `remover` confere a senha atual
+  // uma última vez; `pondo` só pede a nova, porque não há atual para conferir.
+  const removendo = pedido.modo === 'remover-tranca';
+  const pondo = pedido.modo === 'por-tranca';
+  const pedeNova = trocando || pondo;
 
   const enviar = async () => {
-    if (senha === '' || enviando) return;
-    if (trocando) {
+    if (enviando) return;
+    if (!pondo && senha === '') return;
+    if (pedeNova) {
       if (nova === '') return;
       // Conferir AQUI, e não no servidor: um erro de digitação na senha nova
       // trancaria o cofre com uma senha que ninguém sabe qual é.
@@ -64,7 +70,7 @@ export function VaultDialog({ pedido, podeLembrar, onResponder, onCancelar }: Va
     setEnviando(true);
     setErro(null);
     try {
-      await onResponder(senha, lembrar, trocando ? nova : undefined);
+      await onResponder(senha, lembrar, pedeNova ? nova : undefined);
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -75,8 +81,12 @@ export function VaultDialog({ pedido, podeLembrar, onResponder, onCancelar }: Va
   return (
     <Dialog open onClose={onCancelar} maxWidth="xs" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: 15 }}>
-        <Icon name={criando || trocando ? 'lucide:lock' : 'lucide:unlock'} size={16} />
-        {criando ? 'Criar o cofre' : trocando ? 'Trocar a senha mestra' : 'Destrancar o cofre'}
+        <Icon name={removendo ? 'lucide:unlock' : criando || pedeNova ? 'lucide:lock' : 'lucide:unlock'} size={16} />
+        {criando ? 'Criar o cofre'
+          : trocando ? 'Trocar a senha mestra'
+            : pondo ? 'Pôr uma senha-mestra'
+              : removendo ? 'Remover a senha-mestra'
+                : 'Destrancar o cofre'}
       </DialogTitle>
 
       <DialogContent>
@@ -85,14 +95,19 @@ export function VaultDialog({ pedido, podeLembrar, onResponder, onCancelar }: Va
             ? 'A senha mestra protege as credenciais guardadas. Não há recuperação: perdê-la significa perder os segredos.'
             : trocando
               ? 'Todos os segredos são recifrados com a senha nova. A lembrança neste computador é apagada, porque a chave muda.'
-              : 'As credenciais estão cifradas. A senha mestra abre o cofre nesta sessão.'}
+              : pondo
+                ? 'O cofre passa a pedir esta senha para abrir. Todos os segredos são recifrados com ela; não há recuperação.'
+                : removendo
+                  ? 'Digite a senha atual uma última vez. Depois disto o cofre abre sozinho nesta máquina, e nunca mais pede senha — inclusive na extensão.'
+                  : 'As credenciais estão cifradas. A senha mestra abre o cofre nesta sessão.'}
         </Box>
 
+        {!pondo && (
         <TextField
           autoFocus
           fullWidth
           type="password"
-          label={trocando ? 'Senha mestra atual' : 'Senha mestra'}
+          label={trocando || removendo ? 'Senha mestra atual' : 'Senha mestra'}
           value={senha}
           disabled={enviando}
           onChange={(e) => setSenha(e.target.value)}
@@ -100,11 +115,12 @@ export function VaultDialog({ pedido, podeLembrar, onResponder, onCancelar }: Va
             if (e.key === 'Enter') void enviar();
           }}
           slotProps={{
-            htmlInput: { 'aria-label': trocando ? 'Senha mestra atual' : 'Senha mestra' },
+            htmlInput: { 'aria-label': trocando || removendo ? 'Senha mestra atual' : 'Senha mestra' },
           }}
         />
+        )}
 
-        {trocando && (
+        {pedeNova && (
           <>
             <TextField
               fullWidth

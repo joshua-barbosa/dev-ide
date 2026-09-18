@@ -63,6 +63,10 @@ const FIXOS = [
   { cmd: 'novaConexao', t: 'Nova conexão', icone: '$(add)', when: NAS_DUAS, titulo: true, g: '1' },
   { cmd: 'trocarSenhaMestra', t: 'Trocar a senha mestra', icone: '$(key)',
     when: NAS_DUAS, titulo: true, g: '2' },
+  // Spec 109: tirar a senha é gesto de uma vez, mas precisa estar VISÍVEL —
+  // ele nunca iria procurar na paleta por um alívio que não sabe existir.
+  { cmd: 'removerSenhaDoCofre', t: 'Remover a senha-mestra (abrir sozinho)',
+    icone: '$(unlock)', when: NAS_DUAS, titulo: true, g: '2.5' },
   { cmd: 'importarConexoes', t: 'Importar conexões de um arquivo', icone: '$(cloud-upload)',
     when: NAS_DUAS, titulo: true, g: '3' },
   { cmd: 'exportarConexoes', t: 'Exportar conexões COM as senhas', icone: '$(cloud-download)',

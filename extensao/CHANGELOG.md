@@ -1,5 +1,19 @@
 # Mudanças
 
+## 0.1.7
+
+- **O cofre não pede mais senha.** Ele abre sozinho, e a extensão deixa de pedir
+  a senha-mestra toda vez que o editor é fechado e aberto. As senhas das
+  conexões continuam cifradas: a chave fica amarrada a esta máquina, então uma
+  cópia da pasta levada para outro computador não abre.
+- **Cofre novo nasce sem senha**, sem perguntar nada ao salvar a primeira
+  conexão.
+- Quem já tem um cofre com senha usa **"Braytech: Remover a senha-mestra"** (na
+  barra da árvore ou na paleta) — pede a senha atual uma última vez e pronto.
+- O caminho de volta existe: **"Braytech: Pôr uma senha-mestra no cofre"**.
+- Correção: o cadeado da árvore nunca mandava o "lembrar neste computador" ao
+  motor, e por isso a IDE lembrava e a extensão não.
+
 ## 0.1.6
 
 - **A lupa mostra o valor inteiro.** Um JSON de 12 mil caracteres aparecia com

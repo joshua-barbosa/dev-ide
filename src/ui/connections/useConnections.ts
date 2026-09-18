@@ -90,8 +90,13 @@ const chaveDe = chaveDoNo;
 
 /** Um pedido de senha em aberto — o que o diálogo precisa saber para se desenhar. */
 export interface PedidoDeSenha {
-  /** `trocar` pede DUAS senhas: a atual e a nova (T100). */
-  readonly modo: 'criar' | 'destrancar' | 'trocar';
+  /**
+   * `trocar` pede DUAS senhas: a atual e a nova (T100).
+   *
+   * `remover-tranca` e `por-tranca` são os dois sentidos da spec 109: tirar a
+   * senha (conferindo-a uma última vez) e pôr uma de volta.
+   */
+  readonly modo: 'criar' | 'destrancar' | 'trocar' | 'remover-tranca' | 'por-tranca';
 }
 
 export interface ConnectionsController {
@@ -109,6 +114,10 @@ export interface ConnectionsController {
   destrancar(): Promise<void>;
   /** Troca a senha mestra, recifrando todos os segredos (T100). */
   trocarSenha(): Promise<void>;
+  /** Tira a senha: o cofre passa a abrir sozinho nesta máquina (spec 109). */
+  removerTranca(): Promise<void>;
+  /** Põe uma senha num cofre sem tranca — o caminho de volta. */
+  porTranca(): Promise<void>;
   trancar(): Promise<void>;
   alternarGrupo(caminho: string): void;
   recolherTudo(): void;
@@ -197,7 +206,9 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
       if (pedido.modo === 'criar') await Api.createVault(senha, lembrar);
       else if (pedido.modo === 'trocar') {
         await Api.trocarSenhaMestra(senha, nova ?? '', lembrar);
-      } else await Api.unlockVault(senha, lembrar);
+      } else if (pedido.modo === 'remover-tranca') await Api.removerTranca(senha);
+      else if (pedido.modo === 'por-tranca') await Api.porTranca(nova ?? '', lembrar);
+      else await Api.unlockVault(senha, lembrar);
 
       setPedidoDeSenha(null);
       await recarregar();
@@ -234,14 +245,21 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
     setEstado(atual);
     const modo = modoDoCofre(atual.vault);
     if (modo === 'pronto') return true;
-    // Cofre AUSENTE pede criar. Pedir para destrancar o que não existe foi o
-    // que travou o notebook dele: o motor só responde "Cofre não encontrado".
+    // **Cofre ausente NÃO pergunta nada** (spec 109): nasce sem tranca, por
+    // decisão dele. Antes abria um diálogo pedindo senha duas vezes — e era
+    // isso que ele estava tendo de refazer a cada vez que o editor fechava.
+    if (modo === 'criar') {
+      setEstado(await Api.criarCofreSemTranca().then(() => Api.connections()));
+      return true;
+    }
     return pedirSenha(modo);
   }, [pedirSenha]);
 
+  /** Cria o cofre sem tranca, sem perguntar. Ver spec 109. */
   const criarCofre = useCallback(async () => {
-    await pedirSenha('criar');
-  }, [pedirSenha]);
+    await Api.criarCofreSemTranca();
+    await recarregar();
+  }, [recarregar]);
 
   const destrancar = useCallback(async () => {
     await pedirSenha('destrancar');
@@ -249,6 +267,14 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
 
   const trocarSenha = useCallback(async () => {
     await pedirSenha('trocar');
+  }, [pedirSenha]);
+
+  const removerTranca = useCallback(async () => {
+    await pedirSenha('remover-tranca');
+  }, [pedirSenha]);
+
+  const porTranca = useCallback(async () => {
+    await pedirSenha('por-tranca');
   }, [pedirSenha]);
 
   const trancar = useCallback(async () => {
@@ -583,6 +609,8 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
       criarCofre,
       destrancar,
       trocarSenha,
+      removerTranca,
+      porTranca,
       trancar,
       alternarGrupo,
       recolherTudo,
@@ -608,7 +636,7 @@ export function useConnections({ confirmar }: ConnectionsDeps): ConnectionsContr
       capacidades, desconectar, descricoes, destrancar, drivers, erro, estado, excluir, expandidos, filhos,
       garantirDestrancado,
       grupos, pedidoDeSenha, recarregar, recarregarMetadados, responderSenha,
-      salvarConexao, todasAsConexoes, trancar,
+      salvarConexao, todasAsConexoes, trancar, removerTranca, porTranca,
     ]
   );
 }

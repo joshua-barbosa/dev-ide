@@ -31,7 +31,7 @@ import { ACOES_DO_MENU, comandoDaAcao } from './acoesDoMenu';
 import type { FiltroDaArvore } from './filtro-da-arvore';
 import { registrarComandos } from './comandosDaArvore';
 import { abrirTerminalRemoto } from './terminalRemoto';
-import { garantirCofre } from './cofre';
+import { garantirCofre, porTranca, removerTranca } from './cofre';
 import type { DepsDoPainel } from './ponteDoHost';
 import type { Painel } from './paineis';
 
@@ -284,6 +284,18 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       // destrancado. Era o único caminho que faltava para a extensão funcionar
       // sem a IDE instalada.
       if (!(await garantirCofre({ pedir }))) return;
+      recarregarArvores();
+    }),
+
+    // Os dois sentidos da spec 109. Ficam na paleta, e não num botão: são
+    // gestos de uma vez só — tirar a senha, ou pôr uma de volta.
+    vscode.commands.registerCommand('braytech.removerSenhaDoCofre', async () => {
+      if (!(await removerTranca({ pedir }))) return;
+      recarregarArvores();
+    }),
+
+    vscode.commands.registerCommand('braytech.porSenhaNoCofre', async () => {
+      if (!(await porTranca({ pedir }))) return;
       recarregarArvores();
     }),
 

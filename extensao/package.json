@@ -2,7 +2,7 @@
   "name": "braytech-code",
   "displayName": "Braytech Code",
   "description": "Bancos de dados e serviços remotos dentro do VS Code e do Cursor — o mesmo motor da IDE Braytech Code.",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "joshua-barbosa",
   "license": "Apache-2.0",
   "repository": {
@@ -87,6 +87,15 @@
       {
         "command": "braytech.destrancarCofre",
         "title": "Braytech: Destrancar o cofre"
+      },
+      {
+        "command": "braytech.removerSenhaDoCofre",
+        "title": "Braytech: Remover a senha-mestra (abrir sozinho)",
+        "icon": "$(unlock)"
+      },
+      {
+        "command": "braytech.porSenhaNoCofre",
+        "title": "Braytech: Pôr uma senha-mestra no cofre"
       },
       {
         "command": "braytech.novaConexao",
@@ -469,19 +478,24 @@
           "group": "navigation@2"
         },
         {
-          "command": "braytech.importarConexoes",
+          "command": "braytech.removerSenhaDoCofre",
           "when": "view == braytech.databases.arvore || view == braytech.servicos.arvore",
           "group": "navigation@3"
         },
         {
-          "command": "braytech.exportarConexoes",
+          "command": "braytech.importarConexoes",
           "when": "view == braytech.databases.arvore || view == braytech.servicos.arvore",
           "group": "navigation@4"
         },
         {
-          "command": "braytech.alternarCofre",
+          "command": "braytech.exportarConexoes",
           "when": "view == braytech.databases.arvore || view == braytech.servicos.arvore",
           "group": "navigation@5"
+        },
+        {
+          "command": "braytech.alternarCofre",
+          "when": "view == braytech.databases.arvore || view == braytech.servicos.arvore",
+          "group": "navigation@6"
         }
       ],
       "editor/title": [
@@ -518,6 +532,10 @@
         },
         {
           "command": "braytech.trocarSenhaMestra",
+          "when": "false"
+        },
+        {
+          "command": "braytech.removerSenhaDoCofre",
           "when": "false"
         },
         {

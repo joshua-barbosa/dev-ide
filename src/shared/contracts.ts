@@ -448,6 +448,22 @@ export interface VaultState {
   readonly rememberedUntil: string | null;
   /** Falso quando a máquina não pode ser identificada: aí só a senha resolve. */
   readonly canRemember: boolean;
+  /**
+   * O cofre abre sozinho, sem senha (spec 109).
+   *
+   * Decisão dele, 18/09/2026, depois de a extensão pedir a senha a cada vez que
+   * o editor fechava. A tela usa isto para não oferecer "trancar" nem "trocar a
+   * senha" de um cofre que não tem senha — e para oferecer "pôr uma senha".
+   */
+  readonly semTranca: boolean;
+  /**
+   * A chave está em claro no arquivo, por não haver identidade de máquina.
+   *
+   * Só acontece sem tranca e onde a amarra não existe (Windows). A tela DIZ —
+   * é a única parte desta decisão que muda o que um atacante com acesso ao
+   * disco consegue.
+   */
+  readonly chaveDesprotegida: boolean;
 }
 
 /** O que a rota de conectar devolve; a UI liga as abas conforme o que existir. */

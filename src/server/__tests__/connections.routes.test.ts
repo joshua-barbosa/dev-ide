@@ -124,6 +124,7 @@ test('rotas de conexão', async (t) => {
     assert.equal(status, 200);
     assert.deepEqual(payload.data.vault, {
       exists: false, unlocked: false, rememberedUntil: null, canRemember: true,
+      semTranca: false, chaveDesprotegida: false,
     });
     assert.deepEqual(payload.data.tree.connections, []);
   });

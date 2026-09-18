@@ -90,16 +90,15 @@ ${existsSync(path.join(WEB, 'formulario.css')) ? '<link rel="stylesheet" href="f
   marcar('a máquina começa SEM cofre', antes.exists === false, JSON.stringify(antes));
 
   await pagina.getByRole('button', { name: /^salvar$/i }).first().click();
-  const dialogo = pagina.getByRole('dialog');
-  const apareceu = await dialogo.waitFor({ timeout: 5000 }).then(() => true, () => false);
-  marcar('Salvar sem cofre PEDE a senha, em vez de travar calado', apareceu);
 
-  if (apareceu) {
-    const senhas = dialogo.locator('input[type=password]');
-    for (let i = 0; i < (await senhas.count()); i++) await senhas.nth(i).fill('senha-nova-1234');
-    await dialogo.getByRole('button', { name: /criar/i }).click();
-    await dialogo.waitFor({ state: 'detached', timeout: 8000 }).catch(() => undefined);
-  }
+  // **Nada de diálogo** (spec 109). Até a 0.1.6 aqui aparecia um pedido de senha
+  // com confirmação; ele: *"é melhor remover essa senha mesmo e deixar sempre
+  // aberto, não ter essa tranca, porque fica muito chato precisar ficar
+  // digitando"*. O cofre nasce sem tranca, e salvar é só salvar.
+  const dialogo = pagina.getByRole('dialog');
+  const apareceu = await dialogo.waitFor({ timeout: 3000 }).then(() => true, () => false);
+  marcar('Salvar sem cofre NÃO pede senha nenhuma', !apareceu,
+    apareceu ? await dialogo.innerText().catch(() => '(diálogo)') : '');
 
   // A gravação acontece depois do diálogo fechar: dá um instante ao motor.
   let depois = await api('/api/connections');
@@ -107,8 +106,11 @@ ${existsSync(path.join(WEB, 'formulario.css')) ? '<link rel="stylesheet" href="f
     await new Promise((r) => setTimeout(r, 250));
     depois = await api('/api/connections');
   }
-  marcar('o cofre foi criado e ficou aberto',
-    depois.vault.exists === true && depois.vault.unlocked === true, JSON.stringify(depois.vault));
+  marcar('o cofre foi criado, ficou aberto e SEM TRANCA',
+    depois.vault.exists === true && depois.vault.unlocked === true
+      && depois.vault.semTranca === true, JSON.stringify(depois.vault));
+  marcar('e a chave não ficou em claro: está amarrada à máquina',
+    depois.vault.chaveDesprotegida === false, JSON.stringify(depois.vault));
   marcar('a conexão foi gravada', JSON.stringify(depois.tree).includes('"label":"exemplo"'));
 
   const pastaDeDados = path.join(casa, '.dev-ide');

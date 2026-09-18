@@ -80,7 +80,12 @@ const remember = new RememberedKey(
 // O prazo vai junto (T101): destrancar pela lembrança RENOVA a lembrança, e
 // quem usa a IDE todo dia não redigita a senha mestra. Quem some pelo prazo
 // inteiro continua tendo que digitar — é o que o prazo existe para garantir.
-restaurarCofre(vault, remember, diasDeLembranca(process.env, prefs.ler()['vault.rememberDays']));
+// **Cofre sem tranca abre aqui** (spec 109): é a subida do motor que o abre, e
+// é por isso que ele nunca mais pede senha — inclusive na extensão, onde o
+// motor nasce e morre junto com o editor.
+if (!vault.abrirSemSenha()) {
+  restaurarCofre(vault, remember, diasDeLembranca(process.env, prefs.ler()['vault.rememberDays']));
+}
 
 // ---- Terminal ----
 const terminais = new TerminalRegistry();

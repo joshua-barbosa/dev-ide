@@ -27,33 +27,17 @@ export async function garantirCofre(deps: DepsDoCofre): Promise<boolean> {
   return modo === 'criar' ? criar(deps) : destrancar(deps);
 }
 
+/**
+ * Cria o cofre SEM perguntar nada (spec 109).
+ *
+ * Antes pedia a senha duas vezes. Ele: *"é melhor remover essa senha mesmo e
+ * deixar sempre aberto, não ter essa tranca, porque fica muito chato precisar
+ * ficar digitando"*. As senhas das conexões continuam cifradas; o que sai é a
+ * digitação. Quem quiser uma senha usa "Pôr uma senha-mestra".
+ */
 async function criar(deps: DepsDoCofre): Promise<boolean> {
-  const senha = await vscode.window.showInputBox({
-    title: 'Criar o cofre da Braytech Code',
-    prompt: 'Escolha a senha-mestra. Ela cifra as senhas das conexões e NÃO se recupera.',
-    password: true,
-    ignoreFocusOut: true,
-  });
-  if (senha === undefined) return false;
-  const confirmacao = await vscode.window.showInputBox({
-    title: 'Criar o cofre da Braytech Code',
-    prompt: 'Repita a senha-mestra',
-    password: true,
-    ignoreFocusOut: true,
-  });
-  if (confirmacao === undefined) return false;
-
-  const erro = validarSenhaNova(senha, confirmacao);
-  if (erro !== null) {
-    void vscode.window.showErrorMessage(`Braytech Code: ${erro}`);
-    return false;
-  }
-  const criado = await deps.pedir('POST', '/api/connections/vault', { password: senha });
-  if (criado === null) return false;
-  void vscode.window.showInformationMessage(
-    'Braytech Code: cofre criado e destrancado. Guarde a senha — ela não se recupera.'
-  );
-  return true;
+  const criado = await deps.pedir('POST', '/api/connections/vault', {});
+  return criado !== null;
 }
 
 async function destrancar(deps: DepsDoCofre): Promise<boolean> {
@@ -65,4 +49,57 @@ async function destrancar(deps: DepsDoCofre): Promise<boolean> {
   if (senha === undefined || senha === '') return false;
   const ok = await deps.pedir('POST', '/api/connections/vault/unlock', { password: senha });
   return ok !== null;
+}
+
+/**
+ * Tira a senha do cofre: daqui em diante ele abre sozinho.
+ *
+ * É o caminho que ELE vai usar uma vez — o cofre dele já existe com senha, e
+ * sem isto continuaria pedindo. Pede a senha atual uma última vez porque sem
+ * ela não há como decifrar o que já está guardado.
+ */
+export async function removerTranca(deps: DepsDoCofre): Promise<boolean> {
+  const senha = await vscode.window.showInputBox({
+    title: 'Remover a senha-mestra',
+    prompt: 'Digite a senha atual uma última vez. Depois o cofre abre sozinho nesta máquina.',
+    password: true,
+    ignoreFocusOut: true,
+  });
+  if (senha === undefined || senha === '') return false;
+  const ok = await deps.pedir('POST', '/api/connections/vault/sem-tranca', { password: senha });
+  if (ok === null) return false;
+  void vscode.window.showInformationMessage(
+    'Braytech Code: senha removida. O cofre passa a abrir sozinho nesta máquina.'
+  );
+  return true;
+}
+
+/** Põe uma senha num cofre sem tranca — o caminho de volta. */
+export async function porTranca(deps: DepsDoCofre): Promise<boolean> {
+  const senha = await vscode.window.showInputBox({
+    title: 'Pôr uma senha-mestra',
+    prompt: 'Escolha a senha. Ela cifra as senhas das conexões e NÃO se recupera.',
+    password: true,
+    ignoreFocusOut: true,
+  });
+  if (senha === undefined) return false;
+  const confirmacao = await vscode.window.showInputBox({
+    title: 'Pôr uma senha-mestra',
+    prompt: 'Repita a senha',
+    password: true,
+    ignoreFocusOut: true,
+  });
+  if (confirmacao === undefined) return false;
+
+  const erro = validarSenhaNova(senha, confirmacao);
+  if (erro !== null) {
+    void vscode.window.showErrorMessage(`Braytech Code: ${erro}`);
+    return false;
+  }
+  const ok = await deps.pedir('POST', '/api/connections/vault/tranca', { password: senha });
+  if (ok === null) return false;
+  void vscode.window.showInformationMessage(
+    'Braytech Code: senha posta. Guarde-a — ela não se recupera.'
+  );
+  return true;
 }

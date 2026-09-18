@@ -647,19 +647,36 @@ export function ConnectionsPanel({
             );
           })}
         />
+        {/* Cofre SEM TRANCA não oferece trancar: seria uma porta sem chave.
+            Oferece pôr uma senha, que é o caminho de volta da decisão. */}
         <AcaoDoPainel
-          icone={vault.unlocked ? 'lucide:lock' : 'lucide:unlock'}
+          icone={vault.semTranca ? 'lucide:key' : vault.unlocked ? 'lucide:lock' : 'lucide:unlock'}
           rotulo={
             !vault.exists
               ? 'Criar cofre'
-              : vault.unlocked
-                ? 'Trancar o cofre (fecha as sessões)'
-                : 'Destrancar o cofre'
+              : vault.semTranca
+                ? 'Pôr uma senha-mestra neste cofre'
+                : vault.unlocked
+                  ? 'Trancar o cofre (fecha as sessões)'
+                  : 'Destrancar o cofre'
           }
           onClick={comErro(
-            !vault.exists ? ctrl.criarCofre : vault.unlocked ? ctrl.trancar : ctrl.destrancar
+            !vault.exists
+              ? ctrl.criarCofre
+              : vault.semTranca
+                ? ctrl.porTranca
+                : vault.unlocked
+                  ? ctrl.trancar
+                  : ctrl.destrancar
           )}
         />
+        {vault.exists && !vault.semTranca && vault.unlocked && (
+          <AcaoDoPainel
+            icone="lucide:unlock"
+            rotulo="Remover a senha-mestra (o cofre passa a abrir sozinho)"
+            onClick={comErro(ctrl.removerTranca)}
+          />
+        )}
       </Box>
 
 
@@ -677,6 +694,14 @@ export function ConnectionsPanel({
       {!vault.exists && (
         <Box sx={{ px: 1.25, py: 1, color: 'text.secondary', fontSize: 11, lineHeight: 1.5 }}>
           Nenhum cofre ainda. Crie um para guardar credenciais cifradas.
+        </Box>
+      )}
+      {/* O único aviso que "sem tranca" precisa dar: onde não há identidade de
+          máquina, a chave fica em claro. Esconder isso seria escolher por ele. */}
+      {vault.chaveDesprotegida && (
+        <Box sx={{ px: 1.25, py: 1, color: 'warning.main', fontSize: 11, lineHeight: 1.5 }}>
+          ⚠ Sem senha e sem amarra de máquina: a chave do cofre está em claro no
+          arquivo. Quem ler o disco lê as senhas dos bancos.
         </Box>
       )}
 

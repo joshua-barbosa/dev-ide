@@ -15,8 +15,11 @@
 //   nenhuma em disco: quem faz isso é `remember.ts`.
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { arquivoDeDados } from '../paths';
+import { machineIdPadrao, type LeitorDeMaquina } from './remember';
+import { aceitaLembrancaEmArquivo, plataformaAtual } from '../../shared/plataforma';
 import type { ConnectionInput, FieldValue, PublicConnection, ResolvedConfig } from './types';
 
 const VERSION = 1 as const;
@@ -54,9 +57,29 @@ interface StoredConnection {
   readonly secrets: Record<string, EncryptedValue>;
 }
 
+/**
+ * O embrulho da chave quando o cofre NÃO tem senha (spec 109).
+ *
+ * `maquina`: a chave vai cifrada com `machine-id` + uid. Quem copiar a pasta
+ * para outro computador leva um embrulho que não abre.
+ *
+ * `aberto`: a chave vai em claro, e só existe onde não há identidade de máquina
+ * (Windows, ver `remember.ts`). É o preço de "sempre aberto" onde não há amarra
+ * possível — dito na tela, nunca escondido.
+ */
+interface SemTranca {
+  readonly modo: 'maquina' | 'aberto';
+  readonly salt?: string;
+  readonly iv?: string;
+  readonly tag?: string;
+  readonly data: string;
+}
+
 interface VaultFile {
   readonly version: typeof VERSION;
   readonly kdf: KdfParams;
+  /** Ausente é o cofre COM senha — o formato de sempre. */
+  readonly semTranca?: SemTranca;
   readonly verifier: EncryptedValue;
   readonly connections: readonly StoredConnection[];
 }
@@ -68,6 +91,17 @@ function deriveKey(password: string, salt: Buffer, kdf: Pick<KdfParams, 'N' | 'r
     p: kdf.p,
     maxmem: SCRYPT.maxmem,
   });
+}
+
+function kdfNovo(salt: Buffer): KdfParams {
+  return {
+    algorithm: 'scrypt',
+    salt: salt.toString('base64'),
+    N: SCRYPT.N,
+    r: SCRYPT.r,
+    p: SCRYPT.p,
+    keyLength: KEY_BYTES,
+  };
 }
 
 function encrypt(plaintext: string, key: Buffer, aad: string): EncryptedValue {
@@ -128,7 +162,11 @@ export class Vault {
   private file: VaultFile | null = null;
   private key: Buffer | null = null;
 
-  constructor(private readonly filePath: string) {}
+  constructor(
+    private readonly filePath: string,
+    /** Injetável para o teste não depender do `/etc/machine-id` desta máquina. */
+    private readonly lerMaquina: LeitorDeMaquina = machineIdPadrao
+  ) {}
 
   static defaultPath(): string {
     return arquivoDeDados('vault.json');
@@ -166,8 +204,95 @@ export class Vault {
     this.persist();
   }
 
+  /**
+   * Cria um cofre SEM senha (spec 109).
+   *
+   * Ele pediu depois de a extensão exigir a senha a cada vez que o Cursor
+   * fechava: *"é melhor remover essa senha mesmo e deixar sempre aberto"*. A
+   * chave continua existindo e os segredos continuam cifrados — o que sai é a
+   * DIGITAÇÃO, não a cifra.
+   */
+  criarSemTranca(): void {
+    if (this.exists()) {
+      throw new Error('O cofre já existe. Use "remover a tranca" em vez de criar.');
+    }
+    const key = crypto.randomBytes(KEY_BYTES);
+    this.file = {
+      version: VERSION,
+      kdf: kdfNovo(crypto.randomBytes(SALT_BYTES)),
+      semTranca: this.embrulhar(key),
+      verifier: encrypt(VERIFIER_PLAINTEXT, key, VERIFIER_AAD),
+      connections: [],
+    };
+    this.key = key;
+    this.persist();
+  }
+
+  /** Este cofre abre sozinho? */
+  semTranca(): boolean {
+    return this.exists() && this.load().semTranca !== undefined;
+  }
+
+  /**
+   * A chave está em claro no arquivo — verdade só onde não há amarra de máquina.
+   *
+   * Existe para a TELA poder dizer. Um aviso que o usuário não vê é o mesmo que
+   * não avisar, e esta é a única parte de "sem tranca" que muda o que um
+   * atacante com acesso ao disco consegue.
+   */
+  chaveDesprotegida(): boolean {
+    return this.semTranca() && this.load().semTranca?.modo === 'aberto';
+  }
+
+  /**
+   * Abre o cofre sem senha, se ele for desses. `false` = não era, ou não é
+   * desta máquina.
+   *
+   * Nunca lança: um cofre que não abre tem de virar "peça a senha", e não uma
+   * exceção que impeça o motor de subir.
+   */
+  abrirSemSenha(): boolean {
+    try {
+      const embrulho = this.load().semTranca;
+      if (embrulho === undefined) return false;
+      const key = this.desembrulhar(embrulho);
+      if (key === null) return false;
+      this.unlockWithKey(key);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Tira a tranca de um cofre que tem senha, conferindo-a antes.
+   *
+   * A chave NÃO muda: só passa a ser guardada embrulhada em vez de derivada da
+   * senha. Por isso nenhum segredo precisa ser recifrado — e por isso tirar a
+   * tranca não pode perder conexão nenhuma.
+   */
+  removerTranca(senhaAtual: string): void {
+    this.unlock(senhaAtual);
+    const key = this.requireKey();
+    this.file = { ...this.load(), semTranca: this.embrulhar(key) };
+    this.persist();
+  }
+
+  /** Põe a tranca de volta: senha nova, chave nova, tudo recifrado. */
+  porTranca(nova: string): void {
+    if (!this.semTranca()) throw new Error('Este cofre já tem senha.');
+    if (nova.trim() === '') throw new Error('A senha nova não pode ser vazia.');
+    if (!this.isUnlocked() && !this.abrirSemSenha()) {
+      throw new Error('Este cofre não abre nesta máquina.');
+    }
+    this.recifrar(this.requireKey(), nova, { semTranca: undefined });
+  }
+
   unlock(masterPassword: string): void {
     const file = this.load();
+    if (file.semTranca !== undefined) {
+      throw new Error('Este cofre não tem senha: ele abre sozinho nesta máquina.');
+    }
     const key = deriveKey(masterPassword, Buffer.from(file.kdf.salt, 'base64'), file.kdf);
     let verified: string;
     try {
@@ -424,6 +549,88 @@ export class Vault {
       throw new Error('O cofre está trancado. Destranque com a senha mestra primeiro.');
     }
     return this.key;
+  }
+
+  /** `machine-id` + uid, ou `null` quando não há amarra possível. */
+  private identidadeDaMaquina(): string | null {
+    if (!aceitaLembrancaEmArquivo(plataformaAtual())) return null;
+    try {
+      const id = this.lerMaquina();
+      if (typeof id !== 'string' || id.trim() === '') return null;
+      return `${id.trim()}:${os.userInfo().uid}`;
+    } catch {
+      return null;
+    }
+  }
+
+  private embrulhar(key: Buffer): SemTranca {
+    const identidade = this.identidadeDaMaquina();
+    if (identidade === null) return { modo: 'aberto', data: key.toString('base64') };
+
+    const salt = crypto.randomBytes(SALT_BYTES);
+    const envelope = crypto.scryptSync(identidade, salt, KEY_BYTES, SCRYPT);
+    const iv = crypto.randomBytes(IV_BYTES);
+    const cipher = crypto.createCipheriv(CIPHER, envelope, iv);
+    const data = Buffer.concat([cipher.update(key), cipher.final()]);
+    return {
+      modo: 'maquina',
+      salt: salt.toString('base64'),
+      iv: iv.toString('base64'),
+      tag: cipher.getAuthTag().toString('base64'),
+      data: data.toString('base64'),
+    };
+  }
+
+  private desembrulhar(embrulho: SemTranca): Buffer | null {
+    if (embrulho.modo === 'aberto') return Buffer.from(embrulho.data, 'base64');
+
+    const identidade = this.identidadeDaMaquina();
+    if (identidade === null || embrulho.salt === undefined
+      || embrulho.iv === undefined || embrulho.tag === undefined) {
+      return null;
+    }
+    try {
+      const envelope = crypto.scryptSync(
+        identidade, Buffer.from(embrulho.salt, 'base64'), KEY_BYTES, SCRYPT
+      );
+      const decipher = crypto.createDecipheriv(CIPHER, envelope, Buffer.from(embrulho.iv, 'base64'));
+      decipher.setAuthTag(Buffer.from(embrulho.tag, 'base64'));
+      return Buffer.concat([decipher.update(Buffer.from(embrulho.data, 'base64')), decipher.final()]);
+    } catch {
+      // Outra máquina, outro usuário, arquivo mexido: tudo vira "não abre".
+      return null;
+    }
+  }
+
+  /**
+   * Recifra TODOS os segredos com uma chave derivada de `senha`.
+   *
+   * De uma vez, em memória: gravar no meio deixaria metade do arquivo com uma
+   * chave e metade com a outra, e nenhuma das duas abriria o cofre inteiro.
+   */
+  private recifrar(chaveVelha: Buffer, senha: string, extra: Partial<VaultFile>): void {
+    const file = this.load();
+    const kdf = kdfNovo(crypto.randomBytes(SALT_BYTES));
+    const chaveNova = deriveKey(senha, Buffer.from(kdf.salt, 'base64'), kdf);
+
+    const connections = file.connections.map((c) => {
+      const secrets: Record<string, EncryptedValue> = {};
+      for (const [campo, cifrado] of Object.entries(c.secrets)) {
+        const claro = decrypt(cifrado, chaveVelha, secretAad(c.id, campo));
+        secrets[campo] = encrypt(claro, chaveNova, secretAad(c.id, campo));
+      }
+      return { ...c, secrets };
+    });
+
+    this.file = {
+      ...file,
+      ...extra,
+      kdf,
+      verifier: encrypt(VERIFIER_PLAINTEXT, chaveNova, VERIFIER_AAD),
+      connections,
+    };
+    this.key = chaveNova;
+    this.persist();
   }
 
   private load(): VaultFile {

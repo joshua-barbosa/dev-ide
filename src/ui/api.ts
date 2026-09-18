@@ -436,6 +436,8 @@ export const Api = {
   drivers: () => request<DriverInfo[]>('GET', `${conexoes}/drivers`),
   connections: () => request<ConnectionsState>('GET', conexoes),
 
+  /** Sem senha, o cofre nasce SEM TRANCA e abre sozinho (spec 109). */
+  criarCofreSemTranca: () => request<VaultState>('POST', `${conexoes}/vault`, {}),
   createVault: (password: string, remember = false) =>
     request('POST', `${conexoes}/vault`, { password, remember }),
   unlockVault: (password: string, remember = false) =>
@@ -635,6 +637,12 @@ export const Api = {
   /** Troca a senha mestra, recifrando todos os segredos (T100). */
   trocarSenhaMestra: (atual: string, nova: string, remember?: boolean) =>
     request<VaultState>('POST', `${conexoes}/vault/password`, { atual, nova, remember }),
+  /** Tira a tranca, conferindo a senha atual uma última vez (spec 109). */
+  removerTranca: (password: string) =>
+    request<VaultState>('POST', `${conexoes}/vault/sem-tranca`, { password }),
+  /** Põe uma senha-mestra num cofre que não tem. */
+  porTranca: (password: string, remember?: boolean) =>
+    request<VaultState>('POST', `${conexoes}/vault/tranca`, { password, remember }),
   /** Abre e fecha a conexão do formulário, sem gravar nada no cofre (T103). */
   testarConexao: (input: {
     /** Da conexão que já existe: o servidor completa os segredos em branco. */

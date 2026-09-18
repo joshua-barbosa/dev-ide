@@ -1045,6 +1045,7 @@ try {
       },
     })
   );
+  const motorSemCofre = filhos[filhos.length - 1];
   if (!(await esperarPorta(PORTA_SEM_COFRE))) throw new Error('o motor sem cofre não subiu');
   const pedirSemCofre = async (metodo, rotaApi, corpo) => {
     const r = await fetch(`http://127.0.0.1:${PORTA_SEM_COFRE}${rotaApi}`, {
@@ -1080,6 +1081,46 @@ try {
     antesDoCadeado?.vault.exists === false &&
       depoisDoCadeado?.vault.exists === true && depoisDoCadeado?.vault.unlocked === true,
     `antes: ${JSON.stringify(antesDoCadeado?.vault)} · depois: ${JSON.stringify(depoisDoCadeado?.vault)}`);
+  marcar('e o cofre nasce SEM TRANCA: nada de senha (spec 109)',
+    depoisDoCadeado?.vault.semTranca === true, JSON.stringify(depoisDoCadeado?.vault));
+
+  // ---- FECHAR O EDITOR E ABRIR DE NOVO ----
+  //
+  // Ele: "toda vez que fecha o Cursor, precisa digitar de novo, está sendo muito
+  // inconveniente". O motor da extensão nasce e morre com o editor, então o
+  // teste que importa é PROCESSO NOVO sobre a MESMA casa — objeto novo em
+  // memória não prova nada.
+  const daCasaNova = await pedirSemCofre('POST', '/api/connections', {
+    type: 'sqlite', label: 'antes de fechar', group: 'Exemplos', readOnly: false,
+    fields: { file: banco },
+  });
+  // Pelo PROCESSO que este arnês criou — nunca por padrão de linha de comando,
+  // que já derrubou o motor dele uma vez.
+  motorSemCofre.kill();
+  await new Promise((r) => setTimeout(r, 400));
+
+  const PORTA_REABERTA = 4487;
+  filhos.push(
+    spawn(process.execPath, [`${RAIZ}/dist/server/index.js`], {
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        PORT: String(PORTA_REABERTA),
+        DEV_IDE_HOME: path.join(pasta, 'casa-sem-cofre'),
+        DEV_IDE_VAULT: path.join(pasta, 'casa-sem-cofre', 'vault.json'),
+        DEV_IDE_SESSION: path.join(pasta, 'casa-sem-cofre', 'sessao.json'),
+      },
+    })
+  );
+  if (!(await esperarPorta(PORTA_REABERTA))) throw new Error('o motor reaberto não subiu');
+  const reaberto = await fetch(`http://127.0.0.1:${PORTA_REABERTA}/api/connections`)
+    .then((x) => x.json()).then((x) => x.data);
+  marcar('fechar e abrir o editor NÃO pede senha: o cofre já vem aberto',
+    reaberto?.vault.unlocked === true && reaberto?.vault.semTranca === true,
+    JSON.stringify(reaberto?.vault));
+  marcar('e a conexão gravada antes continua lá, com o segredo decifrável',
+    JSON.stringify(reaberto?.tree ?? {}).includes('antes de fechar'),
+    daCasaNova === null ? 'não gravou' : 'gravou');
 
   // O motor que viaja DENTRO do `.vsix` (spec 106). Na máquina de quem só
   // instalou não há `braytech.motor`, não há repositório aberto e não há

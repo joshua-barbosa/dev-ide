@@ -11,6 +11,7 @@ import {
 } from '../../shared/prazo';
 import { criarRotasDeTransferencia } from './conexoes-transferencia';
 import { criarRotasDeChaves } from './conexoes-chaves';
+import { rotasDoCofre } from './cofre';
 import { applyGroupRename, buildGroupTree, normalizeGroupPath } from '../connections/groups';
 import type { DriverRegistry } from '../connections/registry';
 import type { SessionPool } from '../connections/pool';
@@ -101,6 +102,8 @@ export function createConnectionsRouter(
     unlocked: vault.isUnlocked(),
     rememberedUntil: remember.validUntil(),
     canRemember: remember.available(),
+    semTranca: vault.semTranca(),
+    chaveDesprotegida: vault.chaveDesprotegida(),
   });
 
   /**
@@ -126,44 +129,7 @@ export function createConnectionsRouter(
     res.json(ok(registry.list()));
   }));
 
-  router.post('/vault', wrap((req, res) => {
-    vault.create(requireString(req.body?.password, 'password'));
-    talvezLembrar(req.body?.remember);
-    res.status(201).json(ok(estadoDoCofre()));
-  }));
-
-  router.post('/vault/unlock', wrap((req, res) => {
-    vault.unlock(requireString(req.body?.password, 'password'));
-    talvezLembrar(req.body?.remember);
-    res.json(ok(estadoDoCofre()));
-  }));
-
-  /**
-   * Trocar a senha mestra (T100).
-   *
-   * A lembrança de 15 dias é APAGADA junto: ela guarda a chave cifrada, e a
-   * chave acabou de mudar. Manter a antiga faria o próximo início destrancar o
-   * cofre com uma chave que não abre mais nada — erro sem causa aparente.
-   */
-  router.post('/vault/password', wrap((req, res) => {
-    vault.trocarSenhaMestra(
-      requireString(req.body?.atual, 'atual'),
-      requireString(req.body?.nova, 'nova')
-    );
-    remember.clear();
-    talvezLembrar(req.body?.remember);
-    res.json(ok(estadoDoCofre()));
-  }));
-
-  router.post('/vault/lock', wrap(async (_req, res) => {
-    vault.lock();
-    // Trancar é um pedido explícito de fechar: a lembrança some junto, senão o
-    // próximo início desfaria o que o usuário acabou de mandar fazer.
-    remember.clear();
-    // Sessões abertas seguram credenciais resolvidas: trancar o cofre fecha tudo.
-    await pool.closeAll();
-    res.json(ok(estadoDoCofre()));
-  }));
+  rotasDoCofre(router, { vault, remember, pool, estadoDoCofre, talvezLembrar });
 
   // ---- CRUD de conexões ----
 
