@@ -9,6 +9,7 @@ import { Connection, Request } from 'tedious';
 import type { Driver, ResolvedConfig, Session, TreeNode } from '../types';
 import type { ExecuteRequest, FieldSpec, QueryResult } from '../../../shared/contracts';
 import { OrcamentoDeCelulas } from './sql-base';
+import { textoDaData, type TipoDaColuna } from './sqlserver-datas';
 import { PORQUE_SEM_TRAVA, selectDeAmostra } from '../../../shared/sql/sqlserver-modelo';
 import {
   CAMPOS_DE_ARVORE, CATEGORIAS, colunasSql, contagensSql, expandeEmColunas,
@@ -80,9 +81,14 @@ function consultar(conexao: Connection, sql: string): Promise<{
     eventos.on('columnMetadata', ((metadados: { colName: string }[]) => {
       colunas = metadados.map((m) => m.colName);
     }) as never);
-    eventos.on('row', ((colunasDaLinha: { metadata: { colName: string }; value: unknown }[]) => {
+    eventos.on('row', ((colunasDaLinha: { metadata: { colName: string } & TipoDaColuna; value: unknown }[]) => {
       linhas.push({
-        colunas: colunasDaLinha.map((c) => ({ nome: c.metadata.colName, valor: c.value })),
+        // Data vira o texto do SQL Server aqui, na fronteira com o driver, e
+        // não na grade: é aqui que ainda se sabe o TIPO da coluna (spec 110).
+        colunas: colunasDaLinha.map((c) => ({
+          nome: c.metadata.colName,
+          valor: textoDaData(c.value, c.metadata),
+        })),
       });
     }) as never);
 

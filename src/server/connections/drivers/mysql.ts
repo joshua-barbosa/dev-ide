@@ -331,6 +331,11 @@ async function connect(config: ResolvedConfig): Promise<Session> {
     // Uma instrução por chamada: evita que um snippet colado rode DDL escondida.
     multipleStatements: false,
     supportBigNumbers: true,
+    // **Data e hora como TEXTO, do jeito que o banco devolve** (spec 110). Sem
+    // isto o `mysql2` lê `DATETIME` — que não tem fuso — como hora local da
+    // máquina e monta um `Date`; a célula saía em UTC, três horas a mais, com um
+    // `Z` inventado. Ele: "não converter horário seja o que for".
+    dateStrings: true,
     connectTimeout: 15_000,
   });
 

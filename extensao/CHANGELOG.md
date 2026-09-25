@@ -1,5 +1,22 @@
 # Mudanças
 
+## 0.1.8
+
+- **Data e hora aparecem exatamente como estão gravadas.** Um `DATETIME`
+  gravado `2026-09-25 11:19:41.208` aparecia `2026-09-25T14:19:41.208Z` — três
+  horas a mais, com um `Z` inventado. O driver lia a coluna (que não tem fuso)
+  como hora local da máquina e a célula a convertia para UTC. Agora nada é
+  convertido: a grade mostra o texto que o banco devolve.
+- Vale para MySQL/MariaDB (`DATETIME`, `TIMESTAMP`, `DATE`), PostgreSQL
+  (`timestamp`, `timestamptz`, `date`) e SQL Server (`datetime`, `datetime2`,
+  `smalldatetime`, `date`, `time`). Colunas `DATE` apareciam como
+  `2026-09-25T03:00:00.000Z`; o `datetime2` do SQL Server perdia os dígitos
+  além do milissegundo.
+- **Editar uma data pela grade voltou a funcionar** no MySQL e no PostgreSQL —
+  com a hora deslocada, a gravação não achava a linha.
+- Limite conhecido: no `datetimeoffset` do SQL Server o driver descarta o fuso
+  gravado; a grade mostra o instante com `+00:00` escrito.
+
 ## 0.1.7
 
 - **O cofre não pede mais senha.** Ele abre sozinho, e a extensão deixa de pedir

@@ -14,6 +14,7 @@ import { Client, type ClientConfig, type FieldDef } from 'pg';
 import Cursor from 'pg-cursor';
 import { ICONES_DE_SERVICO } from '../../../shared/icons';
 import { listarBancos, listarSchemas } from './postgres-arvore';
+import { TIPOS_SEM_CONVERSAO } from './postgres-tipos';
 import {
   COLUNAS_MODELO_SQL,
   PROCESSOS_SQL,
@@ -120,6 +121,8 @@ function criarPool(base: ClientConfig, config: ResolvedConfig, startupSql: strin
     const client = new Client({
       ...base,
       database: banco,
+      // Data e hora como o banco devolveu, sem virar `Date` (spec 110).
+      types: TIPOS_SEM_CONVERSAO,
       // Ver a nota do MySQL: sem keepalive, uma conexão perdida deixa o socket
       // meio-aberto e a consulta espera para sempre.
       keepAlive: true,
