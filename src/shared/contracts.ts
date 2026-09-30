@@ -176,6 +176,13 @@ export interface ExecuteRequest {
    * de LOB quer mais, quem roda relatório de 50 colunas quer menos.
    */
   readonly orcamentoDeCelulas?: number;
+  /**
+   * Traz TODAS as linhas, ignorando `rowLimit` e `MAX_ROW_LIMIT` (spec 112).
+   *
+   * Só o notebook usa, para entregar o resultado ao kernel — decisão dele:
+   * "sem teto". A grade NUNCA pede isto: o teto existe para ela não travar.
+   */
+  readonly semTeto?: boolean;
   readonly statement: string;
   /**
    * Contra qual database rodar (spec 038).

@@ -250,7 +250,9 @@ async function executar(
   limitePadrao: number,
   params: readonly string[] = []
 ): Promise<QueryResult> {
-  const limite = resolveRowLimit(request.rowLimit ?? limitePadrao);
+  const limite = request.semTeto === true
+    ? Number.POSITIVE_INFINITY
+    : resolveRowLimit(request.rowLimit ?? limitePadrao);
   const inicio = Date.now();
 
   // rowMode 'array' evita que colunas homônimas (SELECT a.id, b.id) se
@@ -268,6 +270,18 @@ async function executar(
         else resolve({ lote: rows, fields: result?.fields ?? [] });
       });
     });
+
+  const lerTudo = async (): Promise<{ lote: unknown[][]; fields: FieldDef[] }> => {
+    const LOTE = 10_000;
+    const todas: unknown[][] = [];
+    let campos: FieldDef[] = [];
+    for (;;) {
+      const { lote, fields } = await ler(LOTE);
+      if (fields.length > 0) campos = fields;
+      todas.push(...lote);
+      if (lote.length < LOTE) return { lote: todas, fields: campos };
+    }
+  };
 
   try {
     // Pular as linhas das páginas anteriores (T056): o cursor lê e descarta.
@@ -289,8 +303,10 @@ async function executar(
       pular -= descartado.lote.length;
     }
 
-    // Uma linha a mais que o limite: é ela que revela o truncamento.
-    const { lote, fields } = await ler(limite + 1);
+    // Uma linha a mais que o limite: é ela que revela o truncamento. Sem teto
+    // (o notebook, spec 112), o cursor é lido em LOTES até acabar — pedir
+    // "infinitas" linhas de uma vez não é algo que o protocolo aceite.
+    const { lote, fields } = Number.isFinite(limite) ? await ler(limite + 1) : await lerTudo();
 
     const colunas = colunasDe(fields);
 

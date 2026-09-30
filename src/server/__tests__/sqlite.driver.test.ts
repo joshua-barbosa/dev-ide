@@ -466,3 +466,24 @@ test('copiar tabela gera criação e carga que RODAM', async () => {
     await session.close();
   }
 });
+
+// ---- sem teto: só para o notebook (spec 112) ----
+
+const SESSENTA_MIL =
+  'WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 60000) SELECT i FROM n';
+
+test('a grade continua com o teto de sempre', async () => {
+  const { session } = await abrir();
+  const r = await session.execute!({ statement: SESSENTA_MIL, rowLimit: 100_000 });
+  assert.equal(r.rows.length, 50_000);
+  assert.equal(r.truncated, true);
+});
+
+test('`semTeto` traz TODAS as linhas — o que o notebook entrega ao kernel', async () => {
+  // Ele escolheu "sem teto" para o SQL que vai ao kernel.
+  const { session } = await abrir();
+  const r = await session.execute!({ statement: SESSENTA_MIL, semTeto: true });
+  assert.equal(r.rows.length, 60_000);
+  assert.equal(r.truncated, false);
+  assert.equal(r.rows[59_999][0], 60_000);
+});

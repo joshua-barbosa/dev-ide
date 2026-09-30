@@ -52,7 +52,8 @@ export function executar(
   request: ExecuteRequest,
   params: readonly string[] = []
 ): Promise<QueryResult> {
-  const limite = resolveRowLimit(request.rowLimit);
+  // `semTeto`: o notebook entregando o resultado ao kernel (spec 112).
+  const limite = request.semTeto === true ? Number.POSITIVE_INFINITY : resolveRowLimit(request.rowLimit);
   // Linhas a pular (T056). O fluxo já existe; pular é não guardar.
   const pular = Math.max(0, Math.trunc(request.offset ?? 0));
   let puladas = 0;

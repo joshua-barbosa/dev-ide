@@ -243,7 +243,8 @@ async function connect(config: ResolvedConfig): Promise<Session> {
         );
       }
       const { colunas, linhas } = await consultar(conexao, request.statement);
-      const limite = request.rowLimit ?? 500;
+      // `semTeto`: o notebook entregando o resultado ao kernel (spec 112).
+      const limite = request.semTeto === true ? Number.POSITIVE_INFINITY : (request.rowLimit ?? 500);
       const cortado = linhas.length > limite;
       const usadas = cortado ? linhas.slice(0, limite) : linhas;
 

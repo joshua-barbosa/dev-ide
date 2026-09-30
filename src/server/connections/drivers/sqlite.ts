@@ -248,7 +248,8 @@ function executar(
   request: ExecuteRequest,
   params: readonly string[] = []
 ): QueryResult {
-  const limite = resolveRowLimit(request.rowLimit);
+  // `semTeto`: o notebook entregando o resultado ao kernel (spec 112).
+  const limite = request.semTeto === true ? Number.POSITIVE_INFINITY : resolveRowLimit(request.rowLimit);
   const inicio = Date.now();
   const stmt = db.prepare(request.statement);
 
