@@ -205,6 +205,42 @@ def definir(pedido):
         enviar({'tipo': 'definido', 'nome': d['nome'], 'linhas': len(d['linhas']), 'forma': forma})
 
 
+def _como_parametro(v):
+    # Para o {{nome}} do SQL: so valores que um banco aceita como parametro.
+    t = type(v)
+    if t.__name__ == 'DataFrame' and t.__module__.startswith('pandas'):
+        if len(v.columns) != 1:
+            raise ValueError('e um DataFrame com %d colunas; guarde a coluna numa variavel (ids = list(df["id"]))' % len(v.columns))
+        v = v.iloc[:, 0]
+    if hasattr(v, 'tolist') and not isinstance(v, (str, bytes)):
+        v = v.tolist()
+    elif hasattr(v, 'item') and callable(v.item) and t.__module__.startswith('numpy'):
+        v = v.item()
+    if isinstance(v, (set, tuple, frozenset)):
+        v = list(v)
+    if isinstance(v, list):
+        return [_como_parametro(x) for x in v]
+    if v is None or isinstance(v, (bool, int, float, str)):
+        return v
+    if hasattr(v, 'isoformat'):
+        return v.isoformat()
+    return str(v)
+
+
+def obter(pedido):
+    valores, faltando, erros = {}, [], {}
+    for nome in pedido.get('nomes', []):
+        if nome not in ns:
+            faltando.append(nome)
+            continue
+        try:
+            valores[nome] = _como_parametro(ns[nome])
+        except Exception as e:
+            erros[nome] = str(e)
+    enviar({'tipo': 'valores', 'pedido': pedido.get('pedido'), 'valores': valores,
+            'faltando': faltando, 'erros': erros})
+
+
 def principal():
     threading.Thread(target=ler_pedidos, daemon=True).start()
     enviar({'tipo': 'pronto', 'versao': sys.version.split()[0], 'executavel': sys.executable,
@@ -222,6 +258,8 @@ def principal():
                 executar(pedido.get('exec'), pedido.get('codigo', ''))
             elif str(pedido.get('tipo', '')).startswith('definir'):
                 definir(pedido)
+            elif pedido.get('tipo') == 'obter':
+                obter(pedido)
         except KeyboardInterrupt:
             continue
 

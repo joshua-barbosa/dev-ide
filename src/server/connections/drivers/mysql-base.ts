@@ -6,7 +6,7 @@
 //
 // Nada aqui decide nada — é a camada mais fina possível sobre o `mysql2`.
 import type { Connection } from 'mysql2';
-import type { CellValue, ColumnInfo, ExecuteRequest, QueryResult } from '../types';
+import type { CellValue, ColumnInfo, ExecuteRequest, ParametroDeConsulta, QueryResult } from '../types';
 import { Types, type FieldPacket } from 'mysql2';
 import { OrcamentoDeCelulas, quoteIdentifier, resolveRowLimit } from './sql-base';
 
@@ -50,7 +50,7 @@ export function qualificar(schema: string, objeto: string): string {
 export function executar(
   conn: Connection,
   request: ExecuteRequest,
-  params: readonly string[] = []
+  params: readonly ParametroDeConsulta[] = request.params ?? []
 ): Promise<QueryResult> {
   // `semTeto`: o notebook entregando o resultado ao kernel (spec 112).
   const limite = request.semTeto === true ? Number.POSITIVE_INFINITY : resolveRowLimit(request.rowLimit);

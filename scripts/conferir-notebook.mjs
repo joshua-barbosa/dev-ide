@@ -167,8 +167,16 @@ try {
   marcar('a célula Python USA o resultado do SQL de cima', saidaUsa.includes("['primeira', 'segunda']"),
     JSON.stringify(saidaUsa.slice(0, 80)));
 
-  await nb.locator(`[data-adicionar="${n + 1}"]`).getByRole('button', { name: 'Python' }).click();
-  const lenta = nb.locator('[data-celula]').nth(n + 1);
+  // ---- etapa 4: a variável do kernel volta ao SQL como {{nome}} ----
+  await nb.locator(`[data-adicionar="${n + 1}"]`).getByRole('button', { name: 'SQL' }).click();
+  const deVolta = nb.locator('[data-celula]').nth(n + 1);
+  await escreverERodar(deVolta, "SELECT id, titulo FROM provas WHERE titulo IN {{nomes}} AND titulo <> 'primeira'");
+  const saidaDeVolta = await saidaDe(deVolta);
+  marcar('{{nomes}} no SQL usa a lista que o Python criou', saidaDeVolta.includes('segunda') && !saidaDeVolta.includes('primeira'),
+    JSON.stringify(saidaDeVolta.slice(0, 100)));
+
+  await nb.locator(`[data-adicionar="${n + 2}"]`).getByRole('button', { name: 'Python' }).click();
+  const lenta = nb.locator('[data-celula]').nth(n + 2);
   await escreverERodar(lenta, 'import time\ntime.sleep(30)');
   await pagina.waitForTimeout(600);
   const antesDeParar = Date.now();
@@ -193,7 +201,7 @@ try {
   const celulaSql = gravado?.celulas?.find((c) => c.tipo === 'sql');
   marcar('Ctrl+S grava um .brnb com kernel, conexão e células',
     gravado?.formato === 'braytech-notebook' && gravado?.kernel === 'python'
-      && gravado?.conexao?.database === 'main' && gravado?.celulas?.length === 6,
+      && gravado?.conexao?.database === 'main' && gravado?.celulas?.length === 7,
     JSON.stringify({ kernel: gravado?.kernel, conexao: gravado?.conexao, celulas: gravado?.celulas?.length }));
   marcar('a SAÍDA da célula SQL fica guardada no arquivo, como no Jupyter',
     celulaSql?.saidas?.[0]?.tipo === 'tabela' && JSON.stringify(celulaSql.saidas[0].linhas).includes('primeira'));

@@ -32,7 +32,7 @@ async function servidor() {
   const pool = { acquire: async () => sessao } as unknown as SessionPool;
   const app = express();
   app.use(express.json({ limit: '10mb' }));
-  app.use('/api/notebook', createNotebookRouter(gerente, pool));
+  app.use('/api/notebook', createNotebookRouter(gerente, pool, () => 'sqlite'));
   app.use(errorEnvelope);
   const s = app.listen(0);
   await new Promise((r) => s.once('listening', r));
@@ -182,6 +182,48 @@ test('Laravel: só sobe quando o notebook PEDE', async () => {
       await new Promise((r) => setTimeout(r, 25));
     }
     assert.equal(fim.saidas.map((x: any) => x.texto ?? '').join(''), "'sim'\n");
+  } finally {
+    await fechar();
+  }
+});
+
+test('{{nome}}: o valor do kernel vai como PARÂMETRO — aspas não quebram, injeção não passa', async () => {
+  const { pedir, fechar } = await servidor();
+  try {
+    await pedir('POST', '/kernel', { caminho, linguagem: 'python', raiz: pasta });
+    // Um valor que, colado no texto, quebraria o SQL — e tentaria apagar a tabela.
+    await rodar(pedir, 'nome = "Bia\'; DROP TABLE pedidos; --"\nminimo = 1000\nclientes = ["Ana", "Caio"]');
+    const ruim = await pedir('POST', '/kernel/sql', {
+      caminho, connectionId: 'c1', database: 'main', nome: 'r',
+      statement: 'SELECT cliente FROM pedidos WHERE cliente = {{nome}}',
+    });
+    assert.equal(ruim.success, true, ruim.error ?? '');
+    assert.equal(ruim.data.tabela.total, 0, 'o texto é comparado como TEXTO, não executado');
+    const aindaLa = await pedir('POST', '/kernel/sql', {
+      caminho, connectionId: 'c1', database: 'main', nome: null, statement: 'SELECT count(*) FROM pedidos',
+    });
+    assert.equal(aindaLa.data.tabela.linhas[0][0], 3, 'a tabela continua lá');
+
+    const filtro = await pedir('POST', '/kernel/sql', {
+      caminho, connectionId: 'c1', database: 'main', nome: 'r',
+      statement: 'SELECT cliente FROM pedidos WHERE total > {{minimo}} OR cliente IN {{clientes}} ORDER BY id',
+    });
+    assert.deepEqual(filtro.data.tabela.linhas, [['Ana'], ['Bia'], ['Caio']]);
+  } finally {
+    await fechar();
+  }
+});
+
+test('{{nome}} que o kernel não tem: erro claro, nada roda', async () => {
+  const { pedir, fechar } = await servidor();
+  try {
+    await pedir('POST', '/kernel', { caminho, linguagem: 'python', raiz: pasta });
+    const r = await pedir('POST', '/kernel/sql', {
+      caminho, connectionId: 'c1', database: 'main', nome: null,
+      statement: 'SELECT * FROM pedidos WHERE id = {{nao_existe}}',
+    });
+    assert.equal(r.success, false);
+    assert.match(r.error ?? '', /nao_existe.*não existe no kernel/);
   } finally {
     await fechar();
   }

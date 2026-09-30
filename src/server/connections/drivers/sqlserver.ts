@@ -5,9 +5,11 @@
 //
 // **Ele é o único SQL sem somente-leitura de sessão**, e a IDE diz isso em vez
 // de fingir. Ver `PORQUE_SEM_TRAVA`.
-import { Connection, Request } from 'tedious';
+import { Connection, Request, TYPES } from 'tedious';
 import type { Driver, ResolvedConfig, Session, TreeNode } from '../types';
-import type { ExecuteRequest, FieldSpec, QueryResult } from '../../../shared/contracts';
+import type {
+  ExecuteRequest, FieldSpec, ParametroDeConsulta, QueryResult,
+} from '../../../shared/contracts';
 import { OrcamentoDeCelulas } from './sql-base';
 import { textoDaData, type TipoDaColuna } from './sqlserver-datas';
 import { PORQUE_SEM_TRAVA, selectDeAmostra } from '../../../shared/sql/sqlserver-modelo';
@@ -59,8 +61,21 @@ interface LinhaBruta {
   readonly colunas: readonly { readonly nome: string; readonly valor: unknown }[];
 }
 
-/** Roda um comando e devolve as linhas. */
-function consultar(conexao: Connection, sql: string): Promise<{
+/**
+ * O tipo do SQL Server para um parâmetro (spec 112, `{{nome}}` do notebook).
+ *
+ * O `tedious` exige o tipo de cada `@pN`. Inteiro que cabe em 32 bits é `Int`;
+ * número com fração ou grande demais, `Float`; texto, `NVarChar` (Unicode, para
+ * acento não virar `?`).
+ */
+function tipoDoParametro(v: ParametroDeConsulta) {
+  if (typeof v === 'boolean') return TYPES.Bit;
+  if (typeof v === 'number') return Number.isInteger(v) && Math.abs(v) <= 2 ** 31 - 1 ? TYPES.Int : TYPES.Float;
+  return TYPES.NVarChar;
+}
+
+/** Roda um comando e devolve as linhas. `@p1`, `@p2`… vêm de `params`. */
+function consultar(conexao: Connection, sql: string, params: readonly ParametroDeConsulta[] = []): Promise<{
   colunas: string[];
   linhas: LinhaBruta[];
 }> {
@@ -72,6 +87,7 @@ function consultar(conexao: Connection, sql: string): Promise<{
       if (erro) rejeitar(erro);
       else resolver({ colunas, linhas });
     });
+    params.forEach((v, i) => pedido.addParameter(`p${i + 1}`, tipoDoParametro(v), v));
 
     // Os eventos do `Request` não estão no tipo público do tedious, e por isso
     // a ponte é explícita: é a fronteira com a biblioteca, e não um atalho.
@@ -242,7 +258,7 @@ async function connect(config: ResolvedConfig): Promise<Session> {
           `Esta conexão está marcada como somente-leitura, e ${PORQUE_SEM_TRAVA}`
         );
       }
-      const { colunas, linhas } = await consultar(conexao, request.statement);
+      const { colunas, linhas } = await consultar(conexao, request.statement, request.params);
       // `semTeto`: o notebook entregando o resultado ao kernel (spec 112).
       const limite = request.semTeto === true ? Number.POSITIVE_INFINITY : (request.rowLimit ?? 500);
       const cortado = linhas.length > limite;

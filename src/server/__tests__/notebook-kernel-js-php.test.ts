@@ -158,3 +158,18 @@ test('PHP: Parar interrompe (com pcntl), e as variáveis ficam', { skip: process
   assert.ok(textoDe(lenta).includes('Interrompido'), textoDe(lenta));
   assert.equal(textoDe(await ate(k.executar('$guardado'))), "'ainda aqui'\n");
 });
+
+test('JS e PHP devolvem valores para o {{nome}} do SQL', async () => {
+  const kjs = await iniciarKernelJs(os.tmpdir(), plataformaAtual());
+  kernels.push(kjs);
+  await ate(kjs.executar(prepararCelulaJs('const ids = new Set([1, 2])\nconst nome = "Ana"', 'javascript')));
+  const js = await kjs.obter(['ids', 'nome', 'fantasma']);
+  assert.deepEqual(js.valores, { ids: [1, 2], nome: 'Ana' });
+  assert.deepEqual(js.faltando, ['fantasma']);
+
+  const kphp = await php(os.tmpdir());
+  await ate(kphp.executar('$ids = [3, 4];\n$nome = "Bia";'));
+  const p = await kphp.obter(['ids', 'nome', 'fantasma']);
+  assert.deepEqual(p.valores, { ids: [3, 4], nome: 'Bia' });
+  assert.deepEqual(p.faltando, ['fantasma']);
+});

@@ -111,7 +111,7 @@ app.use(express.static(UI_DIR));
 app.use('/api/connections', createConnectionsRouter({ registry, vault, pool, remember, prefs }));
 // O notebook (spec 112): um kernel vivo por `.brnb` aberto.
 const kernels = new GerenteDeKernels(plataformaAtual());
-app.use('/api/notebook', createNotebookRouter(kernels, pool));
+app.use('/api/notebook', createNotebookRouter(kernels, pool, (id) => vault.get(id).type));
 app.use('/api/prefs', createPrefsRouter(prefs));
 app.use('/api', createWorkspaceRouter(estado, ROOT));
 app.use('/api/commands', createComandosRouter(comandos, estado));

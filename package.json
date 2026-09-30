@@ -31,7 +31,8 @@
     "conferir:lupa": "node extensao/scripts/conferir-lupa.mjs",
     "conferir:datas": "node scripts/conferir-datas.mjs",
     "conferir:caderno": "node extensao/scripts/conferir-caderno.mjs",
-    "conferir:notebook": "node scripts/conferir-notebook.mjs"
+    "conferir:notebook": "node scripts/conferir-notebook.mjs",
+    "conferir:parametros": "node scripts/conferir-parametros.mjs"
   },
   "license": "MIT",
   "dependencies": {

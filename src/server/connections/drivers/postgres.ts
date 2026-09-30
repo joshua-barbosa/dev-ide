@@ -60,6 +60,7 @@ import type {
   FieldValue,
   Session,
   TreeNode,
+  ParametroDeConsulta,
 } from '../types';
 import {
   OrcamentoDeCelulas,
@@ -248,7 +249,7 @@ async function executar(
   client: Client,
   request: ExecuteRequest,
   limitePadrao: number,
-  params: readonly string[] = []
+  params: readonly ParametroDeConsulta[] = request.params ?? []
 ): Promise<QueryResult> {
   const limite = request.semTeto === true
     ? Number.POSITIVE_INFINITY

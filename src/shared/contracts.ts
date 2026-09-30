@@ -150,6 +150,9 @@ export interface GroupNode {
 
 export type CellValue = string | number | boolean | null;
 
+/** Um valor que vai À PARTE do texto da consulta. */
+export type ParametroDeConsulta = string | number | boolean | null;
+
 export interface ColumnInfo {
   readonly name: string;
   /** Tipo declarado, quando o driver souber: "varchar(64)", "int". */
@@ -183,6 +186,12 @@ export interface ExecuteRequest {
    * "sem teto". A grade NUNCA pede isto: o teto existe para ela não travar.
    */
   readonly semTeto?: boolean;
+  /**
+   * Valores para os marcadores do `statement` (`?`, `$1`, `@p1`, conforme o
+   * banco). Quem usa é o `{{nome}}` do notebook (spec 112): o valor do kernel
+   * vai SEMPRE à parte, nunca colado no texto.
+   */
+  readonly params?: readonly ParametroDeConsulta[];
   readonly statement: string;
   /**
    * Contra qual database rodar (spec 038).

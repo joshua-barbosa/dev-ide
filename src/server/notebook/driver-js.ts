@@ -119,6 +119,25 @@ function definir(p) {
   }
 }
 
+function comoParametro(v) {
+  if (v instanceof Set) v = [...v];
+  if (Array.isArray(v)) return v.map(comoParametro);
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === 'bigint') return v.toString();
+  if (v === undefined) return null;
+  return v;
+}
+
+function obter(p) {
+  const valores = {};
+  const faltando = [];
+  for (const nome of p.nomes || []) {
+    if (!(nome in globalThis)) faltando.push(nome);
+    else valores[nome] = comoParametro(globalThis[nome]);
+  }
+  enviar({ tipo: 'valores', pedido: p.pedido, valores, faltando, erros: {} });
+}
+
 const fila = [];
 let processando = false;
 async function drenar() {
@@ -128,6 +147,7 @@ async function drenar() {
     const p = fila.shift();
     if (p.tipo === 'executar') await executar(p.exec, p.codigo || '');
     else if (String(p.tipo).startsWith('definir')) definir(p);
+    else if (p.tipo === 'obter') obter(p);
   }
   processando = false;
 }

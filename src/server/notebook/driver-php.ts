@@ -158,6 +158,22 @@ while (($__linha = fgets(STDIN)) !== false) {
             $__executando = false;
             __enviar(['tipo' => 'fim', 'exec' => $__exec, 'ok' => $__ok]);
         }
+    } elseif ($__p['tipo'] === 'obter') {
+        $__valores = [];
+        $__faltando = [];
+        foreach ($__p['nomes'] ?? [] as $__nome) {
+            if (!array_key_exists($__nome, $GLOBALS)) {
+                $__faltando[] = $__nome;
+                continue;
+            }
+            $__v = $GLOBALS[$__nome];
+            if (is_object($__v) && method_exists($__v, 'toArray')) {
+                $__v = $__v->toArray();
+            }
+            $__valores[$__nome] = $__v;
+        }
+        __enviar(['tipo' => 'valores', 'pedido' => $__p['pedido'] ?? null,
+            'valores' => (object) $__valores, 'faltando' => $__faltando, 'erros' => (object) []]);
     } elseif ($__p['tipo'] === 'definir-inicio') {
         $__definindo = ['nome' => $__p['nome'], 'colunas' => $__p['colunas'], 'linhas' => []];
     } elseif ($__p['tipo'] === 'definir-lote' && $__definindo !== null) {

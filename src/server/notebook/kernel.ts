@@ -61,6 +61,9 @@ export class Kernel {
   private buffer = '';
   private morreu: string | null = null;
   private esperandoDefinicao: ((m: Mensagem) => void) | null = null;
+  /** Pedidos de valor ({{nome}} do SQL) esperando resposta, pelo número. */
+  private readonly esperandoValores = new Map<number, (m: Mensagem) => void>();
+  private proximoPedido = 1;
 
   private constructor(
     private readonly processo: ChildProcess,
@@ -191,6 +194,36 @@ export class Kernel {
   }
 
   /**
+   * Os valores de variáveis do kernel, para o `{{nome}}` do SQL (etapa 4).
+   *
+   * `faltando`: nomes que o kernel não tem. `erros`: nomes que existem mas não
+   * cabem num parâmetro (um DataFrame de várias colunas, por exemplo).
+   */
+  obter(nomes: readonly string[]): Promise<{
+    readonly valores: Readonly<Record<string, unknown>>;
+    readonly faltando: readonly string[];
+    readonly erros: Readonly<Record<string, string>>;
+  }> {
+    if (this.morreu !== null) return Promise.reject(new Error(this.morreu));
+    const pedido = this.proximoPedido++;
+    return new Promise((resolver, recusar) => {
+      this.esperandoValores.set(pedido, (m) => {
+        this.esperandoValores.delete(pedido);
+        if (m.tipo !== 'valores') {
+          recusar(new Error(String(m.mensagem ?? 'O kernel parou antes de responder.')));
+          return;
+        }
+        resolver({
+          valores: (m.valores ?? {}) as Record<string, unknown>,
+          faltando: Array.isArray(m.faltando) ? (m.faltando as string[]) : [],
+          erros: (m.erros ?? {}) as Record<string, string>,
+        });
+      });
+      this.escrever({ tipo: 'obter', pedido, nomes });
+    });
+  }
+
+  /**
    * Interrompe a célula da frente, SEM perder as variáveis.
    *
    * Linux/Mac: SIGINT de verdade — acorda até um `sleep`. Windows: o Node só
@@ -261,6 +294,10 @@ export class Kernel {
       this.esperandoDefinicao?.(m);
       return;
     }
+    if (m.tipo === 'valores') {
+      if (typeof m.pedido === 'number') this.esperandoValores.get(m.pedido)?.(m);
+      return;
+    }
     const e = typeof m.exec === 'number' ? this.execucoes.get(m.exec) : undefined;
     if (e === undefined) return;
     if (m.tipo === 'resultado' && typeof m.saida === 'object' && m.saida !== null) {
@@ -283,5 +320,6 @@ export class Kernel {
       e.terminou = true;
     }
     this.esperandoDefinicao?.({ tipo: 'erro', mensagem: motivo });
+    for (const esperando of [...this.esperandoValores.values()]) esperando({ tipo: 'erro', mensagem: motivo });
   }
 }

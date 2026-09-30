@@ -15,6 +15,10 @@ import type { GerenteDeKernels, SessaoDeKernel } from '../notebook/gerente';
 import {
   KERNELS, nomeValido, saidaDeTabela, type Kernel as LinguagemDoKernel,
 } from '../../shared/notebook/modelo';
+import {
+  montarSqlComParametros, referenciasDoSql, type EstiloDeParametro,
+} from '../../shared/notebook/parametros';
+import type { ParametroDeConsulta } from '../../shared/contracts';
 
 const ok = (data: unknown) => ({ success: true, data, error: null });
 
@@ -33,7 +37,19 @@ function estadoDe(s: SessaoDeKernel | undefined): unknown {
   };
 }
 
-export function createNotebookRouter(gerente: GerenteDeKernels, pool: SessionPool): Router {
+/** Qual marcador cada banco usa para parâmetro (`{{nome}}`, etapa 4). */
+function estiloDe(tipo: string): EstiloDeParametro {
+  if (tipo === 'postgres') return 'dolar';
+  if (tipo === 'sqlserver') return 'arroba';
+  return 'interrogacao';
+}
+
+export function createNotebookRouter(
+  gerente: GerenteDeKernels,
+  pool: SessionPool,
+  /** O tipo do banco da conexão — decide o marcador de parâmetro. */
+  tipoDaConexao: (connectionId: string) => string
+): Router {
   const router = Router();
 
   const sessaoOuErro = (caminho: string): SessaoDeKernel => {
@@ -107,10 +123,34 @@ export function createNotebookRouter(gerente: GerenteDeKernels, pool: SessionPoo
     const nome = typeof req.body?.nome === 'string' ? req.body.nome : null;
     if (nome !== null && !nomeValido(nome)) throw new Error(`Nome de variável inválido: ${nome}.`);
 
-    const session = await pool.acquire(requireString(req.body?.connectionId, 'connectionId'));
+    const connectionId = requireString(req.body?.connectionId, 'connectionId');
+    const texto = requireString(req.body?.statement, 'statement');
+
+    // `{{nome}}`: o valor vem do kernel e vai COMO PARÂMETRO, nunca no texto.
+    const referencias = referenciasDoSql(texto);
+    let statement = texto;
+    let params: ParametroDeConsulta[] | undefined;
+    if (referencias.length > 0) {
+      const kernel = gerente.sessao(caminho)?.kernel;
+      if (kernel === undefined) {
+        throw new Error(`{{${referencias[0]}}} precisa do kernel rodando: rode antes a célula que cria a variável.`);
+      }
+      const { valores, faltando, erros } = await kernel.obter(referencias);
+      const [comErro] = Object.entries(erros);
+      if (comErro !== undefined) throw new Error(`{{${comErro[0]}}} ${comErro[1]}.`);
+      if (faltando.length > 0) {
+        throw new Error(`{{${faltando[0]}}}: a variável "${faltando[0]}" não existe no kernel. Rode antes a célula que a cria.`);
+      }
+      const montado = montarSqlComParametros(texto, valores, estiloDe(tipoDaConexao(connectionId)));
+      statement = montado.sql;
+      params = montado.params;
+    }
+
+    const session = await pool.acquire(connectionId);
     if (typeof session.execute !== 'function') throw new Error('Esta conexão não executa SQL.');
     const r = await session.execute({
-      statement: requireString(req.body?.statement, 'statement'),
+      statement,
+      params,
       database: typeof req.body?.database === 'string' ? req.body.database : undefined,
       semTeto: true,
       // O kernel recebe o valor INTEIRO de cada célula, não a amostra da grade.

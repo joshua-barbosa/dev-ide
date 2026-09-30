@@ -28,7 +28,7 @@ import {
 import { TEMPLATES_SQLITE } from '../../../shared/tree/templates';
 import { montarDiagrama, type LinhaDeColuna, type LinhaDeFk } from './er';
 import { montarCodebase, type LinhaDeColunaDoCodebase } from './codebase';
-import type { Codebase, FieldValue } from '../types';
+import type { Codebase, FieldValue, ParametroDeConsulta } from '../types';
 import type {
   OpcoesDeNavegacao,
   ActionRequest,
@@ -246,7 +246,7 @@ function tamanhoLegivel(file: string): string | undefined {
 function executar(
   db: DatabaseSync,
   request: ExecuteRequest,
-  params: readonly string[] = []
+  params: readonly ParametroDeConsulta[] = request.params ?? []
 ): QueryResult {
   // `semTeto`: o notebook entregando o resultado ao kernel (spec 112).
   const limite = request.semTeto === true ? Number.POSITIVE_INFINITY : resolveRowLimit(request.rowLimit);
@@ -284,7 +284,9 @@ function executar(
   // Linhas a pular (T056), descartadas do próprio iterador.
   const pular = Math.max(0, Math.trunc(request.offset ?? 0));
   let puladas = 0;
-  for (const linha of stmt.iterate(...params)) {
+  // O SQLite do Node não aceita booleano: vira 1/0, como o próprio banco guarda.
+  const valores = params.map((v) => (typeof v === 'boolean' ? Number(v) : v));
+  for (const linha of stmt.iterate(...valores)) {
     if (puladas < pular) {
       puladas += 1;
       continue;
