@@ -61,9 +61,12 @@ jobs:
           npm ci --prefix extensao
 
       # Os ícones são GERADOS e ficam fora do git; a suíte os importa. Na
-      # máquina dele existem de builds anteriores — num clone limpo, não.
+      # máquina dele existem de builds anteriores — num clone limpo, não. E o
+      # gerador lê a lista do servidor COMPILADO: compilar vem antes.
       - name: Ícones gerados
-        run: npm run build:icons
+        run: |
+          npm run build:server
+          npm run build:icons
 
       # O que roda antes de cada entrega à mão roda aqui também: publicar é o
       # único passo que não se desfaz.
