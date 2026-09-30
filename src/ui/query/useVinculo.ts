@@ -23,6 +23,11 @@ export interface ControleDeVinculo {
   garantir(caminho: string | null): Promise<Vinculo | null>;
   /** Sempre pergunta, mesmo havendo vínculo. É o clique na barra de status. */
   trocar(caminho: string): Promise<Vinculo | null>;
+  /**
+   * Só pergunta — não lembra nada por caminho (spec 112). O notebook guarda a
+   * conexão DENTRO do arquivo, e não no `queries.json`.
+   */
+  escolher(atual: Vinculo | null): Promise<Vinculo | null>;
   /** Recarrega as lembranças do servidor. */
   recarregar(): Promise<void>;
   /** Muda a cada alteração, para quem precisa repintar. */
@@ -90,8 +95,14 @@ export function useVinculo(deps: DepsDeVinculo): ControleDeVinculo {
 
     // A lista de databases vem do DRIVER, viva — não de um cache nosso, que
     // ficaria velho no dia em que o usuário criasse um banco.
-    const nos = await Api.children(escolhida, ['server']);
-    const bancos = nos.filter((n) => typeof n.meta?.database === 'string');
+    //
+    // Onde eles moram depende do driver: MySQL e PostgreSQL penduram os
+    // databases num nó `server`; o SQLite traz o `main` direto na RAIZ. O
+    // seletor só olhava `server`, e com SQLite dizia que não havia database
+    // nenhum — achado pela guarda do notebook (spec 112).
+    const temBanco = (n: { meta?: Record<string, unknown> }) => typeof n.meta?.database === 'string';
+    const doServidor = (await Api.children(escolhida, ['server'])).filter(temBanco);
+    const bancos = doServidor.length > 0 ? doServidor : (await Api.children(escolhida, [])).filter(temBanco);
     if (bancos.length === 0) {
       throw new Error('Esta conexão não expôs nenhum database.');
     }
@@ -142,5 +153,5 @@ export function useVinculo(deps: DepsDeVinculo): ControleDeVinculo {
     return escolhido;
   }, [lembrar, perguntar, vinculoDe]);
 
-  return { vinculoDe, garantir, trocar, recarregar, versao };
+  return { vinculoDe, garantir, trocar, escolher: perguntar, recarregar, versao };
 }

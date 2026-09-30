@@ -7,7 +7,7 @@
 // Puro porque a decisão é por EXTENSÃO, e errar aqui é abrir um PDF no editor
 // ou um `.ts` num visualizador de imagem.
 
-export type Visualizador = 'texto' | 'imagem' | 'pdf' | 'csv' | 'caderno';
+export type Visualizador = 'texto' | 'imagem' | 'pdf' | 'csv' | 'caderno' | 'notebook';
 
 /**
  * O que o navegador desenha sozinho, com `<img>`.
@@ -25,6 +25,8 @@ export function visualizadorDe(caminho: string): Visualizador {
   const ext = ponto === -1 ? '' : nome.slice(ponto + 1);
 
   if (nome.endsWith('.sqlbook')) return 'caderno';
+  // O notebook (spec 112): feature SEPARADA do sqlbook, com tela própria.
+  if (nome.endsWith('.brnb')) return 'notebook';
   if (IMAGENS.has(ext)) return 'imagem';
   if (ext === 'pdf') return 'pdf';
   if (ext === 'csv' || ext === 'tsv') return 'csv';

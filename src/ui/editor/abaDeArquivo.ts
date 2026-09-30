@@ -63,6 +63,9 @@ export async function montarAbaDeArquivo(
   // `meta.content` continua sendo a verdade — é o que faz `Ctrl+S` gravar sem
   // caminho especial.
   const ehCaderno = dados.path.toLowerCase().endsWith('.sqlbook');
+  // O notebook (spec 112) segue o MESMO princípio: o texto em `meta.content` é
+  // a verdade, e quem o edita são as células.
+  const ehNotebook = dados.path.toLowerCase().endsWith('.brnb');
 
   return {
     leu: true,
@@ -70,13 +73,19 @@ export async function montarAbaDeArquivo(
       id: `file:${dados.path}`,
       type: ehCaderno
         ? 'caderno'
-        : tipo === 'csv'
+        : ehNotebook
+          ? 'notebook'
+          : tipo === 'csv'
           ? 'visualizador'
           : language === 'sql'
             ? 'sql'
             : 'editor',
       title: nomeParaExibir(dados.path),
-      icon: ehCaderno ? 'lucide:notebook-pen' : iconeDeArquivo(dados.path, language),
+      icon: ehCaderno
+        ? 'lucide:notebook-pen'
+        : ehNotebook
+          ? 'lucide:notebook'
+          : iconeDeArquivo(dados.path, language),
       meta: {
         path: dados.path,
         content: dados.content,

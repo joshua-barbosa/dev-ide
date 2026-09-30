@@ -72,7 +72,7 @@ export function gravacao(deps: DepsDaGravacao) {
     //
     // Sem este ramo, o `Ctrl+S` num CSV editado não fazia nada — a aba ficava
     // suja para sempre, e a edição só existia na tela.
-    if (aba.type === 'caderno' || aba.type === 'visualizador') {
+    if (aba.type === 'caderno' || aba.type === 'notebook' || aba.type === 'visualizador') {
       await Api.saveFile(meta.path, meta.content);
       store.update(aba.id, { dirty: false, meta: { ...meta, emDisco: meta.content } });
       return meta.path;

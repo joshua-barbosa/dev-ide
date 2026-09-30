@@ -34,7 +34,7 @@ export interface DepsDoContexto {
  * guardava o último arquivo aberto ali. Quem executa numa aba de tabela é o
  * botão da própria aba.
  */
-const SEM_EDITOR = ['grid', 'conexao', 'tabela', 'processos', 'caderno'];
+const SEM_EDITOR = ['grid', 'conexao', 'tabela', 'processos', 'caderno', 'notebook'];
 
 /**
  * Abas que não se salvam em disco.

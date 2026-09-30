@@ -11,6 +11,7 @@
 import { useCallback, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import { TabBar } from './tabs/TabBar';
+import { NotebookHost } from './notebook/NotebookHost';
 import { ZonaDeSoltura } from './ZonaDeSoltura';
 import type { AcaoDeMenuDoEditor, EditorHandle } from './editor/EditorHost';
 import { EditorPreguicoso } from './editor/EditorPreguicoso';
@@ -95,6 +96,9 @@ export interface EditorGroupProps {
   /** Contra quem um caderno roda, e como trocar (spec 051). */
   readonly vinculoDoCaderno: (aba: Tab) => Vinculo | null;
   readonly onTrocarVinculoDoCaderno: (aba: Tab) => void;
+  /** O notebook (spec 112): escolher conexão SEM lembrar por caminho. */
+  readonly escolherConexaoDoNotebook: (atual: Vinculo | null) => Promise<Vinculo | null>;
+  readonly rotuloDaConexao: (v: Vinculo) => string;
   readonly onRodarBloco: (
     modo: 'run' | 'tab' | 'json',
     sql: string,
@@ -165,6 +169,7 @@ export function EditorGroup({
   capacidadesDe, onAbrirArquivoRemoto, onAbrirTerminalDoServidor,
   onDuplicarTerminal, onConfirmarSnippet,
   onRodarCodigoDoBloco, onPedirLinguagem, vinculoDoCaderno, onTrocarVinculoDoCaderno,
+  escolherConexaoDoNotebook, rotuloDaConexao,
   onPedirNomeDoResultado, onAbrirResultadoSalvo,
 }: EditorGroupProps) {
   /**
@@ -253,7 +258,7 @@ export function EditorGroup({
     ativa !== null &&
     !mostrandoPreview &&
     ![
-      'grid', 'conexao', 'terminal', 'tabela', 'processos', 'caderno', 'servidor', 'chave',
+      'grid', 'conexao', 'terminal', 'tabela', 'processos', 'caderno', 'notebook', 'servidor', 'chave',
       'preferencias', 'requisitos', 'codesnap',
       // Imagem, PDF e CSV têm tela própria (T027) — o Monaco não abre nenhum
       // dos três de um jeito útil.
@@ -420,6 +425,27 @@ export function EditorGroup({
               onPedirLinguagem={onPedirLinguagem}
               vinculo={vinculoDoCaderno(t)}
               onTrocarVinculo={() => onTrocarVinculoDoCaderno(t)}
+            />
+          </Box>
+        ))}
+
+      {/* O notebook (spec 112). Montado e escondido como o caderno: trocar de
+          aba e voltar não pode perder a célula em foco nem a rolagem. */}
+      {abas
+        .filter((t) => t.type === 'notebook')
+        .map((t) => (
+          <Box
+            key={t.id}
+            sx={{ flex: 1, minHeight: 0, display: ativaId === t.id ? 'flex' : 'none' }}
+          >
+            <NotebookHost
+              aba={t}
+              fontSize={fontSize}
+              tabSize={tabSize}
+              tema={tema}
+              onMudar={onMudarCaderno}
+              escolherConexao={escolherConexaoDoNotebook}
+              rotuloDaConexao={rotuloDaConexao}
             />
           </Box>
         ))}

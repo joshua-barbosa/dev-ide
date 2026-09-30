@@ -118,6 +118,9 @@ export const ICONES_DE_SISTEMA_REMOTO = {
 } as const;
 
 const ICONES_DA_INTERFACE = [
+  // O notebook (spec 112): a aba e o "limpar saídas".
+  'lucide:notebook',
+  'lucide:eraser',
   'lucide:circle-dot',
   'lucide:files',
   'lucide:boxes',

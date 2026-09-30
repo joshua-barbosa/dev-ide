@@ -16,6 +16,7 @@ import type { Execution } from '../useExecution';
 import type { QuickInputController } from '../useQuickInput';
 import type { Workspace } from '../useWorkspace';
 import type { ControleDeVinculo } from '../query/useVinculo';
+import type { Vinculo } from '../../shared/sql/vinculo';
 import { LINGUAGENS } from '../../shared/editor/idiomas';
 
 export interface DepsDasProps {
@@ -109,6 +110,9 @@ return {
     void vinculos.versao;
     return vinculos.vinculoDe((t.meta as { path?: string | null }).path ?? null);
   },
+  escolherConexaoDoNotebook: (atual: Vinculo | null) => vinculos.escolher(atual),
+  rotuloDaConexao: (v: Vinculo) =>
+    `${conexoes.acharConexao(v.connectionId)?.label ?? 'conexão removida'} · ${v.database}`,
   onTrocarVinculoDoCaderno: (t: Tab) => {
     const caminho = (t.meta as { path?: string | null }).path ?? null;
     // Sem caminho não há o que lembrar: um caderno vive em arquivo, sempre.

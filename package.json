@@ -30,7 +30,8 @@
     "conferir:teclado": "node extensao/scripts/conferir-teclado.mjs",
     "conferir:lupa": "node extensao/scripts/conferir-lupa.mjs",
     "conferir:datas": "node scripts/conferir-datas.mjs",
-    "conferir:caderno": "node extensao/scripts/conferir-caderno.mjs"
+    "conferir:caderno": "node extensao/scripts/conferir-caderno.mjs",
+    "conferir:notebook": "node scripts/conferir-notebook.mjs"
   },
   "license": "MIT",
   "dependencies": {
