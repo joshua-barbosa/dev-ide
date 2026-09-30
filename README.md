@@ -213,6 +213,11 @@ encontre.
 
 ---
 
+## Apoiar
+
+Se a Braytech Code poupa o seu tempo, dá para pagar uma cerveja:
+[buymeacoffee.com/joshuabarbosa](https://buymeacoffee.com/joshuabarbosa).
+
 ## Aviso
 
 A IDE **executa código arbitrário** por design e **guarda credenciais**. O

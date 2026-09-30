@@ -150,6 +150,11 @@ motor que acabou de compilar.
 
 Código em <https://github.com/joshua-barbosa/dev-ide>.
 
+## Apoiar
+
+Se a Braytech Code poupa o seu tempo, dá para pagar uma cerveja:
+[buymeacoffee.com/joshuabarbosa](https://buymeacoffee.com/joshuabarbosa).
+
 ## Licença
 
 Apache-2.0.
