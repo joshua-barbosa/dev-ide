@@ -104,6 +104,11 @@ def _eh_dataframe(v):
 def tabela_de(valor):
     if _eh_dataframe(valor):
         df = valor.to_frame() if type(valor).__name__ == 'Series' else valor
+        # Indice que nao e a numeracao padrao carrega INFORMACAO: num groupby,
+        # e o nome de quem cada total e. Sem isto a tabela mostrava so os
+        # numeros, sem dizer de quem.
+        if type(df.index).__name__ != 'RangeIndex':
+            df = df.reset_index()
         cabeca = df.head(MAX_LINHAS).astype(object)
         cabeca = cabeca.where(cabeca.notna(), None)
         return {'tipo': 'tabela', 'colunas': [str(c) for c in df.columns],

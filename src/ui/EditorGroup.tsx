@@ -99,6 +99,12 @@ export interface EditorGroupProps {
   /** O notebook (spec 112): escolher conexão SEM lembrar por caminho. */
   readonly escolherConexaoDoNotebook: (atual: Vinculo | null) => Promise<Vinculo | null>;
   readonly rotuloDaConexao: (v: Vinculo) => string;
+  readonly raizDoNotebook: (caminho: string | null) => string | null;
+  readonly escolherOpcao: (
+    titulo: string,
+    opcoes: readonly { readonly valor: string; readonly rotulo: string; readonly detalhe?: string }[]
+  ) => Promise<string | null>;
+  readonly pedirTexto: (titulo: string, placeholder: string) => Promise<string | null>;
   readonly onRodarBloco: (
     modo: 'run' | 'tab' | 'json',
     sql: string,
@@ -169,7 +175,7 @@ export function EditorGroup({
   capacidadesDe, onAbrirArquivoRemoto, onAbrirTerminalDoServidor,
   onDuplicarTerminal, onConfirmarSnippet,
   onRodarCodigoDoBloco, onPedirLinguagem, vinculoDoCaderno, onTrocarVinculoDoCaderno,
-  escolherConexaoDoNotebook, rotuloDaConexao,
+  escolherConexaoDoNotebook, rotuloDaConexao, raizDoNotebook, escolherOpcao, pedirTexto,
   onPedirNomeDoResultado, onAbrirResultadoSalvo,
 }: EditorGroupProps) {
   /**
@@ -446,6 +452,9 @@ export function EditorGroup({
               onMudar={onMudarCaderno}
               escolherConexao={escolherConexaoDoNotebook}
               rotuloDaConexao={rotuloDaConexao}
+              raiz={raizDoNotebook((t.meta as { path?: string | null }).path ?? null)}
+              escolherOpcao={escolherOpcao}
+              pedirTexto={pedirTexto}
             />
           </Box>
         ))}

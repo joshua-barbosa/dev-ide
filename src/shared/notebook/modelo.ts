@@ -276,3 +276,18 @@ export function lerNotebook(conteudo: string): Notebook | null {
   }
   return { kernel: bruto.kernel as Kernel, conexao: lerVinculo(bruto.conexao), celulas };
 }
+
+/**
+ * A pasta de projeto que contém o notebook — a MAIS FUNDA, quando uma raiz
+ * aberta mora dentro de outra. É o limite da busca por `.venv` (ver
+ * `server/notebook/ambiente.ts`).
+ *
+ * Aceita `/` e `\`: o caminho vem do servidor, que pode ser Windows.
+ */
+export function raizQueContem(caminho: string, raizes: readonly string[]): string | null {
+  const plano = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
+  const alvo = plano(caminho);
+  const candidatas = raizes.filter((r) => alvo.startsWith(`${plano(r)}/`));
+  if (candidatas.length === 0) return null;
+  return candidatas.reduce((a, b) => (plano(b).length > plano(a).length ? b : a));
+}

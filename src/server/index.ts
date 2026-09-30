@@ -13,6 +13,9 @@ import { localhostOnly } from './http/security';
 import { PreferencesStore } from './prefs';
 import { ProjectStore } from './projects';
 import { createConnectionsRouter } from './routes/connections';
+import { createNotebookRouter } from './routes/notebook';
+import { plataformaAtual } from '../shared/plataforma';
+import { GerenteDeKernels } from './notebook/gerente';
 import { createPrefsRouter } from './routes/prefs';
 import { createWorkspaceRouter } from './routes/workspace';
 import { createComandosRouter } from './routes/comandos';
@@ -106,6 +109,9 @@ app.use(localhostOnly);
 app.use(express.json({ limit: '4mb' }));
 app.use(express.static(UI_DIR));
 app.use('/api/connections', createConnectionsRouter({ registry, vault, pool, remember, prefs }));
+// O notebook (spec 112): um kernel vivo por `.brnb` aberto.
+const kernels = new GerenteDeKernels(plataformaAtual());
+app.use('/api/notebook', createNotebookRouter(kernels, pool));
 app.use('/api/prefs', createPrefsRouter(prefs));
 app.use('/api', createWorkspaceRouter(estado, ROOT));
 app.use('/api/commands', createComandosRouter(comandos, estado));
@@ -394,6 +400,9 @@ export function iniciarServidor(porta = PORT): Promise<void> {
       // arquivo de credencial ainda em disco.
       terminais.fecharTodos();
       execucoes.pararTudo();
+      // Kernels também são processos de fora: um Python órfão segurando um
+      // DataFrame enorme não é algo que se deixa para trás.
+      kernels.encerrarTodos();
       pool.closeAll().finally(() => server.close(() => process.exit(0)));
     });
   }

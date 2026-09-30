@@ -4,8 +4,7 @@
 // ganha foco. Reaproveitado SEM alteração: o notebook é feature separada, mas
 // a peça que edita um bloco é a mesma, e duas cópias dela divergiriam.
 //
-// Etapa 1: só a célula SQL tem ▷. A de código ganha o seu quando o kernel
-// existir (etapa 2) — um botão que não faz nada é pior que botão nenhum.
+// Toda célula que roda tem ▷ (e `Ctrl+Enter`); Markdown não roda, só se lê.
 import { useState } from 'react';
 import Box from '@mui/material/Box';
 import { Icon } from '../Icon';
@@ -29,6 +28,8 @@ export interface CelulaDoNotebookProps {
   readonly tema: NomeDoTema;
   onMudar(mudanca: MudancaDeCelula): void;
   onRodar(): void;
+  /** A cascata: esta célula e todas abaixo, parando no primeiro erro. */
+  onRodarDesde(): void;
   onEscolherConexao(): void;
   onUsarConexaoDoNotebook(): void;
   onLimparSaida(): void;
@@ -96,7 +97,7 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
           {celula.tipo === 'markdown' ? '' : `[${p.rodando ? '*' : (celula.contador ?? ' ')}]`}
         </Box>
 
-        {celula.tipo === 'sql' && (
+        {celula.tipo !== 'markdown' && (
           <Botao icone="lucide:play" rotulo="▷ Rodar célula" destaque onClick={p.onRodar} />
         )}
 
@@ -162,6 +163,7 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
           {celula.saidas.length > 0 && (
             <Botao icone="lucide:eraser" rotulo="Limpar a saída desta célula" onClick={p.onLimparSaida} />
           )}
+          <Botao icone="lucide:chevrons-down" rotulo="Rodar daqui para baixo" onClick={p.onRodarDesde} />
           <Botao icone="lucide:chevron-up" rotulo="Subir a célula" onClick={() => p.onMover(-1)} />
           <Botao icone="lucide:chevron-down" rotulo="Descer a célula" onClick={() => p.onMover(1)} />
           <Botao icone="lucide:trash-2" rotulo="Apagar a célula" onClick={p.onRemover} />
@@ -218,9 +220,7 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
           tabSize={p.tabSize}
           tema={p.tema}
           onAlterar={(conteudo) => p.onMudar({ conteudo })}
-          onAtalhoDeRodar={() => {
-            if (celula.tipo === 'sql') p.onRodar();
-          }}
+          onAtalhoDeRodar={p.onRodar}
           onFocar={() => undefined}
         />
       )}

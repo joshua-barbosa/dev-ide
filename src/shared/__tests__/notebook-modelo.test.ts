@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import {
   alterarCelula, escreverNotebook, inserirCelula, KERNELS, lerNotebook, limparSaidas,
   moverCelula, nomeDeResultadoLivre, nomeValido, notebookNovo, registrarExecucao,
-  removerCelula, SAIDA_MAX_LINHAS, saidaDeTabela, type Notebook,
+  raizQueContem, removerCelula, SAIDA_MAX_LINHAS, saidaDeTabela, type Notebook,
 } from '../notebook/modelo';
 
 const VINCULO = { connectionId: 'c1', database: 'loja' };
@@ -140,4 +140,13 @@ test('o próximo nome livre não repete um que já existe', () => {
   assert.deepEqual(nb.celulas.map((c) => c.nome), ['resultado1', 'resultado2']);
   nb = alterarCelula(nb, 'id0', { nome: 'resultado3' });
   assert.equal(nomeDeResultadoLivre(nb), 'resultado1');
+});
+
+test('a raiz do notebook é a pasta aberta que o contém — a mais funda', () => {
+  assert.equal(raizQueContem('/proj/a/nb.brnb', ['/outra', '/proj']), '/proj');
+  assert.equal(raizQueContem('/proj/sub/nb.brnb', ['/proj', '/proj/sub']), '/proj/sub');
+  assert.equal(raizQueContem('/fora/nb.brnb', ['/proj']), null);
+  // Prefixo de NOME não é pasta: /projeto não está dentro de /proj.
+  assert.equal(raizQueContem('/projeto/nb.brnb', ['/proj']), null);
+  assert.equal(raizQueContem('C:\\proj\\a\\nb.brnb', ['C:\\proj']), 'C:\\proj');
 });

@@ -305,6 +305,7 @@ export function App() {
   const propsDeTabela = propsDaAbaDeTabela({
     ws, dialogs, qi, conexoes, exec, vinculos, onErro: falhaDeConexao,
     mostrarSaida: () => layout.mostrarPainel('output'),
+    raizes: () => pasta.raizes.map((r) => r.pasta),
   });
 
 

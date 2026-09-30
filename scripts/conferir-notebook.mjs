@@ -2,7 +2,8 @@
 //
 // O gesto dele do começo ao fim: criar o arquivo, escolher o kernel, escolher a
 // conexão, escrever uma célula SQL, rodar, escrever Markdown, salvar, reabrir e
-// ver a saída GUARDADA sem rodar de novo, e limpar as saídas.
+// ver a saída GUARDADA sem rodar de novo, e limpar as saídas. Na etapa 2: o
+// kernel Python vivo — rodar, usar o resultado do SQL, Parar e Reiniciar.
 //
 // Motor de verdade, SQLite descartável, a IDE no Chrome.
 //
@@ -78,8 +79,6 @@ try {
   await nb.waitFor({ timeout: 10000 });
   marcar('escolhido Python, o notebook nasce com o kernel Python',
     (await nb.locator('[data-kernel]').getAttribute('data-kernel')) === 'python');
-  marcar('célula de código ainda SEM ▷ (o kernel chega na etapa 2)',
-    (await nb.locator('[data-tipo="codigo"]').getByRole('button', { name: /Rodar/ }).count()) === 0);
 
   // ---- a conexão do notebook ----
   await nb.getByRole('button', { name: 'Conexão do notebook' }).click();
@@ -127,6 +126,65 @@ try {
   marcar('Markdown aparece renderizado',
     await h1.waitFor({ timeout: 5000 }).then(() => true, () => false));
 
+  // ---- etapa 2: o kernel Python vivo ----
+  /** Escreve numa célula de código (Monaco) e a roda pelo ▷. */
+  const escreverERodar = async (celula, codigo) => {
+    await celula.locator('textarea').first().click();
+    await celula.locator('.monaco-editor').first().waitFor({ timeout: 15000 });
+    await pagina.keyboard.press('Control+A');
+    await pagina.keyboard.type(codigo);
+    await celula.getByRole('button', { name: /Rodar célula/ }).click();
+  };
+  /** Espera a célula terminar (o `[*]` some) e devolve o texto das saídas. */
+  const saidaDe = async (celula, prazo = 20000) => {
+    const inicio = Date.now();
+    while (/\[\*\]/.test(await celula.innerText()) && Date.now() - inicio < prazo) {
+      await pagina.waitForTimeout(100);
+    }
+    return celula.locator('[data-saidas]').innerText().catch(() => '');
+  };
+
+  const primeira = nb.locator('[data-celula]').first();
+  await escreverERodar(primeira, 'print("olá do kernel")\n2 + 3');
+  const saidaPy = await saidaDe(primeira);
+  marcar('a célula Python roda: print e a última expressão aparecem',
+    saidaPy.includes('olá do kernel') && /\b5\b/.test(saidaPy), JSON.stringify(saidaPy.slice(0, 80)));
+  const estado = await nb.getByRole('button', { name: 'Interpretador do kernel' }).innerText();
+  marcar('a barra mostra o kernel de pé, com a versão do Python', /\d+\.\d+/.test(estado), JSON.stringify(estado));
+
+  // A célula SQL de antes roda de novo, agora COM kernel: vira variável.
+  await sql.getByRole('button', { name: /Rodar célula/ }).click();
+  const saidaSql = await saidaDe(sql);
+  marcar('a célula SQL anuncia a variável que criou', /→ resultado1:.*2 linha/.test(saidaSql),
+    JSON.stringify((saidaSql.match(/→[^\n]*/) ?? [''])[0]));
+
+  const n = await nb.locator('[data-celula]').count();
+  await nb.locator(`[data-adicionar="${n}"]`).getByRole('button', { name: 'Python' }).click();
+  const usa = nb.locator('[data-celula]').nth(n);
+  await escreverERodar(usa,
+    'nomes = list(resultado1["titulo"]) if hasattr(resultado1, "columns") else [r["titulo"] for r in resultado1]\nnomes');
+  const saidaUsa = await saidaDe(usa);
+  marcar('a célula Python USA o resultado do SQL de cima', saidaUsa.includes("['primeira', 'segunda']"),
+    JSON.stringify(saidaUsa.slice(0, 80)));
+
+  await nb.locator(`[data-adicionar="${n + 1}"]`).getByRole('button', { name: 'Python' }).click();
+  const lenta = nb.locator('[data-celula]').nth(n + 1);
+  await escreverERodar(lenta, 'import time\ntime.sleep(30)');
+  await pagina.waitForTimeout(600);
+  const antesDeParar = Date.now();
+  await nb.getByRole('button', { name: 'Parar' }).click();
+  const saidaLenta = await saidaDe(lenta, 8000);
+  marcar('Parar interrompe um sleep(30) na hora', saidaLenta.includes('Interrompido') && Date.now() - antesDeParar < 5000,
+    `${Date.now() - antesDeParar} ms`);
+
+  await escreverERodar(usa, 'nomes');
+  marcar('depois de Parar, as variáveis continuam lá', (await saidaDe(usa)).includes('primeira'));
+
+  await nb.getByRole('button', { name: 'Reiniciar kernel' }).click();
+  await pagina.waitForTimeout(1500);
+  await escreverERodar(usa, 'nomes');
+  marcar('Reiniciar ZERA as variáveis', (await saidaDe(usa)).includes('NameError'));
+
   // ---- salvar ----
   await pagina.keyboard.press('Control+s');
   await pagina.waitForTimeout(800);
@@ -135,7 +193,7 @@ try {
   const celulaSql = gravado?.celulas?.find((c) => c.tipo === 'sql');
   marcar('Ctrl+S grava um .brnb com kernel, conexão e células',
     gravado?.formato === 'braytech-notebook' && gravado?.kernel === 'python'
-      && gravado?.conexao?.database === 'main' && gravado?.celulas?.length === 4,
+      && gravado?.conexao?.database === 'main' && gravado?.celulas?.length === 6,
     JSON.stringify({ kernel: gravado?.kernel, conexao: gravado?.conexao, celulas: gravado?.celulas?.length }));
   marcar('a SAÍDA da célula SQL fica guardada no arquivo, como no Jupyter',
     celulaSql?.saidas?.[0]?.tipo === 'tabela' && JSON.stringify(celulaSql.saidas[0].linhas).includes('primeira'));

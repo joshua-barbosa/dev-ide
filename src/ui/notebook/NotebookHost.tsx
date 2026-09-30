@@ -6,26 +6,24 @@
 // notebook. Este componente é a tela; o que o arquivo é mora em
 // `shared/notebook/modelo.ts`.
 //
-// Etapa 1: arquivo, células, Markdown e SQL com o resultado embaixo. O kernel
-// (Python, JS/TS, PHP) chega na etapa 2 — até lá, célula de código se escreve
-// e se guarda, mas não tem ▷.
+// O kernel mora em `useKernelDoNotebook` e o rodar em `useExecucaoDoNotebook`;
+// aqui fica o que é TELA: a barra, as células, e ler/gravar o arquivo.
 //
 // A verdade é o TEXTO em `aba.meta.content`, como no sqlbook: é o que faz o
 // `Ctrl+S` gravar pelo caminho de sempre, sem ramo especial.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import { Icon } from '../Icon';
-import { Api } from '../api';
 import { CelulaDoNotebook } from './CelulaDoNotebook';
+import { useKernelDoNotebook } from './useKernelDoNotebook';
+import { useExecucaoDoNotebook } from './useExecucaoDoNotebook';
 import type { Tab } from '../../shared/tabs';
 import type { NomeDoTema } from '../../shared/temas';
 import type { Vinculo } from '../../shared/sql/vinculo';
-import { instrucoesDoBloco } from '../../shared/sql/instrucoes-do-bloco';
-import { pedidoDeConsulta } from '../../shared/sql/pedido-de-execucao';
 import {
   alterarCelula, escreverNotebook, inserirCelula, KERNELS, lerNotebook, limparSaidas,
-  moverCelula, notebookNovo, registrarExecucao, removerCelula, saidaDeTabela,
-  type Kernel, type Notebook, type Saida, type TipoDeCelula,
+  moverCelula, notebookNovo, removerCelula,
+  type Kernel, type Notebook, type TipoDeCelula,
 } from '../../shared/notebook/modelo';
 
 export interface NotebookHostProps {
@@ -38,7 +36,16 @@ export interface NotebookHostProps {
   escolherConexao(atual: Vinculo | null): Promise<Vinculo | null>;
   /** "MySQL · loja" — o que a barra e a célula mostram. */
   rotuloDaConexao(v: Vinculo): string;
+  /** A pasta de projeto que contém o notebook: o limite da busca por `.venv`. */
+  readonly raiz: string | null;
+  escolherOpcao(
+    titulo: string,
+    opcoes: readonly { readonly valor: string; readonly rotulo: string; readonly detalhe?: string }[]
+  ): Promise<string | null>;
+  pedirTexto(titulo: string, placeholder: string): Promise<string | null>;
 }
+
+const OUTRO_INTERPRETADOR = '\u0000outro';
 
 const ROTULOS: Record<Kernel, string> = {
   python: 'Python', javascript: 'JavaScript', typescript: 'TypeScript', php: 'PHP',
@@ -75,13 +82,12 @@ function Acao({ icone, rotulo, onClick }: { icone: string; rotulo: string; onCli
 }
 
 export function NotebookHost({
-  aba, fontSize, tabSize, tema, onMudar, escolherConexao, rotuloDaConexao,
+  aba, fontSize, tabSize, tema, onMudar, escolherConexao, rotuloDaConexao, raiz, escolherOpcao, pedirTexto,
 }: NotebookHostProps) {
   const conteudo = String((aba.meta as { content?: string }).content ?? '');
   const inicial = useMemo(() => ler(conteudo), []); // eslint-disable-line react-hooks/exhaustive-deps
   const [nb, setNb] = useState<Notebook | null>(inicial.nb);
   const [erroDeLeitura, setErroDeLeitura] = useState<string | null>(inicial.erro);
-  const [rodando, setRodando] = useState<string | null>(null);
   /** O último texto que ESTA tela escreveu — para não marcar sujo ao abrir. */
   const escrito = useRef(inicial.nb === null ? conteudo : escreverNotebook(inicial.nb));
   const atual = useRef(nb);
@@ -120,49 +126,22 @@ export function NotebookHost({
     onMudar(aba.id, escrito.current);
   };
 
-  /** Roda uma célula SQL: cada instrução, em ordem, com a saída embaixo. */
-  const rodarSql = async (id: string): Promise<void> => {
-    const n = atual.current;
-    const celula = n?.celulas.find((c) => c.id === id);
-    if (n === null || celula === undefined) return;
-    const contador = Math.max(0, ...n.celulas.map((c) => c.contador ?? 0)) + 1;
-    const vinculo = celula.conexao ?? n.conexao;
-    if (vinculo === null) {
-      atualizar((x) => registrarExecucao(x, id, contador, [{
-        tipo: 'erro',
-        mensagem: 'Escolha a conexão: a do notebook (barra de cima) ou a desta célula.',
-      }]));
-      return;
-    }
+  const caminho = (aba.meta as { path?: string | null }).path ?? null;
+  const kernel = useKernelDoNotebook(caminho, nb?.kernel ?? 'python', raiz);
+  const execucao = useExecucaoDoNotebook({ atual, atualizar, kernel, caminho });
 
-    setRodando(id);
-    const saidas: Saida[] = [];
-    try {
-      const { instrucoes, erro } = instrucoesDoBloco(celula.conteudo);
-      if (erro !== null) saidas.push({ tipo: 'erro', mensagem: erro });
-      for (const [i, sql] of instrucoes.entries()) {
-        const qual = instrucoes.length > 1 ? `Instrução ${i + 1} de ${instrucoes.length}` : 'A consulta';
-        try {
-          const r = await Api.execute(vinculo.connectionId, pedidoDeConsulta(sql, vinculo.database));
-          if (r.columns.length === 0) {
-            saidas.push({ tipo: 'texto', fluxo: 'saida', texto: r.message ?? 'Comando executado.' });
-            continue;
-          }
-          saidas.push(saidaDeTabela(r.columns.map((c) => c.name), r.rows));
-          if (r.truncated) {
-            saidas.push({
-              tipo: 'texto', fluxo: 'saida',
-              texto: `${qual} trouxe mais de ${r.rows.length} linhas; a tabela mostra as primeiras.`,
-            });
-          }
-        } catch (e) {
-          saidas.push({ tipo: 'erro', mensagem: `${qual} falhou: ${e instanceof Error ? e.message : String(e)}` });
-          break;
-        }
-      }
-    } finally {
-      setRodando(null);
-      atualizar((x) => registrarExecucao(x, id, contador, saidas));
+  const escolherInterpretador = async (): Promise<void> => {
+    const candidatos = kernel.estado?.candidatos ?? [];
+    const escolhido = await escolherOpcao('Com qual Python o notebook roda?', [
+      ...candidatos.map((c) => ({ valor: c.caminho, rotulo: c.rotulo, detalhe: c.caminho })),
+      { valor: OUTRO_INTERPRETADOR, rotulo: 'Outro interpretador…', detalhe: 'o caminho de um python' },
+    ]);
+    if (escolhido === null) return;
+    const interpretador = escolhido === OUTRO_INTERPRETADOR
+      ? await pedirTexto('Caminho do interpretador', '/caminho/para/.venv/bin/python')
+      : escolhido;
+    if (interpretador !== null && interpretador.trim() !== '') {
+      await kernel.trocarInterpretador(interpretador.trim());
     }
   };
 
@@ -237,6 +216,35 @@ export function NotebookHost({
         }}
       >
         <Box data-kernel={nb.kernel} sx={{ fontWeight: 600 }}>{ROTULOS[nb.kernel]}</Box>
+        {/* O ambiente: de onde vêm os pacotes. Clicar troca — antes de subir,
+            clicar sobe o kernel para descobrir os candidatos. */}
+        <Box
+          component="button"
+          type="button"
+          aria-label="Interpretador do kernel"
+          data-estado-do-kernel={
+            kernel.subindo ? 'subindo' : kernel.estado === null ? 'parado' : execucao.rodando !== null ? 'ocupado' : 'ocioso'
+          }
+          onClick={() => void (kernel.estado === null ? kernel.garantir() : escolherInterpretador())}
+          title={kernel.estado?.executavel ?? 'O kernel sobe na primeira célula que rodar'}
+          sx={{
+            display: 'inline-flex', alignItems: 'center', gap: 0.5, border: 0,
+            bgcolor: 'transparent', cursor: 'pointer', fontSize: 12, color: 'text.secondary',
+          }}
+        >
+          <Box
+            component="span"
+            sx={{
+              width: 7, height: 7, borderRadius: '50%',
+              bgcolor: kernel.estado === null ? 'text.disabled' : execucao.rodando !== null ? 'warning.main' : 'success.main',
+            }}
+          />
+          {kernel.subindo
+            ? 'subindo…'
+            : kernel.estado === null
+              ? 'kernel parado'
+              : `${kernel.estado.interpretador.rotulo} · ${kernel.estado.versao}${kernel.estado.pandas ? ' · pandas' : ''}`}
+        </Box>
         <Box
           component="button"
           type="button"
@@ -246,7 +254,19 @@ export function NotebookHost({
         >
           {nb.conexao === null ? 'escolher conexão…' : rotuloDaConexao(nb.conexao)}
         </Box>
+        {kernel.erro !== null && (
+          <Box data-erro-do-kernel sx={{ color: 'error.main', fontSize: 11, maxWidth: 420 }} title={kernel.erro}>
+            {kernel.erro}
+          </Box>
+        )}
         <Box sx={{ flex: 1 }} />
+        <Acao icone="lucide:fast-forward" rotulo="Rodar tudo" onClick={() => void execucao.rodarDesde(0)} />
+        {execucao.rodando !== null && (
+          <Acao icone="lucide:square" rotulo="Parar" onClick={() => void execucao.parar()} />
+        )}
+        {kernel.estado !== null && (
+          <Acao icone="lucide:refresh-cw" rotulo="Reiniciar kernel" onClick={() => void kernel.reiniciar()} />
+        )}
         <Acao icone="lucide:eraser" rotulo="Limpar saídas" onClick={() => atualizar((x) => limparSaidas(x))} />
       </Box>
 
@@ -257,7 +277,7 @@ export function NotebookHost({
             <CelulaDoNotebook
               celula={celula}
               kernel={nb.kernel}
-              rodando={rodando === celula.id}
+              rodando={execucao.rodando === celula.id}
               rotuloDaConexao={
                 (celula.conexao ?? nb.conexao) === null
                   ? 'sem conexão'
@@ -267,7 +287,8 @@ export function NotebookHost({
               tabSize={tabSize}
               tema={tema}
               onMudar={(m) => atualizar((x) => alterarCelula(x, celula.id, m))}
-              onRodar={() => void rodarSql(celula.id)}
+              onRodar={() => void execucao.rodarCelula(celula.id)}
+              onRodarDesde={() => void execucao.rodarDesde(i)}
               onEscolherConexao={() => void trocarConexao(celula.id)}
               onUsarConexaoDoNotebook={() => atualizar((x) => alterarCelula(x, celula.id, { conexao: null }))}
               onLimparSaida={() => atualizar((x) => limparSaidas(x, celula.id))}

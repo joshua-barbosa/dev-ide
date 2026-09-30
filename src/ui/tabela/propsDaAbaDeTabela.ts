@@ -17,6 +17,7 @@ import type { QuickInputController } from '../useQuickInput';
 import type { Workspace } from '../useWorkspace';
 import type { ControleDeVinculo } from '../query/useVinculo';
 import type { Vinculo } from '../../shared/sql/vinculo';
+import { raizQueContem } from '../../shared/notebook/modelo';
 import { LINGUAGENS } from '../../shared/editor/idiomas';
 
 export interface DepsDasProps {
@@ -36,10 +37,12 @@ export interface DepsDasProps {
   readonly onErro: (erro: unknown) => void;
   /** Traz o painel `Output` à frente. Ver `onRodarCodigoDoBloco`. */
   readonly mostrarSaida: () => void;
+  /** As pastas abertas: o notebook procura o `.venv` até a raiz que o contém. */
+  readonly raizes: () => readonly string[];
 }
 
 export function propsDaAbaDeTabela({
-  ws, qi, conexoes, exec, vinculos, dialogs, onErro, mostrarSaida,
+  ws, qi, conexoes, exec, vinculos, dialogs, onErro, mostrarSaida, raizes,
 }: DepsDasProps) {
 return {
   onExportar: ws.abrirSemTitulo,
@@ -111,6 +114,12 @@ return {
     return vinculos.vinculoDe((t.meta as { path?: string | null }).path ?? null);
   },
   escolherConexaoDoNotebook: (atual: Vinculo | null) => vinculos.escolher(atual),
+  raizDoNotebook: (caminho: string | null) => (caminho === null ? null : raizQueContem(caminho, raizes())),
+  escolherOpcao: (
+    titulo: string,
+    opcoes: readonly { readonly valor: string; readonly rotulo: string; readonly detalhe?: string }[]
+  ) => qi.pedir({ titulo, placeholder: titulo, opcoes }),
+  pedirTexto: (titulo: string, placeholder: string) => qi.pedir({ titulo, placeholder }),
   rotuloDaConexao: (v: Vinculo) =>
     `${conexoes.acharConexao(v.connectionId)?.label ?? 'conexão removida'} · ${v.database}`,
   onTrocarVinculoDoCaderno: (t: Tab) => {
