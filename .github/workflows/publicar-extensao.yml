@@ -1,0 +1,93 @@
+# Publica a extensão no Open VSX por Trusted Publishing — sem token guardado.
+#
+# O Open VSX confia no ARQUIVO deste workflow, e não numa branch ou tag: "any
+# ref that runs the registered workflow file is trusted". Por isso duas travas:
+#   1. só dispara por tag `extensao-v*`, e a tag TEM de bater com a versão de
+#      `extensao/package.json` — senão para antes de construir;
+#   2. o job roda no environment `open-vsx`, que no GitHub pode ser limitado a
+#      essas tags (Settings → Environments → open-vsx → Deployment branches and
+#      tags). Com isso, nem uma branch que altere este arquivo consegue publicar.
+#
+# Para publicar:  git tag extensao-v0.1.9 && git push origin extensao-v0.1.9
+name: Publicar extensão no Open VSX
+
+on:
+  push:
+    tags: ['extensao-v*']
+
+# Nada por padrão; o job pede só o que usa.
+permissions: {}
+
+# Duas tags seguidas não publicam ao mesmo tempo.
+concurrency:
+  group: publicar-extensao
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment: open-vsx
+    permissions:
+      contents: read
+      # O token OIDC que o Open VSX troca por uma credencial de minutos.
+      id-token: write
+    env:
+      # Nada do CI abre o Electron; baixar o binário só atrasaria.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      # Fixadas por SHA: tag de ação pode ser movida, e isto publica em nome dele.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # 22: as guardas usam `node:sqlite`.
+          node-version: 22
+          cache: npm
+
+      - name: A tag bate com a versão da extensão
+        run: |
+          versao="$(node -p "require('./extensao/package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "extensao-v${versao}" ]; then
+            echo "::error::A tag ${GITHUB_REF_NAME} não bate com a versão ${versao} de extensao/package.json."
+            exit 1
+          fi
+          echo "VERSAO=${versao}" >> "${GITHUB_ENV}"
+
+      - name: Dependências
+        run: |
+          npm ci
+          npm ci --prefix extensao
+
+      # Os ícones são GERADOS e ficam fora do git; a suíte os importa. Na
+      # máquina dele existem de builds anteriores — num clone limpo, não.
+      - name: Ícones gerados
+        run: npm run build:icons
+
+      # O que roda antes de cada entrega à mão roda aqui também: publicar é o
+      # único passo que não se desfaz.
+      - name: Suíte
+        run: npm test
+
+      # Empacotar ANTES de conferir o host: é o empacotamento que gera os
+      # ícones de marca que a conferência verifica. Num clone limpo, na ordem
+      # inversa, ela falhava por falta de arquivo, não por defeito.
+      - name: Empacotar
+        run: npm run empacotar:extensao
+
+      - name: Host da extensão com motor de verdade
+        run: npm run conferir:extensao
+
+      # As guardas de navegador rodam contra a webview e o motor que ACABARAM
+      # de ser empacotados. `conferir:datas` fica de fora: sobe três bancos em
+      # Docker e leva minutos.
+      - name: Guardas no navegador
+        run: |
+          npm run conferir:formulario
+          npm run conferir:teclado
+          npm run conferir:lupa
+          npm run conferir:caderno
+
+      - name: Publicar
+        run: npx --yes ovsx@1.2.0 publish "extensao/braytech-code-${VERSAO}.vsix" --trusted-publishing
