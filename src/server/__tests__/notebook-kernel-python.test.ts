@@ -148,3 +148,16 @@ test('célula que NÃO para em 3 s: o kernel é encerrado, e diz por quê', { sk
   assert.ok(textoDe(teimosa).includes('não parou em 3 s'), textoDe(teimosa));
   assert.equal(k.vivo, false);
 });
+
+test('quem sabe se desenhar (_repr_svg_) vira imagem; display() mostra no meio', async () => {
+  const k = await kernel();
+  const e = await ate(k.executar(
+    'class Circulo:\n    def _repr_svg_(self):\n        return "<svg xmlns=\'http://www.w3.org/2000/svg\'><circle r=\'5\'/></svg>"\n' +
+    'display("antes")\nCirculo()'
+  ));
+  assert.ok(textoDe(e).includes("'antes'"), 'display() mostrou no meio');
+  const imagem = e.saidas.find((s) => s.tipo === 'imagem');
+  assert.ok(imagem !== undefined && imagem.tipo === 'imagem');
+  assert.equal(imagem.mime, 'image/svg+xml');
+  assert.ok(Buffer.from(imagem.dados, 'base64').toString().includes('<circle'));
+});

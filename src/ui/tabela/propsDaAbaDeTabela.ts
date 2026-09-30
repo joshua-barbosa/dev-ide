@@ -119,7 +119,8 @@ return {
     titulo: string,
     opcoes: readonly { readonly valor: string; readonly rotulo: string; readonly detalhe?: string }[]
   ) => qi.pedir({ titulo, placeholder: titulo, opcoes }),
-  pedirTexto: (titulo: string, placeholder: string) => qi.pedir({ titulo, placeholder }),
+  pedirTexto: (titulo: string, placeholder: string, inicial?: string) =>
+    qi.pedir({ titulo, placeholder, ...(inicial === undefined ? {} : { valorInicial: inicial }) }),
   rotuloDaConexao: (v: Vinculo) =>
     `${conexoes.acharConexao(v.connectionId)?.label ?? 'conexão removida'} · ${v.database}`,
   onTrocarVinculoDoCaderno: (t: Tab) => {

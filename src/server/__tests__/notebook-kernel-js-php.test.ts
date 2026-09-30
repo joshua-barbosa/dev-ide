@@ -173,3 +173,16 @@ test('JS e PHP devolvem valores para o {{nome}} do SQL', async () => {
   assert.deepEqual(p.valores, { ids: [3, 4], nome: 'Bia' });
   assert.deepEqual(p.faltando, ['fantasma']);
 });
+
+test('JS e PHP mostram imagem pela função', async () => {
+  const kjs = await iniciarKernelJs(os.tmpdir(), plataformaAtual());
+  kernels.push(kjs);
+  const e = await ate(kjs.executar(prepararCelulaJs("mostrarImagem(Buffer.from('<svg/>'), 'image/svg+xml')", 'javascript')));
+  const i = e.saidas.find((x) => x.tipo === 'imagem');
+  assert.ok(i !== undefined && i.tipo === 'imagem' && i.mime === 'image/svg+xml');
+
+  const kphp = await php(os.tmpdir());
+  const f = await ate(kphp.executar("mostrar_imagem('<svg/>', 'image/svg+xml');"));
+  const j = f.saidas.find((x) => x.tipo === 'imagem');
+  assert.ok(j !== undefined && j.tipo === 'imagem' && Buffer.from(j.dados, 'base64').toString() === '<svg/>');
+});

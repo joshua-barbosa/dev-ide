@@ -124,6 +124,7 @@ const ICONES_DA_INTERFACE = [
   'lucide:eraser',
   'lucide:chevrons-down',
   'lucide:fast-forward',
+  'lucide:file-output',
   'lucide:circle-dot',
   'lucide:files',
   'lucide:boxes',

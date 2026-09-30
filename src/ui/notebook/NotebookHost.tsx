@@ -14,12 +14,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import { Icon } from '../Icon';
+import { Api } from '../api';
 import { CelulaDoNotebook } from './CelulaDoNotebook';
 import { useKernelDoNotebook } from './useKernelDoNotebook';
 import { useExecucaoDoNotebook } from './useExecucaoDoNotebook';
 import type { Tab } from '../../shared/tabs';
 import type { NomeDoTema } from '../../shared/temas';
 import type { Vinculo } from '../../shared/sql/vinculo';
+import { exportarIpynb } from '../../shared/notebook/ipynb';
 import {
   alterarCelula, escreverNotebook, inserirCelula, KERNELS, lerNotebook, limparSaidas,
   moverCelula, notebookNovo, removerCelula,
@@ -42,7 +44,7 @@ export interface NotebookHostProps {
     titulo: string,
     opcoes: readonly { readonly valor: string; readonly rotulo: string; readonly detalhe?: string }[]
   ): Promise<string | null>;
-  pedirTexto(titulo: string, placeholder: string): Promise<string | null>;
+  pedirTexto(titulo: string, placeholder: string, inicial?: string): Promise<string | null>;
 }
 
 const OUTRO_INTERPRETADOR = '\u0000outro';
@@ -88,6 +90,7 @@ export function NotebookHost({
   const inicial = useMemo(() => ler(conteudo), []); // eslint-disable-line react-hooks/exhaustive-deps
   const [nb, setNb] = useState<Notebook | null>(inicial.nb);
   const [erroDeLeitura, setErroDeLeitura] = useState<string | null>(inicial.erro);
+  const [avisoDeExportacao, setAvisoDeExportacao] = useState<string | null>(null);
   /** O último texto que ESTA tela escreveu — para não marcar sujo ao abrir. */
   const escrito = useRef(inicial.nb === null ? conteudo : escreverNotebook(inicial.nb));
   const atual = useRef(nb);
@@ -129,6 +132,24 @@ export function NotebookHost({
   const caminho = (aba.meta as { path?: string | null }).path ?? null;
   const kernel = useKernelDoNotebook(caminho, nb?.kernel ?? 'python', raiz, nb?.laravel ?? false);
   const execucao = useExecucaoDoNotebook({ atual, atualizar, kernel, caminho });
+
+  /** Exporta para `.ipynb` (só Python), ao lado do `.brnb` por padrão. */
+  const exportar = async (): Promise<void> => {
+    const n = atual.current;
+    if (n === null || caminho === null) return;
+    const destino = await pedirTexto(
+      'Exportar para .ipynb — onde salvar?',
+      'caminho do arquivo .ipynb',
+      caminho.replace(/\.brnb$/i, '.ipynb')
+    );
+    if (destino === null || destino.trim() === '') return;
+    try {
+      await Api.saveFile(destino.trim(), exportarIpynb(n, rotuloDaConexao));
+      setAvisoDeExportacao(`Exportado para ${destino.trim()}`);
+    } catch (e) {
+      setAvisoDeExportacao(`Não exportou: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
 
   const escolherInterpretador = async (): Promise<void> => {
     // JS/TS roda no Node do próprio motor: não há o que escolher, e o ambiente
@@ -288,6 +309,9 @@ export function NotebookHost({
             )}
           </Box>
         )}
+        {avisoDeExportacao !== null && (
+          <Box data-aviso-exportacao sx={{ fontSize: 11, color: 'text.secondary' }}>{avisoDeExportacao}</Box>
+        )}
         {kernel.erro !== null && (
           <Box data-erro-do-kernel sx={{ color: 'error.main', fontSize: 11, maxWidth: 420 }} title={kernel.erro}>
             {kernel.erro}
@@ -300,6 +324,9 @@ export function NotebookHost({
         )}
         {kernel.estado !== null && (
           <Acao icone="lucide:refresh-cw" rotulo="Reiniciar kernel" onClick={() => void kernel.reiniciar()} />
+        )}
+        {nb.kernel === 'python' && (
+          <Acao icone="lucide:file-output" rotulo="Exportar .ipynb" onClick={() => void exportar()} />
         )}
         <Acao icone="lucide:eraser" rotulo="Limpar saídas" onClick={() => atualizar((x) => limparSaidas(x))} />
       </Box>

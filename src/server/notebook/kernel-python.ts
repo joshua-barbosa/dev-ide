@@ -39,7 +39,10 @@ export function iniciarKernelPython(
       // `-u`: sem buffer — um `print` numa célula demorada aparece na hora.
       args: ['-u', driver],
       cwd: pastaDoNotebook,
-      env: { PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' },
+      // `Agg`: o matplotlib desenha SEM janela. Sem isto um `plt.show()` abriria
+      // uma janela de verdade no desktop dele (ou quebraria sem tela); as
+      // figuras voltam como imagem embaixo da célula.
+      env: { PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1', MPLBACKEND: 'Agg' },
       plataforma,
       interromperPor: interrupcao(plataforma),
     })

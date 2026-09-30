@@ -21,7 +21,7 @@
 //
 // `String.raw` para os `\x1e` e `\n` chegarem ao Python como estão escritos.
 export const DRIVER_PYTHON = String.raw`
-import ast, builtins, importlib.util, io, json, queue, sys, threading, traceback, _thread
+import ast, base64, builtins, importlib.util, io, json, queue, sys, threading, traceback, warnings, _thread
 
 MARCA = '\x1eBRNB\x1f'
 MAX_LINHAS = 500
@@ -96,6 +96,13 @@ def ler_pedidos():
     _pedidos.put(None)
 
 
+def _eh_lista_de_artistas(v):
+    # plt.plot(...) devolve [Line2D]: o Jupyter mostra o texto disso, e
+    # ninguem quer ler. A figura ja aparece.
+    return isinstance(v, list) and v != [] and all(
+        type(x).__module__.startswith('matplotlib') for x in v)
+
+
 def _eh_dataframe(v):
     t = type(v)
     return t.__name__ in ('DataFrame', 'Series') and t.__module__.startswith('pandas')
@@ -124,7 +131,79 @@ def tabela_de(valor):
     return None
 
 
+def _imagem_de(valor):
+    # A convencao do Jupyter: quem sabe se desenhar, diz como.
+    try:
+        png = getattr(valor, '_repr_png_', None)
+        if callable(png):
+            dados = png()
+            if dados:
+                return {'tipo': 'imagem', 'mime': 'image/png', 'dados': base64.b64encode(dados).decode('ascii')}
+        svg = getattr(valor, '_repr_svg_', None)
+        if callable(svg):
+            dados = svg()
+            if dados:
+                return {'tipo': 'imagem', 'mime': 'image/svg+xml',
+                        'dados': base64.b64encode(dados.encode('utf-8')).decode('ascii')}
+    except Exception:
+        return None
+    # Figura do matplotlib como ultima expressao (ex.: plt.gcf()).
+    if type(valor).__name__ == 'Figure' and type(valor).__module__.startswith('matplotlib'):
+        return _png_da_figura(valor)
+    return None
+
+
+def _png_da_figura(figura):
+    buffer = io.BytesIO()
+    figura.savefig(buffer, format='png', bbox_inches='tight')
+    return {'tipo': 'imagem', 'mime': 'image/png', 'dados': base64.b64encode(buffer.getvalue()).decode('ascii')}
+
+
+def _figuras_abertas(execucao):
+    # Toda figura do matplotlib que a celula deixou aberta vira imagem, e fecha:
+    # e o que o Jupyter faz com o 'inline'.
+    plt = sys.modules.get('matplotlib.pyplot')
+    if plt is None:
+        return
+    for numero in plt.get_fignums():
+        try:
+            enviar({'tipo': 'resultado', 'exec': execucao, 'saida': _png_da_figura(plt.figure(numero))})
+        except Exception as e:
+            enviar({'tipo': 'texto', 'fluxo': 'erro', 'texto': 'Figura %s nao desenhou: %s\n' % (numero, e)})
+    plt.close('all')
+
+
+_execucao_atual = None
+
+# O show() do modo sem janela so reclama ("FigureCanvasAgg is non-interactive").
+# No Jupyter ele DESENHA ali; aqui tambem: vira "mostre as figuras abertas agora".
+warnings.filterwarnings('ignore', message='.*non-interactive.*')
+
+
+def _show_no_lugar(*_a, **_k):
+    _figuras_abertas(_execucao_atual)
+
+
+def _trocar_show():
+    plt = sys.modules.get('matplotlib.pyplot')
+    if plt is not None and getattr(plt, 'show', None) is not _show_no_lugar:
+        plt.show = _show_no_lugar
+
+
+def display(*valores):
+    # O display() do Jupyter: mostra no meio da celula, nao so no fim.
+    for v in valores:
+        mostrar(_execucao_atual, v)
+
+
+ns['display'] = display
+
+
 def mostrar(execucao, valor):
+    imagem = _imagem_de(valor)
+    if imagem is not None:
+        enviar({'tipo': 'resultado', 'exec': execucao, 'saida': imagem})
+        return
     saida = tabela_de(valor)
     if saida is None:
         texto = repr(valor)
@@ -156,13 +235,25 @@ def executar(execucao, codigo):
         ultima = None
         if arvore.body and isinstance(arvore.body[-1], ast.Expr):
             ultima = ast.Expression(arvore.body.pop().value)
+        global _execucao_atual
+        _execucao_atual = execucao
         _executando = True
         try:
+            _trocar_show()
             exec(compile(arvore, nome, 'exec'), ns)
+            _trocar_show()
+            valor = None
             if ultima is not None:
                 valor = eval(compile(ultima, nome, 'eval'), ns)
-                if valor is not None:
-                    mostrar(execucao, valor)
+            # As figuras abertas vem ANTES do valor, como no Jupyter; e uma
+            # figura que ja e o valor nao sai duas vezes.
+            eh_figura = type(valor).__name__ == 'Figure' and type(valor).__module__.startswith('matplotlib')
+            if not eh_figura:
+                _figuras_abertas(execucao)
+            if valor is not None and not (type(valor).__name__ in ('Axes', 'AxesSubplot') or _eh_lista_de_artistas(valor)):
+                mostrar(execucao, valor)
+            if eh_figura:
+                sys.modules['matplotlib.pyplot'].close('all')
             ok = True
         except KeyboardInterrupt:
             enviar({'tipo': 'erro', 'exec': execucao, 'mensagem': 'Interrompido.'})

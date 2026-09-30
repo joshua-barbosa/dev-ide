@@ -78,6 +78,14 @@ function mostrar(exec, valor) {
   enviar({ tipo: 'resultado', exec, saida });
 }
 
+// mostrarImagem(bytes, 'image/png'): JS não tem a convenção do Jupyter
+// (_repr_png_), então a imagem se mostra por uma função.
+globalThis.mostrarImagem = (dados, mime = 'image/png') => {
+  const b64 = typeof dados === 'string' ? dados : Buffer.from(dados).toString('base64');
+  if (executando) enviar({ tipo: 'resultado', exec: execucaoAtual, saida: { tipo: 'imagem', mime, dados: b64 } });
+};
+let execucaoAtual = null;
+
 function descrever(e) {
   if (e instanceof Error || (e && typeof e.stack === 'string')) {
     const pilha = String(e.stack || '').split('\n');
@@ -93,6 +101,7 @@ async function executar(exec, codigo) {
   try {
     const script = new vm.Script(codigo, { filename: '<célula>' });
     executando = true;
+    execucaoAtual = exec;
     const interrompida = new Promise((_, recusar) => { interromperAgora = recusar; });
     const valor = await Promise.race([script.runInThisContext({ breakOnSigint: true }), interrompida]);
     if (valor !== undefined) mostrar(exec, valor);

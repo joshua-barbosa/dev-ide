@@ -193,6 +193,19 @@ try {
   await escreverERodar(usa, 'nomes');
   marcar('Reiniciar ZERA as variáveis', (await saidaDe(usa)).includes('NameError'));
 
+  // ---- etapa 5: imagem embaixo da célula ----
+  const m = await nb.locator('[data-celula]').count();
+  await nb.locator(`[data-adicionar="${m}"]`).getByRole('button', { name: 'Python' }).click();
+  const desenho = nb.locator('[data-celula]').nth(m);
+  // Sem recuo: digitado no Monaco, o recuo AUTOMÁTICO dele levaria a última
+  // linha para dentro do método.
+  await escreverERodar(desenho,
+    'svg = "<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'40\' height=\'40\'><circle cx=\'20\' cy=\'20\' r=\'15\' fill=\'orange\'/></svg>"\n' +
+    'Circulo = type("Circulo", (), {"_repr_svg_": lambda self: svg})\nCirculo()');
+  await saidaDe(desenho);
+  marcar('quem sabe se desenhar aparece como IMAGEM embaixo da célula',
+    (await desenho.locator('[data-saida="imagem"]').count()) === 1);
+
   // ---- salvar ----
   await pagina.keyboard.press('Control+s');
   await pagina.waitForTimeout(800);
@@ -201,10 +214,22 @@ try {
   const celulaSql = gravado?.celulas?.find((c) => c.tipo === 'sql');
   marcar('Ctrl+S grava um .brnb com kernel, conexão e células',
     gravado?.formato === 'braytech-notebook' && gravado?.kernel === 'python'
-      && gravado?.conexao?.database === 'main' && gravado?.celulas?.length === 7,
+      && gravado?.conexao?.database === 'main' && gravado?.celulas?.length === 8,
     JSON.stringify({ kernel: gravado?.kernel, conexao: gravado?.conexao, celulas: gravado?.celulas?.length }));
   marcar('a SAÍDA da célula SQL fica guardada no arquivo, como no Jupyter',
     celulaSql?.saidas?.[0]?.tipo === 'tabela' && JSON.stringify(celulaSql.saidas[0].linhas).includes('primeira'));
+
+  // ---- exportar para .ipynb ----
+  await nb.getByRole('button', { name: 'Exportar .ipynb' }).click();
+  await pagina.getByRole('dialog').last().waitFor({ timeout: 5000 });
+  await pagina.keyboard.press('Enter');
+  await pagina.waitForTimeout(800);
+  let ipynb = null;
+  try { ipynb = JSON.parse(readFileSync(arquivo.replace(/\.brnb$/, '.ipynb'), 'utf8')); } catch { /* fica null */ }
+  marcar('Exportar .ipynb grava um notebook do Jupyter ao lado',
+    ipynb?.nbformat === 4 && ipynb?.cells?.length === 8
+      && ipynb.cells.some((c) => c.outputs?.some((o) => o.data?.['image/svg+xml'])),
+    JSON.stringify({ nbformat: ipynb?.nbformat, celulas: ipynb?.cells?.length }));
 
   // ---- reabrir: a saída volta sem rodar ----
   await pagina.goto(url);

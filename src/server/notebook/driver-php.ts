@@ -85,6 +85,12 @@ function __separar($codigo) {
     return [substr($aparado, 0, $fim), substr($aparado, $fim)];
 }
 
+/** mostrar_imagem($bytes, 'image/png'): o PHP não tem a convenção do Jupyter. */
+function mostrar_imagem($bytes, $mime = 'image/png') {
+    __enviar(['tipo' => 'resultado', 'exec' => $GLOBALS['__exec'] ?? null,
+        'saida' => ['tipo' => 'imagem', 'mime' => $mime, 'dados' => base64_encode($bytes)]]);
+}
+
 function __tabela($v) {
     if (is_object($v) && method_exists($v, 'toArray')) {
         $v = $v->toArray();

@@ -104,7 +104,7 @@ export interface EditorGroupProps {
     titulo: string,
     opcoes: readonly { readonly valor: string; readonly rotulo: string; readonly detalhe?: string }[]
   ) => Promise<string | null>;
-  readonly pedirTexto: (titulo: string, placeholder: string) => Promise<string | null>;
+  readonly pedirTexto: (titulo: string, placeholder: string, inicial?: string) => Promise<string | null>;
   readonly onRodarBloco: (
     modo: 'run' | 'tab' | 'json',
     sql: string,
