@@ -150,3 +150,13 @@ test('a raiz do notebook é a pasta aberta que o contém — a mais funda', () =
   assert.equal(raizQueContem('/projeto/nb.brnb', ['/proj']), null);
   assert.equal(raizQueContem('C:\\proj\\a\\nb.brnb', ['C:\\proj']), 'C:\\proj');
 });
+
+test('o Laravel nasce desligado, e ligado fica gravado', () => {
+  const nb = notebookNovo('php', null);
+  assert.equal(nb.laravel, false);
+  const ligado = lerNotebook(escreverNotebook({ ...nb, laravel: true }));
+  assert.equal(ligado?.laravel, true);
+  // Arquivo de antes do campo: desligado, que é o seguro.
+  const antigo = lerNotebook('{"formato":"braytech-notebook","versao":1,"kernel":"php","celulas":[]}');
+  assert.equal(antigo?.laravel, false);
+});

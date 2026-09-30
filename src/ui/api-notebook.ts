@@ -16,12 +16,17 @@ export interface EstadoDoKernel {
   readonly pandas: boolean;
   readonly interpretador: { readonly caminho: string; readonly origem: string; readonly rotulo: string };
   readonly candidatos: readonly { readonly caminho: string; readonly origem: string; readonly rotulo: string }[];
+  /** PHP: há Laravel no projeto, e ele está ligado neste kernel? */
+  readonly laravelDisponivel: boolean;
+  readonly laravel: boolean;
 }
 
 export const ApiDoNotebook = {
   kernel: (caminho: string) =>
     request<EstadoDoKernel | null>('GET', `/api/notebook/kernel?caminho=${encodeURIComponent(caminho)}`),
-  iniciar: (p: { caminho: string; linguagem: string; raiz: string | null; interpretador?: string }) =>
+  iniciar: (p: {
+    caminho: string; linguagem: string; raiz: string | null; interpretador?: string; laravel?: boolean;
+  }) =>
     request<EstadoDoKernel>('POST', '/api/notebook/kernel', p),
   executar: (caminho: string, codigo: string) =>
     request<{ exec: number }>('POST', '/api/notebook/kernel/executar', { caminho, codigo }),

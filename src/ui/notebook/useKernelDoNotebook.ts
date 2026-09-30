@@ -30,6 +30,8 @@ export interface ControleDoKernel {
   interromper(): Promise<void>;
   reiniciar(): Promise<void>;
   trocarInterpretador(caminho: string): Promise<void>;
+  /** PHP: liga ou desliga o Laravel — sobe OUTRO kernel, as variáveis se perdem. */
+  trocarLaravel(ligado: boolean): Promise<void>;
 }
 
 const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -38,7 +40,8 @@ const mensagemDe = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function useKernelDoNotebook(
   caminho: string | null,
   linguagem: Kernel,
-  raiz: string | null
+  raiz: string | null,
+  laravel: boolean
 ): ControleDoKernel {
   const [estado, setEstado] = useState<EstadoDoKernel | null>(null);
   const [subindo, setSubindo] = useState(false);
@@ -71,7 +74,7 @@ export function useKernelDoNotebook(
 
   /** Devolve o MOTIVO quando falha — o estado `erro` só chega no próximo render. */
   const subir = useCallback(
-    async (interpretador?: string): Promise<string | null> => {
+    async (interpretador?: string, comLaravel: boolean = laravel): Promise<string | null> => {
       if (caminho === null) {
         const motivo = 'Salve o notebook antes de rodar: o kernel é dele, pelo caminho.';
         setErro(motivo);
@@ -79,7 +82,7 @@ export function useKernelDoNotebook(
       }
       setSubindo(true);
       try {
-        const e = await ApiDoNotebook.iniciar({ caminho, linguagem, raiz, interpretador });
+        const e = await ApiDoNotebook.iniciar({ caminho, linguagem, raiz, interpretador, laravel: comLaravel });
         setEstado(e);
         setErro(null);
         return null;
@@ -90,7 +93,7 @@ export function useKernelDoNotebook(
         setSubindo(false);
       }
     },
-    [caminho, linguagem, raiz]
+    [caminho, linguagem, raiz, laravel]
   );
 
   const garantir = useCallback(
@@ -145,5 +148,15 @@ export function useKernelDoNotebook(
     [subir]
   );
 
-  return { estado, subindo, erro, garantir, executar, interromper, reiniciar, trocarInterpretador };
+  const trocarLaravel = useCallback(
+    async (ligado: boolean) => {
+      // Só religa se já está de pé: parado, a próxima execução já sobe certo.
+      if (vivo.current !== null) await subir(undefined, ligado);
+    },
+    [subir]
+  );
+
+  return {
+    estado, subindo, erro, garantir, executar, interromper, reiniciar, trocarInterpretador, trocarLaravel,
+  };
 }

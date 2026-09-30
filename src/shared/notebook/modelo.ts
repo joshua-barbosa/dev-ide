@@ -61,6 +61,12 @@ export interface Notebook {
   readonly kernel: Kernel;
   /** A conexão padrão das células SQL. */
   readonly conexao: Vinculo | null;
+  /**
+   * Só PHP: subir a aplicação Laravel no kernel. DESLIGADO por padrão (spec
+   * 112): subida, ela fala com o banco do `.env` fora da trava de
+   * somente-leitura da IDE. Gravado para reabrir como ele deixou.
+   */
+  readonly laravel: boolean;
   readonly celulas: readonly Celula[];
 }
 
@@ -106,7 +112,7 @@ function celulaVazia(id: string, tipo: TipoDeCelula, nome: string | null): Celul
 
 /** Um notebook novo já traz uma célula de código: é por ela que se começa. */
 export function notebookNovo(kernel: Kernel, conexao: Vinculo | null): Notebook {
-  return { kernel, conexao, celulas: [celulaVazia('c1', 'codigo', null)] };
+  return { kernel, conexao, laravel: false, celulas: [celulaVazia('c1', 'codigo', null)] };
 }
 
 export function inserirCelula(
@@ -182,6 +188,7 @@ export function escreverNotebook(nb: Notebook): string {
     versao: VERSAO_DO_NOTEBOOK,
     kernel: nb.kernel,
     conexao: nb.conexao,
+    laravel: nb.laravel,
     celulas: nb.celulas,
   };
   return `${JSON.stringify(dados, null, 2)}\n`;
@@ -274,7 +281,12 @@ export function lerNotebook(conteudo: string): Notebook | null {
         .filter((s): s is Saida => s !== null),
     });
   }
-  return { kernel: bruto.kernel as Kernel, conexao: lerVinculo(bruto.conexao), celulas };
+  return {
+    kernel: bruto.kernel as Kernel,
+    conexao: lerVinculo(bruto.conexao),
+    laravel: bruto.laravel === true,
+    celulas,
+  };
 }
 
 /**

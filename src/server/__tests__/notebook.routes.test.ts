@@ -131,12 +131,57 @@ test('SQL sem kernel rodando roda do mesmo jeito, e AVISA que a variável não f
   }
 });
 
-test('kernel de linguagem ainda não feita diz qual etapa', async () => {
+test('PHP e JS pelas rotas: o SQL vira variável nos dois', async () => {
   const { pedir, fechar } = await servidor();
   try {
-    const k = await pedir('POST', '/kernel', { caminho: path.join(pasta, 'js.brnb'), linguagem: 'php', raiz: pasta });
-    assert.equal(k.success, false);
-    assert.match(k.error ?? '', /etapa 3/);
+    for (const [linguagem, codigo, esperado] of [
+      ['php', 'implode(",", array_column($pedidos, "cliente"))', "'Ana,Bia,Caio'\n"],
+      ['typescript', 'const nomes: string[] = pedidos.map((p) => p.cliente)\nnomes.join(",")', "'Ana,Bia,Caio'\n"],
+    ] as const) {
+      const nb = path.join(pasta, `${linguagem}.brnb`);
+      const k = await pedir('POST', '/kernel', { caminho: nb, linguagem, raiz: pasta });
+      assert.equal(k.success, true, k.error ?? '');
+      const sql = await pedir('POST', '/kernel/sql', {
+        caminho: nb, connectionId: 'c1', database: 'main', nome: 'pedidos',
+        statement: 'SELECT cliente FROM pedidos ORDER BY id',
+      });
+      assert.equal(sql.data.variavel.forma, 'array', linguagem);
+      const { data } = await pedir('POST', '/kernel/executar', { caminho: nb, codigo });
+      let fim: any;
+      for (let i = 0; i < 200 && !fim?.terminou; i++) {
+        fim = (await pedir('GET', `/kernel/execucao?caminho=${encodeURIComponent(nb)}&exec=${data.exec}&desde=0`)).data;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      assert.equal(fim.saidas.map((x: any) => x.texto ?? x.mensagem).join(''), esperado, linguagem);
+    }
+  } finally {
+    await fechar();
+  }
+});
+
+test('Laravel: só sobe quando o notebook PEDE', async () => {
+  const projeto = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-ide-nb-laravel-'));
+  fs.writeFileSync(path.join(projeto, 'artisan'), '');
+  fs.mkdirSync(path.join(projeto, 'bootstrap'));
+  // Um bootstrap FALSO: só registra que foi chamado, como o `tinker` chamaria.
+  fs.writeFileSync(path.join(projeto, 'bootstrap', 'app.php'),
+    "<?php class FakeK { function bootstrap() { $GLOBALS['laravel_subiu'] = 'sim'; } } " +
+    "class FakeA { function make($c) { return new FakeK(); } } return new FakeA();");
+  const nb = path.join(projeto, 'analise.brnb');
+  const { pedir, fechar } = await servidor();
+  try {
+    const sem = await pedir('POST', '/kernel', { caminho: nb, linguagem: 'php', raiz: projeto });
+    assert.equal(sem.data.laravelDisponivel, true);
+    assert.equal(sem.data.laravel, false, 'desligado por padrão');
+    const com = await pedir('POST', '/kernel', { caminho: nb, linguagem: 'php', raiz: projeto, laravel: true });
+    assert.equal(com.data.laravel, true);
+    const { data } = await pedir('POST', '/kernel/executar', { caminho: nb, codigo: '$laravel_subiu' });
+    let fim: any;
+    for (let i = 0; i < 200 && !fim?.terminou; i++) {
+      fim = (await pedir('GET', `/kernel/execucao?caminho=${encodeURIComponent(nb)}&exec=${data.exec}&desde=0`)).data;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    assert.equal(fim.saidas.map((x: any) => x.texto ?? '').join(''), "'sim'\n");
   } finally {
     await fechar();
   }

@@ -61,3 +61,40 @@ export function candidatosDePython(
   });
   return candidatos;
 }
+
+export interface AmbientePhp {
+  /** O `vendor/autoload.php` mais próximo: pacotes do Composer e classes do projeto. */
+  readonly autoload: string | null;
+  /** O `bootstrap/app.php` de um projeto Laravel, quando há `artisan` ao lado. */
+  readonly laravel: string | null;
+}
+
+/**
+ * O PHP do notebook: o `vendor` e o Laravel do projeto (spec 112, etapa 3).
+ *
+ * Mesma regra do `.venv`: da pasta do notebook subindo até a raiz do projeto,
+ * e não além — um `vendor` fora do projeto não é deste projeto.
+ */
+export function ambientePhp(
+  pastaDoNotebook: string,
+  raizDoProjeto: string | null,
+  plataforma: Plataforma,
+  existe: (caminho: string) => boolean
+): AmbientePhp {
+  const p = plataforma === 'win32' ? path.win32 : path.posix;
+  const raiz = raizDoProjeto === null ? null : p.resolve(raizDoProjeto);
+  let autoload: string | null = null;
+  let laravel: string | null = null;
+  let pasta = p.resolve(pastaDoNotebook);
+  for (;;) {
+    const candidato = p.join(pasta, 'vendor', 'autoload.php');
+    if (autoload === null && existe(candidato)) autoload = candidato;
+    const bootstrap = p.join(pasta, 'bootstrap', 'app.php');
+    if (laravel === null && existe(p.join(pasta, 'artisan')) && existe(bootstrap)) laravel = bootstrap;
+    if (raiz === null || pasta === raiz) break;
+    const acima = p.dirname(pasta);
+    if (acima === pasta || !acima.startsWith(raiz)) break;
+    pasta = acima;
+  }
+  return { autoload, laravel };
+}

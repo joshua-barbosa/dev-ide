@@ -127,10 +127,13 @@ export function NotebookHost({
   };
 
   const caminho = (aba.meta as { path?: string | null }).path ?? null;
-  const kernel = useKernelDoNotebook(caminho, nb?.kernel ?? 'python', raiz);
+  const kernel = useKernelDoNotebook(caminho, nb?.kernel ?? 'python', raiz, nb?.laravel ?? false);
   const execucao = useExecucaoDoNotebook({ atual, atualizar, kernel, caminho });
 
   const escolherInterpretador = async (): Promise<void> => {
+    // JS/TS roda no Node do próprio motor: não há o que escolher, e o ambiente
+    // é o `node_modules` da pasta do notebook.
+    if (nb?.kernel === 'javascript' || nb?.kernel === 'typescript') return;
     const candidatos = kernel.estado?.candidatos ?? [];
     const escolhido = await escolherOpcao('Com qual Python o notebook roda?', [
       ...candidatos.map((c) => ({ valor: c.caminho, rotulo: c.rotulo, detalhe: c.caminho })),
@@ -254,6 +257,37 @@ export function NotebookHost({
         >
           {nb.conexao === null ? 'escolher conexão…' : rotuloDaConexao(nb.conexao)}
         </Box>
+        {/* O Laravel: interruptor DESLIGADO por padrão, e o aviso ao lado quando
+            ligado — é a única parte que sai da trava de somente-leitura. */}
+        {nb.kernel === 'php' && kernel.estado?.laravelDisponivel === true && (
+          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+            <Box
+              component="button"
+              type="button"
+              role="switch"
+              aria-checked={nb.laravel}
+              aria-label="Subir a aplicação Laravel"
+              title="Sobe a aplicação Laravel no kernel, como o tinker: Model::, DB:: e facades funcionam."
+              onClick={() => {
+                const ligado = !nb.laravel;
+                atualizar((x) => ({ ...x, laravel: ligado }));
+                void kernel.trocarLaravel(ligado);
+              }}
+              sx={{
+                border: 1, borderColor: 'divider', borderRadius: 0.5, px: 0.75, py: 0.1,
+                fontSize: 11, cursor: 'pointer', bgcolor: nb.laravel ? 'warning.main' : 'transparent',
+                color: nb.laravel ? 'background.default' : 'text.secondary',
+              }}
+            >
+              Laravel {nb.laravel ? 'ligado' : 'desligado'}
+            </Box>
+            {nb.laravel && (
+              <Box data-aviso-laravel sx={{ fontSize: 11, color: 'warning.main' }}>
+                ⚠ usa o banco do .env do projeto, fora da trava de somente-leitura da IDE
+              </Box>
+            )}
+          </Box>
+        )}
         {kernel.erro !== null && (
           <Box data-erro-do-kernel sx={{ color: 'error.main', fontSize: 11, maxWidth: 420 }} title={kernel.erro}>
             {kernel.erro}

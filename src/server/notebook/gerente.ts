@@ -6,8 +6,9 @@
 // se deixa para trás.
 import * as fs from 'fs';
 import * as path from 'path';
-import { candidatosDePython, type Interpretador } from './ambiente';
-import { iniciarKernelPython } from './kernel-python';
+import { ambientePhp, candidatosDePython, type Interpretador } from './ambiente';
+import { iniciarKernelJs, iniciarKernelPhp, iniciarKernelPython } from './kernel-python';
+import { prepararCelulaJs } from './celula-js';
 import type { Kernel } from './kernel';
 import type { Kernel as LinguagemDoKernel } from '../../shared/notebook/modelo';
 import type { Plataforma } from '../../shared/plataforma';
@@ -18,6 +19,11 @@ export interface SessaoDeKernel {
   readonly interpretador: Interpretador;
   readonly candidatos: readonly Interpretador[];
   readonly raiz: string | null;
+  /** O que a célula vira antes de ir ao kernel (JS/TS: ver `celula-js.ts`). */
+  readonly preparar: (codigo: string) => string;
+  /** PHP: há um Laravel no projeto? E ele foi ligado neste kernel? */
+  readonly laravelDisponivel: boolean;
+  readonly laravel: boolean;
 }
 
 export interface PedidoDeKernel {
@@ -27,6 +33,18 @@ export interface PedidoDeKernel {
   readonly raiz: string | null;
   /** Um interpretador escolhido à mão; ausente = o primeiro candidato. */
   readonly interpretador?: string;
+  /**
+   * PHP: subir a aplicação Laravel (como o `tinker`). DESLIGADO por padrão —
+   * subida, ela fala com o banco do `.env` por conta própria, fora da trava de
+   * somente-leitura das conexões da IDE. Decisão dele (spec 112).
+   */
+  readonly laravel?: boolean;
+}
+
+export interface IniciadoresDeKernel {
+  readonly python: typeof iniciarKernelPython;
+  readonly js: typeof iniciarKernelJs;
+  readonly php: typeof iniciarKernelPhp;
 }
 
 export class GerenteDeKernels {
@@ -37,7 +55,9 @@ export class GerenteDeKernels {
   constructor(
     private readonly plataforma: Plataforma,
     private readonly existe: (caminho: string) => boolean = fs.existsSync,
-    private readonly subirPython: typeof iniciarKernelPython = iniciarKernelPython
+    private readonly iniciar: IniciadoresDeKernel = {
+      python: iniciarKernelPython, js: iniciarKernelJs, php: iniciarKernelPhp,
+    }
   ) {}
 
   sessao(caminho: string): SessaoDeKernel | undefined {
@@ -50,7 +70,10 @@ export class GerenteDeKernels {
     const atual = this.sessao(pedido.caminho);
     const mesmoInterpretador =
       pedido.interpretador === undefined || atual?.interpretador.caminho === pedido.interpretador;
-    if (atual !== undefined && atual.linguagem === pedido.linguagem && mesmoInterpretador) return atual;
+    const mesmoLaravel = pedido.laravel === undefined || atual?.laravel === pedido.laravel;
+    if (atual !== undefined && atual.linguagem === pedido.linguagem && mesmoInterpretador && mesmoLaravel) {
+      return atual;
+    }
     if (atual !== undefined) this.encerrar(pedido.caminho);
 
     const emCurso = this.subindo.get(pedido.caminho);
@@ -70,6 +93,7 @@ export class GerenteDeKernels {
       linguagem: s.linguagem,
       raiz: s.raiz,
       interpretador: s.interpretador.caminho,
+      laravel: s.laravel,
     });
   }
 
@@ -83,23 +107,44 @@ export class GerenteDeKernels {
   }
 
   private async subir(pedido: PedidoDeKernel): Promise<SessaoDeKernel> {
-    if (pedido.linguagem !== 'python') {
-      throw new Error(`O kernel ${pedido.linguagem} chega na etapa 3 do notebook; por ora, só Python.`);
-    }
     const pasta = path.dirname(pedido.caminho);
-    const candidatos = candidatosDePython(pasta, pedido.raiz, this.plataforma, this.existe);
-    const interpretador: Interpretador =
-      pedido.interpretador === undefined
+    const base = { linguagem: pedido.linguagem, raiz: pedido.raiz, laravelDisponivel: false, laravel: false };
+    const escolhido = (caminho: string): Interpretador => ({ caminho, origem: 'escolhido', rotulo: caminho });
+
+    let sessao: SessaoDeKernel;
+    if (pedido.linguagem === 'python') {
+      const candidatos = candidatosDePython(pasta, pedido.raiz, this.plataforma, this.existe);
+      const interpretador = pedido.interpretador === undefined
         ? candidatos[0]
-        : candidatos.find((c) => c.caminho === pedido.interpretador) ?? {
-            caminho: pedido.interpretador,
-            origem: 'escolhido',
-            rotulo: pedido.interpretador,
-          };
-    const kernel = await this.subirPython(interpretador.caminho, pasta, this.plataforma);
-    const sessao: SessaoDeKernel = {
-      kernel, linguagem: pedido.linguagem, interpretador, candidatos, raiz: pedido.raiz,
-    };
+        : candidatos.find((c) => c.caminho === pedido.interpretador) ?? escolhido(pedido.interpretador);
+      const kernel = await this.iniciar.python(interpretador.caminho, pasta, this.plataforma);
+      sessao = { ...base, kernel, interpretador, candidatos, preparar: (c) => c };
+    } else if (pedido.linguagem === 'php') {
+      const ambiente = ambientePhp(pasta, pedido.raiz, this.plataforma, this.existe);
+      const padrao: Interpretador = {
+        caminho: 'php',
+        origem: 'sistema',
+        rotulo: ambiente.autoload === null ? 'sem vendor' : 'vendor do projeto',
+      };
+      const interpretador = pedido.interpretador === undefined ? padrao : escolhido(pedido.interpretador);
+      const laravel = pedido.laravel === true && ambiente.laravel !== null;
+      const kernel = await this.iniciar.php(
+        interpretador.caminho, pasta, this.plataforma, ambiente.autoload, laravel ? ambiente.laravel : null
+      );
+      sessao = {
+        ...base, kernel, interpretador, candidatos: [padrao], preparar: (c) => c,
+        laravelDisponivel: ambiente.laravel !== null, laravel,
+      };
+    } else {
+      const linguagem = pedido.linguagem;
+      const kernel = await this.iniciar.js(pasta, this.plataforma);
+      // O `node_modules` vale pela pasta do notebook (o `require` resolve de lá).
+      const interpretador: Interpretador = { caminho: kernel.info.executavel, origem: 'sistema', rotulo: 'Node' };
+      sessao = {
+        ...base, kernel, interpretador, candidatos: [interpretador],
+        preparar: (c) => prepararCelulaJs(c, linguagem),
+      };
+    }
     this.sessoes.set(pedido.caminho, sessao);
     return sessao;
   }

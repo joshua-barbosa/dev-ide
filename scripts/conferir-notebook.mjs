@@ -59,7 +59,7 @@ try {
   }
   if (!de_pe) throw new Error('o motor não subiu');
   await api('/api/connections/vault', {});
-  await api('/api/connections', {
+  const conexao = await api('/api/connections', {
     type: 'sqlite', label: 'exemplo', group: 'Exemplos', readOnly: false, fields: { file: banco },
   });
 
@@ -213,6 +213,43 @@ try {
   await pagina.waitForTimeout(300);
   marcar('"Limpar saídas" tira todas as saídas',
     (await pagina.locator('[data-notebook] [data-saidas]').count()) === 0);
+
+  // ---- etapa 3: notebooks TypeScript e PHP, pelo "Rodar tudo" ----
+  for (const [kernel, codigo] of [
+    ['typescript', 'const titulos: string[] = pedidos.map((p) => p.titulo)\ntitulos.join(" + ")'],
+    ['php', 'implode(" + ", array_column($pedidos, "titulo"))'],
+  ]) {
+    const arq = path.join(pasta, `${kernel}.brnb`);
+    writeFileSync(arq, JSON.stringify({
+      formato: 'braytech-notebook', versao: 1, kernel, laravel: false,
+      conexao: { connectionId: conexao.id, database: 'main' },
+      celulas: [
+        { id: 'a', tipo: 'sql', nome: 'pedidos', conteudo: 'SELECT titulo FROM provas ORDER BY id', saidas: [] },
+        { id: 'b', tipo: 'codigo', conteudo: codigo, saidas: [] },
+      ],
+    }));
+    await pagina.goto(`${BASE}/?abrirPasta=${encodeURIComponent(pasta)}&abrirArquivo=${encodeURIComponent(arq)}`);
+    // A sessão restaura as abas anteriores e deixa ativa a de antes: clica na
+    // aba DESTE arquivo, e mira o notebook visível.
+    await pagina.locator(`[data-tab="${kernel}.brnb"]`).first().click({ timeout: 30000 });
+    const nbk = pagina.locator('[data-notebook]:visible');
+    await nbk.waitFor({ timeout: 30000 });
+    await nbk.getByRole('button', { name: 'Rodar tudo' }).click();
+    const ultima = nbk.locator('[data-celula="b"]');
+    const inicio = Date.now();
+    let texto = '';
+    while (Date.now() - inicio < 20000) {
+      texto = await ultima.locator('[data-saidas]').innerText().catch(() => '');
+      if (texto.includes('primeira') || /Error|erro/i.test(texto)) break;
+      await pagina.waitForTimeout(150);
+    }
+    if (process.env.DEPURAR === '1') {
+      console.error(`[${kernel}]`, JSON.stringify((await nbk.innerText()).slice(0, 600)));
+      await pagina.screenshot({ path: `${process.env.CAPTURA ?? '/tmp'}-${kernel}.png` });
+    }
+    marcar(`notebook ${kernel}: "Rodar tudo" leva o SQL até a célula de código`,
+      texto.includes("'primeira + segunda'"), JSON.stringify(texto.slice(0, 120)));
+  }
 
   marcar('nenhum erro de JavaScript na página', errosDaPagina.length === 0,
     errosDaPagina.slice(0, 2).join(' | '));

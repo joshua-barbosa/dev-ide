@@ -136,3 +136,15 @@ test('encerrar: a próxima célula diz que o kernel parou', async () => {
   assert.equal(e.terminou, true);
   assert.ok(textoDe(e).includes('encerrado'));
 });
+
+test('célula que NÃO para em 3 s: o kernel é encerrado, e diz por quê', { skip: process.platform === 'win32' }, async () => {
+  // A rede de segurança de quem não sabe ser interrompido (PHP no Windows, uma
+  // chamada C). Aqui, uma célula que ignora o SIGINT de propósito.
+  const k = await kernel();
+  const teimosa = k.executar('import signal\nsignal.signal(signal.SIGINT, signal.SIG_IGN)\nwhile True: pass');
+  await new Promise((r) => setTimeout(r, 400));
+  k.interromper();
+  await ate(teimosa, 6_000);
+  assert.ok(textoDe(teimosa).includes('não parou em 3 s'), textoDe(teimosa));
+  assert.equal(k.vivo, false);
+});

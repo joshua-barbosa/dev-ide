@@ -28,6 +28,8 @@ function estadoDe(s: SessaoDeKernel | undefined): unknown {
     pandas: s.kernel.info.pandas,
     interpretador: s.interpretador,
     candidatos: s.candidatos,
+    laravelDisponivel: s.laravelDisponivel,
+    laravel: s.laravel,
   };
 }
 
@@ -55,13 +57,15 @@ export function createNotebookRouter(gerente: GerenteDeKernels, pool: SessionPoo
         typeof req.body?.interpretador === 'string' && req.body.interpretador !== ''
           ? req.body.interpretador
           : undefined,
+      laravel: typeof req.body?.laravel === 'boolean' ? req.body.laravel : undefined,
     });
     res.json(ok(estadoDe(sessao)));
   }));
 
   router.post('/kernel/executar', wrap((req, res) => {
     const s = sessaoOuErro(requireString(req.body?.caminho, 'caminho'));
-    const e = s.kernel.executar(typeof req.body?.codigo === 'string' ? req.body.codigo : '');
+    // JS/TS chega transformado (tipos fora, import → require, célula reexecutável).
+    const e = s.kernel.executar(s.preparar(typeof req.body?.codigo === 'string' ? req.body.codigo : ''));
     res.json(ok({ exec: e.id }));
   }));
 

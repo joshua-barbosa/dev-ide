@@ -16,6 +16,12 @@ export const MAX_TEXTO_POR_CELULA = 1_000_000;
 /** Linhas por mensagem ao entregar um resultado de SQL ao kernel. */
 const LINHAS_POR_LOTE = 5_000;
 const PRAZO_DE_PARTIDA_MS = 20_000;
+/**
+ * Quanto a célula tem para parar depois do pedido. Passou disso, o kernel é
+ * ENCERRADO: é a rede de segurança de quem não sabe ser interrompido (PHP no
+ * Windows, laço síncrono de JS no Windows, uma chamada C do Python).
+ */
+export const PRAZO_PARA_PARAR_MS = 3_000;
 
 export interface Execucao {
   readonly id: number;
@@ -38,6 +44,11 @@ export interface OpcoesDoKernel {
   readonly cwd: string;
   readonly env?: NodeJS.ProcessEnv;
   readonly plataforma: Plataforma;
+  /**
+   * `sinal`: SIGINT de verdade (acorda até um `sleep`). `mensagem`: um pedido
+   * pelo canal, para quem não recebe sinal (Windows) — o driver faz o que der.
+   */
+  readonly interromperPor: 'sinal' | 'mensagem';
 }
 
 type Mensagem = { readonly tipo?: string; readonly [k: string]: unknown };
@@ -53,7 +64,7 @@ export class Kernel {
 
   private constructor(
     private readonly processo: ChildProcess,
-    private readonly plataforma: Plataforma,
+    private readonly interromperPor: 'sinal' | 'mensagem',
     readonly info: InfoDoKernel
   ) {}
 
@@ -112,7 +123,7 @@ export class Kernel {
           const m = item.mensagem as Mensagem;
           if (m.tipo !== 'pronto') continue;
           clearTimeout(prazo);
-          kernel = new Kernel(processo, opcoes.plataforma, {
+          kernel = new Kernel(processo, opcoes.interromperPor, {
             versao: String(m.versao ?? ''),
             executavel: String(m.executavel ?? opcoes.comando),
             pandas: m.pandas === true,
@@ -186,13 +197,23 @@ export class Kernel {
    * sabe matar, então vai a mensagem que o driver transforma em interrupção.
    */
   interromper(): void {
-    if (this.fila.length === 0 || this.morreu !== null) return;
-    if (this.plataforma === 'win32') this.escrever({ tipo: 'interromper' });
-    else this.processo.kill('SIGINT');
+    const alvo = this.fila[0];
+    if (alvo === undefined || this.morreu !== null) return;
+    if (this.interromperPor === 'sinal') this.processo.kill('SIGINT');
+    else this.escrever({ tipo: 'interromper' });
+    // A rede de segurança: quem não parou, é encerrado — e diz por quê.
+    setTimeout(() => {
+      if (!alvo.terminou && this.morreu === null) {
+        this.encerrar(
+          `A célula não parou em ${PRAZO_PARA_PARAR_MS / 1000} s, e o kernel foi encerrado ` +
+            '(as variáveis se perderam). Rodar de novo sobe outro.'
+        );
+      }
+    }, PRAZO_PARA_PARAR_MS).unref();
   }
 
-  encerrar(): void {
-    this.aoMorrer('O kernel foi encerrado.');
+  encerrar(motivo = 'O kernel foi encerrado.'): void {
+    this.aoMorrer(motivo);
     this.processo.stdin?.end();
     this.processo.kill();
   }

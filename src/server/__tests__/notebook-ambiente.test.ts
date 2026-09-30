@@ -55,3 +55,28 @@ test('sem projeto aberto, procura só na pasta do notebook', () => {
   const c = candidatosDePython('/tmp/x', null, 'linux', existe(['/tmp/.venv/bin/python']));
   assert.equal(c.find((i) => i.origem === 'venv'), undefined);
 });
+
+// ---- PHP (etapa 3) ----
+import { ambientePhp } from '../notebook/ambiente';
+
+test('PHP: o vendor mais próximo, subindo até a raiz', () => {
+  const a = ambientePhp('/proj/notas', '/proj', 'linux', existe(['/proj/vendor/autoload.php']));
+  assert.equal(a.autoload, '/proj/vendor/autoload.php');
+  assert.equal(a.laravel, null, 'sem artisan, não é Laravel');
+});
+
+test('PHP: Laravel só com artisan E bootstrap/app.php', () => {
+  const a = ambientePhp('/proj/notas', '/proj', 'linux',
+    existe(['/proj/vendor/autoload.php', '/proj/artisan', '/proj/bootstrap/app.php']));
+  assert.equal(a.laravel, '/proj/bootstrap/app.php');
+});
+
+test('PHP: vendor fora do projeto não conta', () => {
+  const a = ambientePhp('/casa/proj', '/casa/proj', 'linux', existe(['/casa/vendor/autoload.php']));
+  assert.equal(a.autoload, null);
+});
+
+test('PHP no Windows', () => {
+  const a = ambientePhp('C:\\proj\\notas', 'C:\\proj', 'win32', existe(['C:\\proj\\vendor\\autoload.php']));
+  assert.equal(a.autoload, 'C:\\proj\\vendor\\autoload.php');
+});
