@@ -20,6 +20,9 @@ import { daCarga, paraCarga } from '../../shared/arquivos/carga';
 
 export type PedidoAoHost =
   | { readonly tipo: 'abrirArquivo'; readonly caminho: string }
+  // O notebook (spec 112): o texto novo do `.brnb`, que o EDITOR PERSONALIZADO
+  // aplica no documento — o "não salvo" e o Ctrl+S ficam os do editor.
+  | { readonly tipo: 'notebookMudou'; readonly conteudo: string }
   | {
       // URI `braytech:`, servida pelo host por um FileSystemProvider — o arquivo
       // abre EDITÁVEL e o Ctrl+S grava no servidor. Ele usa SSH justamente para

@@ -10,6 +10,7 @@
 // host, porque o VS Code já tem isso e reimplementar daria um diálogo estranho
 // no meio de um editor que tem o dele.
 import { Api } from '../api';
+import { bancosDaConexao } from '../query/bancosDaConexao';
 import { documentoDoDiagrama } from '../../shared/sql/diagrama-er';
 import type { Vinculo } from '../../shared/sql/vinculo';
 import { chamarHost, pedirAoHost } from './ponte';
@@ -170,8 +171,9 @@ export async function escolherVinculo(atual: Vinculo | null): Promise<Vinculo | 
   });
   if (escolhida === null) return null;
 
-  const nos = await Api.children(escolhida, ['server']);
-  const bancos = nos.filter((n) => typeof n.meta?.database === 'string');
+  // Onde os databases moram muda por driver — o SQLite os traz na raiz, e só
+  // olhar `server` dizia "nenhum database". Ver `bancosDaConexao`.
+  const bancos = await bancosDaConexao(escolhida);
   if (bancos.length === 0) throw new Error('Esta conexão não expôs nenhum database.');
 
   // Um só: perguntar seria um diálogo com uma opção. O SQLite cai aqui.

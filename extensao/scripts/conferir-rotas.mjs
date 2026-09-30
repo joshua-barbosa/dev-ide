@@ -549,6 +549,17 @@ try {
   marcar('todo comando declarado é registrado no host', semRegistro.length === 0,
     semRegistro.length === 0 ? `${declarados.size} comandos` : semRegistro.join(', '));
 
+  // **O notebook `.brnb` (spec 112).** O tipo declarado no package.json e o
+  // registrado no código têm de ser O MESMO: divergindo, o `.brnb` abre como
+  // JSON, sem erro nenhum — o editor simplesmente não é achado.
+  const { TIPO_DO_NOTEBOOK } = require_(`${RAIZ}/extensao/dist/notebookEditor.js`);
+  const editores = pacote.contributes.customEditors ?? [];
+  marcar('o editor do notebook declarado é o registrado',
+    editores.some((e) => e.viewType === TIPO_DO_NOTEBOOK && e.selector?.some((x) => x.filenamePattern === '*.brnb')),
+    `${TIPO_DO_NOTEBOOK} · ${JSON.stringify(editores.map((e) => e.viewType))}`);
+  const fonteDaExtensao = await readFile(`${RAIZ}/extensao/src/extension.ts`, 'utf8');
+  marcar('a ativação registra o editor do notebook', fonteDaExtensao.includes('registrarEditorDeNotebook(deps)'));
+
   const inline = itens.filter((m) => m.group === 'inline');
   const naBarra = pacote.contributes.menus['view/title'] ?? [];
 

@@ -54,6 +54,28 @@ Esta é a regra da extensão inteira, e não tem exceção: uma ação de escrit
 As ações de usuário e permissão (`GRANT`, `REVOKE`, criar, apagar) vão para a
 área de transferência, para você colar onde for executar.
 
+## Notebook (`.brnb`)
+
+Um notebook no estilo do Jupyter, dentro do editor: crie um arquivo `.brnb`,
+escolha o kernel — **Python**, **JavaScript**, **TypeScript** ou **PHP** — e
+misture células de código, **SQL** e Markdown.
+
+- **O resultado de uma célula SQL vira variável** no kernel, pelo nome da
+  célula: um `DataFrame` no Python (com `pandas`), um array no JS e no PHP. A
+  consulta chega inteira ao kernel, sem o teto da grade.
+- **`{{nome}}` numa célula SQL usa uma variável do kernel** — sempre como
+  parâmetro da consulta, nunca colado no texto: lista vira `IN (…)`.
+- **O kernel é o ambiente do projeto**: o `.venv` do Python, o `node_modules`
+  do JS/TS, o `vendor` do PHP. Num projeto Laravel, um interruptor sobe a
+  aplicação, como o `tinker` (desligado por padrão).
+- **Rodar tudo**, **rodar daqui para baixo** (para no primeiro erro),
+  **Parar** sem perder as variáveis e **Reiniciar**.
+- Gráficos do matplotlib e imagens aparecem embaixo da célula; as saídas ficam
+  salvas no arquivo, e o notebook Python exporta para `.ipynb`.
+
+O código roda na **sua máquina**, com os interpretadores que você tem
+instalados.
+
 ## Servidores remotos
 
 Uma conexão SSH abre com quatro capacidades, e cada uma aparece só se o
@@ -98,6 +120,9 @@ Estão aqui porque é melhor você saber antes de instalar:
   funciona.** É limite do editor: webview não recebe soltura do sistema
   ([microsoft/vscode#111092]). Arrastar para a **árvore** da barra lateral
   funciona, e é por onde se sobe arquivo e pasta;
+- no **notebook, no Windows**, Parar só interrompe código que está rodando em
+  Python ou JS — uma espera longa (um `sleep`, uma chamada bloqueada) ou
+  qualquer célula PHP encerra o kernel depois de 3 s, e as variáveis se perdem;
 - o terminal **local** do motor precisa do `node-pty`, que não viaja no pacote.
   Dentro do editor isso não faz falta: terminal local é o do próprio editor
   (Ctrl+`), e o da conexão é um canal SSH.

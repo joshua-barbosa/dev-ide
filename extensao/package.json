@@ -2,7 +2,7 @@
   "name": "braytech-code",
   "displayName": "Braytech Code",
   "description": "Bancos de dados e serviços remotos dentro do VS Code e do Cursor — o mesmo motor da IDE Braytech Code.",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "publisher": "joshua-barbosa",
   "license": "Apache-2.0",
   "repository": {
@@ -1261,12 +1261,27 @@
           "description": "Caminho para o `dist/server/index.js` do motor. Vazio usa o que vem junto com a extensão."
         }
       }
-    }
+    },
+    "customEditors": [
+      {
+        "viewType": "braytech.notebook",
+        "displayName": "Braytech Notebook",
+        "selector": [
+          {
+            "filenamePattern": "*.brnb"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0"
-  }
+  },
+  "activationEvents": [
+    "onCustomEditor:braytech.notebook"
+  ]
 }

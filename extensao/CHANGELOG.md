@@ -1,5 +1,17 @@
 # Mudanças
 
+## 0.1.10
+
+- **Notebook (`.brnb`)**, no estilo do Jupyter: kernel Python, JavaScript,
+  TypeScript ou PHP, com células de código, SQL e Markdown. O resultado de uma
+  célula SQL vira variável no kernel; `{{nome}}` leva uma variável do kernel de
+  volta ao SQL, sempre como parâmetro. O kernel usa o `.venv`, o `node_modules`
+  ou o `vendor` do projeto; Laravel opcional. Rodar tudo, rodar daqui para
+  baixo, Parar, Reiniciar, gráficos e imagens, saídas salvas, exportar `.ipynb`.
+- **Escolher uma conexão SQLite** para um `.sql` ou `.sqlbook` dizia "esta
+  conexão não expôs nenhum database". O seletor procurava os databases onde o
+  MySQL e o Postgres os guardam, e o SQLite os traz em outro lugar.
+
 ## 0.1.9
 
 - **Ctrl+C, Ctrl+V e Ctrl+X funcionam de verdade no caderno** (e nas outras

@@ -32,6 +32,7 @@ import type { FiltroDaArvore } from './filtro-da-arvore';
 import { registrarComandos } from './comandosDaArvore';
 import { abrirTerminalRemoto } from './terminalRemoto';
 import { garantirCofre, porTranca, removerTranca } from './cofre';
+import { registrarEditorDeNotebook } from './notebookEditor';
 import type { DepsDoPainel } from './ponteDoHost';
 import type { Painel } from './paineis';
 
@@ -163,6 +164,9 @@ export async function activate(contexto: vscode.ExtensionContext): Promise<void>
       recarregarArvores();
     },
   };
+
+  // O notebook `.brnb` (spec 112): editor personalizado, amarrado ao documento.
+  contexto.subscriptions.push(registrarEditorDeNotebook(deps));
 
   // **As árvores NATIVAS da barra lateral (spec 104).**
   //

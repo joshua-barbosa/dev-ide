@@ -12,6 +12,7 @@
 // faz uma query rodar no banco errado sem dar erro.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Api } from '../api';
+import { bancosDaConexao } from './bancosDaConexao';
 import { mesmoVinculo, vinculoDoCaminho, type Vinculo } from '../../shared/sql/vinculo';
 import type { PublicConnection } from '../../shared/contracts';
 import type { QuickInputController } from '../useQuickInput';
@@ -93,16 +94,8 @@ export function useVinculo(deps: DepsDeVinculo): ControleDeVinculo {
     if (escolhida === null) return null;
     if (!(await deps.garantirDestrancado())) return null;
 
-    // A lista de databases vem do DRIVER, viva — não de um cache nosso, que
-    // ficaria velho no dia em que o usuário criasse um banco.
-    //
-    // Onde eles moram depende do driver: MySQL e PostgreSQL penduram os
-    // databases num nó `server`; o SQLite traz o `main` direto na RAIZ. O
-    // seletor só olhava `server`, e com SQLite dizia que não havia database
-    // nenhum — achado pela guarda do notebook (spec 112).
-    const temBanco = (n: { meta?: Record<string, unknown> }) => typeof n.meta?.database === 'string';
-    const doServidor = (await Api.children(escolhida, ['server'])).filter(temBanco);
-    const bancos = doServidor.length > 0 ? doServidor : (await Api.children(escolhida, [])).filter(temBanco);
+    // Onde os databases moram muda por driver: ver `bancosDaConexao`.
+    const bancos = await bancosDaConexao(escolhida);
     if (bancos.length === 0) {
       throw new Error('Esta conexão não expôs nenhum database.');
     }

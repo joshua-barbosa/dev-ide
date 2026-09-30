@@ -21,6 +21,7 @@ const alvos = {
   dialogo: { entrada: 'extensao/dialogo.tsx', nome: 'BraytechDialogo', arquivo: 'dialogo.js' },
   aba: { entrada: 'extensao/aba.tsx', nome: 'BraytechAba', arquivo: 'aba.js' },
   caderno: { entrada: 'extensao/caderno.tsx', nome: 'BraytechCaderno', arquivo: 'caderno.js' },
+  notebook: { entrada: 'extensao/notebook.tsx', nome: 'BraytechNotebook', arquivo: 'notebook.js' },
   diagrama: {
     entrada: 'extensao/diagrama.tsx',
     nome: 'BraytechDiagrama',

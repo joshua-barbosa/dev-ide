@@ -603,7 +603,7 @@ export class PonteDoHost {
 export function htmlDaWebview(
   web: vscode.Webview,
   extensionUri: vscode.Uri,
-  arquivo: 'formulario.js' | 'dialogo.js' | 'diagrama.js' | 'aba.js' | 'caderno.js',
+  arquivo: 'formulario.js' | 'dialogo.js' | 'diagrama.js' | 'aba.js' | 'caderno.js' | 'notebook.js',
   config: Record<string, unknown>
 ): string {
   const script = web.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'webview', arquivo));

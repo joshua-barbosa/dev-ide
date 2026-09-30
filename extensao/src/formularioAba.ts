@@ -23,7 +23,7 @@ function aba(
   deps: DepsDoPainel,
   chave: string,
   titulo: string,
-  arquivo: 'formulario.js' | 'dialogo.js' | 'diagrama.js' | 'aba.js' | 'caderno.js',
+  arquivo: 'formulario.js' | 'dialogo.js' | 'diagrama.js' | 'aba.js' | 'caderno.js' | 'notebook.js',
   config: Record<string, unknown>,
   /**
    * O que reenviar quando a aba JÁ existe.
