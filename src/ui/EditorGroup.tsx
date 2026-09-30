@@ -31,6 +31,7 @@ import { tokens } from './theme';
 import type { EntradaMenu } from './ContextMenu';
 import type { Tab } from '../shared/tabs';
 import type { NomeDoTema } from '../shared/temas';
+import type { ParteDoBloco } from '../shared/sql/instrucoes-do-bloco';
 import type { QueryResult, SessionCapabilities } from '../shared/contracts';
 import type { Vinculo } from '../shared/sql/vinculo';
 import type { ResultadoSalvo } from '../shared/sql/caderno';
@@ -98,7 +99,8 @@ export interface EditorGroupProps {
     modo: 'run' | 'tab' | 'json',
     sql: string,
     caminho: string | null,
-    titulo: string
+    titulo: string,
+    parte?: ParteDoBloco
   ) => Promise<QueryResult | null>;
   /** Verdadeiro no grupo que recebe os comandos e dita a barra de status. */
   readonly focado: boolean;

@@ -20,6 +20,12 @@
 // deixa passar, o `defaultPrevented` é falso e nós ficamos fora do caminho —
 // senão colaríamos duas vezes.
 //
+// **E a pergunta é feita DEPOIS de o evento terminar de propagar.** A moldura
+// pendura o ouvinte dela na JANELA (`contentWindow.addEventListener`), e o
+// evento passa pelo documento antes da janela: perguntando na hora, a tecla
+// ainda não estava cancelada. Foi assim que a 0.1.5 a 0.1.8 saíram com a guarda
+// verde e a tecla morta no Cursor dele.
+//
 // O gesto é REENCENADO como evento de área de transferência em cima do foco, em
 // vez de reimplementado: assim quem já sabe copiar continua sendo quem copia —
 // o Monaco leva junto o multi-cursor e o "copiar a linha inteira sem seleção",
@@ -114,10 +120,15 @@ export function ligarAreaDeTransferencia(
   aoFalhar: (erro: unknown) => void = () => undefined
 ): () => void {
   const aoTeclar = (e: KeyboardEvent): void => {
-    if (!e.defaultPrevented) return;
     const gesto = gestoDaArea(e);
     if (gesto === null) return;
-    executar(gesto, doc, reserva).catch(aoFalhar);
+    // Depois do despacho inteiro: aí `defaultPrevented` já inclui a janela.
+    // O navegador, se for ele a atender, faz isso ANTES deste adiamento — o
+    // `copy`/`paste` nativo é síncrono com o fim da propagação.
+    setTimeout(() => {
+      if (!e.defaultPrevented) return;
+      executar(gesto, doc, reserva).catch(aoFalhar);
+    }, 0);
   };
   doc.addEventListener('keydown', aoTeclar);
   return () => doc.removeEventListener('keydown', aoTeclar);

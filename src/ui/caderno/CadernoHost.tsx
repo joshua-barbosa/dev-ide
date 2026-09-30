@@ -25,6 +25,9 @@ import {
 } from '../../shared/sql/caderno';
 import type { NomeDoTema } from '../../shared/temas';
 import type { Vinculo } from '../../shared/sql/vinculo';
+import {
+  instrucoesDoBloco, tituloDaInstrucao, type ParteDoBloco,
+} from '../../shared/sql/instrucoes-do-bloco';
 import type { Tab } from '../../shared/tabs';
 
 export interface CadernoHostProps {
@@ -42,7 +45,13 @@ export interface CadernoHostProps {
     modo: 'run' | 'tab' | 'json',
     sql: string,
     caminho: string | null,
-    titulo: string
+    titulo: string,
+    /**
+     * Qual instrução do bloco é esta, quando o bloco tem mais de uma (spec
+     * 111). A IDE guarda o resultado pelo CAMINHO do arquivo; sem isto as
+     * instruções do mesmo caderno cairiam na mesma aba, uma apagando a outra.
+     */
+    parte?: ParteDoBloco
   ): Promise<QueryResult | null>;
   /** Roda um bloco no runner (spec 051). A saída cai no painel `Output`. */
   onRodarCodigo(linguagem: string, codigo: string): Promise<void>;
@@ -78,6 +87,43 @@ export function CadernoHost({
   );
 
   /**
+   * Roda as instruções de UM bloco de SQL, em ordem, cada uma no seu Results
+   * (spec 111).
+   *
+   * Ele: *"se tem mais de uma query (e é bem nitido que tem, pois termina com ;
+   * cada query), deveria rodar e gerar uma tela "Results" para cada query"*.
+   * Para na primeira que falhar, pelo mesmo motivo do `Run All`: a próxima
+   * costuma depender dela.
+   *
+   * A falha vem com a MENSAGEM. `onRodar` pode lançar (a extensão, onde não há
+   * aba Problems) ou devolver `null` (a IDE, que já pôs o erro numa aba de
+   * resultado e em `Problems`) — os dois casos viram uma frase que diz qual
+   * instrução foi e o que houve.
+   */
+  const rodarSql = async (
+    celula: Celula,
+    modo: 'run' | 'tab' | 'json'
+  ): Promise<{ readonly ultimo: QueryResult | null; readonly falha: string | null }> => {
+    const { instrucoes, erro: naoParte } = instrucoesDoBloco(celula.conteudo);
+    if (naoParte !== null) return { ultimo: null, falha: naoParte };
+    let ultimo: QueryResult | null = null;
+    for (const [i, instrucao] of instrucoes.entries()) {
+      const qual = instrucoes.length > 1 ? `A instrução ${i + 1} de ${instrucoes.length}` : 'O bloco';
+      try {
+        const r = await onRodar(
+          modo, instrucao, meta.path ?? null, tituloDaInstrucao(aba.title, i, instrucoes.length),
+          instrucoes.length > 1 ? { indice: i, total: instrucoes.length } : undefined
+        );
+        if (r === null) return { ultimo, falha: `${qual} falhou — veja o resultado ou a aba Problems.` };
+        ultimo = r;
+      } catch (e) {
+        return { ultimo, falha: `${qual} falhou: ${e instanceof Error ? e.message : String(e)}` };
+      }
+    }
+    return { ultimo, falha: null };
+  };
+
+  /**
    * Roda um bloco, pelo caminho que a LINGUAGEM dele pede (spec 051, D19).
    *
    * SQL vai para a conexão do vínculo; as linguagens do runner vão para o
@@ -86,8 +132,6 @@ export function CadernoHost({
   const rodarUm = async (celula: Celula, modo: 'run' | 'tab' | 'json'): Promise<void> => {
     const destino = comoRoda(celula.linguagem);
     if (destino === 'nada' || destino === 'markdown') return;
-    // Bloco vazio não é falha: pular aqui é o que deixa o `null` de
-    // `onRodar` querer dizer uma coisa só — deu erro.
     if (celula.conteudo.trim() === '') return;
 
     setRodando(celula.id);
@@ -97,17 +141,12 @@ export function CadernoHost({
         await onRodarCodigo(celula.linguagem, celula.conteudo);
         return;
       }
-      // O erro já vira aba de resultado e entra em `Problems`; aqui só se marca
-      // que este bloco não passou.
-      const resultado = await onRodar(modo, celula.conteudo, meta.path ?? null, aba.title);
-      if (resultado === null) {
-        setErro('O bloco falhou — veja o resultado ou a aba Problems.');
-        return;
-      }
+      const { ultimo, falha } = await rodarSql(celula, modo);
+      if (falha !== null) setErro(falha);
       // O último resultado DESTE bloco fica à mão, e é o que o "salvar no
       // caderno" guarda (T072). Na memória, e não no arquivo: salvar toda
       // execução é justamente o que ele recusou na triagem.
-      setUltimos((atual) => new Map(atual).set(celula.id, resultado));
+      if (ultimo !== null) setUltimos((atual) => new Map(atual).set(celula.id, ultimo));
     } finally {
       setRodando(null);
     }
@@ -124,12 +163,9 @@ export function CadernoHost({
     setErro(null);
     for (const celula of blocosExecutaveis(caderno)) {
       setRodando(celula.id);
-      const deuCerto = await onRodar('tab', celula.conteudo, meta.path ?? null, aba.title);
-      if (!deuCerto) {
-        setErro(
-          `Parou no bloco "${celula.conteudo.slice(0, 40)}…". ` +
-            'Veja o resultado dele ou a aba Problems.'
-        );
+      const { falha } = await rodarSql(celula, 'tab');
+      if (falha !== null) {
+        setErro(`Parou no bloco "${celula.conteudo.slice(0, 40)}…". ${falha}`);
         break;
       }
     }

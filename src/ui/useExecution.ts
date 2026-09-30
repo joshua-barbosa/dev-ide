@@ -6,6 +6,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { semCores } from '../shared/problem-matcher';
 import type { QueryResult } from '../shared/contracts';
+import { vagaDaInstrucao, type ParteDoBloco } from '../shared/sql/instrucoes-do-bloco';
 import type { Vinculo } from '../shared/sql/vinculo';
 import { pedidoAoRunner, pedidoDeConsulta } from '../shared/sql/pedido-de-execucao';
 import { Api } from './api';
@@ -93,7 +94,9 @@ export interface Execution {
      * vínculo por caminho não a alcança. Sem isto ela passava a PERGUNTAR o que
      * já sabia; foi assim que a spec 038 quebrou um teste da spec 009.
      */
-    daAba?: Vinculo | null
+    daAba?: Vinculo | null,
+    /** Qual instrução de um bloco do caderno é esta (spec 111). */
+    parte?: ParteDoBloco
     /**
      * Devolve o RESULTADO, ou `null` quando falhou.
      *
@@ -265,7 +268,8 @@ export function useExecution(
       statement: string,
       caminho: string | null,
       titulo: string,
-      daAba: Vinculo | null = null
+      daAba: Vinculo | null = null,
+      parte?: ParteDoBloco
     ): Promise<QueryResult | null> => {
       const texto = statement.trim();
       // Nada para rodar e falha devolvem o mesmo `null`, e por isso quem
@@ -289,7 +293,9 @@ export function useExecution(
       }
       if (vinculo === null) return null;
 
-      const base = `grid:${caminho ?? titulo}`;
+      // Uma vaga por INSTRUÇÃO de um bloco com várias (spec 111): pelo caminho
+      // só, as instruções do mesmo caderno apagariam umas às outras.
+      const base = vagaDaInstrucao(`grid:${caminho ?? titulo}`, parte);
       const gridId = modo === 'tab' ? `${base}#${(proximaAba.current += 1)}` : base;
       const rotulo = `${titulo} · ${vinculo.database}`;
 

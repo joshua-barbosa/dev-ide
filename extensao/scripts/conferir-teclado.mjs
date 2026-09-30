@@ -27,11 +27,17 @@ const marcar = (nome, ok, extra = '') =>
   linhas.push(`${ok ? '  ok  ' : 'FALHA '} ${nome}${extra === '' ? '' : `  ${extra}`}`);
 
 /**
- * O trecho do VS Code, copiado do comportamento (não do código): as teclas de
- * copiar/recortar/colar chegam canceladas na nossa página.
+ * O trecho do VS Code/Cursor: as teclas de copiar/recortar/colar chegam
+ * canceladas na nossa página.
+ *
+ * **Na JANELA, e não no documento** — `contentWindow.addEventListener('keydown',
+ * handleInnerKeydown)`, pre/index.html. Isso importa: na propagação o evento
+ * passa pelo documento ANTES da janela. A primeira versão desta guarda pendurava
+ * o hospedeiro no `document`, antes do nosso ouvinte; passou verde, e no Cursor
+ * dele (0.1.8) a tecla continuou morta.
  */
 const HOSPEDEIRO = process.env.SEM_HOSPEDEIRO === '1' ? '' : `
-  document.addEventListener('keydown', (e) => {
+  window.addEventListener('keydown', (e) => {
     const comMeta = e.ctrlKey || e.metaKey;
     const shiftInsert = e.shiftKey && e.keyCode === 45;
     if ((comMeta && [67, 86, 88].includes(e.keyCode)) || shiftInsert) e.preventDefault();
@@ -134,19 +140,30 @@ ${existsSync(path.join(WEB, 'caderno.css')) ? '<link rel="stylesheet" href="cade
     campo.focus();
   });
   const comum = pagina.locator('#campo-comum');
+  // Cada passo parte de um estado que SÓ o gesto certo produz: sem isso, uma
+  // colagem que não fez nada passava verde porque o texto nunca tinha saído.
   await comum.fill('valor-do-campo');
+  await comum.press('Control+A');
+  await comum.press('Control+C');
+  await pagina.waitForTimeout(250);
+  marcar('Ctrl+C copia num campo comum',
+    (await areaDeTransferencia().catch(() => '')) === 'valor-do-campo');
+
+  await comum.fill('');
+  await comum.press('Control+V');
+  await pagina.waitForTimeout(250);
+  marcar('Ctrl+V cola num campo comum', (await comum.inputValue()) === 'valor-do-campo',
+    `valor: ${JSON.stringify(await comum.inputValue())}`);
+
+  await comum.fill('valor-do-campo');
+  await pagina.evaluate(() => navigator.clipboard.writeText('outra-coisa'));
   await comum.press('Control+A');
   await comum.press('Control+X');
   await pagina.waitForTimeout(250);
   const recortadoDoCampo = await areaDeTransferencia().catch(() => '');
   marcar('Ctrl+X recorta num campo comum',
     (await comum.inputValue()) === '' && recortadoDoCampo === 'valor-do-campo',
-    `sobrou: ${JSON.stringify(await comum.inputValue())}`);
-
-  await comum.press('Control+V');
-  await pagina.waitForTimeout(250);
-  marcar('Ctrl+V cola num campo comum', (await comum.inputValue()) === 'valor-do-campo',
-    `valor: ${JSON.stringify(await comum.inputValue())}`);
+    `sobrou: ${JSON.stringify(await comum.inputValue())} · área: ${JSON.stringify(recortadoDoCampo)}`);
 
   marcar('nenhum erro de JavaScript na página', errosDaPagina.length === 0,
     errosDaPagina.slice(0, 2).join(' | '));

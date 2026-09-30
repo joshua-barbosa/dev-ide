@@ -1,5 +1,20 @@
 # Mudanças
 
+## 0.1.9
+
+- **Ctrl+C, Ctrl+V e Ctrl+X funcionam de verdade no caderno** (e nas outras
+  telas). A correção da 0.1.5 não pegava no editor real: a moldura da webview
+  cancela as teclas num ponto que o evento só alcança DEPOIS do nosso, e a
+  nossa conferência olhava cedo demais. Agora ela olha depois.
+- **Um bloco com várias queries roda cada uma e abre um Results para cada** —
+  `SELECT …; SELECT …;` vira duas telas, nomeadas `1/2` e `2/2`. Rodar de novo
+  repinta as mesmas telas. Ponto e vírgula dentro de texto e corpo de
+  procedure não partem a query.
+- Se uma das queries falha, as seguintes não rodam, e o erro aparece **no
+  próprio caderno**, dizendo qual instrução foi e a mensagem do banco — em vez
+  de mandar procurar uma aba Problems que a extensão não tem.
+- No SQLite, um bloco com várias queries rodava só a primeira, sem aviso.
+
 ## 0.1.8
 
 - **Data e hora aparecem exatamente como estão gravadas.** Um `DATETIME`

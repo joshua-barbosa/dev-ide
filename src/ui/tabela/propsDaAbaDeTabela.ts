@@ -10,6 +10,7 @@
 // já pagou uma vez.
 import type { Tab } from '../../shared/tabs';
 import type { ResultadoSalvo } from '../../shared/sql/caderno';
+import type { ParteDoBloco } from '../../shared/sql/instrucoes-do-bloco';
 import type { ConnectionsController } from '../connections/useConnections';
 import type { Execution } from '../useExecution';
 import type { QuickInputController } from '../useQuickInput';
@@ -56,8 +57,9 @@ return {
     modo: 'run' | 'tab' | 'json',
     sql: string,
     caminho: string | null,
-    titulo: string
-  ) => exec.executarStatement(modo, sql, caminho, titulo),
+    titulo: string,
+    parte?: ParteDoBloco
+  ) => exec.executarStatement(modo, sql, caminho, titulo, null, parte),
   // Bloco numa linguagem do runner (spec 051): a saída cai no painel `Output`,
   // igual à de rodar um arquivo.
   //

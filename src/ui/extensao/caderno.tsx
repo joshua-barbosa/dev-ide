@@ -79,45 +79,40 @@ function Caderno() {
       tema={BRAYTECH.tema}
       vinculo={vinculo}
       onMudar={mudar}
+      // **Falha LANÇA** (spec 111): aqui não existe aba Problems, e o caderno
+      // mandava procurá-la. Lançando, a mensagem do banco aparece no próprio
+      // caderno, dizendo qual instrução do bloco falhou.
       onRodar={async (modo, sql, _caminho, titulo): Promise<QueryResult | null> => {
-        if (vinculo === null) {
-          erro(new Error('Este caderno não está amarrado a uma conexão.'));
-          return null;
-        }
-        try {
-          const r = await Api.execute(
-            vinculo.connectionId,
-            pedidoDeConsulta(sql, vinculo.database)
-          );
-          if (modo === 'json') {
-            pedirAoHost({
-              tipo: 'abrirSemTitulo',
-              conteudo: JSON.stringify(r, null, 2),
-              linguagem: 'json',
-            });
-            return r;
-          }
-          // **`run` TAMBÉM abre a grade** — é o que a IDE faz, e eu tinha
-          // escrito aqui que ele "desenha no próprio bloco". Não desenha em
-          // lugar nenhum: o resultado só ia parar na memória do bloco, e o
-          // botão parecia não fazer nada.
-          //
-          // A diferença entre os dois é o TÍTULO, porque é ele que dá nome à
-          // aba no host: `run` repinta sempre a mesma, `+Tab` abre a próxima ao
-          // lado — que é a razão de o `+Tab` existir.
-          const base = `${titulo} · ${vinculo.database}`;
+        if (vinculo === null) throw new Error('Este caderno não está amarrado a uma conexão.');
+        const r = await Api.execute(
+          vinculo.connectionId,
+          pedidoDeConsulta(sql, vinculo.database)
+        );
+        if (modo === 'json') {
           pedirAoHost({
-            tipo: 'abrirResultado',
-            titulo: modo === 'tab' ? `${base} (${(proxima.current += 1)})` : base,
-            resultado: r,
-            // Com a consulta, a aba vira a página sozinha.
-            consulta: { ...vinculo, statement: sql },
+            tipo: 'abrirSemTitulo',
+            conteudo: JSON.stringify(r, null, 2),
+            linguagem: 'json',
           });
           return r;
-        } catch (e) {
-          erro(e);
-          return null;
         }
+        // **`run` TAMBÉM abre a grade** — é o que a IDE faz, e eu tinha
+        // escrito aqui que ele "desenha no próprio bloco". Não desenha em
+        // lugar nenhum: o resultado só ia parar na memória do bloco, e o
+        // botão parecia não fazer nada.
+        //
+        // A diferença entre os dois é o TÍTULO, porque é ele que dá nome à
+        // aba no host: `run` repinta sempre a mesma, `+Tab` abre a próxima ao
+        // lado — que é a razão de o `+Tab` existir.
+        const base = `${titulo} · ${vinculo.database}`;
+        pedirAoHost({
+          tipo: 'abrirResultado',
+          titulo: modo === 'tab' ? `${base} (${(proxima.current += 1)})` : base,
+          resultado: r,
+          // Com a consulta, a aba vira a página sozinha.
+          consulta: { ...vinculo, statement: sql },
+        });
+        return r;
       }}
       onRodarCodigo={async (linguagem, codigo) => {
         // A saída vai para o canal do VS Code, que é o par do painel `Output`.
