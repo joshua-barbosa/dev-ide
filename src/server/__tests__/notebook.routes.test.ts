@@ -420,3 +420,55 @@ test('{{nome}} com um dicionário do Python vai como JSON (e não como repr do P
     await fechar();
   }
 });
+
+// ---- Pares no {{ }} (spec 114, A) ----
+test('o caso dele: UPDATE … WHERE (id, code) IN {{pedidos(id, code)}}, com a lista vinda do kernel', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'pares.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'javascript', raiz: pasta });
+    await rodar(pedir, [
+      "await sql('CREATE TABLE IF NOT EXISTS pares (id INTEGER, code TEXT, visto INTEGER DEFAULT 0)')",
+      "await sql('DELETE FROM pares')",
+      "for (const [i, c] of [[1, 'a'], [2, 'b'], [3, 'c'], [1, 'z']]) await sql('INSERT INTO pares (id, code) VALUES (?, ?)', [i, c])",
+      "const pedidos = [{ id: 1, code: 'a' }, { id: 3, code: 'c' }]",
+    ].join('\n'), 'javascript', nb);
+    const up = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: null,
+      statement: 'UPDATE pares SET visto = 1 WHERE (id, code) IN {{pedidos(id, code)}}',
+    });
+    assert.equal(up.success, true, up.error ?? '');
+    const vistos = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: null,
+      statement: 'SELECT id, code FROM pares WHERE visto = 1 ORDER BY id',
+    });
+    // (1, 'z') tem o id certo e o code errado: não entra. É o "id AND code".
+    assert.deepEqual(vistos.data.tabela.linhas, [[1, 'a'], [3, 'c']]);
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});
+
+test('Python: uma lista de dicionários nos pares; uma coluna só vira o IN simples', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'pares-py.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'python', raiz: pasta });
+    await rodar(pedir, "alvo = [{'cliente': 'Bia', 'total': 1500}, {'cliente': 'Caio', 'total': 1}]", 'python', nb);
+    const r = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: null,
+      statement: 'SELECT cliente FROM pedidos WHERE (cliente, total) IN {{alvo(cliente, total)}} ORDER BY id',
+    });
+    assert.equal(r.success, true, r.error ?? '');
+    assert.deepEqual(r.data.tabela.linhas, [['Bia']], 'Caio com total 1 não casa');
+    const s = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: null,
+      statement: 'SELECT count(*) FROM pedidos WHERE cliente IN {{alvo(cliente)}}',
+    });
+    assert.equal(s.data.tabela.linhas[0][0], 2);
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});

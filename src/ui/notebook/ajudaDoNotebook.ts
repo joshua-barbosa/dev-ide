@@ -159,8 +159,13 @@ export function secoesDeAjuda(kernel: Kernel): readonly SecaoDeAjuda[] {
         'Lista (array, list, tuple, set, uma coluna de DataFrame, Series) vira a lista do IN, já com os ' +
           'parênteses: escreva IN {{ids}}, e não IN ({{ids}}). Lista vazia vira (NULL), que não casa nada — o ' +
           'resultado vem vazio, sem erro.',
-        'Um DataFrame de VÁRIAS colunas não vira lista: escolha a coluna antes (ids = list(df["id"])), ou guarde ' +
-          'a tabela em JSON (seção "Uma lista como TABELA no SQL").',
+        'Um DataFrame de VÁRIAS colunas não vira lista sozinho: escolha a coluna antes (ids = list(df["id"])), use ' +
+          'os pares abaixo, ou guarde a tabela em JSON (seção "Uma lista como TABELA no SQL").',
+        'PARES de uma lista de objetos: {{pedidos(id, code)}} vira ((id1, code1), (id2, code2), …) para um ' +
+          'WHERE (id, code) IN … — cada linha casa só com o id E o code juntos. Serve para UPDATE e DELETE também. ' +
+          'Com uma coluna só, {{pedidos(id)}} vira a lista simples. Campo que falta num item vira NULL. Vale para ' +
+          'arrays de objetos, listas de dicionários e DataFrames. O SQL Server não aceita pares no IN: lá, use sql() ' +
+          'num laço ou a receita do JSON.',
         'Cada item da lista é um parâmetro, e cada banco tem um teto: SQL Server 2.100, SQLite 32.766, Postgres e ' +
           'MySQL 65.535. Para listas maiores, a receita do JSON manda tudo num parâmetro só.',
         'Dentro de aspas ou comentário, {{nome}} é só texto. Depois de FROM/JOIN, {{nome}} não vira tabela: o ' +
@@ -172,6 +177,7 @@ export function secoesDeAjuda(kernel: Kernel): readonly SecaoDeAjuda[] {
         { linguagem: 'sql', codigo: 'SELECT * FROM pedidos WHERE cliente_id IN {{ids}}' },
         { linguagem: 'sql', codigo: "SELECT * FROM clientes WHERE nome = {{nome}}   -- O'Brien passa inteiro, sem quebrar" },
         { linguagem: 'sql', codigo: 'SELECT * FROM pedidos WHERE criado_em >= {{desde}} AND total > {{minimo}}' },
+        { linguagem: 'sql', codigo: "UPDATE pedidos SET status = 'ok' WHERE (id, code) IN {{pedidos(id, code)}}" },
       ],
     },
     {

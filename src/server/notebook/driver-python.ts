@@ -521,14 +521,24 @@ def _como_parametro(v):
     return str(v)
 
 
+def _registros(v):
+    # {{nome(col, col)}} (spec 114, A): a lista de objetos - um DataFrame vira
+    # registros, em vez de recusar por ter varias colunas.
+    ex = _exportavel(v)
+    if isinstance(ex, dict) and ex.get(TABELA) is True:
+        return [dict(zip(ex['colunas'], linha)) for linha in ex['linhas']]
+    return ex
+
+
 def obter(pedido):
     valores, faltando, erros = {}, [], {}
+    tabelas = set(pedido.get('tabelas') or [])
     for nome in pedido.get('nomes', []):
         if nome not in ns:
             faltando.append(nome)
             continue
         try:
-            valores[nome] = _como_parametro(ns[nome])
+            valores[nome] = _registros(ns[nome]) if nome in tabelas else _como_parametro(ns[nome])
         except Exception as e:
             erros[nome] = str(e)
     enviar({'tipo': 'valores', 'pedido': pedido.get('pedido'), 'valores': valores,

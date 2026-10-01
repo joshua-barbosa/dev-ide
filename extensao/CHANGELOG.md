@@ -1,5 +1,16 @@
 # Mudanças
 
+## 0.1.20
+
+- **Notebook: pares no `{{ }}`.** `{{pedidos(id, code)}}` vira
+  `((id1, code1), (id2, code2), …)`, para um
+  `WHERE (id, code) IN {{pedidos(id, code)}}` — cada linha casa só com o id E
+  o code juntos, em SELECT, UPDATE ou DELETE. Sempre como parâmetros. Com uma
+  coluna só, `{{pedidos(id)}}` vira a lista simples do IN. Vale para arrays de
+  objetos, listas de dicionários e DataFrames (de várias colunas, inclusive).
+  O SQL Server não aceita pares no IN: lá, o recado aponta o `sql()` num laço
+  ou a receita do JSON.
+
 ## 0.1.19
 
 - **Ajuda do notebook mais larga e redimensionável:** abre com 520 px, e a

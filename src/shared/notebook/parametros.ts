@@ -11,7 +11,13 @@
 export type EstiloDeParametro = 'interrogacao' | 'dolar' | 'arroba';
 export type ValorDeParametro = string | number | boolean | null;
 
-type Parte = { readonly texto: string } | { readonly nome: string };
+/**
+ * `{{nome}}`, ou `{{nome(col1, col2)}}` — os PARES de uma lista de objetos
+ * (spec 114, A): `WHERE (id, code) IN {{pedidos(id, code)}}`.
+ */
+type Parte = { readonly texto: string } | { readonly nome: string; readonly colunas: readonly string[] | null };
+
+const REFERENCIA = /^([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(\s*([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*\))?$/;
 
 /** Varre o SQL separando texto de `{{nome}}` — pulando aspas e comentários. */
 function partes(sql: string): Parte[] {
@@ -43,11 +49,12 @@ function partes(sql: string): Parte[] {
       i = ate;
     } else if (c === '{' && sql[i + 1] === '{') {
       const fim = sql.indexOf('}}', i + 2);
-      const nome = fim === -1 ? '' : sql.slice(i + 2, fim).trim();
-      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(nome)) {
+      const dentro = fim === -1 ? '' : sql.slice(i + 2, fim).trim();
+      const ref = REFERENCIA.exec(dentro);
+      if (ref !== null) {
         if (texto !== '') saida.push({ texto });
         texto = '';
-        saida.push({ nome });
+        saida.push({ nome: ref[1], colunas: ref[2] === undefined ? null : ref[2].split(',').map((c) => c.trim()) });
         i = fim + 2;
       } else {
         texto += c;
@@ -68,6 +75,22 @@ export function referenciasDoSql(sql: string): string[] {
   for (const p of partes(sql)) if ('nome' in p && !nomes.includes(p.nome)) nomes.push(p.nome);
   return nomes;
 }
+
+/**
+ * Os nomes pedidos COM colunas (`{{pedidos(id, code)}}`): o kernel os entrega
+ * como lista de objetos — um DataFrame do Python vira registros, em vez de
+ * recusar por ter várias colunas.
+ */
+export function colunasPedidas(sql: string): string[] {
+  const nomes: string[] = [];
+  for (const p of partes(sql)) {
+    if ('nome' in p && p.colunas !== null && !nomes.includes(p.nome)) nomes.push(p.nome);
+  }
+  return nomes;
+}
+
+const ehRegistro = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 function comoParametro(v: unknown): ValorDeParametro {
   if (v === null || v === undefined) return null;
@@ -105,6 +128,13 @@ export function montarSqlComParametros(
       throw new Error(`{{${p.nome}}}: a variável "${p.nome}" não existe no kernel. Rode antes a célula que a cria.`);
     }
     const valor = valores[p.nome];
+    if (p.colunas !== null) {
+      saida += pares(p.nome, p.colunas, valor, estilo, (v) => {
+        params.push(comoParametro(v));
+        return marcador();
+      });
+      continue;
+    }
     if (Array.isArray(valor)) {
       // Lista vazia: `IN (NULL)` não casa nada — e `IN ()` seria erro de sintaxe.
       if (valor.length === 0) {
@@ -134,7 +164,7 @@ export function trocarInterrogacoes(sql: string, valores: number, estilo: Estilo
   let saida = '';
   for (const p of partes(sql)) {
     if (!('texto' in p)) {
-      saida += `{{${p.nome}}}`;
+      saida += p.colunas === null ? `{{${p.nome}}}` : `{{${p.nome}(${p.colunas.join(', ')})}}`;
       continue;
     }
     saida += trocarForaDeTexto(p.texto, () => {
@@ -185,4 +215,32 @@ function trocarForaDeTexto(texto: string, proximo: () => string): string {
     }
   }
   return saida;
+}
+
+/** `{{nome(a, b)}}` → `((?, ?), (?, ?))`; uma coluna só → `(?, ?)`. */
+function pares(
+  nome: string,
+  colunas: readonly string[],
+  valor: unknown,
+  estilo: EstiloDeParametro,
+  marcar: (v: unknown) => string
+): string {
+  if (!Array.isArray(valor) || !valor.every(ehRegistro)) {
+    throw new Error(
+      `{{${nome}(${colunas.join(', ')})}} pede uma lista de objetos (como [{ ${colunas[0]}: … }]); ` +
+        `"${nome}" não é.`
+    );
+  }
+  if (colunas.length > 1 && estilo === 'arroba') {
+    throw new Error(
+      `{{${nome}(${colunas.join(', ')})}}: o SQL Server não aceita pares no IN ((a, b) IN …). Use sql() num ` +
+        'laço numa célula de código, ou a receita do JSON (OPENJSON) — veja a Ajuda.'
+    );
+  }
+  if (colunas.length === 1) {
+    if (valor.length === 0) return '(NULL)';
+    return `(${valor.map((item) => marcar(item[colunas[0]] ?? null)).join(', ')})`;
+  }
+  if (valor.length === 0) return `((${colunas.map(() => 'NULL').join(', ')}))`;
+  return `(${valor.map((item) => `(${colunas.map((c) => marcar(item[c] ?? null)).join(', ')})`).join(', ')})`;
 }

@@ -206,7 +206,7 @@ export class Kernel {
    * `faltando`: nomes que o kernel não tem. `erros`: nomes que existem mas não
    * cabem num parâmetro (um DataFrame de várias colunas, por exemplo).
    */
-  obter(nomes: readonly string[]): Promise<{
+  obter(nomes: readonly string[], tabelas: readonly string[] = []): Promise<{
     readonly valores: Readonly<Record<string, unknown>>;
     readonly faltando: readonly string[];
     readonly erros: Readonly<Record<string, string>>;
@@ -226,7 +226,7 @@ export class Kernel {
           erros: (m.erros ?? {}) as Record<string, string>,
         });
       });
-      this.escrever({ tipo: 'obter', pedido, nomes });
+      this.escrever({ tipo: 'obter', pedido, nomes, tabelas });
     });
   }
 

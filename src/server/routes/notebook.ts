@@ -16,7 +16,7 @@ import {
   KERNELS, nomeValido, saidaDeTabela, type Kernel as LinguagemDoKernel,
 } from '../../shared/notebook/modelo';
 import {
-  montarSqlComParametros, referenciasDoSql, type EstiloDeParametro,
+  colunasPedidas, montarSqlComParametros, referenciasDoSql, type EstiloDeParametro,
 } from '../../shared/notebook/parametros';
 import type { ParametroDeConsulta } from '../../shared/contracts';
 import type { Session } from '../connections/types';
@@ -209,6 +209,8 @@ export function createNotebookRouter(
     // `{{nome}}`: o valor vem do kernel e vai COMO PARÂMETRO, nunca no texto.
     // De qual kernel: de quem mudou o nome por último, pela cascata.
     const referencias = referenciasDoSql(texto);
+    // {{nome(col, col)}}: o kernel entrega como lista de objetos (spec 114, A).
+    const comoTabela = colunasPedidas(texto);
     let statement = texto;
     let params: ParametroDeConsulta[] | undefined;
     if (referencias.length > 0) {
@@ -224,7 +226,7 @@ export function createNotebookRouter(
         const ordem = [...vivos].sort((a, b) => Number(b.familia === origem) - Number(a.familia === origem));
         let achou = false;
         for (const s of ordem) {
-          const r = await s.kernel.obter([ref]);
+          const r = await s.kernel.obter([ref], comoTabela.includes(ref) ? [ref] : []);
           const erro = r.erros[ref];
           if (erro !== undefined) throw new Error(`{{${ref}}} ${erro}.`);
           if (!r.faltando.includes(ref)) {

@@ -91,3 +91,52 @@ test('? dentro de texto ou comentário não é parâmetro', () => {
 test('quantidade de ? diferente da de valores: erro claro', () => {
   assert.throws(() => trocarInterrogacoes('SELECT ? , ?', 1, 'dolar'), /2 marcador.*1 valor/);
 });
+
+// ---- Pares no {{ }} (spec 114, A) ----
+// O caso dele: "um update where (id and code) OR (id and code)" a partir de
+// uma lista de objetos { id, code }.
+import { colunasPedidas } from '../notebook/parametros';
+
+const pedidos = [{ id: 1, code: 'a' }, { id: 2, code: 'b' }];
+
+test('{{lista(id, code)}} vira pares de parâmetros para o IN de tupla', () => {
+  const r = montarSqlComParametros('UPDATE t SET x = 1 WHERE (id, code) IN {{pedidos(id, code)}}', { pedidos }, 'dolar');
+  assert.equal(r.sql, 'UPDATE t SET x = 1 WHERE (id, code) IN (($1, $2), ($3, $4))');
+  assert.deepEqual(r.params, [1, 'a', 2, 'b']);
+});
+
+test('uma coluna só: a lista simples do IN', () => {
+  const r = montarSqlComParametros('SELECT * FROM t WHERE id IN {{pedidos(id)}}', { pedidos }, 'interrogacao');
+  assert.equal(r.sql, 'SELECT * FROM t WHERE id IN (?, ?)');
+  assert.deepEqual(r.params, [1, 2]);
+});
+
+test('o nome pedido é a variável, sem as colunas', () => {
+  assert.deepEqual(referenciasDoSql('SELECT 1 WHERE (a, b) IN {{pedidos(id, code)}} AND c IN {{ids}}'), ['pedidos', 'ids']);
+  assert.deepEqual(colunasPedidas('SELECT 1 WHERE (a, b) IN {{pedidos(id, code)}} AND c IN {{ids}}'), ['pedidos']);
+});
+
+test('campo que falta num item vira NULL', () => {
+  const r = montarSqlComParametros('… IN {{p(id, code)}}', { p: [{ id: 1 }] }, 'interrogacao');
+  assert.deepEqual(r.params, [1, null]);
+});
+
+test('lista vazia: um par de NULL, que não casa nada', () => {
+  const r = montarSqlComParametros('… IN {{p(id, code)}}', { p: [] }, 'dolar');
+  assert.equal(r.sql, '… IN ((NULL, NULL))');
+});
+
+test('o que não é lista de objetos: erro claro', () => {
+  assert.throws(() => montarSqlComParametros('… IN {{p(id)}}', { p: [1, 2] }, 'dolar'), /lista de objetos/);
+  assert.throws(() => montarSqlComParametros('… IN {{p(id)}}', { p: 'x' }, 'dolar'), /lista de objetos/);
+});
+
+test('SQL Server não tem par no IN: erro que aponta o caminho', () => {
+  assert.throws(() => montarSqlComParametros('… IN {{p(id, code)}}', { p: pedidos }, 'arroba'), /SQL Server.*sql\(\)/);
+  // Uma coluna só ainda funciona: é a lista simples.
+  assert.equal(montarSqlComParametros('… IN {{p(id)}}', { p: pedidos }, 'arroba').sql, '… IN (@p1, @p2)');
+});
+
+test('o ? do sql() não estraga um {{nome(col)}} que esteja no texto', () => {
+  assert.equal(trocarInterrogacoes('SELECT ? WHERE x IN {{p(id)}}', 1, 'dolar'), 'SELECT $1 WHERE x IN {{p(id)}}');
+});

@@ -325,6 +325,8 @@ try {
     `${Math.round(larguraInicial)} → ${Math.round(larguraDepois)} px`);
   marcar('a ajuda detalha o {{nome}}: teto de parâmetros e de qual linguagem vem',
     textoDaAjuda.includes('SQL Server 2.100') && textoDaAjuda.includes('venha de onde vier'));
+  marcar('a ajuda ensina os pares: (id, code) IN {{pedidos(id, code)}}',
+    textoDaAjuda.includes('(id, code) IN {{pedidos(id, code)}}'));
   await ajuda.getByRole('button', { name: 'Fechar a ajuda' }).click();
   marcar('fechar esconde o painel', await ajuda.isHidden());
 
