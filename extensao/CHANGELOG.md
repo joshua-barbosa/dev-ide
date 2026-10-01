@@ -1,5 +1,22 @@
 # Mudanças
 
+## 0.1.21
+
+- **Notebook: "para cada item" na célula SQL.** No campo "para cada…",
+  o nome de uma lista do kernel: o comando roda uma vez por item, com
+  `{{item}}` e `{{item.campo}}`. SELECTs viram UMA tabela, com a coluna
+  `item` na frente (e, com `→ nome`, uma variável); escritas mostram quantos
+  itens rodaram e as linhas afetadas. Um item que falha para a célula ali e
+  diz qual; "Parar" para entre um item e outro; o progresso aparece enquanto
+  roda.
+- **Notebook: `{{lista}}` como TABELA.** Depois de FROM ou JOIN,
+  `select * from {{messages}} m` funciona direto, na conexão do banco, e
+  cruza com as tabelas dele. Colunas e tipos saem da lista (inteiro, decimal,
+  booleano, texto; objeto vira JSON); a lista vai num parâmetro só, pela
+  função JSON do banco (Postgres, MySQL 8+, SQL Server, SQLite).
+- `{{obj.campo}}` lê um campo de qualquer variável, não só do `item`.
+- Ajuda: seções "Para cada item" e "Uma lista como TABELA" atualizadas.
+
 ## 0.1.20
 
 - **Notebook: pares no `{{ }}`.** `{{pedidos(id, code)}}` vira

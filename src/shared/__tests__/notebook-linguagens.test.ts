@@ -115,3 +115,23 @@ test('"+ outra linguagem": inserir escolhendo a linguagem, não a herdada', () =
   const nb = inserirCelula(vazio('javascript'), 'codigo', 0, 'a', 'python');
   assert.equal(nb.celulas[0].linguagem, 'python');
 });
+
+// ---- "Para cada item" na célula SQL (spec 114, B) ----
+test('a célula SQL guarda o "para cada"; ler e gravar não perde', () => {
+  let nb = inserirCelula(vazio('python'), 'sql', 0, 's');
+  nb = alterarCelula(nb, 's', { paraCada: 'ids' });
+  assert.equal(nb.celulas[0].paraCada, 'ids');
+  assert.deepEqual(lerNotebook(escreverNotebook(nb)), nb);
+});
+
+test('"para cada" é só de SQL: virar código apaga; nome inválido no arquivo vira null', () => {
+  let nb = inserirCelula(vazio('python'), 'sql', 0, 's');
+  nb = alterarCelula(nb, 's', { paraCada: 'ids' });
+  nb = alterarCelula(nb, 's', { tipo: 'codigo' });
+  assert.equal(nb.celulas[0].paraCada, null);
+  const lido = lerNotebook(JSON.stringify({
+    formato: 'braytech-notebook', versao: 1, kernel: 'python', conexao: null, laravel: false,
+    celulas: [{ id: 's', tipo: 'sql', conteudo: 'SELECT 1', nome: 'r', paraCada: 'não vale' }],
+  }));
+  assert.equal(lido?.celulas[0].paraCada, null);
+});

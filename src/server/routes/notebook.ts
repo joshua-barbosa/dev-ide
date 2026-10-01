@@ -12,16 +12,11 @@ import { Router } from 'express';
 import { requireString, wrap } from '../http/handlers';
 import type { SessionPool } from '../connections/pool';
 import type { GerenteDeKernels, SessaoDeKernel } from '../notebook/gerente';
-import {
-  KERNELS, nomeValido, saidaDeTabela, type Kernel as LinguagemDoKernel,
-} from '../../shared/notebook/modelo';
-import {
-  colunasPedidas, montarSqlComParametros, referenciasDoSql, type EstiloDeParametro,
-} from '../../shared/notebook/parametros';
-import type { ParametroDeConsulta } from '../../shared/contracts';
+import { KERNELS, type Kernel as LinguagemDoKernel } from '../../shared/notebook/modelo';
 import type { Session } from '../connections/types';
 import type { Vinculo } from '../../shared/sql/vinculo';
 import { SqlDoKernel } from '../notebook/sql-do-kernel';
+import { registrarRotasDeSql } from './notebook-sql';
 
 const ok = (data: unknown) => ({ success: true, data, error: null });
 
@@ -49,13 +44,6 @@ const textoOuNada = (v: unknown): string | undefined => (typeof v === 'string' &
 function linguagemDe(v: unknown): LinguagemDoKernel {
   if (!KERNELS.includes(v as LinguagemDoKernel)) throw new Error(`Kernel desconhecido: ${String(v)}.`);
   return v as LinguagemDoKernel;
-}
-
-/** Qual marcador cada banco usa para parâmetro (`{{nome}}`, etapa 4). */
-function estiloDe(tipo: string): EstiloDeParametro {
-  if (tipo === 'postgres') return 'dolar';
-  if (tipo === 'sqlserver') return 'arroba';
-  return 'interrogacao';
 }
 
 export function createNotebookRouter(
@@ -186,106 +174,7 @@ export function createNotebookRouter(
     res.json(ok(null));
   }));
 
-  /**
-   * Uma instrução SQL: roda SEM TETO e, se pedido, vira variável.
-   *
-   * A tela recebe a VISTA (as primeiras linhas e o total); os kernels recebem
-   * tudo. O resultado vai para CADA linguagem do notebook (`linguagens`),
-   * subindo o kernel que faltar — decisão do usuário na spec 113. Sem
-   * nenhuma, a instrução roda do mesmo jeito e a resposta avisa.
-   */
-  router.post('/kernel/sql', wrap(async (req, res) => {
-    const caminho = requireString(req.body?.caminho, 'caminho');
-    const nome = typeof req.body?.nome === 'string' ? req.body.nome : null;
-    if (nome !== null && !nomeValido(nome)) throw new Error(`Nome de variável inválido: ${nome}.`);
-    const raiz = textoOuNada(req.body?.raiz) ?? null;
-    const linguagens: LinguagemDoKernel[] = Array.isArray(req.body?.linguagens)
-      ? (req.body.linguagens as unknown[]).map(linguagemDe)
-      : gerente.sessoesDe(caminho).map((x) => x.linguagem);
-
-    const connectionId = requireString(req.body?.connectionId, 'connectionId');
-    const texto = requireString(req.body?.statement, 'statement');
-
-    // `{{nome}}`: o valor vem do kernel e vai COMO PARÂMETRO, nunca no texto.
-    // De qual kernel: de quem mudou o nome por último, pela cascata.
-    const referencias = referenciasDoSql(texto);
-    // {{nome(col, col)}}: o kernel entrega como lista de objetos (spec 114, A).
-    const comoTabela = colunasPedidas(texto);
-    let statement = texto;
-    let params: ParametroDeConsulta[] | undefined;
-    if (referencias.length > 0) {
-      const vivos = gerente.sessoesDe(caminho);
-      if (vivos.length === 0) {
-        throw new Error(`{{${referencias[0]}}} precisa do kernel rodando: rode antes a célula que cria a variável.`);
-      }
-      const cascata = gerente.cascata(caminho);
-      await cascata.sincronizar(gerente.kernelsDe(caminho));
-      const valores: Record<string, unknown> = {};
-      for (const ref of referencias) {
-        const origem = cascata.origemDe(ref) ?? cascata.ultima;
-        const ordem = [...vivos].sort((a, b) => Number(b.familia === origem) - Number(a.familia === origem));
-        let achou = false;
-        for (const s of ordem) {
-          const r = await s.kernel.obter([ref], comoTabela.includes(ref) ? [ref] : []);
-          const erro = r.erros[ref];
-          if (erro !== undefined) throw new Error(`{{${ref}}} ${erro}.`);
-          if (!r.faltando.includes(ref)) {
-            valores[ref] = r.valores[ref];
-            achou = true;
-            break;
-          }
-        }
-        if (!achou) {
-          throw new Error(`{{${ref}}}: a variável "${ref}" não existe no kernel. Rode antes a célula que a cria.`);
-        }
-      }
-      const montado = montarSqlComParametros(texto, valores, estiloDe(tipoDaConexao(connectionId)));
-      statement = montado.sql;
-      params = montado.params;
-    }
-
-    const session = await pool.acquire(connectionId);
-    if (typeof session.execute !== 'function') throw new Error('Esta conexão não executa SQL.');
-    const r = await session.execute({
-      statement,
-      params,
-      database: typeof req.body?.database === 'string' ? req.body.database : undefined,
-      semTeto: true,
-      // O kernel recebe o valor INTEIRO de cada célula, não a amostra da grade.
-      orcamentoDeCelulas: Number.MAX_SAFE_INTEGER,
-    });
-    if (r.columns.length === 0) {
-      res.json(ok({ tabela: null, mensagem: r.message ?? 'Comando executado.', variavel: null }));
-      return;
-    }
-
-    const colunas = r.columns.map((c) => c.name);
-    let variavel: unknown = null;
-    const avisos: string[] = [];
-    if (nome !== null && linguagens.length === 0) {
-      avisos.push(`O kernel não está rodando: a variável ${nome} não foi criada.`);
-    } else if (nome !== null) {
-      const entregues: string[] = [];
-      let primeira: { linhas: number; forma: string } | null = null;
-      const familias = new Set<string>();
-      for (const linguagem of linguagens) {
-        const s = gerente.sessao(caminho, linguagem);
-        if (s !== undefined && familias.has(s.familia)) continue;
-        try {
-          const alvo = s ?? (await gerente.garantir({ caminho, linguagem, raiz }));
-          familias.add(alvo.familia);
-          const d = await alvo.kernel.definir(nome, colunas, r.rows);
-          primeira ??= d;
-          entregues.push(alvo.familia === 'node' ? 'Node' : alvo.familia === 'python' ? 'Python' : 'PHP');
-        } catch (e) {
-          avisos.push(`${linguagem}: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-      gerente.cascata(caminho).aoDefinir(nome);
-      if (primeira !== null) variavel = { nome, ...primeira, linguagens: entregues };
-    }
-    res.json(ok({ tabela: saidaDeTabela(colunas, r.rows), variavel, aviso: avisos.length === 0 ? null : avisos.join(' · ') }));
-  }));
+  registrarRotasDeSql(router, { gerente, pool, tipoDaConexao, linguagemDe });
 
   return router;
 }

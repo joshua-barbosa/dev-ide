@@ -33,6 +33,7 @@
     "conferir:caderno": "node extensao/scripts/conferir-caderno.mjs",
     "conferir:notebook": "node scripts/conferir-notebook.mjs",
     "conferir:parametros": "node scripts/conferir-parametros.mjs",
+    "conferir:tabela-json": "node scripts/conferir-tabela-json.mjs",
     "conferir:notebook-extensao": "node extensao/scripts/conferir-notebook-extensao.mjs"
   },
   "license": "MIT",

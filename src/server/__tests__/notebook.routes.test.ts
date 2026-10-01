@@ -472,3 +472,87 @@ test('Python: uma lista de dicionários nos pares; uma coluna só vira o IN simp
     await fechar();
   }
 });
+
+// ---- "Para cada item" (spec 114, B) ----
+test('para cada id: a função roda por item, e o resultado vira UMA tabela com a coluna item', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'para-cada.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'javascript', raiz: pasta });
+    await rodar(pedir, 'const ids = [1, 3]', 'javascript', nb);
+    const r = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: 'busca', paraCada: 'ids',
+      linguagens: ['javascript'], raiz: pasta,
+      // No SQLite, upper() faz o papel da "function ModoBusca" do caso dele.
+      statement: 'SELECT upper(cliente) AS r FROM pedidos WHERE id = {{item}}',
+    });
+    assert.equal(r.success, true, r.error ?? '');
+    assert.deepEqual(r.data.tabela.colunas, ['item', 'r']);
+    assert.deepEqual(r.data.tabela.linhas, [[1, 'ANA'], [2, 'CAIO']]);
+    assert.equal(r.data.paraCada.comandos, 2);
+    const k = await rodar(pedir, 'busca.map((b) => b.r).join(",")', 'javascript', nb);
+    assert.equal(k.saidas.map((x) => x.texto).join(''), "'ANA,CAIO'\n");
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});
+
+test('para cada objeto: UPDATE com {{item.id}} e {{item.code}}; um item com erro PARA ali', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'para-cada-update.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'python', raiz: pasta });
+    await rodar(pedir, [
+      "sql('CREATE TABLE IF NOT EXISTS pc (id INTEGER, code TEXT, visto INTEGER DEFAULT 0)')",
+      "sql('DELETE FROM pc')",
+      "for i, c in [(1, 'a'), (2, 'b'), (3, 'c')]: sql('INSERT INTO pc (id, code) VALUES (?, ?)', [i, c])",
+      "lote = [{'id': 1, 'code': 'a'}, {'id': 2, 'code': 'b'}]",
+      "ruim = [{'id': 1}, {'id': 1}, {'id': 3}]",
+    ].join('\n'), 'python', nb);
+    const up = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: null, paraCada: 'lote',
+      statement: 'UPDATE pc SET visto = 1 WHERE id = {{item.id}} AND code = {{item.code}}',
+    });
+    assert.equal(up.success, true, up.error ?? '');
+    assert.deepEqual(up.data.paraCada, { total: 2, comandos: 2, escritas: 2, linhasAfetadas: 2, falha: null, parado: false });
+
+    // O segundo item quebra de verdade, na hora de rodar: chave repetida.
+    await rodar(pedir, "sql('CREATE TABLE IF NOT EXISTS pk (id INTEGER PRIMARY KEY)')\nsql('DELETE FROM pk')", 'python', nb);
+    const falha = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: null, paraCada: 'ruim',
+      statement: 'INSERT INTO pk (id) VALUES ({{item.id}})',
+    });
+    assert.equal(falha.success, true, falha.error ?? '');
+    assert.equal(falha.data.paraCada.comandos, 1);
+    assert.equal(falha.data.paraCada.falha.item, 2);
+    assert.match(falha.data.paraCada.falha.mensagem, /UNIQUE/);
+    const ids = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: null, statement: 'SELECT id FROM pk ORDER BY id',
+    });
+    // O 1º valeu; o 3º não rodou.
+    assert.deepEqual(ids.data.tabela.linhas, [[1]]);
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});
+
+// ---- {{lista}} como TABELA (spec 114, D) ----
+test('o pedido dele: select * from {{messages}} m — e cruzando com uma tabela do banco', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'tabela-var.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'typescript', raiz: pasta });
+    await rodar(pedir, "const messages = [{ id: 1, message: 'olá' }, { id: 3, message: 'tchau' }]", 'typescript', nb);
+    const r = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: null,
+      statement: 'select m.id, m.message, p.cliente from {{messages}} m join pedidos p on p.id = m.id order by m.id',
+    });
+    assert.equal(r.success, true, r.error ?? '');
+    assert.deepEqual(r.data.tabela.linhas, [[1, 'olá', 'Ana'], [3, 'tchau', 'Caio']]);
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});

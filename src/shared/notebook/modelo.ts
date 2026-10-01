@@ -62,6 +62,11 @@ export interface Celula {
   readonly nome: string | null;
   /** Só SQL: outra conexão que a do notebook, quando a célula escolhe. */
   readonly conexao: Vinculo | null;
+  /**
+   * Só SQL: o nome de uma lista do kernel — o comando roda uma vez por item,
+   * com `{{item}}` (spec 114, B). `null` = roda uma vez, como sempre.
+   */
+  readonly paraCada: string | null;
   /** O `[3]` do Jupyter: em que ordem a célula rodou. `null` = nunca. */
   readonly contador: number | null;
   readonly saidas: readonly Saida[];
@@ -118,7 +123,10 @@ export function nomeDeResultadoLivre(nb: Pick<Notebook, 'celulas'>): string {
 // ---------------------------------------------------------------------------
 
 function celulaVazia(id: string, tipo: TipoDeCelula, nome: string | null, linguagem: Kernel | null): Celula {
-  return { id, tipo, linguagem: tipo === 'codigo' ? linguagem : null, conteudo: '', nome, conexao: null, contador: null, saidas: [] };
+  return {
+    id, tipo, linguagem: tipo === 'codigo' ? linguagem : null, conteudo: '', nome, conexao: null, paraCada: null,
+    contador: null, saidas: [],
+  };
 }
 
 /** Um notebook novo já traz uma célula de código: é por ela que se começa. */
@@ -162,7 +170,7 @@ export function inserirCelula(
 }
 
 /** O que a tela pode mudar numa célula. Trocar o tipo ajusta o nome junto. */
-export type MudancaDeCelula = Partial<Pick<Celula, 'conteudo' | 'nome' | 'conexao' | 'tipo' | 'linguagem'>>;
+export type MudancaDeCelula = Partial<Pick<Celula, 'conteudo' | 'nome' | 'conexao' | 'tipo' | 'linguagem' | 'paraCada'>>;
 
 export function alterarCelula(nb: Notebook, id: string, mudanca: MudancaDeCelula): Notebook {
   return {
@@ -175,7 +183,8 @@ export function alterarCelula(nb: Notebook, id: string, mudanca: MudancaDeCelula
       const conexao = tipo !== 'sql' ? null : (mudanca.conexao !== undefined ? mudanca.conexao : c.conexao);
       // Só código tem linguagem; voltar a ser código sem dizer qual: a do notebook.
       const linguagem = tipo !== 'codigo' ? null : (mudanca.linguagem ?? c.linguagem ?? nb.kernel);
-      return { ...c, ...mudanca, tipo, nome, conexao, linguagem };
+      const paraCada = tipo !== 'sql' ? null : (mudanca.paraCada !== undefined ? mudanca.paraCada : c.paraCada);
+      return { ...c, ...mudanca, tipo, nome, conexao, linguagem, paraCada };
     }),
   };
 }
@@ -319,6 +328,7 @@ export function lerNotebook(conteudo: string): Notebook | null {
       conteudo: texto(c.conteudo),
       nome: tipo === 'sql' ? (nomeLido ?? nomeDeResultadoLivre({ celulas })) : null,
       conexao: tipo === 'sql' ? lerVinculo(c.conexao) : null,
+      paraCada: tipo === 'sql' && typeof c.paraCada === 'string' && nomeValido(c.paraCada) ? c.paraCada : null,
       contador: typeof c.contador === 'number' ? c.contador : null,
       saidas: (Array.isArray(c.saidas) ? c.saidas : [])
         .map(lerSaida)

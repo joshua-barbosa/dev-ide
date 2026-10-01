@@ -76,6 +76,7 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
   // Markdown se lê renderizado; editar é um gesto (dois cliques), como no Jupyter.
   const [editandoMarkdown, setEditandoMarkdown] = useState(celula.conteudo === '');
   const [nome, setNome] = useState(celula.nome ?? '');
+  const [paraCada, setParaCada] = useState(celula.paraCada ?? '');
   const nomeRuim = celula.tipo === 'sql' && !nomeValido(nome);
 
   // A linguagem é da CÉLULA (spec 113); a do notebook é só o padrão.
@@ -166,6 +167,26 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
                 width: 120, fontFamily: tokens.fontMono, fontSize: 11, px: 0.5, py: 0.25,
                 border: 1, borderRadius: 0.5, bgcolor: 'transparent', color: 'text.primary',
                 borderColor: nomeRuim ? 'error.main' : 'divider',
+              }}
+            />
+            {/* "Para cada" (spec 114, B): o comando roda uma vez por item da
+                lista, com {{item}}. Vazio = roda uma vez, como sempre. */}
+            <Box
+              component="input"
+              aria-label="Para cada item da lista"
+              title="Opcional: o nome de uma lista. O comando roda uma vez por item, com {{item}} (e {{item.campo}})."
+              placeholder="para cada…"
+              value={paraCada}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                const v = e.target.value.trim();
+                setParaCada(e.target.value);
+                if (v === '') p.onMudar({ paraCada: null });
+                else if (nomeValido(v)) p.onMudar({ paraCada: v });
+              }}
+              sx={{
+                width: 110, fontFamily: tokens.fontMono, fontSize: 11, px: 0.5, py: 0.25,
+                border: 1, borderRadius: 0.5, bgcolor: 'transparent', color: 'text.primary',
+                borderColor: paraCada.trim() !== '' && !nomeValido(paraCada.trim()) ? 'error.main' : 'divider',
               }}
             />
             <Box

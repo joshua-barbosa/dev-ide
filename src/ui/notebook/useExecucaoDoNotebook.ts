@@ -77,18 +77,58 @@ export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho, raiz 
     let aviso: string | null = null;
     for (const [i, sql] of instrucoes.entries()) {
       const qual = instrucoes.length > 1 ? `Instrução ${i + 1} de ${instrucoes.length}` : 'A consulta';
+      // "Para cada" (spec 114, B): enquanto o laço roda, a célula mostra o
+      // progresso — 500 itens não podem parecer uma tela parada.
+      const paraCada = celula.paraCada;
+      const acompanhar = paraCada === null ? null : setInterval(() => {
+        void ApiDoNotebook.progressoDoSql(caminho).then((pr) => {
+          if (pr === null) return;
+          atualizar((x) => registrarExecucao(x, celula.id, contador, [
+            ...saidas, { tipo: 'texto', fluxo: 'saida', texto: `para cada ${paraCada}: ${pr.feitos} de ${pr.total}…\n` },
+          ]));
+        }).catch(() => undefined);
+      }, 400);
       try {
         const r = await ApiDoNotebook.sql({
           caminho, connectionId: vinculo.connectionId, database: vinculo.database,
-          statement: sql, nome: celula.nome, linguagens, raiz,
+          statement: sql, nome: celula.nome, linguagens, raiz, paraCada,
         });
-        saidas.push(r.tabela ?? { tipo: 'texto', fluxo: 'saida', texto: `${r.mensagem ?? 'Comando executado.'}\n` });
+        if (r.paraCada !== undefined) {
+          const pc = r.paraCada;
+          if (r.tabela !== null) saidas.push(r.tabela);
+          // Só fala de linhas afetadas se houve escrita; e não inventa 0 quando o banco não conta.
+          const afetadas = pc.escritas === 0 ? ''
+            : pc.linhasAfetadas === null ? ' · linhas afetadas: o banco não informa'
+              : ` · ${pc.linhasAfetadas} linha(s) afetada(s)`;
+          saidas.push({ tipo: 'texto', fluxo: 'saida', texto: `para cada ${paraCada}: ${pc.comandos} de ${pc.total} item(ns)${afetadas}\n` });
+          if (pc.parado) {
+            saidas.push({ tipo: 'texto', fluxo: 'erro', texto: `Parado depois de ${pc.comandos} item(ns); os que rodaram já valeram.\n` });
+          }
+          if (pc.falha !== null) {
+            saidas.push({
+              tipo: 'erro',
+              mensagem: `Item ${pc.falha.item} de ${pc.total} falhou: ${pc.falha.mensagem}\n` +
+                `Os ${pc.comandos} anterior(es) já valeram; os seguintes não rodaram.`,
+            });
+            variavel = r.variavel ?? variavel;
+            atualizar((x) => registrarExecucao(x, celula.id, contador, saidas));
+            return false;
+          }
+          if (pc.parado) {
+            atualizar((x) => registrarExecucao(x, celula.id, contador, saidas));
+            return false;
+          }
+        } else {
+          saidas.push(r.tabela ?? { tipo: 'texto', fluxo: 'saida', texto: `${r.mensagem ?? 'Comando executado.'}\n` });
+        }
         variavel = r.variavel ?? variavel;
         aviso = r.aviso ?? aviso;
       } catch (e) {
         saidas.push({ tipo: 'erro', mensagem: `${qual} falhou: ${mensagemDe(e)}` });
         atualizar((x) => registrarExecucao(x, celula.id, contador, saidas));
         return false;
+      } finally {
+        if (acompanhar !== null) clearInterval(acompanhar);
       }
     }
     // Dizer o que virou variável é o que liga esta célula à próxima.
@@ -149,6 +189,8 @@ export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho, raiz 
     desistir.current = true;
     const linguagem = linguagemRodando.current;
     if (linguagem !== null) await kernel.interromper(linguagem);
+    // Uma célula SQL "para cada" para entre um item e outro.
+    else if (caminho !== null) await ApiDoNotebook.pararSql(caminho).catch(() => undefined);
   };
 
   return { rodando, rodarCelula, rodarDesde, parar };

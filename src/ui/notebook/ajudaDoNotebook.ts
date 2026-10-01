@@ -168,8 +168,8 @@ export function secoesDeAjuda(kernel: Kernel): readonly SecaoDeAjuda[] {
           'num laço ou a receita do JSON.',
         'Cada item da lista é um parâmetro, e cada banco tem um teto: SQL Server 2.100, SQLite 32.766, Postgres e ' +
           'MySQL 65.535. Para listas maiores, a receita do JSON manda tudo num parâmetro só.',
-        'Dentro de aspas ou comentário, {{nome}} é só texto. Depois de FROM/JOIN, {{nome}} não vira tabela: o ' +
-          'recado explica o caminho do JSON.',
+        'Dentro de aspas ou comentário, {{nome}} é só texto. Depois de FROM ou JOIN, {{nome}} vira uma TABELA — ' +
+          'veja "Uma lista como TABELA no SQL".',
         'Se o kernel não tem a variável, nada roda: o erro diz qual falta. Rode antes a célula que a cria.',
       ],
       exemplos: [
@@ -178,6 +178,24 @@ export function secoesDeAjuda(kernel: Kernel): readonly SecaoDeAjuda[] {
         { linguagem: 'sql', codigo: "SELECT * FROM clientes WHERE nome = {{nome}}   -- O'Brien passa inteiro, sem quebrar" },
         { linguagem: 'sql', codigo: 'SELECT * FROM pedidos WHERE criado_em >= {{desde}} AND total > {{minimo}}' },
         { linguagem: 'sql', codigo: "UPDATE pedidos SET status = 'ok' WHERE (id, code) IN {{pedidos(id, code)}}" },
+      ],
+    },
+    {
+      titulo: 'Para cada item (célula SQL)',
+      paragrafos: [
+        'No campo "para cada…" da célula SQL, escreva o nome de uma lista do kernel. O comando roda uma vez por ' +
+          'item: {{item}} é o item da vez, {{item.id}} um campo dele. Os outros {{ }} continuam valendo.',
+        'Um SELECT por item vira UMA tabela, com a coluna item (1, 2, 3…) na frente — e, com → nome, uma variável. ' +
+          'Numa escrita, a célula diz quantos itens rodaram e quantas linhas foram afetadas (quando o banco conta).',
+        'Cada item vale sozinho, confirmado na hora. Se um falha, a célula para ali e diz qual: os anteriores já ' +
+          'valeram, os seguintes não rodaram. "Parar" para entre um item e outro. Para tudo-ou-nada, use ' +
+          'sql.transacao numa célula de código.',
+        'Para filtrar por uma lista, IN {{ids}} numa execução só é bem mais rápido; o "para cada" é para o que ' +
+          'precisa rodar item a item (uma função, um procedimento, um UPDATE diferente por item).',
+      ],
+      exemplos: [
+        { linguagem: 'sql', codigo: '-- para cada: ids\nSELECT ModoBusca({{item}}, 1) AS resultado' },
+        { linguagem: 'sql', codigo: '-- para cada: pedidos\nUPDATE pedidos SET status = {{item.status}} WHERE id = {{item.id}}' },
       ],
     },
     {
@@ -208,25 +226,33 @@ export function secoesDeAjuda(kernel: Kernel): readonly SecaoDeAjuda[] {
     {
       titulo: 'Uma lista como TABELA no SQL',
       paragrafos: [
-        '{{nome}} é valor, não tabela: select * from {{lista}} não funciona. Para consultar (e cruzar com tabelas do ' +
-          'banco) uma lista de objetos, guarde-a em JSON e abra-a com a função JSON do próprio banco — as colunas e ' +
-          'os tipos você declara.',
-        'Tudo vai num único parâmetro: para centenas de milhares de linhas, fica pesado.',
+        'Depois de FROM ou JOIN, {{lista}} vira uma tabela: select * from {{messages}} m. Dá para filtrar, agrupar e ' +
+          'cruzar com as tabelas do banco (join users u on u.id = m.id). Sem apelido, a tabela ganha o nome da ' +
+          'variável.',
+        'As colunas e os tipos saem da lista: número inteiro, decimal, booleano, texto; objeto dentro do item vira ' +
+          'JSON; coluna com valores misturados vira texto. Uma lista de valores simples vira a coluna "valor". Lista ' +
+          'vazia não dá para usar (sem itens, não há colunas).',
+        'Por baixo, o motor usa a função JSON do próprio banco (json_to_recordset no Postgres, JSON_TABLE no ' +
+          'MySQL 8+, OPENJSON no SQL Server, json_each no SQLite), e a lista vai num parâmetro só — o teto de ' +
+          'parâmetros não se aplica, mas centenas de milhares de linhas pesam.',
+        'Se quiser escolher você mesmo os tipos, a receita manual continua valendo: guarde a lista em JSON e abra ' +
+          'com a função do banco.',
       ],
       exemplos: [
+        { linguagem: 'sql', codigo: 'select m.id, m.message, u.email\nfrom {{messages}} m\njoin users u on u.id = m.id' },
         { linguagem: kernel, codigo: k.json },
-        { linguagem: 'sql', codigo: `-- Postgres\nselect * from json_to_recordset({{${k.nomeJson}}}::json) as m(id int, message text)` },
+        { linguagem: 'sql', codigo: `-- Postgres, manual\nselect * from json_to_recordset({{${k.nomeJson}}}::json) as m(id int, message text)` },
         {
           linguagem: 'sql',
-          codigo: `-- MySQL 8+\nselect * from json_table({{${k.nomeJson}}}, '$[*]'\n  columns (id int path '$.id', message text path '$.message')) as m`,
+          codigo: `-- MySQL 8+, manual\nselect * from json_table({{${k.nomeJson}}}, '$[*]'\n  columns (id int path '$.id', message text path '$.message')) as m`,
         },
         {
           linguagem: 'sql',
-          codigo: `-- SQL Server\nselect * from openjson({{${k.nomeJson}}})\n  with (id int '$.id', message nvarchar(max) '$.message') as m`,
+          codigo: `-- SQL Server, manual\nselect * from openjson({{${k.nomeJson}}})\n  with (id int '$.id', message nvarchar(max) '$.message') as m`,
         },
         {
           linguagem: 'sql',
-          codigo: `-- SQLite\nselect json_extract(value, '$.id') as id, json_extract(value, '$.message') as message\nfrom json_each({{${k.nomeJson}}})`,
+          codigo: `-- SQLite, manual\nselect json_extract(value, '$.id') as id, json_extract(value, '$.message') as message\nfrom json_each({{${k.nomeJson}}})`,
         },
       ],
     },

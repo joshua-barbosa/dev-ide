@@ -140,3 +140,84 @@ test('SQL Server não tem par no IN: erro que aponta o caminho', () => {
 test('o ? do sql() não estraga um {{nome(col)}} que esteja no texto', () => {
   assert.equal(trocarInterrogacoes('SELECT ? WHERE x IN {{p(id)}}', 1, 'dolar'), 'SELECT $1 WHERE x IN {{p(id)}}');
 });
+
+// ---- {{item.campo}} (spec 114, B) ----
+test('{{obj.campo}} lê o campo; o nome pedido ao kernel é o de fora', () => {
+  assert.deepEqual(referenciasDoSql('UPDATE t SET a = {{item.nome}} WHERE id = {{item.id}}'), ['item']);
+  const r = montarSqlComParametros('UPDATE t SET a = {{item.nome}} WHERE id = {{item.id}}', { item: { id: 7, nome: 'Ana' } }, 'dolar');
+  assert.equal(r.sql, 'UPDATE t SET a = $1 WHERE id = $2');
+  assert.deepEqual(r.params, ['Ana', 7]);
+});
+
+test('{{obj.a.b}}: campo dentro de campo; o que não existe vira NULL', () => {
+  const r = montarSqlComParametros('SELECT {{x.a.b}}, {{x.falta}}', { x: { a: { b: 1 } } }, 'interrogacao');
+  assert.deepEqual(r.params, [1, null]);
+});
+
+// ---- {{lista}} como TABELA (spec 114, D) ----
+// O pedido: "select * from messages, onde messages é array de objects". O
+// motor troca {{messages}} depois de FROM/JOIN pela função JSON do banco, com
+// colunas e tipos INFERIDOS; o array vai como UM parâmetro.
+import { tabelasPedidas } from '../notebook/parametros';
+
+const messages = [{ id: 1, message: 'oi', lido: true, nota: 9.5 }, { id: 2, message: null, lido: false, nota: 7 }];
+
+test('Postgres: json_to_recordset numa subconsulta, e o apelido dele vale', () => {
+  const r = montarSqlComParametros('select m.id from {{messages}} m join users u on u.id = m.id', { messages }, 'dolar', 'postgres');
+  assert.equal(r.sql,
+    'select m.id from (SELECT * FROM json_to_recordset($1::json) AS _t("id" bigint, "message" text, "lido" boolean, "nota" double precision)) m join users u on u.id = m.id');
+  assert.deepEqual(JSON.parse(String(r.params[0])), messages);
+});
+
+test('sem apelido: ganha o nome da variável (Postgres exige apelido em subconsulta)', () => {
+  const r = montarSqlComParametros('select * from {{messages}} where id > 1', { messages }, 'dolar', 'postgres');
+  assert.match(r.sql, /\) AS messages where id > 1$/);
+});
+
+test('MySQL: JSON_TABLE com caminho por coluna', () => {
+  const r = montarSqlComParametros('SELECT * FROM {{messages}} AS m', { messages }, 'interrogacao', 'mysql');
+  assert.equal(r.sql,
+    "SELECT * FROM (SELECT * FROM JSON_TABLE(?, '$[*]' COLUMNS (`id` BIGINT PATH '$.\"id\"', `message` TEXT PATH '$.\"message\"', `lido` BOOLEAN PATH '$.\"lido\"', `nota` DOUBLE PATH '$.\"nota\"')) AS _t) AS m");
+});
+
+test('SQL Server: OPENJSON ... WITH', () => {
+  const r = montarSqlComParametros('SELECT * FROM {{messages}} m', { messages }, 'arroba', 'sqlserver');
+  assert.equal(r.sql,
+    "SELECT * FROM (SELECT * FROM OPENJSON(@p1) WITH ([id] bigint '$.\"id\"', [message] nvarchar(max) '$.\"message\"', [lido] bit '$.\"lido\"', [nota] float '$.\"nota\"')) m");
+});
+
+test('SQLite: json_each + json_extract', () => {
+  const r = montarSqlComParametros('SELECT * FROM {{messages}} m', { messages }, 'interrogacao', 'sqlite');
+  assert.equal(r.sql,
+    'SELECT * FROM (SELECT json_extract(value, \'$."id"\') AS "id", json_extract(value, \'$."message"\') AS "message", json_extract(value, \'$."lido"\') AS "lido", json_extract(value, \'$."nota"\') AS "nota" FROM json_each(?)) m');
+});
+
+test('lista de valores simples vira a coluna "valor"', () => {
+  const r = montarSqlComParametros('select * from {{ids}} i', { ids: [1, 2] }, 'dolar', 'postgres');
+  assert.match(r.sql, /_t\("valor" bigint\)\) i$/);
+  assert.deepEqual(JSON.parse(String(r.params[0])), [{ valor: 1 }, { valor: 2 }]);
+});
+
+test('objeto dentro do item vira coluna JSON; texto e número misturados viram texto', () => {
+  const r = montarSqlComParametros('select * from {{x}} t', { x: [{ a: { b: 1 }, c: 1 }, { a: null, c: 'dois' }] }, 'dolar', 'postgres');
+  assert.match(r.sql, /"a" jsonb, "c" text/);
+});
+
+test('lista vazia: sem itens não há colunas — recado claro', () => {
+  assert.throws(() => montarSqlComParametros('select * from {{x}} t', { x: [] }, 'dolar', 'postgres'), /vazia/);
+});
+
+test('sem saber o banco, FROM {{x}} continua com o recado de antes', () => {
+  assert.throws(() => montarSqlComParametros('select * from {{x}} t', { x: [{ a: 1 }] }, 'dolar'), /VALOR/);
+});
+
+test('quais nomes são pedidos como tabela (o kernel entrega registros)', () => {
+  assert.deepEqual(tabelasPedidas('select * from {{a}} x join {{b}} y on 1=1 where z in {{c}}'), ['a', 'b']);
+});
+
+test('SQL Server: objeto dentro do item — o AS JSON vem DEPOIS do caminho', () => {
+  // Achado contra o SQL Server de verdade (conferir:tabela-json): antes do
+  // caminho era "Incorrect syntax near '$.\"extra\"'".
+  const r = montarSqlComParametros('SELECT * FROM {{x}} t', { x: [{ extra: { a: 1 } }] }, 'arroba', 'sqlserver');
+  assert.match(r.sql, /\[extra\] nvarchar\(max\) '\$\."extra"' AS JSON\)/);
+});

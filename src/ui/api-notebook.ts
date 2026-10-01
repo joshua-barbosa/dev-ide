@@ -82,11 +82,20 @@ export const ApiDoNotebook = {
     /** As linguagens do notebook: o resultado vai para cada uma (spec 113). */
     linguagens: readonly string[];
     raiz: string | null;
+    /** "Para cada": o nome da lista — roda uma vez por item (spec 114, B). */
+    paraCada?: string | null;
   }) =>
     request<{
       tabela: Saida | null;
       mensagem?: string;
       variavel: { nome: string; linhas: number; forma: string; linguagens?: string[] } | null;
       aviso?: string | null;
+      paraCada?: {
+        total: number; comandos: number; escritas: number; linhasAfetadas: number | null;
+        falha: { item: number; mensagem: string } | null; parado: boolean;
+      };
     }>('POST', '/api/notebook/kernel/sql', p),
+  progressoDoSql: (caminho: string) =>
+    request<{ feitos: number; total: number } | null>('GET', `/api/notebook/kernel/sql/progresso?caminho=${q(caminho)}`),
+  pararSql: (caminho: string) => request<null>('POST', '/api/notebook/kernel/sql/parar', { caminho }),
 };

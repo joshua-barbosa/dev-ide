@@ -366,6 +366,30 @@ ${existsSync(path.join(WEB, 'notebook.css')) ? '<link rel="stylesheet" href="not
   await pagina.waitForTimeout(1500);
   marcar('o editor conhece o sql() (sem vermelho)', (await comSql.locator('.squiggly-error').count()) === 0);
 
+  // "Para cada item" (spec 114, B): uma lista no kernel, e a célula SQL roda
+  // uma vez por item, com {{item}}.
+  await web.locator('[data-adicionar="8"]').getByRole('button', { name: 'TypeScript' }).click();
+  const celIds = web.locator('[data-celula]').nth(8);
+  await escreverERodar(celIds, 'const idsTeste = [2, 1]');
+  await saidaDe(celIds).catch(() => '');
+  await web.locator('[data-adicionar="9"]').getByRole('button', { name: 'SQL' }).click();
+  const celCada = web.locator('[data-celula]').nth(9);
+  await celCada.getByRole('textbox', { name: 'Para cada item da lista' }).fill('idsTeste');
+  await escreverERodar(celCada, 'SELECT titulo FROM provas WHERE id = {{item}}');
+  const saidaCada = await saidaDe(celCada);
+  marcar('"para cada" roda por item e junta numa tabela com a coluna item',
+    /para cada idsTeste: 2 de 2/.test(saidaCada) && /segunda[\s\S]*primeira/.test(saidaCada), JSON.stringify(saidaCada.slice(0, 120)));
+
+  // {{lista}} como TABELA (spec 114, D): o users do TypeScript cruzado com a
+  // tabela provas do banco. O pedido: "select * from messages, onde messages
+  // é array de objects".
+  await web.locator('[data-adicionar="10"]').getByRole('button', { name: 'SQL' }).click();
+  const celTabela = web.locator('[data-celula]').nth(10);
+  await escreverERodar(celTabela, 'SELECT p.id, m.apelido FROM {{users}} m JOIN provas p ON p.titulo = m.apelido ORDER BY p.id');
+  const saidaTabela = await saidaDe(celTabela);
+  marcar('{{users}} vira tabela no SQL e cruza com uma tabela do banco',
+    /primeira[\s\S]*segunda/.test(saidaTabela) && !/erro|falhou/i.test(saidaTabela), JSON.stringify(saidaTabela.slice(0, 120)));
+
   // O botão Ajuda na extensão: o mesmo painel, e o exemplo de JS (o kernel
   // desta página) — não o de Python.
   await web.getByRole('button', { name: 'Ajuda' }).click();
