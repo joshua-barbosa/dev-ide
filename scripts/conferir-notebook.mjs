@@ -284,6 +284,33 @@ try {
       texto.includes("'primeira + segunda'"), JSON.stringify(texto.slice(0, 120)));
   }
 
+  // O botão Ajuda (spec 113, etapa 0). Ele: *"eu tive que te perguntar
+  // algumas coisas como funcionavam"*. O painel abre, fala da sintaxe CERTA da
+  // lista (\`IN {{ids}}\`, sem parênteses — eu mesmo ensinei errado), e o
+  // exemplo se copia.
+  await pagina.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE });
+  // As abas escondidas continuam montadas (EditorGroup): a VISÍVEL é a da vez.
+  const atual = pagina.locator('[data-notebook]:visible').first();
+  await atual.getByRole('button', { name: 'Ajuda' }).click();
+  const ajuda = pagina.locator('[data-ajuda-do-notebook]');
+  const abriu = await ajuda.waitFor({ timeout: 5000 }).then(() => true, () => false);
+  const textoDaAjuda = abriu ? await ajuda.innerText() : '';
+  marcar('o botão Ajuda abre o painel', abriu);
+  // O texto CITA a forma errada como aviso ("e não IN ({{ids}})"); o que não
+  // pode ter parênteses é o EXEMPLO, que é o que se copia.
+  const exemplos = abriu ? (await ajuda.locator('pre').allInnerTexts()).join('\n') : '';
+  marcar('a ajuda ensina a lista como IN {{ids}} (sem parênteses)',
+    exemplos.includes('IN {{ids}}') && !exemplos.includes('IN ({{ids}})'), JSON.stringify(exemplos.slice(0, 80)));
+  marcar('a ajuda explica o contador [n] e o Ctrl+Enter',
+    /\[3\]/.test(textoDaAjuda) && textoDaAjuda.includes('Ctrl+Enter'));
+  await ajuda.getByRole('button', { name: /Copiar/ }).first().click();
+  await pagina.waitForTimeout(300);
+  const copiado = await pagina.evaluate(() => navigator.clipboard.readText()).catch(() => '');
+  marcar('o exemplo da ajuda vai para a área de transferência', copiado.trim() !== '',
+    JSON.stringify(copiado.slice(0, 40)));
+  await ajuda.getByRole('button', { name: 'Fechar a ajuda' }).click();
+  marcar('fechar esconde o painel', await ajuda.isHidden());
+
   marcar('nenhum erro de JavaScript na página', errosDaPagina.length === 0,
     errosDaPagina.slice(0, 2).join(' | '));
 } catch (erro) {

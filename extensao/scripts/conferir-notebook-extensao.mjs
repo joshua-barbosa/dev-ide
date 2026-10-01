@@ -240,6 +240,16 @@ ${existsSync(path.join(WEB, 'notebook.css')) ? '<link rel="stylesheet" href="not
     .first().waitFor({ timeout: 10000 }).then(() => true, () => false);
   marcar('célula JavaScript completa pelo worker do Monaco (Math.abs)', doWorker);
   await pagina.keyboard.press('Escape');
+  // O botão Ajuda na extensão: o mesmo painel, e o exemplo de JS (o kernel
+  // desta página) — não o de Python.
+  await web.getByRole('button', { name: 'Ajuda' }).click();
+  const ajuda = pagina.locator('[data-ajuda-do-notebook]');
+  const abriu = await ajuda.waitFor({ timeout: 5000 }).then(() => true, () => false);
+  const textoDaAjuda = abriu ? await ajuda.innerText() : '';
+  if (process.env.CAPTURA) await pagina.screenshot({ path: `${process.env.CAPTURA}-ajuda.png` });
+  marcar('extensão: o botão Ajuda abre o painel, com exemplo do kernel JS',
+    abriu && textoDaAjuda.includes('.map(') && !textoDaAjuda.includes('import pandas'));
+
   marcar('nenhum erro de JavaScript na página do kernel JS', errosDaPagina.length === 0, errosDaPagina.slice(0, 2).join(' | '));
 } catch (erro) {
   marcar('a verificação rodou até o fim', false, erro instanceof Error ? erro.message.split('\n')[0] : String(erro));

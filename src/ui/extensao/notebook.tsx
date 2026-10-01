@@ -70,6 +70,14 @@ function Notebook() {
       escolherConexao={(atual: Vinculo | null) => escolherVinculo(atual)}
       rotuloDaConexao={(v) => `${rotulos.get(v.connectionId) ?? 'conexão'} · ${v.database}`}
       escolherOpcao={(titulo, opcoes) => chamarHost<string | null>('escolher', { titulo, opcoes })}
+      copiarTexto={async (texto) => {
+        // O navegador da webview às vezes nega; o editor sempre consegue.
+        try {
+          await navigator.clipboard.writeText(texto);
+        } catch {
+          await chamarHost<void>('escreverNaAreaDeTransferencia', { texto });
+        }
+      }}
       pedirTexto={(titulo, placeholder, inicial) =>
         pedirTexto({ titulo, placeholder, ...(inicial === undefined ? {} : { valorInicial: inicial }) })
       }

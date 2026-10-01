@@ -20,6 +20,7 @@ import { useKernelDoNotebook } from './useKernelDoNotebook';
 import { useExecucaoDoNotebook } from './useExecucaoDoNotebook';
 import { useCodebase } from '../sql/useCodebase';
 import { escolherAmbiente } from './escolherAmbiente';
+import { AjudaDoNotebook } from './AjudaDoNotebook';
 import type { Tab } from '../../shared/tabs';
 import type { NomeDoTema } from '../../shared/temas';
 import type { Vinculo } from '../../shared/sql/vinculo';
@@ -47,7 +48,11 @@ export interface NotebookHostProps {
     opcoes: readonly { readonly valor: string; readonly rotulo: string; readonly detalhe?: string }[]
   ): Promise<string | null>;
   pedirTexto(titulo: string, placeholder: string, inicial?: string): Promise<string | null>;
+  /** O "Copiar" da ajuda. Na extensão passa pelo editor quando o navegador nega. */
+  readonly copiarTexto?: (texto: string) => Promise<void>;
 }
+
+const copiarPeloNavegador = (texto: string): Promise<void> => navigator.clipboard.writeText(texto);
 
 const ROTULOS: Record<Kernel, string> = {
   python: 'Python', javascript: 'JavaScript', typescript: 'TypeScript', php: 'PHP',
@@ -85,7 +90,9 @@ function Acao({ icone, rotulo, onClick }: { icone: string; rotulo: string; onCli
 
 export function NotebookHost({
   aba, fontSize, tabSize, tema, onMudar, escolherConexao, rotuloDaConexao, raiz, escolherOpcao, pedirTexto,
+  copiarTexto = copiarPeloNavegador,
 }: NotebookHostProps) {
+  const [ajudaAberta, setAjudaAberta] = useState(false);
   const conteudo = String((aba.meta as { content?: string }).content ?? '');
   const inicial = useMemo(() => ler(conteudo), []); // eslint-disable-line react-hooks/exhaustive-deps
   const [nb, setNb] = useState<Notebook | null>(inicial.nb);
@@ -339,37 +346,43 @@ export function NotebookHost({
           <Acao icone="lucide:file-output" rotulo="Exportar .ipynb" onClick={() => void exportar()} />
         )}
         <Acao icone="lucide:eraser" rotulo="Limpar saídas" onClick={() => atualizar((x) => limparSaidas(x))} />
+        <Acao icone="lucide:circle-help" rotulo="Ajuda" onClick={() => setAjudaAberta((a) => !a)} />
       </Box>
 
-      <Box sx={{ flex: 1, overflow: 'auto', px: 3, py: 2 }}>
-        {linhaDeAdicionar(0)}
-        {nb.celulas.map((celula, i) => (
-          <Box key={celula.id}>
-            <CelulaDoNotebook
-              celula={celula}
-              kernel={nb.kernel}
-              rodando={execucao.rodando === celula.id}
-              rotuloDaConexao={
-                (celula.conexao ?? nb.conexao) === null
-                  ? 'sem conexão'
-                  : rotuloDaConexao((celula.conexao ?? nb.conexao) as Vinculo)
-              }
-              fontSize={fontSize}
-              tabSize={tabSize}
-              tema={tema}
-              onMudar={(m) => atualizar((x) => alterarCelula(x, celula.id, m))}
-              onRodar={() => void execucao.rodarCelula(celula.id)}
-              onRodarDesde={() => void execucao.rodarDesde(i)}
-              onEscolherConexao={() => void trocarConexao(celula.id)}
-              onUsarConexaoDoNotebook={() => atualizar((x) => alterarCelula(x, celula.id, { conexao: null }))}
-              onLimparSaida={() => atualizar((x) => limparSaidas(x, celula.id))}
-              onMover={(d) => atualizar((x) => moverCelula(x, celula.id, i + d))}
-              onRemover={() => atualizar((x) => removerCelula(x, celula.id))}
-              onFocar={() => setCelulaEmFoco(celula.id)}
-            />
-            {linhaDeAdicionar(i + 1)}
-          </Box>
-        ))}
+      <Box sx={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <Box sx={{ flex: 1, minWidth: 0, overflow: 'auto', px: 3, py: 2 }}>
+          {linhaDeAdicionar(0)}
+          {nb.celulas.map((celula, i) => (
+            <Box key={celula.id}>
+              <CelulaDoNotebook
+                celula={celula}
+                kernel={nb.kernel}
+                rodando={execucao.rodando === celula.id}
+                rotuloDaConexao={
+                  (celula.conexao ?? nb.conexao) === null
+                    ? 'sem conexão'
+                    : rotuloDaConexao((celula.conexao ?? nb.conexao) as Vinculo)
+                }
+                fontSize={fontSize}
+                tabSize={tabSize}
+                tema={tema}
+                onMudar={(m) => atualizar((x) => alterarCelula(x, celula.id, m))}
+                onRodar={() => void execucao.rodarCelula(celula.id)}
+                onRodarDesde={() => void execucao.rodarDesde(i)}
+                onEscolherConexao={() => void trocarConexao(celula.id)}
+                onUsarConexaoDoNotebook={() => atualizar((x) => alterarCelula(x, celula.id, { conexao: null }))}
+                onLimparSaida={() => atualizar((x) => limparSaidas(x, celula.id))}
+                onMover={(d) => atualizar((x) => moverCelula(x, celula.id, i + d))}
+                onRemover={() => atualizar((x) => removerCelula(x, celula.id))}
+                onFocar={() => setCelulaEmFoco(celula.id)}
+              />
+              {linhaDeAdicionar(i + 1)}
+            </Box>
+          ))}
+        </Box>
+        {ajudaAberta && (
+          <AjudaDoNotebook kernel={nb.kernel} onFechar={() => setAjudaAberta(false)} copiarTexto={copiarTexto} />
+        )}
       </Box>
     </Box>
   );

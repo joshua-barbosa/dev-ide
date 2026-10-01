@@ -1,5 +1,13 @@
 # Mudanças
 
+## 0.1.12
+
+- **Notebook: botão Ajuda.** Um painel ao lado das células explica como o
+  notebook roda (kernel vivo, ordem de execução, o `[3]`), de onde vem o
+  kernel, como o resultado do SQL vira variável e como uma variável entra no
+  SQL (`IN {{ids}}`, sem parênteses), com exemplos na linguagem do kernel e um
+  botão de copiar em cada um.
+
 ## 0.1.11
 
 - **Abrir a mesma tabela em dois databases** abria só a primeira: a segunda
