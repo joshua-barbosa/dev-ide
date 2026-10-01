@@ -275,6 +275,29 @@ ${existsSync(path.join(WEB, 'notebook.css')) ? '<link rel="stylesheet" href="not
   marcar('a variável do SQL não fica em vermelho na célula TS', sublinhados === 0, `${sublinhados} sublinhado(s)`);
   if (process.env.CAPTURA) await pagina.screenshot({ path: `${process.env.CAPTURA}-patients.png` });
 
+  // E o TIPO do que outra célula criou. O relato seguinte: *"eu criei um const
+  // users do patients e na celula seguida não reconheceu o tipo do u dentro do
+  // forEach do users"*. users = patients.map(...) numa célula; na outra,
+  // users.forEach((u) => u.) tem de sugerir o campo que o map criou.
+  await pagina.keyboard.press('Control+A');
+  await pagina.keyboard.type('const users = patients.map((p) => ({ apelido: p.titulo }))');
+  await web.locator('[data-adicionar="3"]').getByRole('button', { name: 'TypeScript' }).click();
+  const tsCel2 = web.locator('[data-celula]').nth(3);
+  await tsCel2.locator('textarea').first().click();
+  await tsCel2.locator('.monaco-editor').first().waitFor({ timeout: 15000 });
+  await pagina.waitForTimeout(1500);
+  await pagina.keyboard.type('users.forEach((u) => u.');
+  await pagina.keyboard.press('Control+Space');
+  const doMap = await pagina.locator('.suggest-widget .monaco-list-row', { hasText: 'apelido' })
+    .first().waitFor({ timeout: 10000 }).then(() => true, () => false);
+  marcar('célula TS conhece o TIPO do que outra célula criou (u.apelido)', doMap);
+  await pagina.keyboard.press('Escape');
+  await pagina.keyboard.type('apelido)');
+  await pagina.waitForTimeout(2500);
+  const sublinhados2 = await tsCel2.locator('.squiggly-error').count();
+  marcar('e nada fica em vermelho nela', sublinhados2 === 0, `${sublinhados2} sublinhado(s)`);
+  if (process.env.CAPTURA) await pagina.screenshot({ path: `${process.env.CAPTURA}-users.png` });
+
   // O botão Ajuda na extensão: o mesmo painel, e o exemplo de JS (o kernel
   // desta página) — não o de Python.
   await web.getByRole('button', { name: 'Ajuda' }).click();

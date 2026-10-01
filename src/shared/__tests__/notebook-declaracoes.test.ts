@@ -6,7 +6,7 @@
 // analisa a célula sozinha; estas declarações contam a ele o resto.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { declaracoesDoNotebook, nomesDeclarados } from '../notebook/declaracoes';
+import { codigoDasOutrasCelulas, declaracoesDoNotebook, nomesDeclarados } from '../notebook/declaracoes';
 import { alterarCelula, inserirCelula, notebookNovo, registrarExecucao, saidaDeTabela, type Notebook } from '../notebook/modelo';
 
 function nbCom(): Notebook {
@@ -32,18 +32,39 @@ test('SQL que ainda não rodou: array de registros, sem colunas conhecidas', () 
   assert.match(declaracoesDoNotebook(nb, 'b'), /declare var pedidos: Array<Record<string, any>>;/);
 });
 
-test('o que as OUTRAS células de código declaram fica conhecido', () => {
-  const d = declaracoesDoNotebook(nbCom(), 'b');
-  assert.match(d, /declare var ids: any;/);
-  assert.match(d, /declare var dobro: any;/);
+test('o CÓDIGO das outras células vai junto, para o TypeScript inferir o tipo', () => {
+  // O relato: "criei um const users do patients e na celula seguida não
+  // reconheceu o tipo do u". Com o código, users é o que o map devolve.
+  const c = codigoDasOutrasCelulas(nbCom(), 'b');
+  assert.match(c, /const ids = patients\.map\(\(p\) => p\.id\)/);
+  assert.match(c, /function dobro/);
+  // E nada de "declare var ids: any" competindo com ele.
+  assert.doesNotMatch(declaracoesDoNotebook(nbCom(), 'b'), /declare var ids/);
 });
 
-test('o que a célula EM FOCO declara não entra (seria "redeclarar")', () => {
-  const d = declaracoesDoNotebook(nbCom(), 'a');
-  assert.doesNotMatch(d, /declare var ids/);
-  assert.doesNotMatch(d, /declare var dobro/);
-  // Mas o patients do SQL, que a célula só USA, continua.
-  assert.match(d, /declare var patients/);
+test('a célula EM FOCO não entra no código das outras', () => {
+  assert.doesNotMatch(codigoDasOutrasCelulas(nbCom(), 'a'), /const ids/);
+  // Mas o patients do SQL, que ela só USA, continua declarado.
+  assert.match(declaracoesDoNotebook(nbCom(), 'a'), /declare var patients/);
+});
+
+test('outra célula que declara o MESMO nome da em foco fica de fora (seria "redeclarar")', () => {
+  let nb = nbCom();
+  nb = alterarCelula(nb, 'b', { conteudo: 'const ids = [1]' });
+  const c = codigoDasOutrasCelulas(nb, 'b');
+  assert.doesNotMatch(c, /const ids/);
+  // O que ELA declarava e não conflita (dobro) continua conhecido, como any.
+  assert.match(declaracoesDoNotebook(nb, 'b'), /declare var dobro: any;/);
+});
+
+test('import e export viram declaração: o arquivo segue sendo script (global)', () => {
+  let nb = nbCom();
+  nb = alterarCelula(nb, 'a', { conteudo: "import dayjs from 'dayjs'\nexport const hoje = dayjs()" });
+  const c = codigoDasOutrasCelulas(nb, 'b');
+  assert.doesNotMatch(c, /^import /m);
+  assert.doesNotMatch(c, /^export /m);
+  assert.match(c, /declare var dayjs: any;/);
+  assert.match(c, /const hoje = dayjs\(\)/);
 });
 
 test('células Python e PHP não entram (não são JS)', () => {
@@ -51,6 +72,7 @@ test('células Python e PHP não entram (não são JS)', () => {
   nb = inserirCelula(nb, 'codigo', 0, 'py');
   nb = alterarCelula(nb, 'py', { linguagem: 'python', conteudo: 'const_x = 1' });
   assert.doesNotMatch(declaracoesDoNotebook(nb, 'b'), /const_x/);
+  assert.doesNotMatch(codigoDasOutrasCelulas(nb, 'b'), /const_x/);
 });
 
 test('o ambiente do kernel: require, process, mostrarImagem', () => {

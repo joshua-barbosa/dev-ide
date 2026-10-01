@@ -5,7 +5,8 @@
 // UMA célula; o `patients` vinha da célula SQL. Este texto é um `.d.ts` que
 // conta a ele o resto: o resultado de cada SQL (tipado pelas colunas do último
 // resultado guardado, para `p.` sugerir `name`), o que as outras células JS/TS
-// declaram e o ambiente do kernel (`require`, `process`, `mostrarImagem`).
+// declaram (pelo CÓDIGO delas, em `codigoDasOutrasCelulas`, para o tipo ser
+// inferido) e o ambiente do kernel (`require`, `process`, `mostrarImagem`).
 //
 // O que a célula EM FOCO declara fica de fora: declarado nos dois lugares, o
 // TypeScript acusaria "não pode redeclarar".
@@ -137,9 +138,65 @@ const AMBIENTE = [
   'declare function mostrarImagem(dados: any, mime?: string): void;',
 ];
 
-export function declaracoesDoNotebook(nb: Notebook, idEmFoco: string | null): string {
+/** As outras células JS/TS: quais entram como CÓDIGO e o que sobra como `any`. */
+function divisao(nb: Notebook, idEmFoco: string | null): {
+  readonly incluidas: readonly string[];
+  readonly soNomes: readonly string[];
+  readonly declaradosNoCodigo: ReadonlySet<string>;
+} {
   const emFoco = nb.celulas.find((c) => c.id === idEmFoco);
   const proprios = new Set(emFoco?.tipo === 'codigo' ? nomesDeclarados(emFoco.conteudo) : []);
+  const incluidas: string[] = [];
+  const soNomes: string[] = [];
+  const declarados = new Set<string>();
+  for (const c of nb.celulas) {
+    const js = c.linguagem === 'javascript' || c.linguagem === 'typescript';
+    if (c.tipo !== 'codigo' || c.id === idEmFoco || !js) continue;
+    const nomes = nomesDeclarados(c.conteudo);
+    // Declarar de novo o que a célula em foco (ou uma anterior) já declara
+    // seria "não pode redeclarar": essa célula entra só pelos nomes livres.
+    if (nomes.some((n) => proprios.has(n) || declarados.has(n))) {
+      soNomes.push(...nomes.filter((n) => !proprios.has(n) && !declarados.has(n)));
+      continue;
+    }
+    incluidas.push(c.conteudo);
+    for (const n of nomes) declarados.add(n);
+  }
+  return { incluidas, soNomes, declaradosNoCodigo: declarados };
+}
+
+/**
+ * O código das OUTRAS células JS/TS, como um arquivo de script: é dele que o
+ * TypeScript infere o tipo de `users = patients.map(...)`. O relato: *"criei
+ * um const users do patients e na celula seguida não reconheceu o tipo do u"*.
+ *
+ * `import` vira declaração (`declare var dayjs: any`) e `export` sai: com
+ * qualquer um dos dois o arquivo viraria MÓDULO, e o que ele declara deixaria
+ * de ser global para a célula em foco.
+ */
+export function codigoDasOutrasCelulas(nb: Notebook, idEmFoco: string | null): string {
+  const pedacos = divisao(nb, idEmFoco).incluidas.map((codigo) =>
+    codigo
+      .split('\n')
+      .map((linha) => {
+        if (/^import\s/.test(linha)) {
+          return nomesDeclarados(linha).map((n) => `declare var ${n}: any;`).join(' ');
+        }
+        return linha.replace(/^export\s+(default\s+)?/, '');
+      })
+      .join('\n')
+  );
+  return `${pedacos.join('\n;\n')}\n`;
+}
+
+export function declaracoesDoNotebook(nb: Notebook, idEmFoco: string | null): string {
+  const emFoco = nb.celulas.find((c) => c.id === idEmFoco);
+  const { soNomes, declaradosNoCodigo } = divisao(nb, idEmFoco);
+  // O que a célula em foco declara, e o que o código das outras já declara.
+  const proprios = new Set([
+    ...(emFoco?.tipo === 'codigo' ? nomesDeclarados(emFoco.conteudo) : []),
+    ...declaradosNoCodigo,
+  ]);
   const linhas = [...AMBIENTE];
   const ja = new Set<string>();
   const declarar = (nome: string, tipo: string): void => {
@@ -150,10 +207,7 @@ export function declaracoesDoNotebook(nb: Notebook, idEmFoco: string | null): st
   for (const c of nb.celulas) {
     if (c.tipo === 'sql' && c.nome !== null) declarar(c.nome, tipoDoResultado(c.saidas));
   }
-  for (const c of nb.celulas) {
-    const js = c.linguagem === 'javascript' || c.linguagem === 'typescript';
-    if (c.tipo !== 'codigo' || c.id === idEmFoco || !js) continue;
-    for (const nome of nomesDeclarados(c.conteudo)) declarar(nome, 'any');
-  }
+  // As células que não entram como código (conflito de nome): só os nomes.
+  for (const nome of soNomes) declarar(nome, 'any');
   return `${linhas.join('\n')}\n`;
 }

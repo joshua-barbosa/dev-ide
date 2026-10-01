@@ -10,10 +10,12 @@
 // O Monaco vem por `import()`: ele não pode entrar no primeiro desenho da IDE
 // (spec 101), e o notebook só precisa dele quando uma célula está em edição.
 import { useEffect, useMemo } from 'react';
-import { declaracoesDoNotebook } from '../../shared/notebook/declaracoes';
+import { codigoDasOutrasCelulas, declaracoesDoNotebook } from '../../shared/notebook/declaracoes';
 import type { Notebook } from '../../shared/notebook/modelo';
 
 const CAMINHO = 'file:///braytech-notebook.d.ts';
+/** O código das outras células: um script, para o tipo de `users = …map(…)` ser inferido. */
+const CAMINHO_DO_CODIGO = 'file:///braytech-notebook-celulas.ts';
 
 /**
  * O que não é erro numa célula: `await` no topo (a célula roda numa função
@@ -27,9 +29,13 @@ export function useDeclaracoesNoEditor(nb: Notebook | null, idEmFoco: string | n
     () => (nb === null || idEmFoco === null ? null : declaracoesDoNotebook(nb, idEmFoco)),
     [nb, idEmFoco]
   );
+  const codigo = useMemo(
+    () => (nb === null || idEmFoco === null ? null : codigoDasOutrasCelulas(nb, idEmFoco)),
+    [nb, idEmFoco]
+  );
 
   useEffect(() => {
-    if (texto === null) return;
+    if (texto === null || codigo === null) return;
     let vigente = true;
     const descartes: { dispose(): void }[] = [];
     void import('monaco-editor').then((monaco) => {
@@ -41,11 +47,12 @@ export function useDeclaracoesNoEditor(nb: Notebook | null, idEmFoco: string | n
           padroes.setDiagnosticsOptions({ ...atuais, diagnosticCodesToIgnore: ignorados });
         }
         descartes.push(padroes.addExtraLib(texto, CAMINHO));
+        descartes.push(padroes.addExtraLib(codigo, CAMINHO_DO_CODIGO));
       }
     });
     return () => {
       vigente = false;
       for (const d of descartes) d.dispose();
     };
-  }, [texto]);
+  }, [texto, codigo]);
 }

@@ -132,6 +132,130 @@ function __mostrar($exec, $valor) {
     __enviar(['tipo' => 'resultado', 'exec' => $exec, 'saida' => $saida]);
 }
 
+// ---- A cascata entre linguagens (spec 113) ----
+// O motor pede "o que mudou?" (exportar) e entrega o que outra linguagem mudou
+// (importar). Só DADO passa: escalares, arrays, stdClass e datas. Uma lista
+// de arrays associativos viaja como tabela (colunas + linhas). A impressão
+// digital (sha1 do JSON) diz o que mudou, inclusive por dentro.
+const __TABELA = '__braytech_tabela__';
+$__impressoes = [];
+
+function __dado($v, $nivel = 0) {
+    if ($nivel > 64) {
+        throw new \InvalidArgumentException('fundo demais');
+    }
+    if ($v === null || is_bool($v) || is_int($v) || is_string($v)) {
+        return $v;
+    }
+    if (is_float($v)) {
+        return is_finite($v) ? $v : null;
+    }
+    if ($v instanceof \DateTimeInterface) {
+        return $v->format(DATE_ATOM);
+    }
+    if (is_array($v)) {
+        $r = [];
+        foreach ($v as $k => $x) {
+            $r[$k] = __dado($x, $nivel + 1);
+        }
+        return $r;
+    }
+    if ($v instanceof \stdClass) {
+        $r = new \stdClass();
+        foreach (get_object_vars($v) as $k => $x) {
+            $r->$k = __dado($x, $nivel + 1);
+        }
+        return $r;
+    }
+    throw new \InvalidArgumentException('objeto');
+}
+
+function __eh_registro($x) {
+    return (is_array($x) && $x !== [] && !array_is_list($x)) || $x instanceof \stdClass;
+}
+
+function __exportavel($v) {
+    if (is_array($v) && $v !== [] && array_is_list($v) && count(array_filter($v, '__eh_registro')) === count($v)) {
+        $colunas = [];
+        foreach ($v as $linha) {
+            foreach (array_keys((array) $linha) as $k) {
+                if (!in_array((string) $k, $colunas, true)) {
+                    $colunas[] = (string) $k;
+                }
+            }
+        }
+        $linhas = [];
+        foreach ($v as $linha) {
+            $linha = (array) $linha;
+            $linhas[] = array_map(fn($c) => __dado($linha[$c] ?? null), $colunas);
+        }
+        return [__TABELA => true, 'colunas' => $colunas, 'linhas' => $linhas];
+    }
+    return __dado($v);
+}
+
+function __serializado($nome) {
+    if (!array_key_exists($nome, $GLOBALS)) {
+        return null;
+    }
+    try {
+        $json = json_encode(__exportavel($GLOBALS[$nome]),
+            JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
+        return $json;
+    } catch (\Throwable $e) {
+        return null;
+    }
+}
+
+function __lembrar($nome) {
+    $s = __serializado($nome);
+    if ($s !== null) {
+        $GLOBALS['__impressoes'][$nome] = sha1($s);
+    }
+}
+
+function __exportar($pedido) {
+    $partes = [];
+    foreach (array_keys($GLOBALS) as $nome) {
+        if (in_array($nome, $GLOBALS['__iniciais'], true) || str_starts_with((string) $nome, '_')) {
+            continue;
+        }
+        $s = __serializado($nome);
+        if ($s === null) {
+            continue;
+        }
+        $h = sha1($s);
+        if (($GLOBALS['__impressoes'][$nome] ?? null) === $h) {
+            continue;
+        }
+        $GLOBALS['__impressoes'][$nome] = $h;
+        $partes[] = json_encode((string) $nome) . ':' . $s;
+    }
+    // Montado à mão: o valor já é JSON, e serializar de novo dobraria o custo.
+    fwrite(STDOUT, $GLOBALS['__marca'] . '{"tipo":"exportado","pedido":' . (int) $pedido
+        . ',"valores":{' . implode(',', $partes) . '}}' . "\n");
+    fflush(STDOUT);
+}
+
+function __de_tabela($v) {
+    if (is_array($v) && ($v[__TABELA] ?? null) === true) {
+        $cols = $v['colunas'];
+        return array_map(fn($l) => array_combine($cols, $l), $v['linhas']);
+    }
+    return $v;
+}
+
+function __importar($pedido, $valores) {
+    foreach ($valores as $nome => $v) {
+        $GLOBALS[$nome] = __de_tabela($v);
+        __lembrar($nome);
+    }
+    __enviar(['tipo' => 'importado', 'pedido' => $pedido]);
+}
+
+// O que já existe antes da primeira célula não é do usuário.
+$__iniciais = array_keys($GLOBALS);
+$__iniciais[] = '__iniciais';
 __enviar(['tipo' => 'pronto', 'versao' => PHP_VERSION, 'executavel' => PHP_BINARY, 'pandas' => false]);
 
 $__definindo = null;
@@ -180,6 +304,10 @@ while (($__linha = fgets(STDIN)) !== false) {
         }
         __enviar(['tipo' => 'valores', 'pedido' => $__p['pedido'] ?? null,
             'valores' => (object) $__valores, 'faltando' => $__faltando, 'erros' => (object) []]);
+    } elseif ($__p['tipo'] === 'exportar') {
+        __exportar($__p['pedido'] ?? 0);
+    } elseif ($__p['tipo'] === 'importar') {
+        __importar($__p['pedido'] ?? null, is_array($__p['valores'] ?? null) ? $__p['valores'] : []);
     } elseif ($__p['tipo'] === 'definir-inicio') {
         $__definindo = ['nome' => $__p['nome'], 'colunas' => $__p['colunas'], 'linhas' => []];
     } elseif ($__p['tipo'] === 'definir-lote' && $__definindo !== null) {
@@ -187,6 +315,8 @@ while (($__linha = fgets(STDIN)) !== false) {
     } elseif ($__p['tipo'] === 'definir-fim' && $__definindo !== null) {
         $__cols = $__definindo['colunas'];
         $GLOBALS[$__definindo['nome']] = array_map(fn($l) => array_combine($__cols, $l), $__definindo['linhas']);
+        // Chegou igual em todas as linguagens: não é "mudança" a exportar.
+        __lembrar($__definindo['nome']);
         __enviar(['tipo' => 'definido', 'nome' => $__definindo['nome'], 'linhas' => count($__definindo['linhas']), 'forma' => 'array']);
         $__definindo = null;
     }

@@ -1,5 +1,12 @@
 # Mudanças
 
+## 0.1.14
+
+- **Notebook JS/TS: o tipo do que outra célula criou.** `const users =
+  patients.map(…)` numa célula, e na seguinte `users.forEach((u) => u.)`
+  sugere os campos que o `map` montou. Antes, o que vinha de outra célula era
+  conhecido só pelo nome, sem tipo.
+
 ## 0.1.13
 
 - **Notebook JS/TS: as variáveis de fora da célula.** O resultado de uma

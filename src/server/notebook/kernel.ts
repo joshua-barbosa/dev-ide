@@ -224,6 +224,33 @@ export class Kernel {
   }
 
   /**
+   * As variáveis de DADO que mudaram desde a última vez (spec 113, a cascata).
+   * Valores em JSON; tabela como `{ __braytech_tabela__, colunas, linhas }`.
+   */
+  exportar(): Promise<Readonly<Record<string, unknown>>> {
+    return this.pedir({ tipo: 'exportar' }, 'exportado').then((m) => (m.valores ?? {}) as Record<string, unknown>);
+  }
+
+  /** Entrega valores vindos de outra linguagem (spec 113). */
+  importar(valores: Readonly<Record<string, unknown>>): Promise<void> {
+    return this.pedir({ tipo: 'importar', valores }, 'importado').then(() => undefined);
+  }
+
+  /** Um pedido com número, e a resposta do tipo esperado (ou o motivo da morte). */
+  private pedir(dados: Record<string, unknown>, resposta: string): Promise<Mensagem> {
+    if (this.morreu !== null) return Promise.reject(new Error(this.morreu));
+    const pedido = this.proximoPedido++;
+    return new Promise((resolver, recusar) => {
+      this.esperandoValores.set(pedido, (m) => {
+        this.esperandoValores.delete(pedido);
+        if (m.tipo === resposta) resolver(m);
+        else recusar(new Error(String(m.mensagem ?? 'O kernel parou antes de responder.')));
+      });
+      this.escrever({ ...dados, pedido });
+    });
+  }
+
+  /**
    * Interrompe a célula da frente, SEM perder as variáveis.
    *
    * Linux/Mac: SIGINT de verdade — acorda até um `sleep`. Windows: o Node só
@@ -294,7 +321,7 @@ export class Kernel {
       this.esperandoDefinicao?.(m);
       return;
     }
-    if (m.tipo === 'valores') {
+    if (m.tipo === 'valores' || m.tipo === 'exportado' || m.tipo === 'importado') {
       if (typeof m.pedido === 'number') this.esperandoValores.get(m.pedido)?.(m);
       return;
     }
