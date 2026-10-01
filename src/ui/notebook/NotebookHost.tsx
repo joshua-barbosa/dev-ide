@@ -18,6 +18,8 @@ import { Api } from '../api';
 import { CelulaDoNotebook } from './CelulaDoNotebook';
 import { useKernelDoNotebook } from './useKernelDoNotebook';
 import { useExecucaoDoNotebook } from './useExecucaoDoNotebook';
+import { useCodebase } from '../sql/useCodebase';
+import { escolherAmbiente } from './escolherAmbiente';
 import type { Tab } from '../../shared/tabs';
 import type { NomeDoTema } from '../../shared/temas';
 import type { Vinculo } from '../../shared/sql/vinculo';
@@ -46,8 +48,6 @@ export interface NotebookHostProps {
   ): Promise<string | null>;
   pedirTexto(titulo: string, placeholder: string, inicial?: string): Promise<string | null>;
 }
-
-const OUTRO_INTERPRETADOR = '\u0000outro';
 
 const ROTULOS: Record<Kernel, string> = {
   python: 'Python', javascript: 'JavaScript', typescript: 'TypeScript', php: 'PHP',
@@ -95,6 +95,13 @@ export function NotebookHost({
   const escrito = useRef(inicial.nb === null ? conteudo : escreverNotebook(inicial.nb));
   const atual = useRef(nb);
   atual.current = nb;
+
+  // O autocomplete de SQL: o catálogo do banco da célula SQL em foco (a
+  // conexão dela, ou a do notebook). Sem isto ele digitava tabela e coluna
+  // de cabeça — o caderno já completava, o notebook não.
+  const [celulaEmFoco, setCelulaEmFoco] = useState<string | null>(null);
+  const focada = nb?.celulas.find((c) => c.id === celulaEmFoco);
+  useCodebase(focada?.tipo === 'sql' ? (focada.conexao ?? nb?.conexao ?? null) : (nb?.conexao ?? null));
 
   // O arquivo mudou por fora (recarregado do disco): relê.
   useEffect(() => {
@@ -152,20 +159,18 @@ export function NotebookHost({
   };
 
   const escolherInterpretador = async (): Promise<void> => {
-    // JS/TS roda no Node do próprio motor: não há o que escolher, e o ambiente
-    // é o `node_modules` da pasta do notebook.
-    if (nb?.kernel === 'javascript' || nb?.kernel === 'typescript') return;
-    const candidatos = kernel.estado?.candidatos ?? [];
-    const escolhido = await escolherOpcao('Com qual Python o notebook roda?', [
-      ...candidatos.map((c) => ({ valor: c.caminho, rotulo: c.rotulo, detalhe: c.caminho })),
-      { valor: OUTRO_INTERPRETADOR, rotulo: 'Outro interpretador…', detalhe: 'o caminho de um python' },
-    ]);
-    if (escolhido === null) return;
-    const interpretador = escolhido === OUTRO_INTERPRETADOR
-      ? await pedirTexto('Caminho do interpretador', '/caminho/para/.venv/bin/python')
-      : escolhido;
-    if (interpretador !== null && interpretador.trim() !== '') {
-      await kernel.trocarInterpretador(interpretador.trim());
+    if (nb === null) return;
+    try {
+      const escolha = await escolherAmbiente(
+        nb.kernel,
+        await kernel.ambiente(),
+        { interpretador: kernel.estado?.interpretador.caminho, pacotes: kernel.estado?.pacotes?.caminho },
+        escolherOpcao,
+        pedirTexto
+      );
+      if (escolha !== null) await kernel.trocarAmbiente(escolha);
+    } catch (e) {
+      setAvisoDeExportacao(`Não deu para escolher: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -249,8 +254,12 @@ export function NotebookHost({
           data-estado-do-kernel={
             kernel.subindo ? 'subindo' : kernel.estado === null ? 'parado' : execucao.rodando !== null ? 'ocupado' : 'ocioso'
           }
-          onClick={() => void (kernel.estado === null ? kernel.garantir() : escolherInterpretador())}
-          title={kernel.estado?.executavel ?? 'O kernel sobe na primeira célula que rodar'}
+          onClick={() => void escolherInterpretador()}
+          title={
+            kernel.estado === null
+              ? 'O kernel sobe na primeira célula que rodar. Clique para escolher com o quê ele roda.'
+              : `${kernel.estado.executavel}${kernel.estado.pacotes === null ? '' : `\nPacotes: ${kernel.estado.pacotes.caminho}`}\nClique para trocar.`
+          }
           sx={{
             display: 'inline-flex', alignItems: 'center', gap: 0.5, border: 0,
             bgcolor: 'transparent', cursor: 'pointer', fontSize: 12, color: 'text.secondary',
@@ -267,7 +276,8 @@ export function NotebookHost({
             ? 'subindo…'
             : kernel.estado === null
               ? 'kernel parado'
-              : `${kernel.estado.interpretador.rotulo} · ${kernel.estado.versao}${kernel.estado.pandas ? ' · pandas' : ''}`}
+              : `${kernel.estado.interpretador.rotulo} · ${kernel.estado.versao}${kernel.estado.pandas ? ' · pandas' : ''}` +
+                (kernel.estado.pacotes === null ? '' : ` · pacotes: ${kernel.estado.pacotes.rotulo}`)}
         </Box>
         <Box
           component="button"
@@ -355,6 +365,7 @@ export function NotebookHost({
               onLimparSaida={() => atualizar((x) => limparSaidas(x, celula.id))}
               onMover={(d) => atualizar((x) => moverCelula(x, celula.id, i + d))}
               onRemover={() => atualizar((x) => removerCelula(x, celula.id))}
+              onFocar={() => setCelulaEmFoco(celula.id)}
             />
             {linhaDeAdicionar(i + 1)}
           </Box>

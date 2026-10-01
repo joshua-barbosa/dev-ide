@@ -16,7 +16,7 @@ import type { Plataforma } from '../../shared/plataforma';
 
 export interface Interpretador {
   readonly caminho: string;
-  readonly origem: 'venv' | 'sistema' | 'escolhido';
+  readonly origem: 'venv' | 'sistema' | 'escolhido' | 'embutido' | 'nvm';
   /** O que a barra do notebook mostra: `.venv (projeto)`, `a/.venv`, `sistema`. */
   readonly rotulo: string;
 }

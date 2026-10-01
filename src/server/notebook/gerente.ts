@@ -5,8 +5,10 @@
 // encerra todos — um Python órfão segurando um DataFrame de 2 GB não é algo que
 // se deixa para trás.
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { ambientePhp, candidatosDePython, type Interpretador } from './ambiente';
+import { candidatosDeNode, pastasDePacotes, type PastaDePacotes } from './ambiente-node';
 import { iniciarKernelJs, iniciarKernelPhp, iniciarKernelPython } from './kernel-python';
 import { prepararCelulaJs } from './celula-js';
 import type { Kernel } from './kernel';
@@ -24,7 +26,36 @@ export interface SessaoDeKernel {
   /** PHP: há um Laravel no projeto? E ele foi ligado neste kernel? */
   readonly laravelDisponivel: boolean;
   readonly laravel: boolean;
+  /** JS/TS: de onde vêm os `node_modules`, e as outras pastas que dá para escolher. */
+  readonly pacotes: PastaDePacotes | null;
+  readonly candidatosDePacotes: readonly PastaDePacotes[];
 }
+
+/** O que dá para escolher ANTES de subir: a barra pergunta sem subir um kernel. */
+export interface AmbienteDoKernel {
+  readonly candidatos: readonly Interpretador[];
+  readonly candidatosDePacotes: readonly PastaDePacotes[];
+}
+
+/** O disco e o sistema, por fora — para testar sem eles. */
+export interface SistemaDoKernel {
+  readonly subpastas: (caminho: string) => readonly string[];
+  readonly casa: string;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly execPath: string;
+}
+
+function subpastasDoDisco(caminho: string): readonly string[] {
+  try {
+    return fs.readdirSync(caminho, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  } catch {
+    return [];
+  }
+}
+
+const SISTEMA_REAL: SistemaDoKernel = {
+  subpastas: subpastasDoDisco, casa: os.homedir(), env: process.env, execPath: process.execPath,
+};
 
 export interface PedidoDeKernel {
   readonly caminho: string;
@@ -39,6 +70,8 @@ export interface PedidoDeKernel {
    * somente-leitura das conexões da IDE. Decisão dele (spec 112).
    */
   readonly laravel?: boolean;
+  /** JS/TS: a pasta dos `node_modules`; ausente = a mais próxima do notebook. */
+  readonly pacotes?: string;
 }
 
 export interface IniciadoresDeKernel {
@@ -57,8 +90,26 @@ export class GerenteDeKernels {
     private readonly existe: (caminho: string) => boolean = fs.existsSync,
     private readonly iniciar: IniciadoresDeKernel = {
       python: iniciarKernelPython, js: iniciarKernelJs, php: iniciarKernelPhp,
-    }
+    },
+    private readonly sistema: SistemaDoKernel = SISTEMA_REAL
   ) {}
+
+  /** Os interpretadores e as pastas de pacotes, sem subir nada. */
+  ambiente(pedido: Pick<PedidoDeKernel, 'caminho' | 'linguagem' | 'raiz'>): AmbienteDoKernel {
+    const pasta = path.dirname(pedido.caminho);
+    if (pedido.linguagem === 'python') {
+      return { candidatos: candidatosDePython(pasta, pedido.raiz, this.plataforma, this.existe), candidatosDePacotes: [] };
+    }
+    if (pedido.linguagem === 'php') {
+      return { candidatos: [{ caminho: 'php', origem: 'sistema', rotulo: 'php do sistema (PATH)' }], candidatosDePacotes: [] };
+    }
+    return {
+      candidatos: candidatosDeNode(
+        this.plataforma, this.sistema.execPath, this.sistema.casa, this.sistema.env, this.existe, this.sistema.subpastas
+      ),
+      candidatosDePacotes: pastasDePacotes(pasta, pedido.raiz, this.plataforma, this.existe, this.sistema.subpastas),
+    };
+  }
 
   sessao(caminho: string): SessaoDeKernel | undefined {
     const s = this.sessoes.get(caminho);
@@ -71,7 +122,11 @@ export class GerenteDeKernels {
     const mesmoInterpretador =
       pedido.interpretador === undefined || atual?.interpretador.caminho === pedido.interpretador;
     const mesmoLaravel = pedido.laravel === undefined || atual?.laravel === pedido.laravel;
-    if (atual !== undefined && atual.linguagem === pedido.linguagem && mesmoInterpretador && mesmoLaravel) {
+    const mesmosPacotes = pedido.pacotes === undefined || atual?.pacotes?.caminho === pedido.pacotes;
+    if (
+      atual !== undefined && atual.linguagem === pedido.linguagem &&
+      mesmoInterpretador && mesmoLaravel && mesmosPacotes
+    ) {
       return atual;
     }
     if (atual !== undefined) this.encerrar(pedido.caminho);
@@ -94,6 +149,7 @@ export class GerenteDeKernels {
       raiz: s.raiz,
       interpretador: s.interpretador.caminho,
       laravel: s.laravel,
+      ...(s.pacotes === null ? {} : { pacotes: s.pacotes.caminho }),
     });
   }
 
@@ -108,7 +164,10 @@ export class GerenteDeKernels {
 
   private async subir(pedido: PedidoDeKernel): Promise<SessaoDeKernel> {
     const pasta = path.dirname(pedido.caminho);
-    const base = { linguagem: pedido.linguagem, raiz: pedido.raiz, laravelDisponivel: false, laravel: false };
+    const base = {
+      linguagem: pedido.linguagem, raiz: pedido.raiz, laravelDisponivel: false, laravel: false,
+      pacotes: null, candidatosDePacotes: [],
+    };
     const escolhido = (caminho: string): Interpretador => ({ caminho, origem: 'escolhido', rotulo: caminho });
 
     let sessao: SessaoDeKernel;
@@ -137,11 +196,18 @@ export class GerenteDeKernels {
       };
     } else {
       const linguagem = pedido.linguagem;
-      const kernel = await this.iniciar.js(pasta, this.plataforma);
-      // O `node_modules` vale pela pasta do notebook (o `require` resolve de lá).
-      const interpretador: Interpretador = { caminho: kernel.info.executavel, origem: 'sistema', rotulo: 'Node' };
+      const { candidatos, candidatosDePacotes } = this.ambiente(pedido);
+      const interpretador = pedido.interpretador === undefined
+        ? candidatos[0]
+        : candidatos.find((c) => c.caminho === pedido.interpretador) ?? escolhido(pedido.interpretador);
+      const pacotes = pedido.pacotes === undefined
+        ? candidatosDePacotes[0]
+        : candidatosDePacotes.find((c) => c.caminho === pedido.pacotes) ?? { caminho: pedido.pacotes, rotulo: pedido.pacotes };
+      const kernel = await this.iniciar.js(
+        pacotes.caminho, this.plataforma, interpretador.origem === 'embutido' ? null : interpretador.caminho
+      );
       sessao = {
-        ...base, kernel, interpretador, candidatos: [interpretador],
+        ...base, kernel, interpretador, candidatos, pacotes, candidatosDePacotes,
         preparar: (c) => prepararCelulaJs(c, linguagem),
       };
     }

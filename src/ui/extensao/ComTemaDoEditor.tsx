@@ -13,6 +13,11 @@ import { ThemeProvider } from '@mui/material/styles';
 import { ligarAreaDeTransferencia } from './areaDeTransferencia';
 import { chamarHost, pedirAoHost } from './ponte';
 import { useTemaDoEditor } from './tema';
+import { ligarWorkersDoMonaco } from './workersDoMonaco';
+
+// Antes de qualquer editor existir: é na criação do primeiro que o Monaco pede
+// um worker. Ver `workersDoMonaco.ts`.
+ligarWorkersDoMonaco();
 
 /** A área do EDITOR, quando o navegador nega a dele. Ver `ponteDoHost.ts`. */
 const RESERVA = {

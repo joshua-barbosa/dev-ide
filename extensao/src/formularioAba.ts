@@ -13,6 +13,7 @@
 // muda é só o quadro em volta.
 
 import * as vscode from 'vscode';
+import { chaveDaAba, tituloDaAba } from './chave-da-aba';
 import { htmlDaWebview, PonteDoHost, type DepsDoPainel } from './ponteDoHost';
 
 /** Uma aba por alvo: reabrir a mesma conexão traz de volta o que já está lá. */
@@ -154,10 +155,11 @@ export function abrirAbaDaIde(
     return;
   }
 
+  // A identidade é o ALVO: a mesma tabela em dois databases são duas abas.
   aba(
     deps,
-    `${tipo}:${titulo}`,
-    titulo,
+    chaveDaAba(tipo, titulo, dados),
+    tituloDaAba(tipo, titulo, dados),
     'aba.js',
     { ...comum, dados },
     tipo === 'resultado' ? dados : undefined

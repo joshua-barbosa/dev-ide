@@ -13,6 +13,7 @@
 //  - `hostChamada` → o que só o editor sabe fazer, respondido com `hostResposta`;
 //  - o resto       → ABRIR coisas, sem resposta.
 
+import { politicaDaWebview } from './politica-da-webview';
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import { uriRemota } from './arquivosRemotos';
@@ -620,7 +621,7 @@ export function htmlDaWebview(
   return `<!doctype html>
 <html lang="pt-BR"><head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${web.cspSource} data:; style-src ${web.cspSource} 'unsafe-inline'; font-src ${web.cspSource} data:; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="${politicaDaWebview(web.cspSource, `'nonce-${nonce}'`)}">
 <style>
   html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
   #raiz { height: 100%; display: flex; flex-direction: column; }
@@ -629,7 +630,11 @@ export function htmlDaWebview(
 ${estilo}
 </head><body>
 <div id="raiz"></div>
-<script nonce="${nonce}">window.BRAYTECH=${JSON.stringify(config)};</script>
+<script nonce="${nonce}">window.BRAYTECH=${JSON.stringify({
+    ...config,
+    // De onde a página busca os workers do Monaco (\`workersDoMonaco.ts\`).
+    recursos: web.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'webview', 'assets')).toString() + '/',
+  })};</script>
 <script nonce="${nonce}" src="${script.toString()}"></script>
 </body></html>`;
 }

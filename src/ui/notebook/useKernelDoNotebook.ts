@@ -10,7 +10,7 @@
 // A execução é por consulta (ver `routes/notebook.ts`): a célula entra na fila
 // e a tela pergunta o que saiu, repintando a saída enquanto a célula roda.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiDoNotebook, type EstadoDoKernel } from '../api-notebook';
+import { ApiDoNotebook, type AmbienteDoKernel, type EstadoDoKernel } from '../api-notebook';
 import type { Kernel, Saida } from '../../shared/notebook/modelo';
 
 /** De quanto em quanto tempo a tela pergunta o que a célula escreveu. */
@@ -29,7 +29,10 @@ export interface ControleDoKernel {
   ): Promise<{ readonly saidas: readonly Saida[]; readonly ok: boolean }>;
   interromper(): Promise<void>;
   reiniciar(): Promise<void>;
-  trocarInterpretador(caminho: string): Promise<void>;
+  /** O que dá para escolher — do kernel de pé, ou perguntado sem subir nenhum. */
+  ambiente(): Promise<AmbienteDoKernel>;
+  /** Sobe (ou troca) o kernel com o interpretador e/ou a pasta de pacotes escolhidos. */
+  trocarAmbiente(escolha: { readonly interpretador?: string; readonly pacotes?: string }): Promise<void>;
   /** PHP: liga ou desliga o Laravel — sobe OUTRO kernel, as variáveis se perdem. */
   trocarLaravel(ligado: boolean): Promise<void>;
 }
@@ -74,7 +77,7 @@ export function useKernelDoNotebook(
 
   /** Devolve o MOTIVO quando falha — o estado `erro` só chega no próximo render. */
   const subir = useCallback(
-    async (interpretador?: string, comLaravel: boolean = laravel): Promise<string | null> => {
+    async (interpretador?: string, comLaravel: boolean = laravel, pacotes?: string): Promise<string | null> => {
       if (caminho === null) {
         const motivo = 'Salve o notebook antes de rodar: o kernel é dele, pelo caminho.';
         setErro(motivo);
@@ -82,7 +85,7 @@ export function useKernelDoNotebook(
       }
       setSubindo(true);
       try {
-        const e = await ApiDoNotebook.iniciar({ caminho, linguagem, raiz, interpretador, laravel: comLaravel });
+        const e = await ApiDoNotebook.iniciar({ caminho, linguagem, raiz, interpretador, laravel: comLaravel, pacotes });
         setEstado(e);
         setErro(null);
         return null;
@@ -141,11 +144,24 @@ export function useKernelDoNotebook(
     }
   }, [caminho]);
 
-  const trocarInterpretador = useCallback(
-    async (interpretador: string) => {
-      await subir(interpretador);
+  const ambiente = useCallback(async (): Promise<AmbienteDoKernel> => {
+    const e = vivo.current;
+    if (e !== null) return { candidatos: e.candidatos, candidatosDePacotes: e.candidatosDePacotes ?? [] };
+    if (caminho === null) throw new Error('Salve o notebook antes: o kernel é dele, pelo caminho.');
+    return ApiDoNotebook.ambiente(caminho, linguagem, raiz);
+  }, [caminho, linguagem, raiz]);
+
+  const trocarAmbiente = useCallback(
+    async (escolha: { readonly interpretador?: string; readonly pacotes?: string }) => {
+      // O que ele não trocou fica como está: trocar a pasta mantém o Node.
+      const e = vivo.current;
+      await subir(
+        escolha.interpretador ?? e?.interpretador.caminho,
+        laravel,
+        escolha.pacotes ?? e?.pacotes?.caminho
+      );
     },
-    [subir]
+    [subir, laravel]
   );
 
   const trocarLaravel = useCallback(
@@ -157,6 +173,6 @@ export function useKernelDoNotebook(
   );
 
   return {
-    estado, subindo, erro, garantir, executar, interromper, reiniciar, trocarInterpretador, trocarLaravel,
+    estado, subindo, erro, garantir, executar, interromper, reiniciar, ambiente, trocarAmbiente, trocarLaravel,
   };
 }

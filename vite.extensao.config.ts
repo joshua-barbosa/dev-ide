@@ -27,6 +27,14 @@ const alvos = {
     nome: 'BraytechDiagrama',
     arquivo: 'diagrama.js',
   },
+  // O worker BÁSICO do Monaco (sugestão por palavra, links). Os das linguagens
+  // (ts, json, css, html) já saem dos pacotes acima; este ninguém importa na
+  // extensão, e sem ele o Monaco não tem a quem pedir. Ver \`workersDoMonaco.ts\`.
+  editorWorker: {
+    entrada: '../../node_modules/monaco-editor/esm/vs/editor/editor.worker.js',
+    nome: 'BraytechEditorWorker',
+    arquivo: 'assets/editor.worker.js',
+  },
 } as const;
 
 const alvo = alvos[(process.env.BRAYTECH_ALVO ?? 'formulario') as keyof typeof alvos];
@@ -35,6 +43,13 @@ export default defineConfig({
   root: 'src/ui',
   plugins: [react()],
   define: { 'process.env.NODE_ENV': '"production"' },
+  // Workers com NOME FIXO (\`assets/ts.worker.js\`), sem hash: a página os
+  // acha pelo nome (\`workersDoMonaco.ts\`). O endereço que o Vite monta para
+  // eles depende de \`import.meta.url\`, que no formato IIFE não existe.
+  worker: {
+    format: 'iife',
+    rollupOptions: { output: { entryFileNames: 'assets/[name].js' } },
+  },
   build: {
     outDir: '../../extensao/webview',
     // Só o primeiro build limpa: o segundo apagaria o pacote do primeiro.

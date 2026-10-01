@@ -9,6 +9,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { iniciarKernelJs, iniciarKernelPhp } from '../notebook/kernel-python';
+import { GerenteDeKernels } from '../notebook/gerente';
+import { execFileSync } from 'node:child_process';
 import { prepararCelulaJs } from '../notebook/celula-js';
 import type { Execucao, Kernel } from '../notebook/kernel';
 import { plataformaAtual } from '../../shared/plataforma';
@@ -62,12 +64,59 @@ test('JS: o require acha o node_modules do PROJETO', async () => {
   assert.equal(textoDe(await ate(rodar("saudar('Ana')"))), "'olá, Ana'\n");
 });
 
+test('JS: com dois projetos no workspace, o require vem da pasta ESCOLHIDA', async () => {
+  // Um frontend e um backend lado a lado, cada um com o seu node_modules.
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-ide-nb-ws-'));
+  for (const [proj, frase] of [['frontend', 'do front'], ['backend', 'do back']]) {
+    fs.mkdirSync(path.join(ws, proj, 'node_modules', 'origem'), { recursive: true });
+    fs.writeFileSync(path.join(ws, proj, 'package.json'), '{}');
+    fs.writeFileSync(path.join(ws, proj, 'node_modules', 'origem', 'index.js'), `module.exports = '${frase}';`);
+  }
+  const gerente = new GerenteDeKernels(plataformaAtual());
+  after(() => gerente.encerrarTodos());
+  const caminho = path.join(ws, 'analise.brnb');
+  const amb = gerente.ambiente({ caminho, linguagem: 'javascript', raiz: ws });
+  assert.deepEqual(amb.candidatosDePacotes.map((p) => p.rotulo).sort(), ['backend', 'frontend']);
+
+  const s = await gerente.garantir({ caminho, linguagem: 'javascript', raiz: ws, pacotes: path.join(ws, 'backend') });
+  assert.equal(s.pacotes?.rotulo, 'backend');
+  assert.equal(textoDe(await ate(s.kernel.executar(s.preparar("require('origem')")))), "'do back'\n");
+
+  // Trocar a pasta sobe OUTRO kernel, com o require de lá.
+  const t = await gerente.garantir({ caminho, linguagem: 'javascript', raiz: ws, pacotes: path.join(ws, 'frontend') });
+  assert.equal(textoDe(await ate(t.kernel.executar(t.preparar("require('origem')")))), "'do front'\n");
+});
+
+test('JS: um Node escolhido (o do PATH) roda o kernel', async (t) => {
+  let versao: string;
+  try {
+    versao = execFileSync('node', ['--version'], { encoding: 'utf8' }).trim();
+  } catch {
+    t.skip('sem node no PATH');
+    return;
+  }
+  const k = await iniciarKernelJs(os.tmpdir(), plataformaAtual(), 'node');
+  kernels.push(k);
+  assert.equal(textoDe(await ate(k.executar(prepararCelulaJs('process.version', 'javascript')))), `'${versao}'\n`);
+});
+
 test('JS: console.log, console.error e erro com a linha da célula', async () => {
   const rodar = await js(os.tmpdir());
   const e = await ate(rodar('console.log("oi")\nconsole.error("ops")\nnull.x'));
   assert.ok(textoDe(e).includes('oi'));
   assert.ok(e.saidas.some((s) => s.tipo === 'texto' && s.fluxo === 'erro' && s.texto.includes('ops')));
   assert.ok(textoDe(e).includes('TypeError'));
+});
+
+test('JS: o map que só imprime não despeja uma lista de undefined', async () => {
+  // Ele escreveu `ids.map(i => console.log(...))`: as linhas saíram, e depois
+  // um `[undefined, undefined, …]` — o valor da última expressão. Uma lista
+  // em que TUDO é undefined não diz nada; qualquer outra continua aparecendo.
+  const rodar = await js(os.tmpdir());
+  const e = await ate(rodar("[1, 2].map((i) => console.log(`ID: ${i}`));"));
+  assert.equal(textoDe(e), 'ID: 1\nID: 2\n');
+  assert.equal(textoDe(await ate(rodar('[1, undefined]'))), '[ 1, undefined ]\n');
+  assert.equal(textoDe(await ate(rodar('[]'))), '[]\n');
 });
 
 test('JS: array de objetos vira tabela; TypeScript roda', async () => {

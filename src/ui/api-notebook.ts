@@ -14,18 +14,45 @@ export interface EstadoDoKernel {
   readonly versao: string;
   readonly executavel: string;
   readonly pandas: boolean;
-  readonly interpretador: { readonly caminho: string; readonly origem: string; readonly rotulo: string };
-  readonly candidatos: readonly { readonly caminho: string; readonly origem: string; readonly rotulo: string }[];
+  readonly interpretador: Interpretador;
+  readonly candidatos: readonly Interpretador[];
   /** PHP: há Laravel no projeto, e ele está ligado neste kernel? */
   readonly laravelDisponivel: boolean;
   readonly laravel: boolean;
+  /** JS/TS: de onde vêm os `node_modules`, e as pastas que dá para escolher. */
+  readonly pacotes: PastaDePacotes | null;
+  readonly candidatosDePacotes: readonly PastaDePacotes[];
+}
+
+export interface PastaDePacotes {
+  readonly caminho: string;
+  readonly rotulo: string;
+}
+
+export interface Interpretador {
+  readonly caminho: string;
+  readonly origem: string;
+  readonly rotulo: string;
+}
+
+/** O que dá para escolher, sem subir o kernel. */
+export interface AmbienteDoKernel {
+  readonly candidatos: readonly Interpretador[];
+  readonly candidatosDePacotes: readonly PastaDePacotes[];
 }
 
 export const ApiDoNotebook = {
   kernel: (caminho: string) =>
     request<EstadoDoKernel | null>('GET', `/api/notebook/kernel?caminho=${encodeURIComponent(caminho)}`),
+  ambiente: (caminho: string, linguagem: string, raiz: string | null) =>
+    request<AmbienteDoKernel>(
+      'GET',
+      `/api/notebook/ambiente?caminho=${encodeURIComponent(caminho)}&linguagem=${encodeURIComponent(linguagem)}` +
+        `&raiz=${encodeURIComponent(raiz ?? '')}`
+    ),
   iniciar: (p: {
     caminho: string; linguagem: string; raiz: string | null; interpretador?: string; laravel?: boolean;
+    pacotes?: string;
   }) =>
     request<EstadoDoKernel>('POST', '/api/notebook/kernel', p),
   executar: (caminho: string, codigo: string) =>

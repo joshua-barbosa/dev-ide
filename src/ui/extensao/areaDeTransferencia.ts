@@ -30,6 +30,14 @@
 // vez de reimplementado: assim quem já sabe copiar continua sendo quem copia —
 // o Monaco leva junto o multi-cursor e o "copiar a linha inteira sem seleção",
 // e a grade leva o formato dela. Só quando ninguém atende é que fazemos na mão.
+//
+// **E o hospedeiro às vezes cola TAMBÉM.** Um colega dele viu no Cursor: *"o
+// CTRL + V está colando duas vezes a query"*, no SQL da aba de tabela e no
+// filtro — os dois `textarea`. Depois de cancelar a tecla, a moldura pode
+// mandar o comando de colar de volta à página, e aí o navegador cola de
+// verdade. Por isso cada Ctrl+V atendido abre uma JANELA curta, e a colagem
+// que não é nossa dentro dela decide: se chega antes da nossa, ela vale e a
+// nossa não sai; se chega depois, é ela que é cancelada. Uma colagem só.
 import { gestoDaArea, type GestoDaArea } from '../../shared/editor/gesto-da-area';
 
 /** Lê e escreve pelo editor, quando o navegador não deixa. Ver `ponte.ts`. */
@@ -58,10 +66,28 @@ function selecaoDe(doc: Document, alvo: Element | null): string {
 function encenar(alvo: Element, tipo: 'copy' | 'cut' | 'paste', texto?: string): string | null {
   const dados = new DataTransfer();
   if (texto !== undefined) dados.setData('text/plain', texto);
-  const atendido = !alvo.dispatchEvent(
-    new ClipboardEvent(tipo, { clipboardData: dados, bubbles: true, cancelable: true })
-  );
+  const evento = new ClipboardEvent(tipo, { clipboardData: dados, bubbles: true, cancelable: true });
+  NOSSOS.add(evento);
+  const atendido = !alvo.dispatchEvent(evento);
   return atendido ? dados.getData('text/plain') : null;
+}
+
+/** Os eventos que NÓS encenamos — para não confundi-los com os do hospedeiro. */
+const NOSSOS = new WeakSet<Event>();
+
+/**
+ * Quanto tempo, depois da tecla, uma colagem do hospedeiro ainda é "a mesma".
+ * O caminho dele é moldura → workbench → comando → página: dezenas de ms.
+ */
+const JANELA_DO_HOSPEDEIRO_MS = 600;
+
+/** Um Ctrl+V que estamos atendendo, e o que já aconteceu com ele. */
+interface Colagem {
+  /** O hospedeiro colou antes de nós: a nossa não sai. */
+  hospedeiroColou: boolean;
+  /** Nós já colamos: a do hospedeiro, se vier, é cancelada. */
+  nosColamos: boolean;
+  readonly prazo: number;
 }
 
 async function escrever(texto: string, reserva: ReservaDoHost | null): Promise<void> {
@@ -85,13 +111,15 @@ async function ler(reserva: ReservaDoHost | null): Promise<string> {
 async function executar(
   gesto: GestoDaArea,
   doc: Document,
-  reserva: ReservaDoHost | null
+  reserva: ReservaDoHost | null,
+  colagem: Colagem | null
 ): Promise<void> {
   const alvo = doc.activeElement ?? doc.body;
 
   if (gesto === 'colar') {
     const texto = await ler(reserva);
-    if (texto === '') return;
+    if (texto === '' || colagem?.hospedeiroColou === true) return;
+    if (colagem !== null) colagem.nosColamos = true;
     // Quem atende o `paste` insere sozinho; quem não atende recebe na mão.
     if (encenar(alvo, 'paste', texto) === null) doc.execCommand('insertText', false, texto);
     return;
@@ -119,6 +147,8 @@ export function ligarAreaDeTransferencia(
   reserva: ReservaDoHost | null = null,
   aoFalhar: (erro: unknown) => void = () => undefined
 ): () => void {
+  let colagens: readonly Colagem[] = [];
+
   const aoTeclar = (e: KeyboardEvent): void => {
     const gesto = gestoDaArea(e);
     if (gesto === null) return;
@@ -127,9 +157,36 @@ export function ligarAreaDeTransferencia(
     // `copy`/`paste` nativo é síncrono com o fim da propagação.
     setTimeout(() => {
       if (!e.defaultPrevented) return;
-      executar(gesto, doc, reserva).catch(aoFalhar);
+      let colagem: Colagem | null = null;
+      if (gesto === 'colar') {
+        colagem = { hospedeiroColou: false, nosColamos: false, prazo: Date.now() + JANELA_DO_HOSPEDEIRO_MS };
+        colagens = [...colagens, colagem];
+      }
+      executar(gesto, doc, reserva, colagem).catch(aoFalhar);
     }, 0);
   };
+
+  // Na CAPTURA da janela: antes do Monaco e antes da inserção do navegador.
+  const aoColar = (e: Event): void => {
+    if (NOSSOS.has(e)) return;
+    const agora = Date.now();
+    colagens = colagens.filter((c) => c.prazo >= agora);
+    const colagem = colagens.find((c) => !c.hospedeiroColou);
+    if (colagem === undefined) return;
+    if (colagem.nosColamos) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    } else {
+      colagem.hospedeiroColou = true;
+    }
+    colagens = colagens.filter((c) => c !== colagem);
+  };
+
+  const janela = doc.defaultView;
   doc.addEventListener('keydown', aoTeclar);
-  return () => doc.removeEventListener('keydown', aoTeclar);
+  janela?.addEventListener('paste', aoColar, true);
+  return () => {
+    doc.removeEventListener('keydown', aoTeclar);
+    janela?.removeEventListener('paste', aoColar, true);
+  };
 }

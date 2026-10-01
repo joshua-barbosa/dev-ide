@@ -34,8 +34,12 @@ function estadoDe(s: SessaoDeKernel | undefined): unknown {
     candidatos: s.candidatos,
     laravelDisponivel: s.laravelDisponivel,
     laravel: s.laravel,
+    pacotes: s.pacotes,
+    candidatosDePacotes: s.candidatosDePacotes,
   };
 }
+
+const textoOuNada = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 
 /** Qual marcador cada banco usa para parâmetro (`{{nome}}`, etapa 4). */
 function estiloDe(tipo: string): EstiloDeParametro {
@@ -62,6 +66,17 @@ export function createNotebookRouter(
     res.json(ok(estadoDe(gerente.sessao(requireString(req.query.caminho, 'caminho')))));
   }));
 
+  /** O que dá para escolher, SEM subir o kernel — a barra pergunta antes. */
+  router.get('/ambiente', wrap((req, res) => {
+    const linguagem = req.query.linguagem as LinguagemDoKernel;
+    if (!KERNELS.includes(linguagem)) throw new Error(`Kernel desconhecido: ${String(linguagem)}.`);
+    res.json(ok(gerente.ambiente({
+      caminho: requireString(req.query.caminho, 'caminho'),
+      linguagem,
+      raiz: textoOuNada(req.query.raiz) ?? null,
+    })));
+  }));
+
   router.post('/kernel', wrap(async (req, res) => {
     const linguagem = req.body?.linguagem as LinguagemDoKernel;
     if (!KERNELS.includes(linguagem)) throw new Error(`Kernel desconhecido: ${String(linguagem)}.`);
@@ -74,6 +89,7 @@ export function createNotebookRouter(
           ? req.body.interpretador
           : undefined,
       laravel: typeof req.body?.laravel === 'boolean' ? req.body.laravel : undefined,
+      pacotes: textoOuNada(req.body?.pacotes),
     });
     res.json(ok(estadoDe(sessao)));
   }));

@@ -50,17 +50,27 @@ export function iniciarKernelPython(
 }
 
 /**
- * JS/TS roda no MESMO Node do motor. Dentro do Electron (a IDE de desktop, o
- * host de extensões do Cursor), `process.execPath` é o próprio aplicativo — o
- * `ambienteDeNode` o faz se comportar como `node`, como o runner já faz.
+ * JS/TS roda, por padrão, no MESMO Node do motor. Dentro do Electron (a IDE de
+ * desktop, o host de extensões do Cursor), `process.execPath` é o próprio
+ * aplicativo — o `ambienteDeNode` o faz se comportar como `node`, como o runner
+ * já faz. `nodeEscolhido` é outro Node (nvm, PATH), que roda como ele é.
+ *
+ * `pastaDosPacotes` é de onde o `require` resolve e onde o kernel roda.
  */
-export function iniciarKernelJs(pastaDoNotebook: string, plataforma: Plataforma): Promise<Kernel> {
-  const node = ambienteDeNode(process.execPath, process.versions.electron, process.env);
+export function iniciarKernelJs(
+  pastaDosPacotes: string,
+  plataforma: Plataforma,
+  nodeEscolhido: string | null = null
+): Promise<Kernel> {
+  const doMotor = ambienteDeNode(process.execPath, process.versions.electron, process.env);
+  const node = nodeEscolhido === null
+    ? doMotor
+    : ambienteDeNode(nodeEscolhido, undefined, process.env);
   return comDriver('braytech_kernel.cjs', DRIVER_JS, (driver) =>
     Kernel.iniciar({
       comando: node.binario,
-      args: [driver, pastaDoNotebook],
-      cwd: pastaDoNotebook,
+      args: [driver, pastaDosPacotes],
+      cwd: pastaDosPacotes,
       env: node.env,
       plataforma,
       interromperPor: interrupcao(plataforma),

@@ -37,10 +37,26 @@ const marcar = (nome, ok, extra = '') =>
  * dele (0.1.8) a tecla continuou morta.
  */
 const HOSPEDEIRO = process.env.SEM_HOSPEDEIRO === '1' ? '' : `
+  window.__hospedeiroColaDepois = null;
   window.addEventListener('keydown', (e) => {
     const comMeta = e.ctrlKey || e.metaKey;
     const shiftInsert = e.shiftKey && e.keyCode === 45;
     if ((comMeta && [67, 86, 88].includes(e.keyCode)) || shiftInsert) e.preventDefault();
+    // O OUTRO hospedeiro: depois de cancelar, ele manda o comando de colar
+    // de volta à página (o execCommand("paste") da moldura) — e aí o
+    // navegador cola de verdade, com evento e inserção. Numa textarea do
+    // Cursor foi o que ele viu: *"o CTRL + V está colando duas vezes"*.
+    const atraso = window.__hospedeiroColaDepois;
+    if (comMeta && e.keyCode === 86 && atraso !== null) {
+      setTimeout(async () => {
+        const alvo = document.activeElement ?? document.body;
+        const texto = await navigator.clipboard.readText();
+        const dados = new DataTransfer();
+        dados.setData('text/plain', texto);
+        const ev = new ClipboardEvent('paste', { clipboardData: dados, bubbles: true, cancelable: true });
+        if (alvo.dispatchEvent(ev)) document.execCommand('insertText', false, texto);
+      }, atraso);
+    }
   });
 `;
 
@@ -164,6 +180,42 @@ ${existsSync(path.join(WEB, 'caderno.css')) ? '<link rel="stylesheet" href="cade
   marcar('Ctrl+X recorta num campo comum',
     (await comum.inputValue()) === '' && recortadoDoCampo === 'valor-do-campo',
     `sobrou: ${JSON.stringify(await comum.inputValue())} · área: ${JSON.stringify(recortadoDoCampo)}`);
+
+  // A textarea com camada de cor: o SQL da aba de tabela e o do filtro.
+  // Com os dois hospedeiros — o que só cancela e o que cancela E cola depois,
+  // cedo (antes de lermos a área) ou tarde (depois de colarmos).
+  await pagina.evaluate(() => {
+    const area = document.createElement('textarea');
+    area.id = 'campo-de-sql';
+    document.body.appendChild(area);
+  });
+  const campoDeSql = pagina.locator('#campo-de-sql');
+  for (const [nome, atraso] of [['só cancela', null], ['cancela e cola cedo', 0], ['cancela e cola tarde', 120]]) {
+    await pagina.evaluate((a) => { window.__hospedeiroColaDepois = a; }, atraso);
+    await pagina.evaluate(() => navigator.clipboard.writeText('SELECT 1'));
+    await campoDeSql.fill('');
+    await campoDeSql.focus();
+    await campoDeSql.press('Control+V');
+    await pagina.waitForTimeout(600);
+    const valor = await campoDeSql.inputValue();
+    marcar(`Ctrl+V na textarea cola UMA vez — hospedeiro que ${nome}`, valor === 'SELECT 1',
+      `valor: ${JSON.stringify(valor)}`);
+  }
+
+  // O Monaco com o hospedeiro que também cola.
+  await pagina.evaluate(() => { window.__hospedeiroColaDepois = 120; });
+  await pagina.locator('[data-bloco]').first().click();
+  await pagina.locator('.monaco-editor').first().waitFor({ timeout: 20000 });
+  await pagina.keyboard.press('Control+A');
+  await pagina.keyboard.press('Delete');
+  await pagina.evaluate(() => navigator.clipboard.writeText('SELECT dobra;'));
+  await pagina.keyboard.press('Control+V');
+  await pagina.waitForTimeout(600);
+  const noMonaco = await lerCelula();
+  const vezesNoMonaco = noMonaco.split('dobra').length - 1;
+  marcar('Ctrl+V no bloco cola UMA vez — hospedeiro que também cola', vezesNoMonaco === 1,
+    `${vezesNoMonaco} ocorrência(s): ${JSON.stringify(noMonaco.slice(0, 60))}`);
+  await pagina.evaluate(() => { window.__hospedeiroColaDepois = null; });
 
   marcar('nenhum erro de JavaScript na página', errosDaPagina.length === 0,
     errosDaPagina.slice(0, 2).join(' | '));

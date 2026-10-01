@@ -25,6 +25,10 @@ export const COMPARTILHADOS = [
   { de: 'src/shared/baixar-pasta.ts', para: 'extensao/src/baixar-pasta.ts' },
   { de: 'src/shared/zip.ts', para: 'extensao/src/zip.ts' },
   { de: 'src/shared/cofre.ts', para: 'extensao/src/modo-do-cofre.ts' },
+  // Qual aba é "a mesma": pelo alvo, e não pelo título.
+  { de: 'src/shared/extensao/chave-da-aba.ts', para: 'extensao/src/chave-da-aba.ts' },
+  // A CSP das webviews: a guarda do navegador aplica a mesma.
+  { de: 'src/shared/extensao/politica-da-webview.ts', para: 'extensao/src/politica-da-webview.ts' },
 ];
 
 let mudou = 0;

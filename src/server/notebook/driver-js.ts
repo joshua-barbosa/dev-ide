@@ -104,7 +104,11 @@ async function executar(exec, codigo) {
     execucaoAtual = exec;
     const interrompida = new Promise((_, recusar) => { interromperAgora = recusar; });
     const valor = await Promise.race([script.runInThisContext({ breakOnSigint: true }), interrompida]);
-    if (valor !== undefined) mostrar(exec, valor);
+    // Uma lista em que TUDO é undefined é o resto de um \`map\` que só
+    // imprimia (\`ids.map(i => console.log(i))\`): não diz nada, e soterrava
+    // as linhas que ele queria ver.
+    const soUndefined = Array.isArray(valor) && valor.length > 0 && valor.every((x) => x === undefined);
+    if (valor !== undefined && !soUndefined) mostrar(exec, valor);
     ok = true;
   } catch (e) {
     const cortada = e && /Script execution was interrupted|^Interrompido/.test(String(e.message || ''));

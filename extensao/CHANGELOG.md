@@ -1,5 +1,31 @@
 # Mudanças
 
+## 0.1.11
+
+- **Abrir a mesma tabela em dois databases** abria só a primeira: a segunda
+  apenas trazia a aba que já estava aberta, porque a aba era identificada pelo
+  nome da tabela. Agora ela é identificada pela conexão, pelo database e pelo
+  caminho, e o título mostra o database (`clientes · loja`). O mesmo vale para
+  chaves Redis de mesmo nome e servidores de mesmo rótulo.
+- **Ctrl+V colava duas vezes** no SQL da aba de tabela e no filtro. Quando o
+  editor também cola depois de cancelar a tecla, a nossa colagem percebe e só
+  uma das duas vale.
+- **Notebook: autocompletar de SQL.** As células SQL sugerem tabelas e colunas
+  do banco da célula, como o caderno já fazia.
+- **Notebook JavaScript/TypeScript: escolher o Node e a pasta dos pacotes.** O
+  clique na barra do kernel pergunta, com o kernel parado ou rodando: de qual
+  projeto do workspace vêm os `node_modules` (um frontend e um backend lado a
+  lado, por exemplo) e qual Node usar (o do editor, os do nvm, o do PATH). A
+  barra mostra o que está em uso. No Python e no PHP o clique também passou a
+  perguntar, em vez de subir o kernel sozinho.
+- **Notebook JavaScript: `ids.map(i => console.log(i))`** não despeja mais um
+  `[undefined, undefined, …]` depois das linhas impressas. Qualquer outro
+  valor continua aparecendo.
+- **Notebook JavaScript/TypeScript: autocompletar de JS**, e o fim do erro
+  `Invalid base URL` que aparecia no console a cada tecla. Os editores da
+  extensão não conseguiam criar os workers do Monaco.
+- Link de apoio (Buy Me a Coffee) no README.
+
 ## 0.1.10
 
 - **Notebook (`.brnb`)**, no estilo do Jupyter: kernel Python, JavaScript,

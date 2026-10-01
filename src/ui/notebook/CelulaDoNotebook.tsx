@@ -35,6 +35,8 @@ export interface CelulaDoNotebookProps {
   onLimparSaida(): void;
   onMover(direcao: -1 | 1): void;
   onRemover(): void;
+  /** O editor da célula ganhou o foco — é por ele que o autocomplete sabe o banco. */
+  onFocar(): void;
 }
 
 const ROTULO_DO_KERNEL: Record<Kernel, string> = {
@@ -221,7 +223,7 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
           tema={p.tema}
           onAlterar={(conteudo) => p.onMudar({ conteudo })}
           onAtalhoDeRodar={p.onRodar}
-          onFocar={() => undefined}
+          onFocar={p.onFocar}
         />
       )}
 
