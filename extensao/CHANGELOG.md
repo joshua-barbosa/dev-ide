@@ -1,5 +1,14 @@
 # Mudanças
 
+## 0.1.13
+
+- **Notebook JS/TS: as variáveis de fora da célula.** O resultado de uma
+  célula SQL (`→ patients`) aparecia em vermelho numa célula TypeScript, como
+  se não existisse. Agora o editor conhece o resultado de cada SQL, com as
+  colunas do último resultado (`p.` sugere os campos), e o que as outras
+  células JS/TS declaram. `await` no topo da célula e `import` de pacote do
+  projeto também deixaram de ser marcados como erro.
+
 ## 0.1.12
 
 - **Notebook: botão Ajuda.** Um painel ao lado das células explica como o

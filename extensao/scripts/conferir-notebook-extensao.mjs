@@ -199,7 +199,9 @@ ${existsSync(path.join(WEB, 'notebook.css')) ? '<link rel="stylesheet" href="not
     writeFileSync(path.join(pasta, proj, 'node_modules', 'origem', 'index.js'), `module.exports = '${frase}';`);
   }
   await pagina.goto(`${BASE}/nb/pagina.html?arquivo=web.brnb`);
-  await pagina.locator('[data-notebook-escolher-kernel]').getByRole('button', { name: 'JavaScript' }).click();
+  // TypeScript: o kernel é o mesmo Node, e o editor de TS acusa nome
+  // desconhecido (o de JS não) — é onde o "patients em vermelho" aparece.
+  await pagina.locator('[data-notebook-escolher-kernel]').getByRole('button', { name: 'TypeScript' }).click();
   const web = pagina.locator('[data-notebook]');
   await web.waitFor();
   await pagina.evaluate(() => { window.__perguntas = []; window.__escolha = 'Pacotes: backend'; });
@@ -238,8 +240,41 @@ ${existsSync(path.join(WEB, 'notebook.css')) ? '<link rel="stylesheet" href="not
   await pagina.keyboard.press('Control+Space');
   const doWorker = await pagina.locator('.suggest-widget .monaco-list-row', { hasText: 'abs' })
     .first().waitFor({ timeout: 10000 }).then(() => true, () => false);
-  marcar('célula JavaScript completa pelo worker do Monaco (Math.abs)', doWorker);
+  marcar('célula TypeScript completa pelo worker do Monaco (Math.abs)', doWorker);
   await pagina.keyboard.press('Escape');
+  // As variáveis de FORA da célula. O relato (0.1.12): *"quando eu passei o
+  // patients, ele ficou em vermelho, como se não conhecesse a variavel"* — o
+  // patients vinha de uma célula SQL. Aqui: SQL → patients, e uma célula
+  // TypeScript que o usa tem de ficar SEM sublinhado e completar a coluna.
+  // O "escolher" de mentira volta a pegar a primeira opção (a conexão).
+  await pagina.evaluate(() => { window.__escolha = null; });
+  await web.getByRole('button', { name: 'Conexão do notebook' }).click();
+  await pagina.waitForTimeout(800);
+  await web.locator('[data-adicionar="1"]').getByRole('button', { name: 'SQL' }).click();
+  const sqlWeb = web.locator('[data-celula]').nth(1);
+  await sqlWeb.getByRole('textbox', { name: 'Nome do resultado' }).fill('patients');
+  await escreverERodar(sqlWeb, 'SELECT id, titulo FROM provas ORDER BY id');
+  const saidaPatients = await saidaDe(sqlWeb);
+  marcar('a SQL → patients rodou', /→ patients/.test(saidaPatients), JSON.stringify(saidaPatients.slice(-50)));
+  await web.locator('[data-adicionar="2"]').getByRole('button', { name: 'TypeScript' }).click();
+  const tsCel = web.locator('[data-celula]').nth(2);
+  await tsCel.locator('textarea').first().click();
+  await tsCel.locator('.monaco-editor').first().waitFor({ timeout: 15000 });
+  // As declarações chegam ao editor ao FOCAR a célula; quem digita leva mais
+  // que isto para começar.
+  await pagina.waitForTimeout(1500);
+  await pagina.keyboard.type('const nomes = patients.map((p) => p.');
+  await pagina.keyboard.press('Control+Space');
+  const coluna = await pagina.locator('.suggest-widget .monaco-list-row', { hasText: 'titulo' })
+    .first().waitFor({ timeout: 10000 }).then(() => true, () => false);
+  marcar('célula TS completa a COLUNA do resultado do SQL (p.titulo)', coluna);
+  await pagina.keyboard.press('Escape');
+  await pagina.keyboard.type('titulo)');
+  await pagina.waitForTimeout(2500);
+  const sublinhados = await tsCel.locator('.squiggly-error').count();
+  marcar('a variável do SQL não fica em vermelho na célula TS', sublinhados === 0, `${sublinhados} sublinhado(s)`);
+  if (process.env.CAPTURA) await pagina.screenshot({ path: `${process.env.CAPTURA}-patients.png` });
+
   // O botão Ajuda na extensão: o mesmo painel, e o exemplo de JS (o kernel
   // desta página) — não o de Python.
   await web.getByRole('button', { name: 'Ajuda' }).click();
@@ -247,7 +282,7 @@ ${existsSync(path.join(WEB, 'notebook.css')) ? '<link rel="stylesheet" href="not
   const abriu = await ajuda.waitFor({ timeout: 5000 }).then(() => true, () => false);
   const textoDaAjuda = abriu ? await ajuda.innerText() : '';
   if (process.env.CAPTURA) await pagina.screenshot({ path: `${process.env.CAPTURA}-ajuda.png` });
-  marcar('extensão: o botão Ajuda abre o painel, com exemplo do kernel JS',
+  marcar('extensão: o botão Ajuda abre o painel, com exemplo do kernel TS',
     abriu && textoDaAjuda.includes('.map(') && !textoDaAjuda.includes('import pandas'));
 
   marcar('nenhum erro de JavaScript na página do kernel JS', errosDaPagina.length === 0, errosDaPagina.slice(0, 2).join(' | '));

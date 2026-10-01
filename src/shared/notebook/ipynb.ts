@@ -69,8 +69,13 @@ function saidasIpynb(saidas: readonly Saida[]): unknown[] {
 }
 
 export function exportarIpynb(nb: Notebook, rotuloDaConexao: (v: Vinculo) => string): string {
-  if (nb.kernel !== 'python') {
-    throw new Error('Exportar para .ipynb é só notebook Python: o Jupyter declara uma linguagem por caderno.');
+  // O Jupyter declara UMA linguagem por caderno: exporta com Python, e as
+  // células de outra linguagem saem como Markdown com o código em bloco
+  // (decisão do usuário na spec 113). Sem nenhuma célula Python, não há o
+  // que exportar como notebook Jupyter.
+  const temPython = nb.kernel === 'python' || nb.celulas.some((c) => c.tipo === 'codigo' && c.linguagem === 'python');
+  if (!temPython) {
+    throw new Error('Exportar para .ipynb pede alguma célula Python: o Jupyter declara uma linguagem por caderno.');
   }
   const cells = nb.celulas.map((c) => {
     if (c.tipo === 'markdown') {
@@ -88,6 +93,15 @@ export function exportarIpynb(nb: Notebook, rotuloDaConexao: (v: Vinculo) => str
         metadata: { braytech: { tipo: 'sql', nome: c.nome, conexao } },
         execution_count: c.contador, source: linhas(comentario), outputs: saidasIpynb(c.saidas),
       };
+    }
+    if (c.linguagem !== null && c.linguagem !== 'python') {
+      // A saída guardada vai junto, como texto: tabela e imagem não cabem num bloco.
+      const saida = c.saidas
+        .map((x) => (x.tipo === 'texto' ? x.texto : x.tipo === 'erro' ? x.mensagem : x.tipo === 'tabela' ? tabelaTexto(x) : ''))
+        .join('').trimEnd();
+      const bloco = `**${c.linguagem}** (Braytech Code)\n\n\`\`\`${c.linguagem}\n${c.conteudo}\n\`\`\`` +
+        (saida === '' ? '' : `\n\nSaída:\n\n\`\`\`\n${saida}\n\`\`\``);
+      return { cell_type: 'markdown', id: c.id, metadata: { braytech: { linguagem: c.linguagem } }, source: linhas(bloco) };
     }
     return {
       cell_type: 'code', id: c.id, metadata: {},

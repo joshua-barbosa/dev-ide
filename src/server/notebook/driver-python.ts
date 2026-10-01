@@ -21,7 +21,7 @@
 //
 // `String.raw` para os `\x1e` e `\n` chegarem ao Python como estão escritos.
 export const DRIVER_PYTHON = String.raw`
-import ast, base64, builtins, importlib.util, io, json, queue, sys, threading, traceback, warnings, _thread
+import ast, base64, builtins, hashlib, importlib.util, io, json, queue, sys, threading, traceback, types, warnings, _thread
 
 MARCA = '\x1eBRNB\x1f'
 MAX_LINHAS = 500
@@ -293,7 +293,133 @@ def definir(pedido):
             valor = pandas.DataFrame(d['linhas'], columns=d['colunas'])
             forma = 'DataFrame'
         ns[d['nome']] = valor
+        # Chegou igual em todas as linguagens: nao e "mudanca" a exportar.
+        _lembrar(d['nome'])
         enviar({'tipo': 'definido', 'nome': d['nome'], 'linhas': len(d['linhas']), 'forma': forma})
+
+
+# ---- A cascata entre linguagens (spec 113) ----
+# O motor pede "o que mudou?" (exportar) e entrega o que outra linguagem mudou
+# (importar). So DADO passa: numeros, textos, listas, dicionarios, datas e
+# DataFrames (como tabela). A impressao digital (sha1 do JSON) diz o que mudou,
+# inclusive por dentro, como df['x'] = 1, que nao e reatribuicao.
+TABELA = '__braytech_tabela__'
+_impressoes = {}
+_iniciais = set()
+
+
+class _NaoSerializavel(Exception):
+    pass
+
+
+def _dado(v, ancestrais):
+    if v is None or isinstance(v, (bool, str)):
+        return v
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float):
+        return v if v == v and v not in (float('inf'), float('-inf')) else None
+    t = type(v)
+    modulo = t.__module__ or ''
+    if t.__name__ in ('NaTType', 'NAType'):
+        return None
+    if modulo.startswith('numpy') and hasattr(v, 'tolist'):
+        return _dado(v.tolist(), ancestrais)
+    if t.__name__ == 'Decimal':
+        return float(v)
+    if hasattr(v, 'isoformat') and not isinstance(v, type):
+        return v.isoformat()
+    if modulo.startswith('pandas') and t.__name__ == 'Series':
+        return _dado(v.tolist(), ancestrais)
+    if id(v) in ancestrais:
+        raise _NaoSerializavel()
+    ancestrais.add(id(v))
+    try:
+        if isinstance(v, (list, tuple, set, frozenset)):
+            return [_dado(x, ancestrais) for x in v]
+        if isinstance(v, dict):
+            return {str(k): _dado(x, ancestrais) for k, x in v.items()}
+        raise _NaoSerializavel()
+    finally:
+        ancestrais.discard(id(v))
+
+
+def _exportavel(v):
+    if _eh_dataframe(v):
+        df = v if type(v.index).__name__ == 'RangeIndex' else v.reset_index()
+        colunas = [str(c) for c in df.columns]
+        linhas = [[_dado(x, set()) for x in linha] for linha in df.astype(object).itertuples(index=False, name=None)]
+        return {TABELA: True, 'colunas': colunas, 'linhas': linhas}
+    if isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
+        colunas = []
+        for x in v:
+            for k in x.keys():
+                if str(k) not in colunas:
+                    colunas.append(str(k))
+        linhas = [[_dado(x.get(c), set()) for c in colunas] for x in v]
+        return {TABELA: True, 'colunas': colunas, 'linhas': linhas}
+    return _dado(v, set())
+
+
+def _eh_do_usuario(nome, v):
+    if nome.startswith('_') or nome in _iniciais:
+        return False
+    if isinstance(v, (types.ModuleType, type)) or (callable(v) and not _eh_dataframe(v)):
+        return False
+    return True
+
+
+def _serializado(nome):
+    try:
+        return json.dumps(_exportavel(ns[nome]), ensure_ascii=False, allow_nan=False)
+    except Exception:
+        return None
+
+
+def _impressao(texto):
+    return hashlib.sha1(texto.encode('utf-8')).hexdigest()
+
+
+def _lembrar(nome):
+    s = _serializado(nome)
+    if s is not None:
+        _impressoes[nome] = _impressao(s)
+
+
+def exportar(pedido):
+    partes = []
+    for nome, v in list(ns.items()):
+        if not _eh_do_usuario(nome, v):
+            continue
+        s = _serializado(nome)
+        if s is None:
+            continue
+        h = _impressao(s)
+        if _impressoes.get(nome) == h:
+            continue
+        _impressoes[nome] = h
+        partes.append(json.dumps(nome) + ':' + s)
+    # Montado a mao: o valor ja e JSON, e serializar de novo dobraria o custo.
+    with _trava:
+        _canal.write(MARCA + '{"tipo":"exportado","pedido":' + str(int(pedido.get('pedido') or 0)) +
+                     ',"valores":{' + ','.join(partes) + '}}\n')
+        _canal.flush()
+
+
+def _de_tabela(v):
+    if isinstance(v, dict) and v.get(TABELA) is True:
+        if importlib.util.find_spec('pandas') is not None:
+            import pandas
+            return pandas.DataFrame(v['linhas'], columns=v['colunas'])
+        return [dict(zip(v['colunas'], linha)) for linha in v['linhas']]
+    return v
+
+
+def importar(pedido):
+    for nome, v in (pedido.get('valores') or {}).items():
+        ns[nome] = _de_tabela(v)
+        _lembrar(nome)
+    enviar({'tipo': 'importado', 'pedido': pedido.get('pedido')})
 
 
 def _como_parametro(v):
@@ -333,6 +459,7 @@ def obter(pedido):
 
 
 def principal():
+    _iniciais.update(ns.keys())
     threading.Thread(target=ler_pedidos, daemon=True).start()
     enviar({'tipo': 'pronto', 'versao': sys.version.split()[0], 'executavel': sys.executable,
             'pandas': importlib.util.find_spec('pandas') is not None})
@@ -351,6 +478,10 @@ def principal():
                 definir(pedido)
             elif pedido.get('tipo') == 'obter':
                 obter(pedido)
+            elif pedido.get('tipo') == 'exportar':
+                exportar(pedido)
+            elif pedido.get('tipo') == 'importar':
+                importar(pedido)
         except KeyboardInterrupt:
             continue
 

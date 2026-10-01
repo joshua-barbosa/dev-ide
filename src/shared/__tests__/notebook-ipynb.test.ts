@@ -62,8 +62,14 @@ test('SQL vira código com a consulta EM COMENTÁRIO e a tabela como saída', ()
   assert.ok(html.includes('Ana &amp; &lt;Bia&gt;'), 'o HTML da tabela escapa o que vem do banco');
 });
 
-test('só notebook Python exporta', () => {
-  assert.throws(() => exportarIpynb({ ...exemplo(), kernel: 'php' }, rotulo), /só notebook Python/);
+test('sem nenhuma célula Python, não exporta (spec 113: o misto exporta, ver notebook-linguagens)', () => {
+  const nb = exemplo();
+  const soPhp = {
+    ...nb,
+    kernel: 'php' as const,
+    celulas: nb.celulas.map((c) => (c.tipo === 'codigo' ? { ...c, linguagem: 'php' as const } : c)),
+  };
+  assert.throws(() => exportarIpynb(soPhp, rotulo), /alguma célula Python/);
 });
 
 test('ids das células seguem a regra do nbformat', () => {

@@ -16,7 +16,12 @@ import type { CellValue } from '../contracts';
 import type { Vinculo } from '../sql/vinculo';
 
 export const FORMATO = 'braytech-notebook';
-export const VERSAO_DO_NOTEBOOK = 1;
+/**
+ * A versão mais nova que esta Braytech Code LÊ. Um notebook de uma linguagem só
+ * continua gravando 1 (a 0.1.12 abre); um MISTO grava 2, e uma versão velha o
+ * recusa com recado — em vez de rodar a célula JavaScript no kernel Python.
+ */
+export const VERSAO_DO_NOTEBOOK = 2;
 
 export const KERNELS = ['python', 'javascript', 'typescript', 'php'] as const;
 export type Kernel = (typeof KERNELS)[number];
@@ -47,6 +52,11 @@ export type Saida =
 export interface Celula {
   readonly id: string;
   readonly tipo: TipoDeCelula;
+  /**
+   * Só código: em que linguagem a célula roda (spec 113). `null` em SQL e
+   * Markdown. Arquivo antigo sem o campo: a do notebook.
+   */
+  readonly linguagem: Kernel | null;
   readonly conteudo: string;
   /** Só SQL: a variável que o resultado vira no kernel. */
   readonly nome: string | null;
@@ -58,6 +68,7 @@ export interface Celula {
 }
 
 export interface Notebook {
+  /** A linguagem PADRÃO das células de código novas (spec 113). */
   readonly kernel: Kernel;
   /** A conexão padrão das células SQL. */
   readonly conexao: Vinculo | null;
@@ -106,25 +117,50 @@ export function nomeDeResultadoLivre(nb: Pick<Notebook, 'celulas'>): string {
 // Criar e mexer
 // ---------------------------------------------------------------------------
 
-function celulaVazia(id: string, tipo: TipoDeCelula, nome: string | null): Celula {
-  return { id, tipo, conteudo: '', nome, conexao: null, contador: null, saidas: [] };
+function celulaVazia(id: string, tipo: TipoDeCelula, nome: string | null, linguagem: Kernel | null): Celula {
+  return { id, tipo, linguagem: tipo === 'codigo' ? linguagem : null, conteudo: '', nome, conexao: null, contador: null, saidas: [] };
 }
 
 /** Um notebook novo já traz uma célula de código: é por ela que se começa. */
 export function notebookNovo(kernel: Kernel, conexao: Vinculo | null): Notebook {
-  return { kernel, conexao, laravel: false, celulas: [celulaVazia('c1', 'codigo', null)] };
+  return { kernel, conexao, laravel: false, celulas: [celulaVazia('c1', 'codigo', null, kernel)] };
+}
+
+/**
+ * A linguagem de uma célula de código nova na posição: a da célula de código
+ * mais próxima ACIMA; sem nenhuma, a do notebook. Quem escreve Python embaixo
+ * de Python não quer ter de escolher de novo.
+ */
+export function linguagemParaInserir(nb: Notebook, posicao: number): Kernel {
+  const acima = nb.celulas.slice(0, Math.max(0, posicao));
+  for (let i = acima.length - 1; i >= 0; i -= 1) {
+    const l = acima[i].linguagem;
+    if (acima[i].tipo === 'codigo' && l !== null) return l;
+  }
+  return nb.kernel;
+}
+
+/** As linguagens das células de código, sem repetir, na ordem em que aparecem. */
+export function linguagensDoNotebook(nb: Pick<Notebook, 'celulas'>): Kernel[] {
+  const vistas: Kernel[] = [];
+  for (const c of nb.celulas) {
+    if (c.tipo === 'codigo' && c.linguagem !== null && !vistas.includes(c.linguagem)) vistas.push(c.linguagem);
+  }
+  return vistas;
 }
 
 export function inserirCelula(
   nb: Notebook, tipo: TipoDeCelula, posicao: number, id: string
 ): Notebook {
-  const nova = celulaVazia(id, tipo, tipo === 'sql' ? nomeDeResultadoLivre(nb) : null);
+  const nova = celulaVazia(
+    id, tipo, tipo === 'sql' ? nomeDeResultadoLivre(nb) : null, linguagemParaInserir(nb, posicao)
+  );
   const onde = Math.max(0, Math.min(posicao, nb.celulas.length));
   return { ...nb, celulas: [...nb.celulas.slice(0, onde), nova, ...nb.celulas.slice(onde)] };
 }
 
 /** O que a tela pode mudar numa célula. Trocar o tipo ajusta o nome junto. */
-export type MudancaDeCelula = Partial<Pick<Celula, 'conteudo' | 'nome' | 'conexao' | 'tipo'>>;
+export type MudancaDeCelula = Partial<Pick<Celula, 'conteudo' | 'nome' | 'conexao' | 'tipo' | 'linguagem'>>;
 
 export function alterarCelula(nb: Notebook, id: string, mudanca: MudancaDeCelula): Notebook {
   return {
@@ -135,7 +171,9 @@ export function alterarCelula(nb: Notebook, id: string, mudanca: MudancaDeCelula
       // Virou SQL sem nome: ganha um. Deixou de ser SQL: nome e conexão somem.
       const nome = tipo !== 'sql' ? null : (mudanca.nome ?? c.nome ?? nomeDeResultadoLivre(nb));
       const conexao = tipo !== 'sql' ? null : (mudanca.conexao !== undefined ? mudanca.conexao : c.conexao);
-      return { ...c, ...mudanca, tipo, nome, conexao };
+      // Só código tem linguagem; voltar a ser código sem dizer qual: a do notebook.
+      const linguagem = tipo !== 'codigo' ? null : (mudanca.linguagem ?? c.linguagem ?? nb.kernel);
+      return { ...c, ...mudanca, tipo, nome, conexao, linguagem };
     }),
   };
 }
@@ -183,9 +221,10 @@ export function saidaDeTabela(
 // ---------------------------------------------------------------------------
 
 export function escreverNotebook(nb: Notebook): string {
+  const misto = nb.celulas.some((c) => c.tipo === 'codigo' && c.linguagem !== null && c.linguagem !== nb.kernel);
   const dados = {
     formato: FORMATO,
-    versao: VERSAO_DO_NOTEBOOK,
+    versao: misto ? VERSAO_DO_NOTEBOOK : 1,
     kernel: nb.kernel,
     conexao: nb.conexao,
     laravel: nb.laravel,
@@ -272,6 +311,9 @@ export function lerNotebook(conteudo: string): Notebook | null {
     celulas.push({
       id: typeof c.id === 'string' && c.id !== '' ? c.id : `c${i + 1}`,
       tipo,
+      // Sem o campo (arquivo da 0.1.12) ou com um que não existe: a do notebook.
+      linguagem: tipo !== 'codigo' ? null
+        : KERNELS.includes(c.linguagem as Kernel) ? (c.linguagem as Kernel) : (bruto.kernel as Kernel),
       conteudo: texto(c.conteudo),
       nome: tipo === 'sql' ? (nomeLido ?? nomeDeResultadoLivre({ celulas })) : null,
       conexao: tipo === 'sql' ? lerVinculo(c.conexao) : null,

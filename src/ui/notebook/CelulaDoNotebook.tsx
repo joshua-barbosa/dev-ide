@@ -14,7 +14,7 @@ import { MarkdownPreview } from '../editor/MarkdownPreview';
 import { SaidasDaCelula } from './SaidasDaCelula';
 import type { NomeDoTema } from '../../shared/temas';
 import {
-  nomeValido, type Celula, type Kernel, type MudancaDeCelula, type TipoDeCelula,
+  KERNELS, nomeValido, type Celula, type Kernel, type MudancaDeCelula, type TipoDeCelula,
 } from '../../shared/notebook/modelo';
 
 export interface CelulaDoNotebookProps {
@@ -38,6 +38,13 @@ export interface CelulaDoNotebookProps {
   /** O editor da célula ganhou o foco — é por ele que o autocomplete sabe o banco. */
   onFocar(): void;
 }
+
+/**
+ * O seletor de linguagem por célula (spec 113, etapa 1) só aparece quando os
+ * vários kernels existirem (etapa 2): antes disso, uma célula Python num
+ * notebook JS rodaria no Node.
+ */
+const MISTURAR_LINGUAGENS = false;
 
 const ROTULO_DO_KERNEL: Record<Kernel, string> = {
   python: 'Python', javascript: 'JavaScript', typescript: 'TypeScript', php: 'PHP',
@@ -77,9 +84,11 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
   const [nome, setNome] = useState(celula.nome ?? '');
   const nomeRuim = celula.tipo === 'sql' && !nomeValido(nome);
 
-  const linguagem = celula.tipo === 'codigo' ? p.kernel : celula.tipo;
+  // A linguagem é da CÉLULA (spec 113); a do notebook é só o padrão.
+  const linguagemDeCodigo = celula.linguagem ?? p.kernel;
+  const linguagem = celula.tipo === 'codigo' ? linguagemDeCodigo : celula.tipo;
   const tipos: readonly (readonly [TipoDeCelula, string])[] = [
-    ['codigo', ROTULO_DO_KERNEL[p.kernel]], ['sql', 'SQL'], ['markdown', 'Markdown'],
+    ['codigo', ROTULO_DO_KERNEL[linguagemDeCodigo]], ['sql', 'SQL'], ['markdown', 'Markdown'],
   ];
 
   return (
@@ -122,6 +131,24 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
             </Box>
           ))}
         </Box>
+
+        {MISTURAR_LINGUAGENS && celula.tipo === 'codigo' && (
+          <Box
+            component="select"
+            aria-label="Linguagem da célula"
+            title="Cada linguagem roda no seu kernel; os dados descem de uma para a outra"
+            value={linguagemDeCodigo}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => p.onMudar({ linguagem: e.target.value as Kernel })}
+            sx={{
+              border: 1, borderColor: 'divider', borderRadius: 0.5, fontSize: 11, py: 0.1,
+              bgcolor: 'background.paper', color: 'text.secondary', cursor: 'pointer',
+            }}
+          >
+            {KERNELS.map((k) => (
+              <option key={k} value={k}>{ROTULO_DO_KERNEL[k]}</option>
+            ))}
+          </Box>
+        )}
 
         {celula.tipo === 'sql' && (
           <>
@@ -217,7 +244,7 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
           id={celula.id}
           conteudo={celula.conteudo}
           linguagem={linguagem}
-          rotulo={`Célula ${celula.tipo === 'codigo' ? ROTULO_DO_KERNEL[p.kernel] : 'SQL'}`}
+          rotulo={`Célula ${celula.tipo === 'codigo' ? ROTULO_DO_KERNEL[linguagemDeCodigo] : 'SQL'}`}
           fontSize={p.fontSize}
           tabSize={p.tabSize}
           tema={p.tema}

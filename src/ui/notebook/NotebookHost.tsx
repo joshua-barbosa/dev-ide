@@ -21,12 +21,14 @@ import { useExecucaoDoNotebook } from './useExecucaoDoNotebook';
 import { useCodebase } from '../sql/useCodebase';
 import { escolherAmbiente } from './escolherAmbiente';
 import { AjudaDoNotebook } from './AjudaDoNotebook';
+import { useDeclaracoesNoEditor } from './useDeclaracoesNoEditor';
 import type { Tab } from '../../shared/tabs';
 import type { NomeDoTema } from '../../shared/temas';
 import type { Vinculo } from '../../shared/sql/vinculo';
 import { exportarIpynb } from '../../shared/notebook/ipynb';
 import {
   alterarCelula, escreverNotebook, inserirCelula, KERNELS, lerNotebook, limparSaidas,
+  linguagemParaInserir, linguagensDoNotebook,
   moverCelula, notebookNovo, removerCelula,
   type Kernel, type Notebook, type TipoDeCelula,
 } from '../../shared/notebook/modelo';
@@ -109,6 +111,8 @@ export function NotebookHost({
   const [celulaEmFoco, setCelulaEmFoco] = useState<string | null>(null);
   const focada = nb?.celulas.find((c) => c.id === celulaEmFoco);
   useCodebase(focada?.tipo === 'sql' ? (focada.conexao ?? nb?.conexao ?? null) : (nb?.conexao ?? null));
+  // E o TypeScript das células JS/TS: as variáveis que vêm do SQL e das outras células.
+  useDeclaracoesNoEditor(nb, celulaEmFoco);
 
   // O arquivo mudou por fora (recarregado do disco): relê.
   useEffect(() => {
@@ -237,7 +241,8 @@ export function NotebookHost({
           : {}),
       }}
     >
-      <Acao icone="lucide:plus" rotulo={ROTULOS[nb.kernel]} onClick={() => adicionar('codigo', posicao)} />
+      {/* Herda a linguagem da célula de código acima (spec 113). */}
+      <Acao icone="lucide:plus" rotulo={ROTULOS[linguagemParaInserir(nb, posicao)]} onClick={() => adicionar('codigo', posicao)} />
       <Acao icone="lucide:plus" rotulo="SQL" onClick={() => adicionar('sql', posicao)} />
       <Acao icone="lucide:plus" rotulo="Markdown" onClick={() => adicionar('markdown', posicao)} />
     </Box>
@@ -342,7 +347,7 @@ export function NotebookHost({
         {kernel.estado !== null && (
           <Acao icone="lucide:refresh-cw" rotulo="Reiniciar kernel" onClick={() => void kernel.reiniciar()} />
         )}
-        {nb.kernel === 'python' && (
+        {(nb.kernel === 'python' || linguagensDoNotebook(nb).includes('python')) && (
           <Acao icone="lucide:file-output" rotulo="Exportar .ipynb" onClick={() => void exportar()} />
         )}
         <Acao icone="lucide:eraser" rotulo="Limpar saídas" onClick={() => atualizar((x) => limparSaidas(x))} />

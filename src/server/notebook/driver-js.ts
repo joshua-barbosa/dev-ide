@@ -22,6 +22,7 @@ const readline = require('readline');
 const { Console } = require('console');
 const { Writable } = require('stream');
 const { createRequire } = require('module');
+const crypto = require('crypto');
 
 const MARCA = '\x1eBRNB\x1f';
 const MAX_LINHAS = 500;
@@ -120,6 +121,97 @@ async function executar(exec, codigo) {
   }
 }
 
+// ---- A cascata entre linguagens (spec 113) ----
+// O motor pede "o que mudou?" (exportar) e entrega o que outra linguagem mudou
+// (importar). Só DADO passa: primitivos, arrays, objetos simples e datas. Um
+// array de objetos viaja como tabela (colunas + linhas), que o Python abre como
+// DataFrame. A impressão digital (sha1 do JSON) diz o que mudou — inclusive por
+// dentro, como pedidos[0].total = 5, que não é reatribuição.
+const TABELA = '__braytech_tabela__';
+const impressoes = new Map();
+let iniciais = new Set();
+const NAO = new Error('nao serializavel');
+
+function dado(v, ancestrais) {
+  if (v === null || v === undefined) return null;
+  const t = typeof v;
+  if (t === 'string' || t === 'boolean') return v;
+  if (t === 'number') return Number.isFinite(v) ? v : null;
+  if (t === 'bigint') return v.toString();
+  if (t === 'function' || t === 'symbol') throw NAO;
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.toISOString();
+  if (ancestrais.has(v)) throw NAO;
+  ancestrais.add(v);
+  try {
+    if (Array.isArray(v)) return v.map((x) => dado(x, ancestrais));
+    const proto = Object.getPrototypeOf(v);
+    if (proto !== Object.prototype && proto !== null) throw NAO;
+    const o = {};
+    for (const k of Object.keys(v)) o[k] = dado(v[k], ancestrais);
+    return o;
+  } finally {
+    ancestrais.delete(v);
+  }
+}
+
+function ehObjetoSimples(x) {
+  if (x === null || typeof x !== 'object' || Array.isArray(x)) return false;
+  const proto = Object.getPrototypeOf(x);
+  return proto === Object.prototype || proto === null;
+}
+
+function exportavel(v) {
+  if (Array.isArray(v) && v.length > 0 && v.every(ehObjetoSimples)) {
+    const colunas = [];
+    for (const x of v) for (const k of Object.keys(x)) if (!colunas.includes(k)) colunas.push(k);
+    const linhas = v.map((x) => colunas.map((k) => dado(x[k], new Set())));
+    return { [TABELA]: true, colunas, linhas };
+  }
+  return dado(v, new Set());
+}
+
+function serializado(nome) {
+  const v = globalThis[nome];
+  if (v === undefined || typeof v === 'function') return null;
+  try { return JSON.stringify(exportavel(v)); } catch { return null; }
+}
+
+const impressao = (s) => crypto.createHash('sha1').update(s).digest('hex');
+function lembrar(nome) {
+  const s = serializado(nome);
+  if (s !== null) impressoes.set(nome, impressao(s));
+}
+
+function exportar(p) {
+  const partes = [];
+  for (const nome of Object.getOwnPropertyNames(globalThis)) {
+    if (iniciais.has(nome) || nome.startsWith('_')) continue;
+    const s = serializado(nome);
+    if (s === null) continue;
+    const h = impressao(s);
+    if (impressoes.get(nome) === h) continue;
+    impressoes.set(nome, h);
+    partes.push(JSON.stringify(nome) + ':' + s);
+  }
+  // Montado à mão: o valor já é JSON, e serializar de novo dobraria o custo.
+  process.stdout.write(MARCA + '{"tipo":"exportado","pedido":' + Number(p.pedido) + ',"valores":{' + partes.join(',') + '}}\n');
+}
+
+function deTabela(v) {
+  if (v !== null && typeof v === 'object' && !Array.isArray(v) && v[TABELA] === true) {
+    return v.linhas.map((l) => Object.fromEntries(v.colunas.map((c, i) => [c, l[i]])));
+  }
+  return v;
+}
+
+function importar(p) {
+  for (const [nome, v] of Object.entries(p.valores || {})) {
+    globalThis[nome] = deTabela(v);
+    lembrar(nome);
+  }
+  enviar({ tipo: 'importado', pedido: p.pedido });
+}
+
 let definindo = null;
 function definir(p) {
   if (p.tipo === 'definir-inicio') definindo = { nome: p.nome, colunas: p.colunas, linhas: [] };
@@ -128,6 +220,8 @@ function definir(p) {
     const d = definindo;
     definindo = null;
     globalThis[d.nome] = d.linhas.map((l) => Object.fromEntries(d.colunas.map((c, i) => [c, l[i]])));
+    // Chegou igual em todas as linguagens: não é "mudança" a exportar.
+    lembrar(d.nome);
     enviar({ tipo: 'definido', nome: d.nome, linhas: d.linhas.length, forma: 'array' });
   }
 }
@@ -161,6 +255,8 @@ async function drenar() {
     if (p.tipo === 'executar') await executar(p.exec, p.codigo || '');
     else if (String(p.tipo).startsWith('definir')) definir(p);
     else if (p.tipo === 'obter') obter(p);
+    else if (p.tipo === 'exportar') exportar(p);
+    else if (p.tipo === 'importar') importar(p);
   }
   processando = false;
 }
@@ -173,5 +269,7 @@ readline.createInterface({ input: process.stdin }).on('line', (linha) => {
   void drenar();
 }).on('close', () => process.exit(0));
 
+// O que já existe antes da primeira célula não é do usuário.
+iniciais = new Set(Object.getOwnPropertyNames(globalThis));
 enviar({ tipo: 'pronto', versao: process.version, executavel: process.execPath, pandas: false });
 `;
