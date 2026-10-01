@@ -35,6 +35,23 @@ const db = new DatabaseSync(banco);
 db.exec("CREATE TABLE provas (id INTEGER PRIMARY KEY, titulo TEXT); INSERT INTO provas (titulo) VALUES ('primeira'), ('segunda'); CREATE TABLE matriculas_exemplo (id INTEGER PRIMARY KEY);");
 db.close();
 
+/**
+ * Um notebook com SEIS tabelas de 500 linhas guardadas — o relato de 01/10:
+ * "quando retorna uma consulta ou vai salvando vários resultados, a página
+ * do brnb fica lenta de editar as células" (era 1,5 s por tecla, picos de 3 s).
+ */
+const NOTEBOOK_GRANDE = (() => {
+  const colunas = ['id', 'nome', 'email', 'total', 'status', 'dia', 'obs', 'grupo'];
+  const linhas = Array.from({ length: 500 }, (_, i) =>
+    [i, `cliente ${i}`, `email${i}@exemplo.test`, i * 1.5, 'ativo', '2026-10-01', `obs ${i}`, i % 7]);
+  const celulas = Array.from({ length: 6 }, (_, k) => ({
+    id: `s${k}`, tipo: 'sql', linguagem: null, conteudo: `SELECT * FROM t${k}`, nome: `r${k}`, conexao: null,
+    paraCada: null, contador: k + 1, saidas: [{ tipo: 'tabela', colunas, linhas, total: 500 }],
+  }));
+  celulas.push({ id: 'c1', tipo: 'codigo', linguagem: 'typescript', conteudo: 'const x = 1', nome: null, conexao: null, paraCada: null, contador: null, saidas: [] });
+  return JSON.stringify({ formato: 'braytech-notebook', versao: 1, kernel: 'typescript', conexao: null, laravel: false, celulas }, null, 2);
+})();
+
 /** O editor, visto pela webview: API, perguntas, e o documento. */
 const EDITOR = `
   window.__documento = [];
@@ -94,7 +111,7 @@ try {
   navegador = await chromium.launch({ channel: 'chrome' }).catch(() => chromium.launch());
   const pagina = await (await navegador.newContext({ viewport: { width: 1200, height: 900 } })).newPage();
   const errosDaPagina = [];
-  pagina.on('pageerror', (e) => errosDaPagina.push(e.message));
+  pagina.on('pageerror', (e) => errosDaPagina.push(process.env.PILHA ? String(e.stack).split('\n').slice(0, 4).join(' ~ ') : e.message));
   await pagina.route(`${BASE}/nb/**`, async (rota) => {
     const nome = new URL(rota.request().url()).pathname.replace('/nb/', '');
     if (nome === 'pagina.html') {
@@ -102,7 +119,7 @@ try {
       const arquivo = new URL(rota.request().url()).searchParams.get('arquivo');
       const config = {
         base: BASE, caminho: arquivo === null ? caminho : path.join(pasta, arquivo),
-        titulo: arquivo ?? 'analise.brnb', conteudo: '', tema: 'escuro',
+        titulo: arquivo ?? 'analise.brnb', conteudo: arquivo === 'grande.brnb' ? NOTEBOOK_GRANDE : '', tema: 'escuro',
         fontSize: 13, tabSize: 2, raiz: pasta, recursos: `${BASE}/nb/assets/`,
       };
       return rota.fulfill({
@@ -146,11 +163,14 @@ ${existsSync(path.join(WEB, 'notebook.css')) ? '<link rel="stylesheet" href="not
     await pagina.keyboard.type(codigo);
     await celula.getByRole('button', { name: /Rodar célula/ }).click();
   };
-  const saidaDe = async (celula) => {
+  /** A saída da célula, quando ela terminar. `anterior`: a de uma execução passada, que não vale. */
+  const saidaDe = async (celula, anterior = null) => {
     const inicio = Date.now();
     while (Date.now() - inicio < 20000) {
-      const t = await celula.locator('[data-saidas]').innerText().catch(() => '');
-      if (t !== '' && !/\[\*\]/.test(await celula.innerText())) return t;
+      // textContent, e não innerText: a tabela de uma saída fora da tela não é
+      // desenhada (content-visibility: auto) e some do innerText.
+      const t = await celula.locator('[data-saidas]').evaluate((el) => el.textContent ?? '').catch(() => '');
+      if (t !== '' && t !== anterior && !/\[\*\]/.test(await celula.innerText())) return t;
       await pagina.waitForTimeout(150);
     }
     return '';
@@ -227,7 +247,9 @@ ${existsSync(path.join(WEB, 'notebook.css')) ? '<link rel="stylesheet" href="not
   const inicio2 = Date.now();
   while (Date.now() - inicio2 < 20000 && !/pacotes: frontend/.test(await barra.innerText())) await pagina.waitForTimeout(200);
   await escreverERodar(celulaJs, "require('origem')");
-  const saidaJs2 = await saidaDe(celulaJs);
+  // A MESMA célula rodou antes: a saída de lá ('do back') ainda está na tela
+  // até esta execução começar.
+  const saidaJs2 = await saidaDe(celulaJs, saidaJs);
   marcar('trocar a pasta troca o require', saidaJs2.includes("'do front'"), JSON.stringify(saidaJs2.slice(0, 60)));
 
   // O worker de JS/TS do Monaco: sem ele, nada de autocomplete de JS e um
@@ -403,6 +425,33 @@ ${existsSync(path.join(WEB, 'notebook.css')) ? '<link rel="stylesheet" href="not
     textoDaAjuda.includes('await sql.transacao(') && textoDaAjuda.includes('json_to_recordset({{messagesJson}}::json)'));
 
   marcar('nenhum erro de JavaScript na página do kernel JS', errosDaPagina.length === 0, errosDaPagina.slice(0, 2).join(' | '));
+
+  // ---- Digitar num notebook com muitos resultados guardados ----
+  await pagina.goto(`${BASE}/nb/pagina.html?arquivo=grande.brnb`);
+  const grande = pagina.locator('[data-celula="c1"]');
+  await grande.waitFor({ timeout: 30000 });
+  await grande.scrollIntoViewIfNeeded();
+  await grande.locator('textarea').first().click();
+  await grande.locator('.monaco-editor').first().waitFor({ timeout: 15000 });
+  await pagina.waitForTimeout(1000);
+  await pagina.keyboard.press('End');
+  await pagina.evaluate(() => { window.__documento = []; });
+  const tempos = [];
+  for (let i = 0; i < 30; i++) {
+    const t0 = Date.now();
+    await pagina.keyboard.press('a');
+    await pagina.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    tempos.push(Date.now() - t0);
+  }
+  await pagina.waitForTimeout(500);
+  tempos.sort((a, b) => a - b);
+  const p90 = tempos[26];
+  const mensagens = await pagina.evaluate(() => window.__documento.length);
+  const ultimo = await pagina.evaluate(() => window.__documento.at(-1) ?? '');
+  const textoGrande = JSON.parse(ultimo || '{}').celulas?.find((c) => c.id === 'c1')?.conteudo;
+  marcar('com 6 tabelas de 500 linhas guardadas, digitar não perde tecla', textoGrande === `const x = 1${'a'.repeat(30)}`, JSON.stringify(textoGrande));
+  marcar('o texto vai ao editor em lotes, não a cada tecla', mensagens > 0 && mensagens < 30, `${mensagens} mensagens para 30 teclas`);
+  marcar('nenhuma tecla trava (p90 < 400 ms; antes eram ~2.900)', p90 < 400, `mediana ${tempos[15]} ms · p90 ${p90} ms`);
 } catch (erro) {
   marcar('a verificação rodou até o fim', false, erro instanceof Error ? erro.message.split('\n')[0] : String(erro));
 } finally {

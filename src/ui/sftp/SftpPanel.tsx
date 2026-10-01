@@ -5,7 +5,7 @@
 // com colunas, ordenação e o caminho corrente à vista. As duas superfícies
 // existem porque servem a dois usos, e nascem do mesmo lugar para não
 // divergirem.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Tooltip from '@mui/material/Tooltip';
 import { Api } from '../api';
@@ -15,6 +15,8 @@ import { paiDe } from '../../shared/remoto/caminho';
 import { ordenarPorColuna, type ColunaDeOrdem, type Direcao } from '../../shared/remoto/ordenacao';
 import { useUpload } from './useUpload';
 import { useDownloadDePasta } from './useDownloadDePasta';
+import { PesquisaRapida } from './PesquisaRapida';
+import { filtrarPorNome } from '../../shared/sftp/pesquisa-rapida';
 import type { EntradaMenu } from '../ContextMenu';
 import { decodificarCarga, MIME_DE_ARRASTE } from '../../shared/arrastar';
 import type { RemoteEntry } from '../../shared/contracts';
@@ -145,6 +147,11 @@ export function SftpPanel({
   });
 
   const ordenadas = entradas === null ? [] : ordenarPorColuna(entradas, coluna, direcao);
+  // A pesquisa rápida, como a do FileZilla (relato de 01/10): filtra o que já
+  // foi listado, sem ir ao servidor. Ctrl+F leva ao campo.
+  const [filtro, setFiltro] = useState('');
+  const campoDeFiltro = useRef<HTMLInputElement>(null);
+  const visiveis = filtrarPorNome(ordenadas, filtro);
   // Não há para onde subir a partir da raiz da CONEXÃO — e com `Prender na
   // raiz` ligado, tentar seria recusado pela rota.
   const naRaiz = caminho === raiz;
@@ -163,6 +170,18 @@ export function SftpPanel({
         flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0,
         position: 'relative',
         ...(sobre && { outline: 2, outlineStyle: 'dashed', outlineColor: 'primary.main' }),
+        '&:focus': { outline: sobre ? undefined : 'none' },
+      }}
+      // Focável, para o Ctrl+F chegar aqui: clicar numa linha (que não é um
+      // campo) deixava o foco na página, e a tecla nunca alcançava o painel.
+      tabIndex={-1}
+      onKeyDown={(e: React.KeyboardEvent) => {
+        // Ctrl+F leva à pesquisa rápida, como no FileZilla.
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+          e.preventDefault();
+          campoDeFiltro.current?.focus();
+          campoDeFiltro.current?.select();
+        }
       }}
       onDragOver={(e: React.DragEvent) => {
         // Sem o `preventDefault` o navegador ABRE o arquivo arrastado, em vez
@@ -237,8 +256,15 @@ export function SftpPanel({
         >
           {caminho}
         </Box>
+        <PesquisaRapida
+          ref={campoDeFiltro}
+          valor={filtro}
+          onMudar={setFiltro}
+          visiveis={visiveis.length}
+          total={ordenadas.length}
+        />
         {carregando && (
-          <Box sx={{ ml: 'auto', fontSize: 11, color: 'text.secondary' }}>carregando…</Box>
+          <Box sx={{ ml: 1, fontSize: 11, color: 'text.secondary' }}>carregando…</Box>
         )}
         {upload.estado.total > 0 && (
           <Box data-progresso-upload sx={{ ml: 'auto', fontSize: 11, color: 'text.secondary' }}>
@@ -423,7 +449,7 @@ export function SftpPanel({
           </Linha>
         )}
 
-        {ordenadas.map((e) => (
+        {visiveis.map((e) => (
           <Linha
             key={e.path}
             marca={e.path}
@@ -461,6 +487,9 @@ export function SftpPanel({
 
         {entradas !== null && ordenadas.length === 0 && (
           <Box sx={{ p: 2, color: 'text.secondary', fontSize: 12 }}>(pasta vazia)</Box>
+        )}
+        {ordenadas.length > 0 && visiveis.length === 0 && (
+          <Box sx={{ p: 2, color: 'text.secondary', fontSize: 12 }}>(nada com “{filtro.trim()}” nesta pasta)</Box>
         )}
       </Box>
     </Box>

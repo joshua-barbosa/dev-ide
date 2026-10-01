@@ -86,8 +86,11 @@ const POR_KERNEL: Record<Kernel, PorKernel> = {
     json: '$messagesJson = json_encode($messages);',
     nomeJson: 'messagesJson',
     ambiente:
-      'PHP: o php do PATH, com o vendor/autoload.php do projeto (Composer e as classes dele). Num projeto Laravel, ' +
-      'o interruptor "Laravel" sobe a aplicação, como o tinker — desligado por padrão.',
+      'PHP: são duas escolhas separadas. O VENDOR ("Vendor: backend" na lista, ou "Outra pasta de vendor…" — a pasta ' +
+      'do projeto ou a própria vendor/) diz quais classes e pacotes carregar; o kernel roda nessa pasta, e é nela ' +
+      'que o Laravel é procurado. O PHP ("Outro PHP…": o programa, ou a pasta onde ele está) diz qual php roda — ' +
+      'sem escolher, o do PATH. Num projeto Laravel, o interruptor "Laravel" sobe a aplicação, como o tinker — ' +
+      'desligado por padrão.',
   },
 };
 

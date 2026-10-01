@@ -60,6 +60,9 @@ const copiarPeloNavegador = (texto: string): Promise<void> => navigator.clipboar
 
 const novoId = (): string => crypto.randomUUID().slice(0, 8);
 
+/** De quanto em quanto tempo, no máximo, o texto do notebook vai ao editor. */
+const GRAVAR_A_CADA_MS = 200;
+
 /** Lê sem lançar: o erro vira TELA, e não uma aba branca. */
 function ler(conteudo: string): { readonly nb: Notebook | null; readonly erro: string | null } {
   try {
@@ -100,6 +103,14 @@ export function NotebookHost({
   const [avisoDeExportacao, setAvisoDeExportacao] = useState<string | null>(null);
   /** O último texto que ESTA tela escreveu — para não marcar sujo ao abrir. */
   const escrito = useRef(inicial.nb === null ? conteudo : escreverNotebook(inicial.nb));
+  /**
+   * Os últimos textos que ESTA tela mandou. O texto volta da moldura como
+   * "conteúdo do arquivo" — e, digitando rápido, volta um passo atrás do
+   * atual. Comparar só com o último fazia a tela achar que o arquivo mudou POR
+   * FORA e se reler inteira: 17 releituras em 40 teclas, todas as grades
+   * redesenhadas, até 3 s por tecla (relato de 01/10: "fica lento de editar").
+   */
+  const proprios = useRef<string[]>([escrito.current]);
   const atual = useRef(nb);
   atual.current = nb;
 
@@ -112,14 +123,41 @@ export function NotebookHost({
   // E o TypeScript das células JS/TS: as variáveis que vêm do SQL e das outras células.
   useDeclaracoesNoEditor(nb, celulaEmFoco);
 
-  // O arquivo mudou por fora (recarregado do disco): relê.
+  // O arquivo mudou POR FORA (desfazer, git, outro editor): relê. O que esta
+  // tela mesma escreveu não conta.
   useEffect(() => {
-    if (conteudo === escrito.current) return;
+    if (conteudo === escrito.current || proprios.current.includes(conteudo)) return;
     const lido = ler(conteudo);
     escrito.current = conteudo;
+    proprios.current = [conteudo];
     setNb(lido.nb);
     setErroDeLeitura(lido.erro);
   }, [conteudo]);
+
+  /**
+   * Grava o texto do notebook — no máximo a cada `GRAVAR_A_CADA_MS`, e não a
+   * cada tecla: com resultados guardados, o texto passa de 600 KB, e cada
+   * tecla o serializava e mandava inteiro ao editor.
+   */
+  const pendente = useRef<number | null>(null);
+  // Por ref: quem monta a tela passa um `onMudar` novo a cada desenho, e a
+  // gravação recriada a cada vez gravaria a cada tecla (a limpeza do efeito
+  // abaixo grava).
+  const aoMudar = useRef(onMudar);
+  aoMudar.current = onMudar;
+  const gravarAgora = useCallback(() => {
+    if (pendente.current !== null) {
+      window.clearTimeout(pendente.current);
+      pendente.current = null;
+    }
+    const n = atual.current;
+    if (n === null) return;
+    const texto = escreverNotebook(n);
+    if (texto === escrito.current) return;
+    escrito.current = texto;
+    proprios.current = [...proprios.current.slice(-9), texto];
+    aoMudar.current(aba.id, texto);
+  }, [aba.id]);
 
   const atualizar = useCallback(
     (fazer: (n: Notebook) => Notebook) => {
@@ -128,20 +166,29 @@ export function NotebookHost({
       const depois = fazer(antes);
       atual.current = depois;
       setNb(depois);
-      const texto = escreverNotebook(depois);
-      if (texto !== escrito.current) {
-        escrito.current = texto;
-        onMudar(aba.id, texto);
-      }
+      if (pendente.current === null) pendente.current = window.setTimeout(gravarAgora, GRAVAR_A_CADA_MS);
     },
-    [aba.id, onMudar]
+    [gravarAgora]
   );
+
+  // Nada se perde: Ctrl+S (antes de o editor salvar) e fechar a aba gravam na hora.
+  useEffect(() => {
+    const aoTeclar = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') gravarAgora();
+    };
+    window.addEventListener('keydown', aoTeclar, true);
+    return () => {
+      window.removeEventListener('keydown', aoTeclar, true);
+      gravarAgora();
+    };
+  }, [gravarAgora]);
 
   const comecar = (kernel: Kernel): void => {
     const novo = notebookNovo(kernel, null);
     atual.current = novo;
     setNb(novo);
     escrito.current = escreverNotebook(novo);
+    proprios.current = [...proprios.current.slice(-9), escrito.current];
     onMudar(aba.id, escrito.current);
   };
 

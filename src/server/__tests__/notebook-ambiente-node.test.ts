@@ -87,3 +87,40 @@ test('node: no Windows, o nvm-windows (NVM_HOME) e node.exe', () => {
     'node',
   ]);
 });
+
+// ---- O vendor do PHP (mesmo problema, relato de 01/10) ----
+// "coloquei um projeto brnb dentro de uma pasta que tem 2 partes de um
+// projeto, a pasta backend e a pasta frontend, na pasta backend que tem um
+// vendor e não na pasta raiz que está o brnb".
+import { pastasDeVendor } from '../notebook/ambiente-node';
+
+test('vendor: o de uma subpasta (backend) aparece para escolher', () => {
+  const pastas = pastasDeVendor('/ws', '/ws', 'linux',
+    existe(['/ws/backend/vendor/autoload.php', '/ws/backend/composer.json']),
+    disco({ '/ws': ['backend', 'frontend'], '/ws/backend': ['vendor', 'app'] }));
+  assert.deepEqual(pastas.map((p) => [p.caminho, p.rotulo]), [['/ws/backend', 'backend']]);
+});
+
+test('vendor: o mais próximo do notebook, subindo, vem primeiro', () => {
+  const pastas = pastasDeVendor('/ws/api/notas', '/ws', 'linux',
+    existe(['/ws/api/vendor/autoload.php', '/ws/outro/composer.json']),
+    disco({ '/ws': ['api', 'outro'], '/ws/api': ['notas', 'vendor'] }));
+  assert.deepEqual(pastas.map((p) => p.rotulo), ['api', 'outro']);
+});
+
+test('vendor: não desce em vendor nem node_modules', () => {
+  const pastas = pastasDeVendor('/ws', '/ws', 'linux',
+    existe(['/ws/vendor/pacote/composer.json', '/ws/node_modules/x/composer.json', '/ws/app/composer.json']),
+    disco({ '/ws': ['vendor', 'node_modules', 'app'], '/ws/vendor': ['pacote'], '/ws/node_modules': ['x'] }));
+  assert.deepEqual(pastas.map((p) => p.rotulo), ['app']);
+});
+
+test('vendor: no Windows, com o path dele', () => {
+  const pastas = pastasDeVendor('C:\\ws', 'C:\\ws', 'win32',
+    existe(['C:\\ws\\backend\\vendor\\autoload.php']), disco({ 'C:\\ws': ['backend'] }));
+  assert.deepEqual(pastas.map((p) => [p.caminho, p.rotulo]), [['C:\\ws\\backend', 'backend']]);
+});
+
+test('vendor: sem nenhum projeto PHP, a pasta do notebook', () => {
+  assert.deepEqual(pastasDeVendor('/ws/n', '/ws', 'linux', existe([]), disco({})).map((p) => p.caminho), ['/ws/n']);
+});

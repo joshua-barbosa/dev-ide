@@ -5,6 +5,7 @@
 //
 // A tabela é a MESMA grade da IDE (lupa, busca, CSV/JSON) — uma grade só,
 // pela lição da spec 070: duas grades é o mesmo erro duas vezes.
+import { memo } from 'react';
 import Box from '@mui/material/Box';
 import { tokens } from '../theme';
 import { ResultGrid } from '../grid/ResultGrid';
@@ -37,7 +38,14 @@ function UmaSaida({ saida }: { readonly saida: Saida }) {
       return (
         <Box
           data-saida="tabela"
-          sx={{ height: alturaDaTabela(saida.linhas.length), display: 'flex', minHeight: 0 }}
+          sx={{
+            height: alturaDaTabela(saida.linhas.length), display: 'flex', minHeight: 0,
+            // A grade não é virtualizada (500 linhas inteiras no DOM): fora da
+            // tela, o navegador pula o layout e a pintura dela. Seis tabelas
+            // guardadas custavam ~85 ms a cada tecla em outra célula.
+            contentVisibility: 'auto',
+            containIntrinsicSize: `auto ${alturaDaTabela(saida.linhas.length)}px`,
+          }}
         >
           <ResultGrid
             resultado={comoResultado(saida)}
@@ -93,7 +101,13 @@ function UmaSaida({ saida }: { readonly saida: Saida }) {
   }
 }
 
-export function SaidasDaCelula({ saidas }: { readonly saidas: readonly Saida[] }) {
+/**
+ * Redesenha só quando as saídas DESTA célula mudam. Sem o `memo`, cada tecla
+ * em qualquer célula redesenhava todas as grades do notebook — com 6 tabelas
+ * de 500 linhas, 1,5 s por tecla (relato de 01/10: "fica lento de editar").
+ * O modelo é imutável: editar outra célula preserva este array.
+ */
+export const SaidasDaCelula = memo(function SaidasDaCelula({ saidas }: { readonly saidas: readonly Saida[] }) {
   if (saidas.length === 0) return null;
   return (
     <Box data-saidas sx={{ borderTop: 1, borderColor: 'divider' }}>
@@ -102,4 +116,4 @@ export function SaidasDaCelula({ saidas }: { readonly saidas: readonly Saida[] }
       ))}
     </Box>
   );
-}
+});

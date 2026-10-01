@@ -14,15 +14,41 @@ import { Kernel } from './kernel';
 import { ambienteDeNode } from '../../shared/execucao-node';
 import type { Plataforma } from '../../shared/plataforma';
 
-async function comDriver(nome: string, conteudo: string, subir: (arquivo: string) => Promise<Kernel>) {
+const apagar = (pasta: string): void => fs.rmSync(pasta, { recursive: true, force: true });
+
+/**
+ * Grava o driver numa pasta temporária, sobe o kernel e apaga a pasta.
+ *
+ * **Apagar nunca derruba a subida.** No Windows, o PHP segura o arquivo do
+ * driver aberto enquanto roda, e apagar logo depois dava "ENOTEMPTY,
+ * Directory not empty" — o relato de 01/10, com o kernel já de pé. Se não der
+ * para apagar agora, a pasta sai quando o kernel sair.
+ */
+export async function comDriver(
+  nome: string,
+  conteudo: string,
+  subir: (arquivo: string) => Promise<Kernel>,
+  remover: (pasta: string) => void = apagar
+): Promise<Kernel> {
   const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'braytech-kernel-'));
   const arquivo = path.join(pasta, nome);
   fs.writeFileSync(arquivo, conteudo, 'utf8');
+  let kernel: Kernel;
   try {
-    return await subir(arquivo);
-  } finally {
-    fs.rmSync(pasta, { recursive: true, force: true });
+    kernel = await subir(arquivo);
+  } catch (e) {
+    // Não subiu: limpa como der, e o erro que vale é o da subida.
+    try { remover(pasta); } catch { /* fica para o sistema limpar */ }
+    throw e;
   }
+  try {
+    remover(pasta);
+  } catch {
+    kernel.depoisDeSair(() => {
+      try { remover(pasta); } catch { /* fica para o sistema limpar */ }
+    });
+  }
+  return kernel;
 }
 
 /** No Windows não há sinal: vai a mensagem, e o prazo de parar faz o resto. */

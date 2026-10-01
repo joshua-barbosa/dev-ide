@@ -86,7 +86,7 @@ export function IndicadoresDosKernels({
                 : estado === undefined
                   ? 'kernel parado'
                   : `${estado.interpretador.rotulo} · ${estado.versao}${estado.pandas ? ' · pandas' : ''}` +
-                    (estado.pacotes === null ? '' : ` · pacotes: ${estado.pacotes.rotulo}`)}
+                    (estado.pacotes === null ? '' : ` · ${familia === 'php' ? 'vendor' : 'pacotes'}: ${estado.pacotes.rotulo}`)}
             </Box>
           </Box>
         );

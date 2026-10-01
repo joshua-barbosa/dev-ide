@@ -148,6 +148,7 @@ export class Kernel {
           recusar(new Error(`O kernel saiu antes de ficar pronto (código ${codigo ?? sinal}).${detalhe()}`));
         } else {
           kernel.aoMorrer(`O kernel parou (código ${codigo ?? sinal}).`);
+          kernel.aoProcessoSair();
         }
       });
     });
@@ -356,6 +357,24 @@ export class Kernel {
       const i = this.fila.indexOf(e);
       if (i !== -1) this.fila.splice(i, 1);
     }
+  }
+
+  private readonly aoSair: (() => void)[] = [];
+
+  private saiu = false;
+
+  /**
+   * Roda quando o PROCESSO do kernel acabar de fato — não quando se pede para
+   * encerrar: no Windows, o arquivo que ele segura só se solta depois.
+   */
+  depoisDeSair(fazer: () => void): void {
+    if (this.saiu) fazer();
+    else this.aoSair.push(fazer);
+  }
+
+  private aoProcessoSair(): void {
+    this.saiu = true;
+    for (const f of this.aoSair.splice(0)) f();
   }
 
   private aoMorrer(motivo: string): void {

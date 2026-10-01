@@ -1,5 +1,60 @@
 # Mudanças
 
+## 0.1.26
+
+- **Notebook: editar ficava lento com resultados guardados.** Com seis
+  tabelas de 500 linhas, cada tecla levava 1,5 s (picos de 3 s); agora ~33 ms,
+  o mesmo de um notebook sem resultado nenhum. Três causas:
+  - o texto do notebook voltava da moldura um passo atrás do atual, e a tela
+    achava que o arquivo tinha mudado por fora e se relia inteira — todas as
+    grades redesenhadas (17 vezes em 40 teclas). Agora ela reconhece o
+    próprio texto;
+  - cada tecla serializava o notebook inteiro (600+ KB) e o mandava ao
+    editor; agora vai em lotes, no máximo a cada 200 ms — o Ctrl+S e fechar a
+    aba gravam na hora;
+  - as tabelas fora da tela deixam de custar layout e pintura
+    (`content-visibility`), e a saída de uma célula só se redesenha quando
+    ela muda.
+
+## 0.1.25
+
+- **Notebook PHP: vendor e PHP são escolhas separadas.** A lista do kernel
+  ganhou **"Outra pasta de vendor…"** (a pasta do projeto, ou a própria
+  `vendor/`, relativa ao notebook, com `~/` ou completa) — o PHP continua o
+  do PATH. O **"Outro PHP…"** é só o programa: aceita o executável ou a pasta
+  onde ele está (`C:\php`, `/opt/php/bin`); a pasta de um vendor ali dá um
+  recado apontando a opção certa. No Node, o mesmo: "Outra pasta de pacotes…"
+  separada de "Outro Node…".
+
+## 0.1.24
+
+- **SFTP/FTP: pesquisa rápida na pasta**, como a do FileZilla. Um campo na
+  barra (Ctrl+F) filtra a pasta aberta enquanto se digita: um trecho do nome,
+  sem diferença de maiúscula e de acento, ou `*` e `?` como coringa
+  (`*.inf`). O contador diz quantos ficaram e quantos foram escondidos
+  ("1 de 138 · 137 filtrados"); Esc ou × limpa.
+- **Notebook: "Outro PHP…" (ou Python, Node) apontando uma PASTA** dava
+  "spawn … EACCES" — o motor tentava executar a pasta. Agora a pasta `vendor`
+  (ou a do projeto, com `vendor/`) vira a escolha do vendor, a pasta de um
+  venv vira o python dela, e outra pasta dá um recado claro.
+
+## 0.1.23
+
+- **Notebook PHP: escolher de onde vem o vendor.** O clique no indicador do
+  kernel PHP lista as pastas do workspace com `vendor` ou `composer.json`
+  (um `backend/` ao lado de um `frontend/`, por exemplo). Antes, só se achava
+  um vendor subindo a partir da pasta do notebook — um `backend/vendor`
+  abaixo dele nunca era encontrado. O kernel roda na pasta escolhida, e o
+  Laravel é procurado nela. A barra mostra `vendor: backend`.
+
+## 0.1.22
+
+- **Windows: o kernel PHP não subia** ("ENOTEMPTY, Directory not empty: …\Temp\
+  braytech-kernel-…"). O PHP segura aberto o arquivo do driver enquanto
+  roda, e apagar a pasta temporária logo depois de subir falhava — e essa
+  falha de limpeza derrubava a subida, com o kernel já de pé. Agora, se não
+  der para apagar na hora, a pasta é apagada quando o kernel sair.
+
 ## 0.1.21
 
 - **Notebook: "para cada item" na célula SQL.** No campo "para cada…",

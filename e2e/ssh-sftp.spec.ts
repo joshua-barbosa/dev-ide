@@ -214,3 +214,39 @@ test('renomear pede o nome NOVO já preenchido com o atual', async ({ page }) =>
     page.locator('[data-linha-sftp]').filter({ hasText: 'notas.txt' })
   ).toBeVisible();
 });
+
+// A pesquisa rápida, como a do FileZilla (relato de 01/10: "aqui não tem um
+// pesquisar na pasta igual no FileZilla").
+test('a pesquisa rápida filtra a pasta, conta o que escondeu, e o Esc limpa', async ({ page }) => {
+  await abrirAbaDoServidor(page);
+  const linhas = page.locator('[data-linha-sftp]:not([data-linha-sftp=".."])');
+  await expect(linhas.filter({ hasText: 'notas.txt' })).toBeVisible();
+  const antes = await linhas.count();
+  expect(antes).toBeGreaterThan(1);
+  // O `..` (que não existe na raiz da conexão) não é afetado pelo filtro.
+  const voltarAntes = await page.locator('[data-linha-sftp=".."]').count();
+
+  // Ctrl+F leva ao campo, e um trecho do nome filtra.
+  await page.locator('[data-linha-sftp]').first().click();
+  await page.keyboard.press('Control+F');
+  const campo = page.getByRole('textbox', { name: 'Pesquisa rápida na pasta' });
+  await expect(campo).toBeFocused();
+  await page.keyboard.type('NOTAS');
+  await expect(linhas).toHaveCount(1);
+  await expect(linhas.first()).toContainText('notas.txt');
+  await expect(page.locator('[data-contagem-filtrada]')).toHaveText(`1 de ${antes} · ${antes - 1} filtrado(s)`);
+  await expect(page.locator('[data-linha-sftp=".."]')).toHaveCount(voltarAntes);
+
+  // Coringa: o nome inteiro.
+  await campo.fill('*.txt');
+  await expect(linhas.filter({ hasText: 'notas.txt' })).toBeVisible();
+
+  // Nada encontrado: diz.
+  await campo.fill('nao-existe-nada');
+  await expect(page.getByText('(nada com “nao-existe-nada” nesta pasta)')).toBeVisible();
+
+  // Esc limpa, e tudo volta.
+  await campo.press('Escape');
+  await expect(linhas).toHaveCount(antes);
+  await expect(page.locator('[data-contagem-filtrada]')).toHaveCount(0);
+});

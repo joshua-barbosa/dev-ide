@@ -37,6 +37,43 @@ export function pastasDePacotes(
   existe: (caminho: string) => boolean,
   subpastas: (caminho: string) => readonly string[]
 ): PastaDePacotes[] {
+  return pastasDeProjeto(pastaDoNotebook, raizDoProjeto, plataforma, existe, subpastas, ['node_modules'], 'package.json');
+}
+
+/**
+ * As pastas de onde o PHP pode tirar o `vendor/autoload.php` (o mesmo
+ * problema do Node, relatado em 01/10: um `backend/` com vendor abaixo do
+ * notebook nunca era achado — a busca só subia). A primeira é a mais próxima
+ * do notebook, subindo; as outras, os projetos PHP do workspace.
+ */
+export function pastasDeVendor(
+  pastaDoNotebook: string,
+  raizDoProjeto: string | null,
+  plataforma: Plataforma,
+  existe: (caminho: string) => boolean,
+  subpastas: (caminho: string) => readonly string[]
+): PastaDePacotes[] {
+  const p = plataforma === 'win32' ? path.win32 : path.posix;
+  return pastasDeProjeto(
+    pastaDoNotebook, raizDoProjeto, plataforma, existe, subpastas, [p.join('vendor', 'autoload.php')], 'composer.json'
+  );
+}
+
+/**
+ * O comum aos dois: subindo do notebook, a primeira pasta com `marcaDeUso`
+ * (o que a linguagem USA: node_modules, vendor/autoload.php); descendo da
+ * raiz, as pastas com `marcaDeProjeto` (package.json, composer.json) ou com
+ * a marca de uso.
+ */
+function pastasDeProjeto(
+  pastaDoNotebook: string,
+  raizDoProjeto: string | null,
+  plataforma: Plataforma,
+  existe: (caminho: string) => boolean,
+  subpastas: (caminho: string) => readonly string[],
+  marcasDeUso: readonly string[],
+  marcaDeProjeto: string
+): PastaDePacotes[] {
   const p = plataforma === 'win32' ? path.win32 : path.posix;
   const raiz = raizDoProjeto === null ? null : p.resolve(raizDoProjeto);
   const rotuloDe = (caminho: string): string => {
@@ -44,13 +81,14 @@ export function pastasDePacotes(
     const relativa = p.relative(raiz, caminho);
     return relativa === '' ? '(raiz)' : relativa.split(p.sep).join('/');
   };
-  const ehProjeto = (pasta: string) => existe(p.join(pasta, 'package.json'));
+  const usa = (pasta: string) => marcasDeUso.some((m) => existe(p.join(pasta, m)));
+  const ehProjeto = (pasta: string) => existe(p.join(pasta, marcaDeProjeto)) || usa(pasta);
 
   // A que o `require` usaria: subindo do notebook até a raiz.
   let padrao: string | null = null;
   let pasta = p.resolve(pastaDoNotebook);
   for (;;) {
-    if (existe(p.join(pasta, 'node_modules'))) {
+    if (usa(pasta)) {
       padrao = pasta;
       break;
     }

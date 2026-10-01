@@ -118,3 +118,60 @@ export function resolverInterpretador(
   const temBarra = plataforma === 'win32' ? /[\\/]/.test(texto) : texto.includes('/');
   return temBarra ? p.resolve(pastaDoNotebook, texto) : texto;
 }
+
+/**
+ * O que digitaram em "Outro…" é uma PASTA? (relato de 01/10: "spawn
+ * …/backend/vendor EACCES" — o motor tentou executar a pasta.)
+ *
+ * "Outro…" é só o PROGRAMA (o usuário: "PHP e vendor são coisas bem
+ * diferentes"): a pasta onde o php/node/python está vira o executável de
+ * dentro dela; a pasta de um venv, o python dele. A pasta do vendor ou dos
+ * pacotes NÃO vira escolha de pacotes aqui — o recado aponta a opção certa.
+ */
+export function lerEscolhaDePasta(
+  caminho: string,
+  linguagem: 'python' | 'php' | 'javascript' | 'typescript',
+  plataforma: Plataforma,
+  existe: (caminho: string) => boolean,
+  ehPasta: (caminho: string) => boolean
+): { readonly interpretador: string } | { readonly erro: string } {
+  if (!ehPasta(caminho)) return { interpretador: caminho };
+  const p = plataforma === 'win32' ? path.win32 : path.posix;
+  const exe = (nome: string) => (plataforma === 'win32' ? `${nome}.exe` : nome);
+  const programa = linguagem === 'php' ? 'php' : linguagem === 'python' ? 'python' : 'node';
+  for (const dentro of [p.join(caminho, exe(programa)), p.join(caminho, 'bin', exe(programa))]) {
+    if (existe(dentro)) return { interpretador: dentro };
+  }
+  if (linguagem === 'python' && plataforma === 'win32' && existe(p.join(caminho, 'Scripts', 'python.exe'))) {
+    return { interpretador: p.join(caminho, 'Scripts', 'python.exe') };
+  }
+  const ehVendor = existe(p.join(caminho, 'autoload.php')) || existe(p.join(caminho, 'vendor', 'autoload.php'));
+  if (linguagem === 'php' && ehVendor) {
+    return { erro: `"${caminho}" é a pasta do vendor, não o programa PHP. Escolha-a em "Outra pasta de vendor…" (ou "Vendor: …" na lista).` };
+  }
+  return {
+    erro: `"${caminho}" é uma pasta, e nela não há o programa ${programa}. Aponte o executável, ou a pasta onde ele está.`,
+  };
+}
+
+/**
+ * "Outra pasta de vendor…" / "Outra pasta de pacotes…": a pasta do PROJETO,
+ * ou a própria `vendor/` (`node_modules/`) — vale a do projeto.
+ */
+export function lerPastaDePacotes(
+  caminho: string,
+  linguagem: 'python' | 'php' | 'javascript' | 'typescript',
+  plataforma: Plataforma,
+  existe: (caminho: string) => boolean,
+  ehPasta: (caminho: string) => boolean
+): { readonly pacotes: string } | { readonly erro: string } {
+  const p = plataforma === 'win32' ? path.win32 : path.posix;
+  if (!ehPasta(caminho)) return { erro: `"${caminho}" não existe (ou não é uma pasta).` };
+  if (linguagem === 'php') {
+    if (p.basename(caminho) === 'vendor' && existe(p.join(caminho, 'autoload.php'))) return { pacotes: p.dirname(caminho) };
+    if (existe(p.join(caminho, 'vendor', 'autoload.php'))) return { pacotes: caminho };
+    return { erro: `Em "${caminho}" não há vendor/autoload.php (rode o composer install lá?).` };
+  }
+  if (p.basename(caminho) === 'node_modules') return { pacotes: p.dirname(caminho) };
+  return { pacotes: caminho };
+}

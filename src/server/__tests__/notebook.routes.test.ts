@@ -556,3 +556,21 @@ test('o pedido dele: select * from {{messages}} m — e cruzando com uma tabela 
     await fechar();
   }
 });
+
+test('{{filters.ano}}: o campo de um (object)[…] do PHP vira parâmetro (pergunta de 01/10)', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'filtros-php.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'php', raiz: pasta });
+    await rodar(pedir, "$filters = (object) ['cliente' => 'Bia', 'minimo' => 1000];", 'php', nb);
+    const r = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: null,
+      statement: 'SELECT cliente FROM pedidos WHERE cliente = {{filters.cliente}} AND total > {{filters.minimo}}',
+    });
+    assert.equal(r.success, true, r.error ?? '');
+    assert.deepEqual(r.data.tabela.linhas, [['Bia']]);
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});

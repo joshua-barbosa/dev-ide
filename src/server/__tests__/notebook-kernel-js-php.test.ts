@@ -235,3 +235,44 @@ test('JS e PHP mostram imagem pela função', async () => {
   const j = f.saidas.find((x) => x.tipo === 'imagem');
   assert.ok(j !== undefined && j.tipo === 'imagem' && Buffer.from(j.dados, 'base64').toString() === '<svg/>');
 });
+
+test('PHP: com backend/ e frontend/, o vendor vem da pasta ESCOLHIDA (e o kernel roda nela)', async () => {
+  // O relato (01/10): o .brnb na raiz, o vendor em backend/ — nunca era achado.
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-ide-nb-php-ws-'));
+  fs.mkdirSync(path.join(ws, 'backend', 'vendor'), { recursive: true });
+  fs.mkdirSync(path.join(ws, 'frontend'));
+  fs.writeFileSync(path.join(ws, 'backend', 'composer.json'), '{}');
+  fs.writeFileSync(path.join(ws, 'backend', 'vendor', 'autoload.php'),
+    "<?php spl_autoload_register(function ($c) { if ($c === 'App\\\\Saudacao') { eval('namespace App; class Saudacao { public static function oi() { return \"do backend\"; } }'); } });");
+  const gerente = new GerenteDeKernels(plataformaAtual());
+  after(() => gerente.encerrarTodos());
+  const caminho = path.join(ws, 'analise.brnb');
+  const amb = gerente.ambiente({ caminho, linguagem: 'php', raiz: ws });
+  assert.deepEqual(amb.candidatosDePacotes.map((p) => p.rotulo), ['backend']);
+  // Sem escolher: a única pasta com vendor já é a da lista.
+  const s = await gerente.garantir({ caminho, linguagem: 'php', raiz: ws });
+  assert.equal(s.pacotes?.rotulo, 'backend');
+  const r = await ate(s.kernel.executar('\\App\\Saudacao::oi() . " · " . basename(getcwd())'));
+  assert.equal(textoDe(r), "'do backend · backend'\n");
+});
+
+test('PHP: a pasta do vendor vem pela opção DELA ("Outra pasta de vendor…"); o "Outro PHP…" é só o programa', async () => {
+  // O usuário: "o que eu quero é carregar a pasta vendor, o PHP continua sendo
+  // o que está no PATH… PHP e vendor são coisas bem diferentes".
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-ide-nb-php-pasta-'));
+  fs.mkdirSync(path.join(ws, 'backend', 'vendor'), { recursive: true });
+  fs.writeFileSync(path.join(ws, 'backend', 'vendor', 'autoload.php'), "<?php define('DO_BACKEND', 'sim');");
+  const gerente = new GerenteDeKernels(plataformaAtual());
+  after(() => gerente.encerrarTodos());
+  const caminho = path.join(ws, 'luft.brnb');
+  // O texto EXATO dele, relativo à pasta do notebook, agora no lugar certo.
+  const s = await gerente.garantir({ caminho, linguagem: 'php', raiz: ws, pacotes: 'backend/vendor' });
+  assert.equal(s.pacotes?.caminho, path.join(ws, 'backend'));
+  assert.equal(s.interpretador.caminho, 'php', 'o PHP continua o do PATH');
+  assert.equal(textoDe(await ate(s.kernel.executar('DO_BACKEND'))), "'sim'\n");
+  // No "Outro PHP…", a pasta do vendor dá recado apontando a opção certa (não EACCES).
+  await assert.rejects(
+    gerente.garantir({ caminho, linguagem: 'php', raiz: ws, interpretador: 'backend/vendor' }),
+    /Outra pasta de vendor/
+  );
+});

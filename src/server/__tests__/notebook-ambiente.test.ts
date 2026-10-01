@@ -107,3 +107,65 @@ test('no Windows: barra invertida, unidade e ~\\', () => {
   assert.equal(resolverInterpretador('~\\py\\python.exe', 'C:\\proj', 'C:\\Users\\ana', 'win32'), 'C:\\Users\\ana\\py\\python.exe');
   assert.equal(resolverInterpretador('python', 'C:\\proj', 'C:\\Users\\ana', 'win32'), 'python');
 });
+
+// ---- "Outro…" apontando uma PASTA (relato de 01/10) ----
+// "spawn …/backend/vendor EACCES"; e depois: "PHP e vendor são coisas bem
+// diferentes" — o "Outro PHP…" é só o PROGRAMA; o vendor tem a opção dele.
+import { lerEscolhaDePasta, lerPastaDePacotes } from '../notebook/ambiente';
+
+const pastas = (lista: string[]) => (p: string) => lista.includes(p);
+
+test('"Outro PHP…": a PASTA onde o php está vira o php de dentro dela (Linux e Windows)', () => {
+  assert.deepEqual(
+    lerEscolhaDePasta('/opt/php8.3/bin', 'php', 'linux', existe(['/opt/php8.3/bin/php']), pastas(['/opt/php8.3/bin'])),
+    { interpretador: '/opt/php8.3/bin/php' }
+  );
+  assert.deepEqual(
+    lerEscolhaDePasta('C:\\php', 'php', 'win32', existe(['C:\\php\\php.exe']), pastas(['C:\\php'])),
+    { interpretador: 'C:\\php\\php.exe' }
+  );
+});
+
+test('"Outro PHP…" com a pasta do vendor: recado apontando a opção certa (não vira vendor por mágica)', () => {
+  const r = lerEscolhaDePasta('/ws/backend/vendor', 'php', 'linux', existe(['/ws/backend/vendor/autoload.php']), pastas(['/ws/backend/vendor']));
+  assert.ok('erro' in r && /Outra pasta de vendor/.test(r.erro));
+});
+
+test('Python: a pasta do .venv vira o python de dentro dela (Linux e Windows)', () => {
+  assert.deepEqual(
+    lerEscolhaDePasta('/ws/.venv', 'python', 'linux', existe(['/ws/.venv/bin/python']), pastas(['/ws/.venv'])),
+    { interpretador: '/ws/.venv/bin/python' }
+  );
+  assert.deepEqual(
+    lerEscolhaDePasta('C:\\ws\\.venv', 'python', 'win32', existe(['C:\\ws\\.venv\\Scripts\\python.exe']), pastas(['C:\\ws\\.venv'])),
+    { interpretador: 'C:\\ws\\.venv\\Scripts\\python.exe' }
+  );
+});
+
+test('outra pasta qualquer: recado claro, e não um EACCES', () => {
+  const r = lerEscolhaDePasta('/ws/docs', 'php', 'linux', existe([]), pastas(['/ws/docs']));
+  assert.ok('erro' in r && /é uma pasta/.test(r.erro));
+});
+
+test('um executável (não pasta) segue como interpretador', () => {
+  assert.deepEqual(lerEscolhaDePasta('/usr/bin/php8.3', 'php', 'linux', existe([]), pastas([])), { interpretador: '/usr/bin/php8.3' });
+});
+
+// ---- "Outra pasta de vendor…" / "Outra pasta de pacotes…" ----
+test('vendor: a pasta do projeto OU a própria vendor/ — vale a do projeto', () => {
+  const ex = existe(['/ws/backend/vendor/autoload.php']);
+  assert.deepEqual(lerPastaDePacotes('/ws/backend', 'php', 'linux', ex, pastas(['/ws/backend'])), { pacotes: '/ws/backend' });
+  assert.deepEqual(lerPastaDePacotes('/ws/backend/vendor', 'php', 'linux', ex, pastas(['/ws/backend/vendor'])), { pacotes: '/ws/backend' });
+});
+
+test('pacotes do Node: a pasta do projeto ou a node_modules/', () => {
+  const ex = existe(['/ws/api/node_modules']);
+  assert.deepEqual(lerPastaDePacotes('/ws/api/node_modules', 'javascript', 'linux', ex, pastas(['/ws/api/node_modules'])), { pacotes: '/ws/api' });
+});
+
+test('pasta sem vendor (ou que não existe): recado', () => {
+  const r = lerPastaDePacotes('/ws/docs', 'php', 'linux', existe([]), pastas(['/ws/docs']));
+  assert.ok('erro' in r && /vendor\/autoload\.php/.test(r.erro));
+  const n = lerPastaDePacotes('/ws/nao-existe', 'php', 'linux', existe([]), pastas([]));
+  assert.ok('erro' in n && /não existe/.test(n.erro));
+});

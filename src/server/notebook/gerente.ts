@@ -7,8 +7,10 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { ambientePhp, candidatosDePython, resolverInterpretador, type Interpretador } from './ambiente';
-import { candidatosDeNode, pastasDePacotes, type PastaDePacotes } from './ambiente-node';
+import {
+  ambientePhp, candidatosDePython, lerEscolhaDePasta, lerPastaDePacotes, resolverInterpretador, type Interpretador,
+} from './ambiente';
+import { candidatosDeNode, pastasDePacotes, pastasDeVendor, type PastaDePacotes } from './ambiente-node';
 import { Cascata, familiaDe, type Familia } from './cascata';
 import { iniciarKernelJs, iniciarKernelPhp, iniciarKernelPython } from './kernel-python';
 import { prepararCelulaJs } from './celula-js';
@@ -47,6 +49,8 @@ export interface SistemaDoKernel {
   readonly casa: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly execPath: string;
+  /** É uma pasta? ("Outro…" apontando uma pasta, relato de 01/10.) */
+  readonly ehPasta: (caminho: string) => boolean;
 }
 
 function subpastasDoDisco(caminho: string): readonly string[] {
@@ -57,8 +61,17 @@ function subpastasDoDisco(caminho: string): readonly string[] {
   }
 }
 
+function ehPastaNoDisco(caminho: string): boolean {
+  try {
+    return fs.statSync(caminho).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 const SISTEMA_REAL: SistemaDoKernel = {
   subpastas: subpastasDoDisco, casa: os.homedir(), env: process.env, execPath: process.execPath,
+  ehPasta: ehPastaNoDisco,
 };
 
 export interface PedidoDeKernel {
@@ -110,7 +123,11 @@ export class GerenteDeKernels {
       return { candidatos: candidatosDePython(pasta, pedido.raiz, this.plataforma, this.existe), candidatosDePacotes: [] };
     }
     if (pedido.linguagem === 'php') {
-      return { candidatos: [{ caminho: 'php', origem: 'sistema', rotulo: 'php do sistema (PATH)' }], candidatosDePacotes: [] };
+      return {
+        candidatos: [{ caminho: 'php', origem: 'sistema', rotulo: 'php do sistema (PATH)' }],
+        // De onde vem o vendor (relato de 01/10: um backend/ abaixo do notebook).
+        candidatosDePacotes: pastasDeVendor(pasta, pedido.raiz, this.plataforma, this.existe, this.sistema.subpastas),
+      };
     }
     return {
       candidatos: candidatosDeNode(
@@ -147,8 +164,35 @@ export class GerenteDeKernels {
     };
   }
 
+  /**
+   * O que veio digitado: "Outro…" é o PROGRAMA (a pasta onde ele está também
+   * vale); "Outra pasta de vendor/pacotes…" é a pasta do projeto ou a própria
+   * vendor/ — ambos relativos à pasta do notebook, ou com ~/.
+   */
+  private normalizar(pedido: PedidoDeKernel): PedidoDeKernel {
+    const pasta = path.dirname(pedido.caminho);
+    const resolver = (v: string) => resolverInterpretador(v, pasta, this.sistema.casa, this.plataforma);
+    let saida = pedido;
+    if (pedido.interpretador !== undefined) {
+      const escolha = lerEscolhaDePasta(
+        resolver(pedido.interpretador), pedido.linguagem, this.plataforma, this.existe, this.sistema.ehPasta
+      );
+      if ('erro' in escolha) throw new Error(escolha.erro);
+      saida = { ...saida, interpretador: escolha.interpretador };
+    }
+    if (pedido.pacotes !== undefined) {
+      // Um caminho relativo vira absoluto a partir da pasta do notebook.
+      const bruto = /[\\/~]/.test(pedido.pacotes) ? resolver(pedido.pacotes) : path.resolve(pasta, pedido.pacotes);
+      const escolha = lerPastaDePacotes(bruto, pedido.linguagem, this.plataforma, this.existe, this.sistema.ehPasta);
+      if ('erro' in escolha) throw new Error(escolha.erro);
+      saida = { ...saida, pacotes: escolha.pacotes };
+    }
+    return saida;
+  }
+
   /** O kernel da linguagem, subindo se preciso — ou trocando, se mudou o ambiente. */
-  async garantir(pedido: PedidoDeKernel): Promise<SessaoDeKernel> {
+  async garantir(pedidoOriginal: PedidoDeKernel): Promise<SessaoDeKernel> {
+    const pedido = this.normalizar(pedidoOriginal);
     const familia = familiaDe(pedido.linguagem);
     const k = chave(pedido.caminho, familia);
     const atual = this.sessao(pedido.caminho, pedido.linguagem);
@@ -240,20 +284,28 @@ export class GerenteDeKernels {
       const kernel = await this.iniciar.python(interpretador.caminho, pasta, this.plataforma);
       sessao = { ...base, kernel, interpretador, candidatos, preparar: (c) => c };
     } else if (pedido.linguagem === 'php') {
-      const ambiente = ambientePhp(pasta, pedido.raiz, this.plataforma, this.existe);
+      // A pasta do vendor: a escolhida, ou a mais próxima do notebook. O
+      // Laravel e a pasta de trabalho do kernel vêm DELA.
+      const { candidatosDePacotes } = this.ambiente(pedido);
+      const pacotes = pedido.pacotes === undefined
+        ? candidatosDePacotes[0]
+        : candidatosDePacotes.find((c) => c.caminho === pedido.pacotes) ?? { caminho: pedido.pacotes, rotulo: pedido.pacotes };
+      const ambiente = ambientePhp(pacotes.caminho, pedido.raiz, this.plataforma, this.existe);
       const padrao: Interpretador = {
         caminho: 'php',
         origem: 'sistema',
-        rotulo: ambiente.autoload === null ? 'sem vendor' : 'vendor do projeto',
+        rotulo: ambiente.autoload === null ? 'sem vendor' : 'php',
       };
       const interpretador = pedido.interpretador === undefined ? padrao : escolhido(pedido.interpretador);
       const laravel = pedido.laravel === true && ambiente.laravel !== null;
       const kernel = await this.iniciar.php(
-        interpretador.caminho, pasta, this.plataforma, ambiente.autoload, laravel ? ambiente.laravel : null
+        interpretador.caminho, pacotes.caminho, this.plataforma, ambiente.autoload, laravel ? ambiente.laravel : null
       );
       sessao = {
         ...base, kernel, interpretador, candidatos: [padrao], preparar: (c: string) => c,
         laravelDisponivel: ambiente.laravel !== null, laravel,
+        // Sem vendor em lugar nenhum, não há o que mostrar como "pacotes".
+        pacotes: ambiente.autoload === null ? null : pacotes, candidatosDePacotes,
       };
     } else {
       const linguagem = pedido.linguagem;
