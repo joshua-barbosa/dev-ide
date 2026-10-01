@@ -298,6 +298,74 @@ ${existsSync(path.join(WEB, 'notebook.css')) ? '<link rel="stylesheet" href="not
   marcar('e nada fica em vermelho nela', sublinhados2 === 0, `${sublinhados2} sublinhado(s)`);
   if (process.env.CAPTURA) await pagina.screenshot({ path: `${process.env.CAPTURA}-users.png` });
 
+  // ---- Várias linguagens no mesmo notebook (spec 113) ----
+  // A célula TS que cria users RODA; uma célula nova vira Python pelo seletor
+  // e recebe o users do Node; a TS seguinte recebe o que o Python mudou.
+  const celUsers = web.locator('[data-celula]').nth(2);
+  await celUsers.getByRole('button', { name: /Rodar célula/ }).click();
+  await saidaDe(celUsers).catch(() => '');
+  // A célula Python nasce pelo "+ outra linguagem" (o relato: o adicionar
+  // "ainda está mostrando somente Javascript + SQL + Markdown").
+  await web.locator('[data-adicionar="4"]').getByRole('combobox', { name: 'Adicionar célula de outra linguagem' })
+    .selectOption('python');
+  const py2 = web.locator('[data-celula]').nth(4);
+  // As opções do seletor: o relato foi "o select ficou em branco as options".
+  // O sistema desenha a lista com fundo claro; a opção tem de trazer o seu.
+  const coresDasOpcoes = await web.locator('[data-adicionar="4"] select option').evaluateAll((os) =>
+    os.map((o) => { const c = getComputedStyle(o); return [c.color, c.backgroundColor]; }));
+  marcar('as opções do seletor têm fundo e cor próprios (não somem no tema escuro)',
+    coresDasOpcoes.length > 0 && coresDasOpcoes.every(([cor, fundo]) => fundo !== 'rgba(0, 0, 0, 0)' && cor !== fundo),
+    JSON.stringify(coresDasOpcoes[0]));
+  marcar('"+ outra linguagem" cria a célula já em Python',
+    (await py2.getByRole('combobox', { name: 'Linguagem da célula' }).inputValue()) === 'python');
+  // Numa linha só: o Monaco recua sozinho depois de "users:", e a linha
+  // seguinte cairia dentro do for.
+  await escreverERodar(py2, "for u in users: u['grito'] = u['apelido'].upper()\nlen(users), users[0]['apelido']");
+  const saidaPy2 = await saidaDe(py2);
+  marcar('célula Python recebe o users criado no TypeScript', saidaPy2.includes("(2, 'primeira')"), JSON.stringify(saidaPy2.slice(0, 80)));
+  await web.locator('[data-adicionar="5"]').getByRole('button', { name: 'Python' }).click();
+  const ts3 = web.locator('[data-celula]').nth(5);
+  await ts3.getByRole('combobox', { name: 'Linguagem da célula' }).selectOption('typescript');
+  await escreverERodar(ts3, 'users.map((u: any) => u.grito).join(",")');
+  const saidaTs3 = await saidaDe(ts3);
+  marcar('a TS seguinte recebe o que o Python mudou POR DENTRO', saidaTs3.includes("'PRIMEIRA,SEGUNDA'"), JSON.stringify(saidaTs3.slice(0, 80)));
+  const barraMista = await web.locator('[data-kernel]').evaluateAll((els) => els.map((e) => e.getAttribute('data-kernel')));
+  marcar('a barra mostra um kernel por linguagem', barraMista.includes('python') && barraMista.some((k) => k === 'typescript' || k === 'javascript'),
+    JSON.stringify(barraMista));
+  const arquivoMisto = JSON.parse((await documento()) ?? '{}');
+  marcar('o .brnb misto grava a linguagem de cada célula (versão 2)',
+    arquivoMisto.versao === 2 && arquivoMisto.celulas?.some((c) => c.linguagem === 'python'));
+  if (process.env.CAPTURA) await pagina.screenshot({ path: `${process.env.CAPTURA}-misto.png` });
+
+  // O relato (0.1.16): com uma célula Python no notebook, o users de outra
+  // célula voltou a dar "Cannot find name 'users'". A conferência do tipo
+  // acima rodava ANTES de existir célula Python; esta roda depois.
+  await web.locator('[data-adicionar="6"]').getByRole('button', { name: 'TypeScript' }).click();
+  const ts4 = web.locator('[data-celula]').nth(6);
+  await ts4.locator('textarea').first().click();
+  await ts4.locator('.monaco-editor').first().waitFor({ timeout: 15000 });
+  await pagina.waitForTimeout(1500);
+  await pagina.keyboard.type('const mensagens = users.map((u) => u.');
+  await pagina.keyboard.press('Control+Space');
+  const depoisDoPython = await pagina.locator('.suggest-widget .monaco-list-row', { hasText: 'apelido' })
+    .first().waitFor({ timeout: 10000 }).then(() => true, () => false);
+  await pagina.keyboard.press('Escape');
+  await pagina.keyboard.type('apelido)');
+  await pagina.waitForTimeout(2500);
+  const sublinhados4 = await ts4.locator('.squiggly-error').count();
+  marcar('com célula Python no notebook, o users de outra célula continua conhecido',
+    depoisDoPython && sublinhados4 === 0, `sugeriu: ${depoisDoPython} · ${sublinhados4} sublinhado(s)`);
+  if (process.env.CAPTURA) await pagina.screenshot({ path: `${process.env.CAPTURA}-depois-do-python.png` });
+
+  // sql() dentro da célula (spec 114, C), pela conexão do notebook, com ?.
+  await web.locator('[data-adicionar="7"]').getByRole('button', { name: 'TypeScript' }).click();
+  const comSql = web.locator('[data-celula]').nth(7);
+  await escreverERodar(comSql, "(await sql('SELECT titulo FROM provas WHERE id = ?', [2]))[0].titulo");
+  const saidaSql2 = await saidaDe(comSql);
+  marcar('sql() na célula TS lê pela conexão do notebook', saidaSql2.includes("'segunda'"), JSON.stringify(saidaSql2.slice(0, 80)));
+  await pagina.waitForTimeout(1500);
+  marcar('o editor conhece o sql() (sem vermelho)', (await comSql.locator('.squiggly-error').count()) === 0);
+
   // O botão Ajuda na extensão: o mesmo painel, e o exemplo de JS (o kernel
   // desta página) — não o de Python.
   await web.getByRole('button', { name: 'Ajuda' }).click();
@@ -307,6 +375,8 @@ ${existsSync(path.join(WEB, 'notebook.css')) ? '<link rel="stylesheet" href="not
   if (process.env.CAPTURA) await pagina.screenshot({ path: `${process.env.CAPTURA}-ajuda.png` });
   marcar('extensão: o botão Ajuda abre o painel, com exemplo do kernel TS',
     abriu && textoDaAjuda.includes('.map(') && !textoDaAjuda.includes('import pandas'));
+  marcar('a Ajuda explica sql(), sql.transacao e a lista como tabela',
+    textoDaAjuda.includes('await sql.transacao(') && textoDaAjuda.includes('json_to_recordset({{messagesJson}}::json)'));
 
   marcar('nenhum erro de JavaScript na página do kernel JS', errosDaPagina.length === 0, errosDaPagina.slice(0, 2).join(' | '));
 } catch (erro) {

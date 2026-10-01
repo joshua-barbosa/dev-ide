@@ -1,5 +1,79 @@
 # Mudanças
 
+## 0.1.19
+
+- **Ajuda do notebook mais larga e redimensionável:** abre com 520 px, e a
+  borda esquerda arrasta (ou as setas do teclado, com ela em foco). A largura
+  fica lembrada.
+- **Ajuda: "Variável do kernel dentro do SQL" detalhada** — o marcador de
+  cada banco, de qual linguagem vem o valor, o que vira cada tipo (data,
+  null, objeto, lista), lista vazia, DataFrame de várias colunas, o teto de
+  parâmetros de cada banco e quando usar a receita do JSON.
+- **Python: um dicionário no `{{nome}}` vai como JSON** (`{"a": 1}`), como no
+  JavaScript e no PHP. Antes ia como o texto do Python (`{'a': 1}`).
+
+## 0.1.18
+
+- **Notebook: `sql()` dentro do código** (Python, JavaScript/TypeScript,
+  PHP). Roda um comando pela conexão do notebook, com os valores sempre por
+  `?` — em qualquer banco —, nunca colados no texto. Um SELECT devolve as
+  linhas; uma escrita devolve `{ linhasAfetadas }` (MySQL e SQLite contam;
+  Postgres e SQL Server não informam, e vem `null`). Cada `sql()` vale
+  sozinho; um erro vira exceção normal da célula. Serve para o laço que o SQL
+  puro não faz: um `UPDATE` por item de uma lista.
+- **`sql.transacao`** (no PHP, `sql_transacao`): tudo ou nada. O bloco ganha
+  uma conexão só dele; sem erro, confirma tudo; com erro (ou Parar), desfaz
+  tudo.
+- **SQLite: escrita com parâmetros gravava NULL.** Um `INSERT ... VALUES (?)`
+  (ou `UPDATE ... SET x = ?`) numa conexão SQLite mandava o comando SEM os
+  valores. Valia também para `{{nome}}` numa escrita no notebook.
+- **Ajuda:** seções novas — `sql()`, `sql.transacao` e "uma lista como
+  tabela no SQL", com a receita de JSON para Postgres, MySQL, SQL Server e
+  SQLite.
+
+## 0.1.17
+
+- **Notebook: as opções dos seletores de linguagem apareciam em branco** no
+  tema escuro (só se liam passando o mouse).
+- **O `users` de outra célula podia piscar em vermelho** enquanto se digitava:
+  as declarações do notebook eram tiradas e postas de volta a cada tecla.
+  Agora são trocadas no lugar.
+- **`{{nome}}` no lugar de uma tabela** (`select * from {{lista}}`) dá um
+  recado claro em vez de "syntax error at $1": `{{ }}` é valor, e o recado
+  mostra como consultar a lista como tabela no Postgres
+  (`json_to_recordset`).
+
+## 0.1.16
+
+- **Notebook: "+ outra linguagem"** na linha de adicionar célula. Antes ela
+  só oferecia a linguagem da célula de cima (mais SQL e Markdown).
+- **"Outro Python…" (e Node, PHP) aceita caminho relativo** à pasta do
+  notebook (`.venv/bin/python`, `../api/.venv/bin/python`) e `~/` para a pasta
+  do usuário, além do caminho completo.
+- O cabeçalho da célula de código mostra "Código" e a linguagem no seletor
+  ao lado, em vez do nome da linguagem duas vezes.
+
+## 0.1.15
+
+- **Notebook com várias linguagens.** Cada célula de código escolhe a sua
+  linguagem (Python, JavaScript, TypeScript, PHP) no seletor ao lado de
+  SQL/Markdown, e cada linguagem tem o seu kernel, com um indicador na barra.
+  JavaScript e TypeScript dividem o mesmo Node.
+- **Os dados descem em cascata entre as linguagens**, como no Jupyter: ao
+  trocar de linguagem, o que as outras mudaram chega antes de a célula rodar,
+  inclusive alterações por dentro (`pedidos[0].total = 5`). Passam números,
+  textos, listas, objetos e tabelas (no Python, uma lista de objetos vira
+  DataFrame). Não passam funções, classes, imports nem conexões.
+- **O resultado de um SQL chega em todas as linguagens** do notebook, e
+  `{{nome}}` usa o valor mais recente, de qualquer linguagem.
+- **Reiniciar kernel** pergunta qual, quando há mais de um.
+- **Exportar .ipynb** de notebook misto: as células Python como código, as
+  das outras linguagens como Markdown com o código em bloco.
+- A Ajuda ganhou a seção "Várias linguagens no mesmo notebook".
+- Um `.brnb` misto grava a versão 2 do formato: uma versão antiga da
+  extensão recusa abri-lo, em vez de rodar JavaScript no Python. Notebook de
+  uma linguagem só continua na versão 1.
+
 ## 0.1.14
 
 - **Notebook JS/TS: o tipo do que outra célula criou.** `const users =

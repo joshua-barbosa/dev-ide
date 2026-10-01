@@ -150,10 +150,12 @@ export function linguagensDoNotebook(nb: Pick<Notebook, 'celulas'>): Kernel[] {
 }
 
 export function inserirCelula(
-  nb: Notebook, tipo: TipoDeCelula, posicao: number, id: string
+  nb: Notebook, tipo: TipoDeCelula, posicao: number, id: string,
+  /** Só código: uma linguagem escolhida, em vez da herdada de cima. */
+  linguagem?: Kernel
 ): Notebook {
   const nova = celulaVazia(
-    id, tipo, tipo === 'sql' ? nomeDeResultadoLivre(nb) : null, linguagemParaInserir(nb, posicao)
+    id, tipo, tipo === 'sql' ? nomeDeResultadoLivre(nb) : null, linguagem ?? linguagemParaInserir(nb, posicao)
   );
   const onde = Math.max(0, Math.min(posicao, nb.celulas.length));
   return { ...nb, celulas: [...nb.celulas.slice(0, onde), nova, ...nb.celulas.slice(onde)] };

@@ -20,10 +20,13 @@ const PACOTES = 'p\u0000';
 const NODE = 'n\u0000';
 
 const PERGUNTA: Record<Kernel, { titulo: string; outro: string; exemplo: string }> = {
-  python: { titulo: 'Com qual Python o notebook roda?', outro: 'Outro Python…', exemplo: '/caminho/para/.venv/bin/python' },
-  php: { titulo: 'Com qual PHP o notebook roda?', outro: 'Outro PHP…', exemplo: '/caminho/para/php' },
-  javascript: { titulo: 'Kernel JavaScript: de onde vêm os pacotes, e qual Node?', outro: 'Outro Node…', exemplo: '/caminho/para/node' },
-  typescript: { titulo: 'Kernel TypeScript: de onde vêm os pacotes, e qual Node?', outro: 'Outro Node…', exemplo: '/caminho/para/node' },
+  python: {
+    titulo: 'Com qual Python o notebook roda?', outro: 'Outro Python…',
+    exemplo: '.venv/bin/python (a partir da pasta do notebook), ~/… ou caminho completo',
+  },
+  php: { titulo: 'Com qual PHP o notebook roda?', outro: 'Outro PHP…', exemplo: 'caminho do php (relativo à pasta do notebook, ~/… ou completo)' },
+  javascript: { titulo: 'Kernel JavaScript: de onde vêm os pacotes, e qual Node?', outro: 'Outro Node…', exemplo: 'caminho do node (relativo à pasta do notebook, ~/… ou completo)' },
+  typescript: { titulo: 'Kernel TypeScript: de onde vêm os pacotes, e qual Node?', outro: 'Outro Node…', exemplo: 'caminho do node (relativo à pasta do notebook, ~/… ou completo)' },
 };
 
 export async function escolherAmbiente(
@@ -50,7 +53,7 @@ export async function escolherAmbiente(
       rotulo: ehNode ? `Node: ${c.rotulo}` : c.rotulo,
       detalhe: marca(c.caminho === emUso.interpretador, c.caminho),
     })),
-    { valor: OUTRO, rotulo: pergunta.outro, detalhe: 'o caminho do executável' },
+    { valor: OUTRO, rotulo: pergunta.outro, detalhe: 'relativo à pasta do notebook, ~/… ou completo' },
   ];
 
   const escolhido = await escolherOpcao(pergunta.titulo, opcoes);

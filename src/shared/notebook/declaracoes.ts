@@ -136,6 +136,8 @@ const AMBIENTE = [
   'declare var __dirname: string;',
   'declare var __filename: string;',
   'declare function mostrarImagem(dados: any, mime?: string): void;',
+  // O sql() da célula (spec 114, C): linhas num SELECT, { linhasAfetadas } numa escrita.
+  'declare const sql: ((texto: string, params?: unknown[]) => Promise<any>) & { transacao<T>(bloco: () => Promise<T>): Promise<T> };',
 ];
 
 /** As outras células JS/TS: quais entram como CÓDIGO e o que sobra como `any`. */
@@ -210,4 +212,14 @@ export function declaracoesDoNotebook(nb: Notebook, idEmFoco: string | null): st
   // As células que não entram como código (conflito de nome): só os nomes.
   for (const nome of soNomes) declarar(nome, 'any');
   return `${linhas.join('\n')}\n`;
+}
+
+/**
+ * O código das outras células como os arquivos que o editor recebe (um só,
+ * hoje). Existe para o teste montar o programa do TypeScript igual ao editor.
+ */
+export function arquivosDasOutrasCelulas(
+  nb: Notebook, idEmFoco: string | null
+): { readonly nome: string; readonly conteudo: string }[] {
+  return [{ nome: 'celulas.ts', conteudo: codigoDasOutrasCelulas(nb, idEmFoco) }];
 }

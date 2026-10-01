@@ -32,7 +32,8 @@ async function servidor() {
   const pool = { acquire: async () => sessao } as unknown as SessionPool;
   const app = express();
   app.use(express.json({ limit: '10mb' }));
-  app.use('/api/notebook', createNotebookRouter(gerente, pool, () => 'sqlite'));
+  app.use('/api/notebook', createNotebookRouter(gerente, pool, () => 'sqlite', () =>
+    sqliteDriver.connect({ id: 'c1', type: 'sqlite', label: 'e', readOnly: false, fields: { file: banco } })));
   app.use(errorEnvelope);
   const s = app.listen(0);
   await new Promise((r) => s.once('listening', r));
@@ -51,11 +52,15 @@ async function servidor() {
 const caminho = path.join(pasta, 'analise.brnb');
 
 /** Executa e pergunta até terminar, como a tela faz. */
-async function rodar(pedir: Awaited<ReturnType<typeof servidor>>['pedir'], codigo: string) {
-  const { data } = await pedir('POST', '/kernel/executar', { caminho, codigo });
+async function rodar(
+  pedir: Awaited<ReturnType<typeof servidor>>['pedir'], codigo: string, linguagem = 'python', nb = caminho,
+  conexao: unknown = { connectionId: 'c1', database: 'main' }
+) {
+  const { data, error } = await pedir('POST', '/kernel/executar', { caminho: nb, linguagem, codigo, conexao });
+  if (data === null) throw new Error(error ?? 'executar falhou');
   let saidas: any[] = [];
   for (let i = 0; i < 200; i++) {
-    const q = (await pedir('GET', `/kernel/execucao?caminho=${encodeURIComponent(caminho)}&exec=${data.exec}&desde=${saidas.length}`)).data;
+    const q = (await pedir('GET', `/kernel/execucao?caminho=${encodeURIComponent(nb)}&linguagem=${linguagem}&exec=${data.exec}&desde=${saidas.length}`)).data;
     saidas = [...saidas.slice(0, q.inicio), ...q.saidas];
     if (q.terminou) return { saidas, ok: q.ok };
     await new Promise((r) => setTimeout(r, 25));
@@ -146,12 +151,7 @@ test('PHP e JS pelas rotas: o SQL vira variável nos dois', async () => {
         statement: 'SELECT cliente FROM pedidos ORDER BY id',
       });
       assert.equal(sql.data.variavel.forma, 'array', linguagem);
-      const { data } = await pedir('POST', '/kernel/executar', { caminho: nb, codigo });
-      let fim: any;
-      for (let i = 0; i < 200 && !fim?.terminou; i++) {
-        fim = (await pedir('GET', `/kernel/execucao?caminho=${encodeURIComponent(nb)}&exec=${data.exec}&desde=0`)).data;
-        await new Promise((r) => setTimeout(r, 25));
-      }
+      const fim = await rodar(pedir, codigo, linguagem, nb);
       assert.equal(fim.saidas.map((x: any) => x.texto ?? x.mensagem).join(''), esperado, linguagem);
     }
   } finally {
@@ -175,12 +175,7 @@ test('Laravel: só sobe quando o notebook PEDE', async () => {
     assert.equal(sem.data.laravel, false, 'desligado por padrão');
     const com = await pedir('POST', '/kernel', { caminho: nb, linguagem: 'php', raiz: projeto, laravel: true });
     assert.equal(com.data.laravel, true);
-    const { data } = await pedir('POST', '/kernel/executar', { caminho: nb, codigo: '$laravel_subiu' });
-    let fim: any;
-    for (let i = 0; i < 200 && !fim?.terminou; i++) {
-      fim = (await pedir('GET', `/kernel/execucao?caminho=${encodeURIComponent(nb)}&exec=${data.exec}&desde=0`)).data;
-      await new Promise((r) => setTimeout(r, 25));
-    }
+    const fim = await rodar(pedir, '$laravel_subiu', 'php', nb);
     assert.equal(fim.saidas.map((x: any) => x.texto ?? '').join(''), "'sim'\n");
   } finally {
     await fechar();
@@ -225,6 +220,203 @@ test('{{nome}} que o kernel não tem: erro claro, nada roda', async () => {
     assert.equal(r.success, false);
     assert.match(r.error ?? '', /nao_existe.*não existe no kernel/);
   } finally {
+    await fechar();
+  }
+});
+
+// ---- Várias linguagens no mesmo notebook (spec 113) ----
+
+test('o caso dele, de verdade: SQL → Node altera → Python recebe e altera → Node e PHP recebem', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'misto.brnb');
+  try {
+    for (const linguagem of ['javascript', 'python', 'php']) {
+      const k = await pedir('POST', '/kernel', { caminho: nb, linguagem, raiz: pasta });
+      assert.equal(k.success, true, k.error ?? '');
+    }
+    const sql = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: 'pedidos', raiz: pasta,
+      linguagens: ['javascript', 'python', 'php'],
+      statement: 'SELECT id, total FROM pedidos ORDER BY id',
+    });
+    assert.equal(sql.success, true, sql.error ?? '');
+    assert.deepEqual([...sql.data.variavel.linguagens].sort(), ['Node', 'PHP', 'Python']);
+
+    // Node: altera POR DENTRO (não reatribui).
+    const n1 = await rodar(pedir, 'pedidos.forEach((p) => { p.desconto = p.total / 10 }); pedidos.length', 'javascript', nb);
+    assert.equal(n1.ok, true, JSON.stringify(n1.saidas));
+    // Python: recebe com desconto e cria liquido.
+    const p1 = await rodar(pedir,
+      'for p in pedidos:\n    p["liquido"] = p["total"] - p["desconto"]\n[p["liquido"] for p in pedidos]', 'python', nb);
+    // 45, e não 45.0: o REAL do banco passou pelo Node, onde 50.0 é 50 — o
+    // "tipo exato" que se perde na viagem, aceito pelo usuário (spec 113, P2).
+    assert.equal(p1.saidas.map((x) => x.texto ?? x.mensagem).join(''), '[45, 1350, 2250]\n');
+    // Node de novo: recebe o liquido do Python.
+    const n2 = await rodar(pedir, 'pedidos.map((p) => p.liquido).join(",")', 'javascript', nb);
+    assert.equal(n2.saidas.map((x) => x.texto ?? x.mensagem).join(''), "'45,1350,2250'\n");
+    // PHP: recebe tudo o que veio do Node e do Python.
+    const h1 = await rodar(pedir, 'implode(",", array_column($pedidos, "liquido"))', 'php', nb);
+    assert.equal(h1.saidas.map((x) => x.texto ?? x.mensagem).join(''), "'45,1350,2250'\n");
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});
+
+test('variável criada no Node chega ao Python; {{nome}} usa a mais recente', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'misto2.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'javascript', raiz: pasta });
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'python', raiz: pasta });
+    await rodar(pedir, 'const ids = [1, 2]', 'javascript', nb);
+    const p = await rodar(pedir, 'ids = ids + [3]\nlen(ids)', 'python', nb);
+    assert.equal(p.saidas.map((x) => x.texto ?? x.mensagem).join(''), '3\n');
+    const sql = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: null,
+      statement: 'SELECT cliente FROM pedidos WHERE id IN {{ids}} ORDER BY id',
+    });
+    assert.equal(sql.success, true, sql.error ?? '');
+    assert.equal(sql.data.tabela.total, 3, 'o ids do Python (3 itens), não o do Node (2)');
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});
+
+test('função, módulo e classe não atravessam; o dado sim', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'misto3.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'python', raiz: pasta });
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'javascript', raiz: pasta });
+    await rodar(pedir, 'import json\nfrom datetime import date\ndef dobro(n):\n    return n * 2\nquando = date(2026, 9, 30)\nconfig = {"a": 1}', 'python', nb);
+    const j = await rodar(pedir, '[typeof json, typeof dobro, quando, config.a].join("|")', 'javascript', nb);
+    assert.equal(j.saidas.map((x) => x.texto ?? x.mensagem).join(''), "'undefined|undefined|2026-09-30|1'\n");
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});
+
+test('reiniciar UM kernel: o resto continua, e o reiniciado não recebe de volta o que era dele', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'misto4.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'python', raiz: pasta });
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'javascript', raiz: pasta });
+    await rodar(pedir, 'x = 1', 'python', nb);
+    await rodar(pedir, 'const y = x + 1', 'javascript', nb);
+    const r = await pedir('POST', '/kernel/reiniciar', { caminho: nb, linguagem: 'python' });
+    assert.equal(r.success, true, r.error ?? '');
+    const p = await rodar(pedir, "'x' in dir(), y", 'python', nb);
+    assert.equal(p.saidas.map((s) => s.texto ?? s.mensagem).join(''), '(False, 2)\n');
+    const kernels = await pedir('GET', `/kernels?caminho=${encodeURIComponent(nb)}`);
+    assert.deepEqual(kernels.data.map((k: any) => k.familia).sort(), ['node', 'python']);
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});
+
+// ---- sql() dentro do kernel (spec 114, C) ----
+// O caso dele: "uma lista de ids… rodar … para cada uma delas", e "um update
+// … rodando uma construção de SQL". Banco: o SQLite de exemplo, de verdade.
+
+const texto = (r: { saidas: any[] }) => r.saidas.map((x) => x.texto ?? x.mensagem).join('');
+
+test('sql() no Python, no JS e no PHP: lê pela conexão do notebook, com ? como parâmetro', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'sql-kernel.brnb');
+  try {
+    for (const linguagem of ['python', 'javascript', 'php']) {
+      await pedir('POST', '/kernel', { caminho: nb, linguagem, raiz: pasta });
+    }
+    const p = await rodar(pedir, "[r['cliente'] for r in sql('SELECT cliente FROM pedidos WHERE total > ? ORDER BY id', [1000])]", 'python', nb);
+    assert.equal(texto(p), "['Bia', 'Caio']\n");
+    const j = await rodar(pedir, "(await sql('SELECT cliente FROM pedidos WHERE id = ?', [1]))[0].cliente", 'javascript', nb);
+    assert.equal(texto(j), "'Ana'\n");
+    const h = await rodar(pedir, "sql('SELECT count(*) AS n FROM pedidos WHERE cliente <> ?', ['Ana'])[0]['n']", 'php', nb);
+    assert.equal(texto(h), '2\n');
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});
+
+test('sql() num laço de UPDATE: cada um vale sozinho, e conta as linhas', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'sql-laco.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'javascript', raiz: pasta });
+    await rodar(pedir, "await sql('CREATE TABLE IF NOT EXISTS marcas (id INTEGER, code TEXT, visto INTEGER DEFAULT 0)')", 'javascript', nb);
+    await rodar(pedir, "await sql('DELETE FROM marcas'); for (const [i, c] of [[1, 'a'], [2, 'b'], [3, 'c']]) await sql('INSERT INTO marcas (id, code) VALUES (?, ?)', [i, c])", 'javascript', nb);
+    const r = await rodar(pedir, [
+      'const alvo = [{ id: 1, code: "a" }, { id: 3, code: "c" }]',
+      'let total = 0',
+      'for (const p of alvo) total += (await sql("UPDATE marcas SET visto = 1 WHERE id = ? AND code = ?", [p.id, p.code])).linhasAfetadas',
+      'total',
+    ].join('\n'), 'javascript', nb);
+    assert.equal(texto(r), '2\n');
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});
+
+test('sql.transacao: confirma o bloco inteiro; com erro no meio, NADA fica gravado', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'sql-transacao.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'python', raiz: pasta });
+    await rodar(pedir, "sql('CREATE TABLE IF NOT EXISTS lote (n INTEGER)')\nsql('DELETE FROM lote')", 'python', nb);
+    const ok = await rodar(pedir, "with sql.transacao():\n    for n in [1, 2, 3]: sql('INSERT INTO lote (n) VALUES (?)', [n])", 'python', nb);
+    assert.equal(ok.ok, true, texto(ok));
+    const falhou = await rodar(pedir, [
+      'with sql.transacao():',
+      "    sql('INSERT INTO lote (n) VALUES (?)', [4])",
+      "    sql('INSERT INTO tabela_que_nao_existe (n) VALUES (?)', [5])",
+    ].join('\n'), 'python', nb);
+    assert.equal(falhou.ok, false);
+    assert.match(texto(falhou), /no such table/);
+    const n = await rodar(pedir, "[r['n'] for r in sql('SELECT n FROM lote ORDER BY n')]", 'python', nb);
+    assert.equal(texto(n), '[1, 2, 3]\n', 'o 4 foi desfeito junto com o erro');
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});
+
+test('sql() sem conexão no notebook: a exceção diz o que fazer', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'sql-sem-conexao.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'javascript', raiz: pasta });
+    const r = await rodar(pedir, "await sql('SELECT 1')", 'javascript', nb, null);
+    assert.equal(r.ok, false);
+    assert.match(texto(r), /escolha uma na barra de cima/);
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});
+
+test('{{nome}} com um dicionário do Python vai como JSON (e não como repr do Python)', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'dict-param.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'python', raiz: pasta });
+    await rodar(pedir, "filtro = {'cliente': 'Bia'}", 'python', nb);
+    const r = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: null,
+      // O TEXTO que chega: o json_extract do SQLite aceita JSON5 (aspas
+      // simples) e leria até o repr do Python — não serviria de prova.
+      statement: 'SELECT {{filtro}} AS t',
+    });
+    assert.equal(r.success, true, r.error ?? '');
+    assert.equal(r.data.tabela.linhas[0][0], '{"cliente": "Bia"}');
+  } finally {
+    gerente.encerrar(nb);
     await fechar();
   }
 });

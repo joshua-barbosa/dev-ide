@@ -10,6 +10,8 @@ import type { Saida } from '../shared/notebook/modelo';
 /** O kernel de um notebook, como a rota o descreve (spec 112). */
 export interface EstadoDoKernel {
   readonly linguagem: string;
+  /** python | node | php — JS e TS dividem o Node. */
+  readonly familia: 'python' | 'node' | 'php';
   readonly ocupado: boolean;
   readonly versao: string;
   readonly executavel: string;
@@ -41,40 +43,50 @@ export interface AmbienteDoKernel {
   readonly candidatosDePacotes: readonly PastaDePacotes[];
 }
 
+const q = encodeURIComponent;
+
 export const ApiDoNotebook = {
-  kernel: (caminho: string) =>
-    request<EstadoDoKernel | null>('GET', `/api/notebook/kernel?caminho=${encodeURIComponent(caminho)}`),
+  /** Um kernel por FAMÍLIA (spec 113): a linguagem diz qual. */
+  kernel: (caminho: string, linguagem: string) =>
+    request<EstadoDoKernel | null>('GET', `/api/notebook/kernel?caminho=${q(caminho)}&linguagem=${q(linguagem)}`),
+  /** Todos os kernels vivos do notebook — para reencontrá-los depois de um F5. */
+  kernels: (caminho: string) => request<EstadoDoKernel[]>('GET', `/api/notebook/kernels?caminho=${q(caminho)}`),
   ambiente: (caminho: string, linguagem: string, raiz: string | null) =>
     request<AmbienteDoKernel>(
       'GET',
-      `/api/notebook/ambiente?caminho=${encodeURIComponent(caminho)}&linguagem=${encodeURIComponent(linguagem)}` +
-        `&raiz=${encodeURIComponent(raiz ?? '')}`
+      `/api/notebook/ambiente?caminho=${q(caminho)}&linguagem=${q(linguagem)}&raiz=${q(raiz ?? '')}`
     ),
   iniciar: (p: {
     caminho: string; linguagem: string; raiz: string | null; interpretador?: string; laravel?: boolean;
     pacotes?: string;
   }) =>
     request<EstadoDoKernel>('POST', '/api/notebook/kernel', p),
-  executar: (caminho: string, codigo: string) =>
-    request<{ exec: number }>('POST', '/api/notebook/kernel/executar', { caminho, codigo }),
-  execucao: (caminho: string, exec: number, desde: number) =>
+  /** `conexao`: a do notebook — é por ela que o sql() da célula fala com o banco (spec 114). */
+  executar: (caminho: string, linguagem: string, codigo: string, conexao: { connectionId: string; database: string } | null) =>
+    request<{ exec: number }>('POST', '/api/notebook/kernel/executar', { caminho, linguagem, codigo, conexao }),
+  execucao: (caminho: string, linguagem: string, exec: number, desde: number) =>
     request<{ inicio: number; saidas: Saida[]; terminou: boolean; ok: boolean }>(
       'GET',
-      `/api/notebook/kernel/execucao?caminho=${encodeURIComponent(caminho)}&exec=${exec}&desde=${desde}`
+      `/api/notebook/kernel/execucao?caminho=${q(caminho)}&linguagem=${q(linguagem)}&exec=${exec}&desde=${desde}`
     ),
-  interromper: (caminho: string) =>
-    request<null>('POST', '/api/notebook/kernel/interromper', { caminho }),
-  reiniciar: (caminho: string) =>
-    request<EstadoDoKernel | null>('POST', '/api/notebook/kernel/reiniciar', { caminho }),
+  interromper: (caminho: string, linguagem: string) =>
+    request<null>('POST', '/api/notebook/kernel/interromper', { caminho, linguagem }),
+  reiniciar: (caminho: string, linguagem: string) =>
+    request<EstadoDoKernel | null>('POST', '/api/notebook/kernel/reiniciar', { caminho, linguagem }),
+  reiniciarTodos: (caminho: string) =>
+    request<EstadoDoKernel[]>('POST', '/api/notebook/kernel/reiniciar', { caminho }),
   encerrar: (caminho: string) =>
     request<null>('POST', '/api/notebook/kernel/encerrar', { caminho }),
   sql: (p: {
     caminho: string; connectionId: string; database: string; statement: string; nome: string | null;
+    /** As linguagens do notebook: o resultado vai para cada uma (spec 113). */
+    linguagens: readonly string[];
+    raiz: string | null;
   }) =>
     request<{
       tabela: Saida | null;
       mensagem?: string;
-      variavel: { nome: string; linhas: number; forma: string } | null;
+      variavel: { nome: string; linhas: number; forma: string; linguagens?: string[] } | null;
       aviso?: string | null;
     }>('POST', '/api/notebook/kernel/sql', p),
 };

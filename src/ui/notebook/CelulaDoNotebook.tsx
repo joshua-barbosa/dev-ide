@@ -39,12 +39,6 @@ export interface CelulaDoNotebookProps {
   onFocar(): void;
 }
 
-/**
- * O seletor de linguagem por célula (spec 113, etapa 1) só aparece quando os
- * vários kernels existirem (etapa 2): antes disso, uma célula Python num
- * notebook JS rodaria no Node.
- */
-const MISTURAR_LINGUAGENS = false;
 
 const ROTULO_DO_KERNEL: Record<Kernel, string> = {
   python: 'Python', javascript: 'JavaScript', typescript: 'TypeScript', php: 'PHP',
@@ -87,8 +81,10 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
   // A linguagem é da CÉLULA (spec 113); a do notebook é só o padrão.
   const linguagemDeCodigo = celula.linguagem ?? p.kernel;
   const linguagem = celula.tipo === 'codigo' ? linguagemDeCodigo : celula.tipo;
+  // "Código", e a linguagem no seletor ao lado: o nome duas vezes na mesma
+  // barra (TypeScript | TypeScript ▾) parecia duas coisas diferentes.
   const tipos: readonly (readonly [TipoDeCelula, string])[] = [
-    ['codigo', ROTULO_DO_KERNEL[linguagemDeCodigo]], ['sql', 'SQL'], ['markdown', 'Markdown'],
+    ['codigo', 'Código'], ['sql', 'SQL'], ['markdown', 'Markdown'],
   ];
 
   return (
@@ -132,7 +128,8 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
           ))}
         </Box>
 
-        {MISTURAR_LINGUAGENS && celula.tipo === 'codigo' && (
+        {/* A linguagem da célula (spec 113): cada uma roda no seu kernel. */}
+        {celula.tipo === 'codigo' && (
           <Box
             component="select"
             aria-label="Linguagem da célula"
@@ -142,6 +139,9 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
             sx={{
               border: 1, borderColor: 'divider', borderRadius: 0.5, fontSize: 11, py: 0.1,
               bgcolor: 'background.paper', color: 'text.secondary', cursor: 'pointer',
+              // As opções são desenhadas pelo sistema, com fundo claro: herdando a
+              // cor clara do tema escuro, ficavam em branco (relato da 0.1.16).
+              '& option': { bgcolor: 'background.paper', color: 'text.primary' },
             }}
           >
             {KERNELS.map((k) => (

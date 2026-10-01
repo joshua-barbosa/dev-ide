@@ -263,9 +263,14 @@ function executar(
     colunas = [];
   }
 
+  // O SQLite do Node não aceita booleano: vira 1/0, como o próprio banco guarda.
+  const valores = params.map((v) => (typeof v === 'boolean' ? Number(v) : v));
+
   // Sem colunas declaradas, o comando não devolve linhas (INSERT/UPDATE/DDL).
+  // Os parâmetros vão AQUI também: sem eles, um INSERT … VALUES (?) gravava
+  // NULL calado (achado pelo sql() do notebook, spec 114).
   if (colunas.length === 0) {
-    const info = stmt.run();
+    const info = stmt.run(...valores);
     const afetadas = Number(info.changes);
     return {
       columns: [],
@@ -284,8 +289,6 @@ function executar(
   // Linhas a pular (T056), descartadas do próprio iterador.
   const pular = Math.max(0, Math.trunc(request.offset ?? 0));
   let puladas = 0;
-  // O SQLite do Node não aceita booleano: vira 1/0, como o próprio banco guarda.
-  const valores = params.map((v) => (typeof v === 'boolean' ? Number(v) : v));
   for (const linha of stmt.iterate(...valores)) {
     if (puladas < pular) {
       puladas += 1;

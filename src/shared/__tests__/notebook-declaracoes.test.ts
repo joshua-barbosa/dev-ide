@@ -80,6 +80,7 @@ test('o ambiente do kernel: require, process, mostrarImagem', () => {
   assert.match(d, /declare var require: any;/);
   assert.match(d, /declare var process: any;/);
   assert.match(d, /declare function mostrarImagem\(/);
+  assert.match(d, /declare const sql: /);
 });
 
 test('nomes declarados: const/let/var, desestruturação, function, class e import', () => {
@@ -96,4 +97,54 @@ test('nomes declarados: const/let/var, desestruturação, function, class e impo
     'if (x) { const tambemDentro = 2 }',
   ].join('\n');
   assert.deepEqual(nomesDeclarados(codigo).sort(), ['I', 'a', 'b', 'c', 'e', 'f', 'g', 'h', 'j', 'k', 'l', 'n'].sort());
+});
+
+// ---- Com o compilador TypeScript de verdade ----
+// O relato (0.1.16): o "users" de outra célula voltou a dar "Cannot find name
+// 'users'. (2304)". O guarda do navegador passava porque o notebook dele era
+// simples; aqui o notebook tem uma célula QUEBRADA (uma chave aberta, como no
+// meio da digitação) antes da que declara users.
+import ts from 'typescript';
+import { arquivosDasOutrasCelulas } from '../notebook/declaracoes';
+
+/** Os erros que o TypeScript daria na célula em foco, com os arquivos do notebook. */
+function errosDaCelula(nb: Notebook, idEmFoco: string): string[] {
+  const foco = nb.celulas.find((c) => c.id === idEmFoco)?.conteudo ?? '';
+  const arquivos = new Map<string, string>([
+    ['/foco.ts', foco],
+    ['/notebook.d.ts', declaracoesDoNotebook(nb, idEmFoco)],
+    ...arquivosDasOutrasCelulas(nb, idEmFoco).map((a) => [`/${a.nome}`, a.conteudo] as [string, string]),
+  ]);
+  const opcoes: ts.CompilerOptions = { target: ts.ScriptTarget.ES2022, noLib: true, strict: false };
+  const host = ts.createCompilerHost(opcoes);
+  host.getSourceFile = (nome, versao) =>
+    arquivos.has(nome) ? ts.createSourceFile(nome, arquivos.get(nome) ?? '', versao) : undefined;
+  host.fileExists = (nome) => arquivos.has(nome);
+  host.readFile = (nome) => arquivos.get(nome);
+  const programa = ts.createProgram([...arquivos.keys()], opcoes, host);
+  return ts.getPreEmitDiagnostics(programa, programa.getSourceFile('/foco.ts'))
+    .filter((d) => d.code === 2304 || d.code === 2451)
+    .map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n'));
+}
+
+test('uma célula QUEBRADA não apaga o que as outras declaram', () => {
+  let nb: Notebook = { ...notebookNovo('typescript', null), celulas: [] };
+  nb = inserirCelula(nb, 'codigo', 0, 'quebrada');
+  nb = alterarCelula(nb, 'quebrada', { conteudo: 'const rascunho = {' });
+  nb = inserirCelula(nb, 'codigo', 1, 'u');
+  nb = alterarCelula(nb, 'u', { conteudo: 'const users = [{ name: "a" }]' });
+  nb = inserirCelula(nb, 'codigo', 2, 'm');
+  nb = alterarCelula(nb, 'm', { conteudo: 'const messages = users.map((u) => u.name)' });
+  assert.deepEqual(errosDaCelula(nb, 'm'), []);
+});
+
+test('a célula Python no meio não atrapalha', () => {
+  let nb: Notebook = { ...notebookNovo('typescript', null), celulas: [] };
+  nb = inserirCelula(nb, 'codigo', 0, 'u');
+  nb = alterarCelula(nb, 'u', { conteudo: 'const users = [{ name: "a" }]' });
+  nb = inserirCelula(nb, 'codigo', 1, 'py', 'python');
+  nb = alterarCelula(nb, 'py', { conteudo: 'for u in users: print(u)' });
+  nb = inserirCelula(nb, 'codigo', 2, 'm', 'typescript');
+  nb = alterarCelula(nb, 'm', { conteudo: 'const messages = users.map((u) => u.name)' });
+  assert.deepEqual(errosDaCelula(nb, 'm'), []);
 });

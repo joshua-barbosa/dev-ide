@@ -64,6 +64,13 @@ export class Kernel {
   /** Pedidos de valor ({{nome}} do SQL) esperando resposta, pelo número. */
   private readonly esperandoValores = new Map<number, (m: Mensagem) => void>();
   private proximoPedido = 1;
+  /**
+   * Quem atende o `sql()` que uma célula chama (spec 114, C). A resposta — ou
+   * o erro — volta ao kernel, e vira o retorno (ou a exceção) do `sql()`.
+   */
+  aoPedirSql: ((pedido: Readonly<Record<string, unknown>>) => Promise<Record<string, unknown>>) | null = null;
+  /** Uma célula terminou: a transação que ela deixou aberta é desfeita. */
+  aoTerminarCelula: (() => void) | null = null;
 
   private constructor(
     private readonly processo: ChildProcess,
@@ -321,6 +328,17 @@ export class Kernel {
       this.esperandoDefinicao?.(m);
       return;
     }
+    if (m.tipo === 'sql' || m.tipo === 'sql-transacao') {
+      const pedido = m.pedido;
+      const atender = this.aoPedirSql;
+      const responder = (dados: Record<string, unknown>) => this.escrever({ tipo: 'sql-resposta', pedido, ...dados });
+      if (atender === null) {
+        responder({ erro: 'sql() não está disponível neste kernel.' });
+        return;
+      }
+      atender(m).then(responder, (e: unknown) => responder({ erro: e instanceof Error ? e.message : String(e) }));
+      return;
+    }
     if (m.tipo === 'valores' || m.tipo === 'exportado' || m.tipo === 'importado') {
       if (typeof m.pedido === 'number') this.esperandoValores.get(m.pedido)?.(m);
       return;
@@ -334,6 +352,7 @@ export class Kernel {
     } else if (m.tipo === 'fim') {
       e.ok = m.ok === true;
       e.terminou = true;
+      this.aoTerminarCelula?.();
       const i = this.fila.indexOf(e);
       if (i !== -1) this.fila.splice(i, 1);
     }

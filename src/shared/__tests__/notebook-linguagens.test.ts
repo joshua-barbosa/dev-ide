@@ -108,3 +108,10 @@ test('.ipynb: um notebook sem nenhuma célula Python ainda recusa', () => {
   const nb = inserirCelula(vazio('javascript'), 'codigo', 0, 'a');
   assert.throws(() => exportarIpynb(nb, () => ''), /Python/);
 });
+
+test('"+ outra linguagem": inserir escolhendo a linguagem, não a herdada', () => {
+  // O relato: "o adicionar bloco ainda está mostrando somente Javascript + SQL +
+  // Markdown, apesar de ser multi linguagem agora".
+  const nb = inserirCelula(vazio('javascript'), 'codigo', 0, 'a', 'python');
+  assert.equal(nb.celulas[0].linguagem, 'python');
+});

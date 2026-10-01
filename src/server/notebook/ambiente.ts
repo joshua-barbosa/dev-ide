@@ -98,3 +98,23 @@ export function ambientePhp(
   }
   return { autoload, laravel };
 }
+
+/**
+ * Um interpretador digitado em "Outro…": relativo à pasta do NOTEBOOK, `~/`
+ * como a pasta do usuário, absoluto como está, e nome solto (`python3`) para o
+ * PATH. A pergunta foi *"O caminho do python eu preciso colocar desde a raiz?
+ * Ou posso colocar só a partir da pasta que estou?"* — pode.
+ */
+export function resolverInterpretador(
+  valor: string,
+  pastaDoNotebook: string,
+  casa: string,
+  plataforma: Plataforma
+): string {
+  const p = plataforma === 'win32' ? path.win32 : path.posix;
+  const texto = valor.trim();
+  if (/^~[\\/]/.test(texto)) return p.join(casa, texto.slice(2));
+  if (p.isAbsolute(texto)) return texto;
+  const temBarra = plataforma === 'win32' ? /[\\/]/.test(texto) : texto.includes('/');
+  return temBarra ? p.resolve(pastaDoNotebook, texto) : texto;
+}

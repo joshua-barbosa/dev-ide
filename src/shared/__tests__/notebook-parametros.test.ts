@@ -60,3 +60,34 @@ test('o texto de fora continua EXATAMENTE igual', () => {
   const sql = "SELECT 'a''b', `c` FROM t -- {{x}}\nWHERE y = {{y}}";
   assert.equal(montarSqlComParametros(sql, { y: 1 }, 'interrogacao').sql, "SELECT 'a''b', `c` FROM t -- {{x}}\nWHERE y = ?");
 });
+
+test('{{nome}} no lugar de uma TABELA: recado claro, em vez do erro de sintaxe do banco', () => {
+  // O relato: "select * from {{messages}} as messages" deu "syntax error at or
+  // near $1". {{ }} é VALOR (parâmetro); variável como tabela é a spec 114.
+  for (const sql of ['select * from {{messages}} as m', 'SELECT * FROM t JOIN {{outra}} o ON o.id = t.id']) {
+    assert.throws(() => montarSqlComParametros(sql, { messages: [], outra: [] }, 'dolar'), /valor.*não.*tabela/i);
+  }
+  // Como valor, depois de FROM, mas dentro de uma função, continua valendo.
+  const r = montarSqlComParametros('select * from json_to_recordset({{j}}::json) as m(id int)', { j: '[]' }, 'dolar');
+  assert.equal(r.sql, 'select * from json_to_recordset($1::json) as m(id int)');
+});
+
+// ---- sql() dentro do kernel (spec 114, C): parâmetros sempre com ? ----
+import { trocarInterrogacoes } from '../notebook/parametros';
+
+test('? vira o marcador do banco, na ordem', () => {
+  assert.equal(trocarInterrogacoes('UPDATE t SET a = ? WHERE id = ?', 2, 'dolar'), 'UPDATE t SET a = $1 WHERE id = $2');
+  assert.equal(trocarInterrogacoes('UPDATE t SET a = ? WHERE id = ?', 2, 'arroba'), 'UPDATE t SET a = @p1 WHERE id = @p2');
+  assert.equal(trocarInterrogacoes('UPDATE t SET a = ? WHERE id = ?', 2, 'interrogacao'), 'UPDATE t SET a = ? WHERE id = ?');
+});
+
+test('? dentro de texto ou comentário não é parâmetro', () => {
+  assert.equal(
+    trocarInterrogacoes("SELECT '?' AS q, x FROM t -- e ?\nWHERE id = ? /* ? */", 1, 'dolar'),
+    "SELECT '?' AS q, x FROM t -- e ?\nWHERE id = $1 /* ? */"
+  );
+});
+
+test('quantidade de ? diferente da de valores: erro claro', () => {
+  assert.throws(() => trocarInterrogacoes('SELECT ? , ?', 1, 'dolar'), /2 marcador.*1 valor/);
+});

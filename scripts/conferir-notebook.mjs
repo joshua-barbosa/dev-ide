@@ -308,6 +308,23 @@ try {
   const copiado = await pagina.evaluate(() => navigator.clipboard.readText()).catch(() => '');
   marcar('o exemplo da ajuda vai para a área de transferência', copiado.trim() !== '',
     JSON.stringify(copiado.slice(0, 40)));
+  // Mais larga de saída, e a borda esquerda arrasta (o relato: "fica muito
+  // encurtado na lateral").
+  const larguraInicial = (await ajuda.boundingBox())?.width ?? 0;
+  marcar('a ajuda abre larga (≥ 500 px)', larguraInicial >= 500, `${Math.round(larguraInicial)} px`);
+  const alca = pagina.locator('[data-alca-da-ajuda]');
+  const caixaDaAlca = await alca.boundingBox();
+  if (caixaDaAlca !== null) {
+    await pagina.mouse.move(caixaDaAlca.x + 3, caixaDaAlca.y + 50);
+    await pagina.mouse.down();
+    await pagina.mouse.move(caixaDaAlca.x - 150, caixaDaAlca.y + 50, { steps: 5 });
+    await pagina.mouse.up();
+  }
+  const larguraDepois = (await ajuda.boundingBox())?.width ?? 0;
+  marcar('arrastar a borda alarga a ajuda', larguraDepois >= larguraInicial + 100,
+    `${Math.round(larguraInicial)} → ${Math.round(larguraDepois)} px`);
+  marcar('a ajuda detalha o {{nome}}: teto de parâmetros e de qual linguagem vem',
+    textoDaAjuda.includes('SQL Server 2.100') && textoDaAjuda.includes('venha de onde vier'));
   await ajuda.getByRole('button', { name: 'Fechar a ajuda' }).click();
   marcar('fechar esconde o painel', await ajuda.isHidden());
 

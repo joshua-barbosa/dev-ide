@@ -487,3 +487,17 @@ test('`semTeto` traz TODAS as linhas — o que o notebook entrega ao kernel', as
   assert.equal(r.truncated, false);
   assert.equal(r.rows[59_999][0], 60_000);
 });
+
+test('INSERT/UPDATE com parâmetros: os valores CHEGAM ao banco', async () => {
+  // O defeito: o caminho de escrita chamava stmt.run() sem os parâmetros, e
+  // um INSERT ... VALUES (?) gravava NULL calado. Apareceu com o sql() do
+  // notebook (spec 114, C), mas valia para qualquer escrita parametrizada.
+  const { session } = await abrir();
+  const execute = session.execute!;
+  await execute({ statement: 'CREATE TABLE p (n INTEGER, t TEXT)' });
+  await execute({ statement: 'INSERT INTO p (n, t) VALUES (?, ?)', params: [7, 'sete'] });
+  const u = await execute({ statement: 'UPDATE p SET t = ? WHERE n = ?', params: ['SETE', 7] });
+  assert.equal(u.rowCount, 1);
+  const r = await execute({ statement: 'SELECT n, t FROM p' });
+  assert.deepEqual(r.rows, [[7, 'SETE']]);
+});

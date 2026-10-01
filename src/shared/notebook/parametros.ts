@@ -92,6 +92,15 @@ export function montarSqlComParametros(
       saida += p.texto;
       continue;
     }
+    // `FROM {{x}}` / `JOIN {{x}}`: ele quis a variável como TABELA. Isso não
+    // existe (ainda: spec 114), e o banco só diria "syntax error at $1".
+    if (/\b(from|join)\s*$/i.test(saida)) {
+      throw new Error(
+        `{{${p.nome}}} é um VALOR (vira parâmetro), não uma tabela. Para consultar uma lista como tabela no ` +
+          `Postgres: guarde-a em JSON (JS: ${p.nome}Json = JSON.stringify(${p.nome}); Python: ` +
+          `${p.nome}_json = json.dumps(${p.nome})) e use json_to_recordset({{${p.nome}Json}}::json) AS t(coluna tipo, …).`
+      );
+    }
     if (!(p.nome in valores)) {
       throw new Error(`{{${p.nome}}}: a variável "${p.nome}" não existe no kernel. Rode antes a célula que a cria.`);
     }
@@ -113,4 +122,67 @@ export function montarSqlComParametros(
     }
   }
   return { sql: saida, params };
+}
+
+/**
+ * O `sql()` de dentro do kernel (spec 114, C): o código escreve SEMPRE `?`, em
+ * qualquer banco, e aqui ele vira o marcador do banco (`$1`, `@p0`). `?`
+ * dentro de texto ou comentário fica como está.
+ */
+export function trocarInterrogacoes(sql: string, valores: number, estilo: EstiloDeParametro): string {
+  let n = 0;
+  let saida = '';
+  for (const p of partes(sql)) {
+    if (!('texto' in p)) {
+      saida += `{{${p.nome}}}`;
+      continue;
+    }
+    saida += trocarForaDeTexto(p.texto, () => {
+      const atual = n;
+      n += 1;
+      // Os dois começam em 1: `$1` no Postgres, `@p1` no SQL Server (o driver nomeia p1, p2…).
+      return estilo === 'dolar' ? `$${atual + 1}` : estilo === 'arroba' ? `@p${atual + 1}` : '?';
+    });
+  }
+  if (n !== valores) {
+    throw new Error(`O comando tem ${n} marcador(es) ? e ${valores} valor(es): passe um valor para cada ?.`);
+  }
+  return saida;
+}
+
+/** Troca cada `?` fora de aspas e comentários. */
+function trocarForaDeTexto(texto: string, proximo: () => string): string {
+  let saida = '';
+  let i = 0;
+  const fecha: Record<string, string> = { "'": "'", '"': '"', '`': '`' };
+  while (i < texto.length) {
+    const c = texto[i];
+    if (c in fecha) {
+      let j = i + 1;
+      while (j < texto.length) {
+        if (texto[j] === c && texto[j + 1] === c) j += 2;
+        else if (texto[j] === c) break;
+        else j += 1;
+      }
+      saida += texto.slice(i, j + 1);
+      i = j + 1;
+    } else if (c === '-' && texto[i + 1] === '-') {
+      const fim = texto.indexOf('\n', i);
+      const ate = fim === -1 ? texto.length : fim;
+      saida += texto.slice(i, ate);
+      i = ate;
+    } else if (c === '/' && texto[i + 1] === '*') {
+      const fim = texto.indexOf('*/', i + 2);
+      const ate = fim === -1 ? texto.length : fim + 2;
+      saida += texto.slice(i, ate);
+      i = ate;
+    } else if (c === '?') {
+      saida += proximo();
+      i += 1;
+    } else {
+      saida += c;
+      i += 1;
+    }
+  }
+  return saida;
 }

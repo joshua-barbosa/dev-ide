@@ -91,6 +91,11 @@ def ler_pedidos():
         if pedido.get('tipo') == 'interromper':
             if _executando:
                 _thread.interrupt_main()
+        elif pedido.get('tipo') == 'sql-resposta':
+            # A celula esta ESPERANDO por ela: nao entra na fila de pedidos.
+            fila = _esperando_sql.get(pedido.get('pedido'))
+            if fila is not None:
+                fila.put(pedido)
         else:
             _pedidos.put(pedido)
     _pedidos.put(None)
@@ -422,6 +427,75 @@ def importar(pedido):
     enviar({'tipo': 'importado', 'pedido': pedido.get('pedido')})
 
 
+# ---- sql() dentro do kernel (spec 114, C) ----
+# O motor executa pela conexao do notebook e responde pelo canal. Cada sql()
+# vale sozinho; tudo-ou-nada so com "with sql.transacao():".
+_esperando_sql = {}
+_sql_estado = {'proximo': 1, 'transacao': None}
+
+
+def _pedir_ao_motor(dados):
+    pedido = _sql_estado['proximo']
+    _sql_estado['proximo'] += 1
+    fila = queue.Queue()
+    _esperando_sql[pedido] = fila
+    try:
+        enviar(dict(dados, pedido=pedido))
+        # Em fatias: o Parar (KeyboardInterrupt) tem de conseguir interromper
+        # a espera, inclusive no Windows.
+        while True:
+            try:
+                resposta = fila.get(timeout=0.2)
+                break
+            except queue.Empty:
+                continue
+    finally:
+        _esperando_sql.pop(pedido, None)
+    if resposta.get('erro'):
+        raise RuntimeError(resposta['erro'])
+    return resposta
+
+
+class _Transacao:
+    def __enter__(self):
+        self.dona = _sql_estado['transacao'] is None
+        if self.dona:
+            _sql_estado['transacao'] = _pedir_ao_motor({'tipo': 'sql-transacao', 'acao': 'comecar'})['transacao']
+        return self
+
+    def __exit__(self, tipo, valor, rastro):
+        if not self.dona:
+            return False
+        tid = _sql_estado['transacao']
+        _sql_estado['transacao'] = None
+        if tipo is None:
+            _pedir_ao_motor({'tipo': 'sql-transacao', 'acao': 'confirmar', 'transacao': tid})
+        else:
+            try:
+                _pedir_ao_motor({'tipo': 'sql-transacao', 'acao': 'desfazer', 'transacao': tid})
+            except Exception:
+                pass
+        return False
+
+
+class _Sql:
+    def __call__(self, texto, params=None):
+        r = _pedir_ao_motor({'tipo': 'sql', 'texto': str(texto), 'params': list(params or []),
+                             'transacao': _sql_estado['transacao']})
+        if not r.get('colunas'):
+            return {'linhasAfetadas': r.get('linhasAfetadas')}
+        if importlib.util.find_spec('pandas') is not None:
+            import pandas
+            return pandas.DataFrame(r['linhas'], columns=r['colunas'])
+        return [dict(zip(r['colunas'], linha)) for linha in r['linhas']]
+
+    def transacao(self):
+        return _Transacao()
+
+
+ns['sql'] = _Sql()
+
+
 def _como_parametro(v):
     # Para o {{nome}} do SQL: so valores que um banco aceita como parametro.
     t = type(v)
@@ -439,6 +513,9 @@ def _como_parametro(v):
         return [_como_parametro(x) for x in v]
     if v is None or isinstance(v, (bool, int, float, str)):
         return v
+    # Dicionario: JSON, como no JS e no PHP (o str() dava o repr do Python).
+    if isinstance(v, dict):
+        return json.dumps(_dado(v, set()), ensure_ascii=False)
     if hasattr(v, 'isoformat'):
         return v.isoformat()
     return str(v)

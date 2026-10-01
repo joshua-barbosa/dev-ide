@@ -80,3 +80,30 @@ test('PHP no Windows', () => {
   const a = ambientePhp('C:\\proj\\notas', 'C:\\proj', 'win32', existe(['C:\\proj\\vendor\\autoload.php']));
   assert.equal(a.autoload, 'C:\\proj\\vendor\\autoload.php');
 });
+
+// ---- "Outro interpretador…" com caminho relativo ----
+// A pergunta: "O caminho do python eu preciso colocar desde a raiz? Ou posso
+// colocar só a partir da pasta que estou?"
+import { resolverInterpretador } from '../notebook/ambiente';
+
+test('relativo: a partir da pasta do NOTEBOOK', () => {
+  assert.equal(resolverInterpretador('.venv/bin/python', '/proj/notas', '/casa', 'linux'), '/proj/notas/.venv/bin/python');
+  assert.equal(resolverInterpretador('../api/.venv/bin/python', '/proj/notas', '/casa', 'linux'), '/proj/api/.venv/bin/python');
+});
+
+test('~/ é a pasta do usuário', () => {
+  assert.equal(resolverInterpretador('~/venvs/dados/bin/python', '/proj', '/casa/ana', 'linux'), '/casa/ana/venvs/dados/bin/python');
+});
+
+test('absoluto fica como está; nome solto continua sendo do PATH', () => {
+  assert.equal(resolverInterpretador('/usr/bin/python3', '/proj', '/casa', 'linux'), '/usr/bin/python3');
+  assert.equal(resolverInterpretador('python3', '/proj', '/casa', 'linux'), 'python3');
+});
+
+test('no Windows: barra invertida, unidade e ~\\', () => {
+  assert.equal(resolverInterpretador('.venv\\Scripts\\python.exe', 'C:\\proj\\notas', 'C:\\Users\\ana', 'win32'),
+    'C:\\proj\\notas\\.venv\\Scripts\\python.exe');
+  assert.equal(resolverInterpretador('D:\\py\\python.exe', 'C:\\proj', 'C:\\Users\\ana', 'win32'), 'D:\\py\\python.exe');
+  assert.equal(resolverInterpretador('~\\py\\python.exe', 'C:\\proj', 'C:\\Users\\ana', 'win32'), 'C:\\Users\\ana\\py\\python.exe');
+  assert.equal(resolverInterpretador('python', 'C:\\proj', 'C:\\Users\\ana', 'win32'), 'python');
+});

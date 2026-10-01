@@ -80,11 +80,11 @@ test('JS: com dois projetos no workspace, o require vem da pasta ESCOLHIDA', asy
 
   const s = await gerente.garantir({ caminho, linguagem: 'javascript', raiz: ws, pacotes: path.join(ws, 'backend') });
   assert.equal(s.pacotes?.rotulo, 'backend');
-  assert.equal(textoDe(await ate(s.kernel.executar(s.preparar("require('origem')")))), "'do back'\n");
+  assert.equal(textoDe(await ate(s.kernel.executar(s.preparar("require('origem')", 'javascript')))), "'do back'\n");
 
   // Trocar a pasta sobe OUTRO kernel, com o require de lá.
   const t = await gerente.garantir({ caminho, linguagem: 'javascript', raiz: ws, pacotes: path.join(ws, 'frontend') });
-  assert.equal(textoDe(await ate(t.kernel.executar(t.preparar("require('origem')")))), "'do front'\n");
+  assert.equal(textoDe(await ate(t.kernel.executar(t.preparar("require('origem')", 'javascript')))), "'do front'\n");
 });
 
 test('JS: um Node escolhido (o do PATH) roda o kernel', async (t) => {

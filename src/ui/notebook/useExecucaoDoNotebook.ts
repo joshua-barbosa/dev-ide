@@ -6,21 +6,26 @@
 // mesma regra do `Run All` do sqlbook).
 //
 // SQL vai pela rota do KERNEL: o motor roda sem teto e entrega o resultado
-// inteiro ao Python; a tela recebe só a vista. Sem kernel (Python ausente, por
-// exemplo), o SQL roda do mesmo jeito e a célula diz que a variável não veio.
+// inteiro a CADA linguagem do notebook (spec 113); a tela recebe só a vista.
+// Sem kernel, o SQL roda do mesmo jeito e a célula diz que a variável não veio.
+//
+// A célula de código roda na linguagem DELA; o que as outras linguagens
+// mudaram chega antes, pela cascata do motor.
 import { useRef, useState, type MutableRefObject } from 'react';
 import { ApiDoNotebook } from '../api-notebook';
-import type { ControleDoKernel } from './useKernelDoNotebook';
+import type { ControleDosKernels } from './useKernelDoNotebook';
 import { instrucoesDoBloco } from '../../shared/sql/instrucoes-do-bloco';
 import {
-  registrarExecucao, type Celula, type Notebook, type Saida,
+  linguagensDoNotebook, registrarExecucao, type Celula, type Kernel, type Notebook, type Saida,
 } from '../../shared/notebook/modelo';
 
 export interface DepsDaExecucao {
   readonly atual: MutableRefObject<Notebook | null>;
   atualizar(fazer: (n: Notebook) => Notebook): void;
-  readonly kernel: ControleDoKernel;
+  readonly kernel: ControleDosKernels;
   readonly caminho: string | null;
+  /** A pasta do projeto: os kernels que o SQL sobe procuram o ambiente até ela. */
+  readonly raiz: string | null;
 }
 
 export interface ControleDaExecucao {
@@ -36,9 +41,17 @@ export interface ControleDaExecucao {
 const mensagemDe = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const proximoContador = (n: Notebook) => Math.max(0, ...n.celulas.map((c) => c.contador ?? 0)) + 1;
 
-export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho }: DepsDaExecucao): ControleDaExecucao {
+/** As linguagens que recebem o resultado do SQL: as das células de código. */
+function linguagensDoSql(n: Notebook): Kernel[] {
+  const usadas = linguagensDoNotebook(n);
+  return usadas.length > 0 ? usadas : [n.kernel];
+}
+
+export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho, raiz }: DepsDaExecucao): ControleDaExecucao {
   const [rodando, setRodando] = useState<string | null>(null);
   const desistir = useRef(false);
+  /** A linguagem da célula que roda agora: é o kernel dela que o Parar interrompe. */
+  const linguagemRodando = useRef<Kernel | null>(null);
 
   const rodarSql = async (celula: Celula, n: Notebook, contador: number): Promise<boolean> => {
     const vinculo = celula.conexao ?? n.conexao;
@@ -51,26 +64,23 @@ export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho }: Dep
       }]));
       return false;
     }
-    // O kernel sobe ANTES, para o resultado virar variável. Se não subir, o
-    // SQL roda mesmo assim — a rota avisa que a variável não foi criada.
-    const semKernel = await kernel.garantir();
+    // Os kernels que faltam o MOTOR sobe, um por linguagem do notebook. Se um
+    // não subir, o SQL roda mesmo assim — a rota avisa.
+    const linguagens = linguagensDoSql(n);
     const saidas: Saida[] = [];
-    if (semKernel !== null) {
-      saidas.push({ tipo: 'texto', fluxo: 'erro', texto: `O kernel não subiu (${semKernel}).\n` });
-    }
     const { instrucoes, erro } = instrucoesDoBloco(celula.conteudo);
     if (erro !== null) {
       atualizar((x) => registrarExecucao(x, celula.id, contador, [...saidas, { tipo: 'erro', mensagem: erro }]));
       return false;
     }
-    let variavel: { nome: string; linhas: number; forma: string } | null = null;
+    let variavel: { nome: string; linhas: number; forma: string; linguagens?: string[] } | null = null;
     let aviso: string | null = null;
     for (const [i, sql] of instrucoes.entries()) {
       const qual = instrucoes.length > 1 ? `Instrução ${i + 1} de ${instrucoes.length}` : 'A consulta';
       try {
         const r = await ApiDoNotebook.sql({
           caminho, connectionId: vinculo.connectionId, database: vinculo.database,
-          statement: sql, nome: celula.nome,
+          statement: sql, nome: celula.nome, linguagens, raiz,
         });
         saidas.push(r.tabela ?? { tipo: 'texto', fluxo: 'saida', texto: `${r.mensagem ?? 'Comando executado.'}\n` });
         variavel = r.variavel ?? variavel;
@@ -83,20 +93,27 @@ export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho }: Dep
     }
     // Dizer o que virou variável é o que liga esta célula à próxima.
     if (variavel !== null) {
+      const onde = (variavel.linguagens ?? []).length > 1 ? ` (${(variavel.linguagens ?? []).join(', ')})` : '';
       saidas.push({
         tipo: 'texto', fluxo: 'saida',
-        texto: `→ ${variavel.nome}: ${variavel.forma === 'DataFrame' ? 'DataFrame' : 'lista'} com ${variavel.linhas} linha(s)\n`,
+        texto: `→ ${variavel.nome}: ${variavel.forma === 'DataFrame' ? 'DataFrame' : 'lista'} com ${variavel.linhas} linha(s)${onde}\n`,
       });
-    } else if (aviso !== null && semKernel === null) {
-      saidas.push({ tipo: 'texto', fluxo: 'erro', texto: `${aviso}\n` });
     }
+    if (aviso !== null) saidas.push({ tipo: 'texto', fluxo: 'erro', texto: `${aviso}\n` });
     atualizar((x) => registrarExecucao(x, celula.id, contador, saidas));
+    // O motor pode ter subido kernels para entregar o resultado: a barra relê.
+    void kernel.atualizar();
     return true;
   };
 
-  const rodarCodigo = async (celula: Celula, contador: number): Promise<boolean> => {
-    const r = await kernel.executar(celula.conteudo, (parciais) =>
-      atualizar((x) => registrarExecucao(x, celula.id, contador, parciais))
+  const rodarCodigo = async (celula: Celula, n: Notebook, contador: number): Promise<boolean> => {
+    const linguagem = celula.linguagem ?? n.kernel;
+    linguagemRodando.current = linguagem;
+    const r = await kernel.executar(
+      linguagem,
+      celula.conteudo,
+      (parciais) => atualizar((x) => registrarExecucao(x, celula.id, contador, parciais)),
+      n.conexao
     );
     atualizar((x) => registrarExecucao(x, celula.id, contador, r.saidas));
     return r.ok;
@@ -112,8 +129,9 @@ export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho }: Dep
     setRodando(id);
     try {
       const contador = proximoContador(n);
-      return celula.tipo === 'sql' ? await rodarSql(celula, n, contador) : await rodarCodigo(celula, contador);
+      return celula.tipo === 'sql' ? await rodarSql(celula, n, contador) : await rodarCodigo(celula, n, contador);
     } finally {
+      linguagemRodando.current = null;
       setRodando(null);
     }
   };
@@ -129,7 +147,8 @@ export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho }: Dep
 
   const parar = async (): Promise<void> => {
     desistir.current = true;
-    await kernel.interromper();
+    const linguagem = linguagemRodando.current;
+    if (linguagem !== null) await kernel.interromper(linguagem);
   };
 
   return { rodando, rodarCelula, rodarDesde, parar };

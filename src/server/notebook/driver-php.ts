@@ -253,13 +253,71 @@ function __importar($pedido, $valores) {
     __enviar(['tipo' => 'importado', 'pedido' => $pedido]);
 }
 
+// ---- sql() dentro do kernel (spec 114, C) ----
+// O motor executa pela conexão do notebook e responde pelo canal. O PHP não
+// tem thread: sql() LÊ o canal até a resposta dele, e o que chegar no meio
+// fica guardado para o laço principal. Cada sql() vale sozinho; tudo-ou-nada
+// só com sql_transacao(function () { ... }).
+$__pendentes = [];
+$__sql_proximo = 1;
+$__sql_transacao = null;
+
+function __pedir_ao_motor($dados) {
+    $pedido = $GLOBALS['__sql_proximo']++;
+    $dados['pedido'] = $pedido;
+    __enviar($dados);
+    while (($linha = fgets(STDIN)) !== false) {
+        $m = json_decode($linha, true);
+        if (is_array($m) && ($m['tipo'] ?? null) === 'sql-resposta' && ($m['pedido'] ?? null) === $pedido) {
+            if (!empty($m['erro'])) {
+                throw new \RuntimeException($m['erro']);
+            }
+            return $m;
+        }
+        $GLOBALS['__pendentes'][] = $linha;
+    }
+    throw new \RuntimeException('O canal com o motor fechou.');
+}
+
+function sql($texto, $params = []) {
+    $r = __pedir_ao_motor(['tipo' => 'sql', 'texto' => (string) $texto, 'params' => array_values((array) $params),
+        'transacao' => $GLOBALS['__sql_transacao']]);
+    if (empty($r['colunas'])) {
+        return ['linhasAfetadas' => $r['linhasAfetadas'] ?? null];
+    }
+    $cols = $r['colunas'];
+    return array_map(fn($l) => array_combine($cols, $l), $r['linhas']);
+}
+
+function sql_transacao(callable $bloco) {
+    // Dentro de outra: faz parte da mesma (não existe meia transação).
+    if ($GLOBALS['__sql_transacao'] !== null) {
+        return $bloco();
+    }
+    $id = __pedir_ao_motor(['tipo' => 'sql-transacao', 'acao' => 'comecar'])['transacao'];
+    $GLOBALS['__sql_transacao'] = $id;
+    try {
+        $valor = $bloco();
+        $GLOBALS['__sql_transacao'] = null;
+        __pedir_ao_motor(['tipo' => 'sql-transacao', 'acao' => 'confirmar', 'transacao' => $id]);
+        return $valor;
+    } catch (\Throwable $e) {
+        $GLOBALS['__sql_transacao'] = null;
+        try {
+            __pedir_ao_motor(['tipo' => 'sql-transacao', 'acao' => 'desfazer', 'transacao' => $id]);
+        } catch (\Throwable $ignorado) {
+        }
+        throw $e;
+    }
+}
+
 // O que já existe antes da primeira célula não é do usuário.
 $__iniciais = array_keys($GLOBALS);
 $__iniciais[] = '__iniciais';
 __enviar(['tipo' => 'pronto', 'versao' => PHP_VERSION, 'executavel' => PHP_BINARY, 'pandas' => false]);
 
 $__definindo = null;
-while (($__linha = fgets(STDIN)) !== false) {
+while (($__linha = (count($__pendentes) > 0 ? array_shift($__pendentes) : fgets(STDIN))) !== false) {
     $__p = json_decode($__linha, true);
     if (!is_array($__p) || !isset($__p['tipo'])) {
         continue;

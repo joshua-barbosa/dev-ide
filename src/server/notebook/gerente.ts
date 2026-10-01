@@ -7,8 +7,9 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { ambientePhp, candidatosDePython, type Interpretador } from './ambiente';
+import { ambientePhp, candidatosDePython, resolverInterpretador, type Interpretador } from './ambiente';
 import { candidatosDeNode, pastasDePacotes, type PastaDePacotes } from './ambiente-node';
+import { Cascata, familiaDe, type Familia } from './cascata';
 import { iniciarKernelJs, iniciarKernelPhp, iniciarKernelPython } from './kernel-python';
 import { prepararCelulaJs } from './celula-js';
 import type { Kernel } from './kernel';
@@ -17,12 +18,15 @@ import type { Plataforma } from '../../shared/plataforma';
 
 export interface SessaoDeKernel {
   readonly kernel: Kernel;
+  /** Um processo por família (spec 113): JS e TS dividem o Node. */
+  readonly familia: Familia;
+  /** A linguagem com que o kernel subiu (no Node, JS ou TS). */
   readonly linguagem: LinguagemDoKernel;
   readonly interpretador: Interpretador;
   readonly candidatos: readonly Interpretador[];
   readonly raiz: string | null;
   /** O que a célula vira antes de ir ao kernel (JS/TS: ver `celula-js.ts`). */
-  readonly preparar: (codigo: string) => string;
+  readonly preparar: (codigo: string, linguagem: LinguagemDoKernel) => string;
   /** PHP: há um Laravel no projeto? E ele foi ligado neste kernel? */
   readonly laravelDisponivel: boolean;
   readonly laravel: boolean;
@@ -80,10 +84,15 @@ export interface IniciadoresDeKernel {
   readonly php: typeof iniciarKernelPhp;
 }
 
+/** A chave de um kernel: o notebook E a família — um notebook tem vários (spec 113). */
+const chave = (caminho: string, familia: Familia): string => `${caminho}\u0000${familia}`;
+
 export class GerenteDeKernels {
   private readonly sessoes = new Map<string, SessaoDeKernel>();
   /** Duas abas pedindo o mesmo kernel ao mesmo tempo sobem UM. */
   private readonly subindo = new Map<string, Promise<SessaoDeKernel>>();
+  /** A cascata de cada notebook: o que passa de uma linguagem para outra. */
+  private readonly cascatas = new Map<string, Cascata>();
 
   constructor(
     private readonly plataforma: Plataforma,
@@ -111,38 +120,59 @@ export class GerenteDeKernels {
     };
   }
 
-  sessao(caminho: string): SessaoDeKernel | undefined {
-    const s = this.sessoes.get(caminho);
+  sessao(caminho: string, linguagem: LinguagemDoKernel): SessaoDeKernel | undefined {
+    const s = this.sessoes.get(chave(caminho, familiaDe(linguagem)));
     return s !== undefined && s.kernel.vivo ? s : undefined;
   }
 
-  /** O kernel do notebook, subindo se preciso — ou trocando, se mudou o interpretador. */
+  /** Os kernels vivos de um notebook, um por família. */
+  sessoesDe(caminho: string): SessaoDeKernel[] {
+    return [...this.sessoes.values()].filter((s) => s.kernel.vivo && this.sessoes.get(chave(caminho, s.familia)) === s);
+  }
+
+  cascata(caminho: string): Cascata {
+    let c = this.cascatas.get(caminho);
+    if (c === undefined) {
+      c = new Cascata();
+      this.cascatas.set(caminho, c);
+    }
+    return c;
+  }
+
+  /** O kernel de cada família, para a cascata. */
+  kernelsDe(caminho: string): (familia: Familia) => Kernel | undefined {
+    return (familia) => {
+      const s = this.sessoes.get(chave(caminho, familia));
+      return s !== undefined && s.kernel.vivo ? s.kernel : undefined;
+    };
+  }
+
+  /** O kernel da linguagem, subindo se preciso — ou trocando, se mudou o ambiente. */
   async garantir(pedido: PedidoDeKernel): Promise<SessaoDeKernel> {
-    const atual = this.sessao(pedido.caminho);
+    const familia = familiaDe(pedido.linguagem);
+    const k = chave(pedido.caminho, familia);
+    const atual = this.sessao(pedido.caminho, pedido.linguagem);
     const mesmoInterpretador =
-      pedido.interpretador === undefined || atual?.interpretador.caminho === pedido.interpretador;
+      pedido.interpretador === undefined ||
+      atual?.interpretador.caminho ===
+        resolverInterpretador(pedido.interpretador, path.dirname(pedido.caminho), this.sistema.casa, this.plataforma);
     const mesmoLaravel = pedido.laravel === undefined || atual?.laravel === pedido.laravel;
     const mesmosPacotes = pedido.pacotes === undefined || atual?.pacotes?.caminho === pedido.pacotes;
-    if (
-      atual !== undefined && atual.linguagem === pedido.linguagem &&
-      mesmoInterpretador && mesmoLaravel && mesmosPacotes
-    ) {
-      return atual;
-    }
-    if (atual !== undefined) this.encerrar(pedido.caminho);
+    if (atual !== undefined && mesmoInterpretador && mesmoLaravel && mesmosPacotes) return atual;
+    if (atual !== undefined) this.encerrar(pedido.caminho, pedido.linguagem);
 
-    const emCurso = this.subindo.get(pedido.caminho);
+    const emCurso = this.subindo.get(k);
     if (emCurso !== undefined) return emCurso;
-    const subida = this.subir(pedido).finally(() => this.subindo.delete(pedido.caminho));
-    this.subindo.set(pedido.caminho, subida);
+    const subida = this.subir(pedido).finally(() => this.subindo.delete(k));
+    this.subindo.set(k, subida);
     return subida;
   }
 
-  /** Zera o estado: encerra e sobe outro com o MESMO interpretador. */
-  async reiniciar(caminho: string): Promise<SessaoDeKernel | undefined> {
-    const s = this.sessoes.get(caminho);
+  /** Zera UM kernel: encerra e sobe outro com o MESMO ambiente. */
+  async reiniciar(caminho: string, linguagem: LinguagemDoKernel): Promise<SessaoDeKernel | undefined> {
+    const s = this.sessoes.get(chave(caminho, familiaDe(linguagem)));
     if (s === undefined) return undefined;
-    this.encerrar(caminho);
+    this.encerrar(caminho, linguagem);
     return this.garantir({
       caminho,
       linguagem: s.linguagem,
@@ -153,22 +183,53 @@ export class GerenteDeKernels {
     });
   }
 
-  encerrar(caminho: string): void {
-    this.sessoes.get(caminho)?.kernel.encerrar();
-    this.sessoes.delete(caminho);
+  /** Zera TODOS os kernels do notebook, e a cascata com eles. */
+  async reiniciarTodos(caminho: string): Promise<SessaoDeKernel[]> {
+    const antes = this.sessoesDe(caminho);
+    this.encerrar(caminho);
+    const novas: SessaoDeKernel[] = [];
+    for (const s of antes) {
+      const nova = await this.garantir({
+        caminho, linguagem: s.linguagem, raiz: s.raiz, interpretador: s.interpretador.caminho, laravel: s.laravel,
+        ...(s.pacotes === null ? {} : { pacotes: s.pacotes.caminho }),
+      });
+      novas.push(nova);
+    }
+    return novas;
+  }
+
+  /** Um kernel (com `linguagem`) ou todos os do notebook (sem). */
+  encerrar(caminho: string, linguagem?: LinguagemDoKernel): void {
+    if (linguagem !== undefined) {
+      const familia = familiaDe(linguagem);
+      this.sessoes.get(chave(caminho, familia))?.kernel.encerrar();
+      this.sessoes.delete(chave(caminho, familia));
+      this.cascatas.get(caminho)?.aoReiniciar(familia);
+      return;
+    }
+    for (const familia of ['python', 'node', 'php'] as const) {
+      this.sessoes.get(chave(caminho, familia))?.kernel.encerrar();
+      this.sessoes.delete(chave(caminho, familia));
+    }
+    this.cascatas.delete(caminho);
   }
 
   encerrarTodos(): void {
-    for (const caminho of [...this.sessoes.keys()]) this.encerrar(caminho);
+    for (const s of [...this.sessoes.values()]) s.kernel.encerrar();
+    this.sessoes.clear();
+    this.cascatas.clear();
   }
 
   private async subir(pedido: PedidoDeKernel): Promise<SessaoDeKernel> {
     const pasta = path.dirname(pedido.caminho);
     const base = {
-      linguagem: pedido.linguagem, raiz: pedido.raiz, laravelDisponivel: false, laravel: false,
-      pacotes: null, candidatosDePacotes: [],
+      linguagem: pedido.linguagem, familia: familiaDe(pedido.linguagem), raiz: pedido.raiz,
+      laravelDisponivel: false, laravel: false, pacotes: null, candidatosDePacotes: [],
     };
-    const escolhido = (caminho: string): Interpretador => ({ caminho, origem: 'escolhido', rotulo: caminho });
+    const escolhido = (valor: string): Interpretador => {
+      const caminho = resolverInterpretador(valor, pasta, this.sistema.casa, this.plataforma);
+      return { caminho, origem: 'escolhido', rotulo: caminho };
+    };
 
     let sessao: SessaoDeKernel;
     if (pedido.linguagem === 'python') {
@@ -191,7 +252,7 @@ export class GerenteDeKernels {
         interpretador.caminho, pasta, this.plataforma, ambiente.autoload, laravel ? ambiente.laravel : null
       );
       sessao = {
-        ...base, kernel, interpretador, candidatos: [padrao], preparar: (c) => c,
+        ...base, kernel, interpretador, candidatos: [padrao], preparar: (c: string) => c,
         laravelDisponivel: ambiente.laravel !== null, laravel,
       };
     } else {
@@ -208,10 +269,12 @@ export class GerenteDeKernels {
       );
       sessao = {
         ...base, kernel, interpretador, candidatos, pacotes, candidatosDePacotes,
-        preparar: (c) => prepararCelulaJs(c, linguagem),
+        // JS e TS no MESMO Node: cada célula é transformada pela linguagem DELA.
+        preparar: (c: string, daCelula: LinguagemDoKernel) =>
+          prepararCelulaJs(c, daCelula === 'typescript' || daCelula === 'javascript' ? daCelula : linguagem),
       };
     }
-    this.sessoes.set(pedido.caminho, sessao);
+    this.sessoes.set(chave(pedido.caminho, familiaDe(pedido.linguagem)), sessao);
     return sessao;
   }
 }

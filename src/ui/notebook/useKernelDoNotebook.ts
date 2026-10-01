@@ -1,72 +1,112 @@
-// O kernel de UM notebook, visto pela tela (spec 112, etapa 2).
+// Os kernels de UM notebook, vistos pela tela (spec 112; vários na spec 113).
 //
-// Três regras de vida:
+// Um kernel por FAMÍLIA — Python, Node (JavaScript e TypeScript) e PHP —, cada
+// um subindo na primeira célula da sua linguagem. O que passa de um para outro
+// é com o motor (a cascata); aqui só se sabe de qual se fala.
+//
+// Três regras de vida, para cada um:
 // - sobe na PRIMEIRA execução, não ao abrir: abrir um notebook para ler não
 //   deveria subir um Python;
-// - reabrir a tela (F5, trocar de aba) REENCONTRA o kernel que já roda no
+// - reabrir a tela (F5, trocar de aba) REENCONTRA os kernels que já rodam no
 //   motor, com as variáveis — é o que o Jupyter faz;
-// - fechar a aba do notebook o ENCERRA.
+// - fechar a aba do notebook ENCERRA todos.
 //
 // A execução é por consulta (ver `routes/notebook.ts`): a célula entra na fila
 // e a tela pergunta o que saiu, repintando a saída enquanto a célula roda.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiDoNotebook, type AmbienteDoKernel, type EstadoDoKernel } from '../api-notebook';
 import type { Kernel, Saida } from '../../shared/notebook/modelo';
+import type { Vinculo } from '../../shared/sql/vinculo';
 
 /** De quanto em quanto tempo a tela pergunta o que a célula escreveu. */
 const INTERVALO_MS = 150;
 
-export interface ControleDoKernel {
-  readonly estado: EstadoDoKernel | null;
-  readonly subindo: boolean;
-  /** Por que o kernel não subiu, da última vez que se tentou. */
-  readonly erro: string | null;
-  /** Sobe o kernel se preciso. `null` = de pé; texto = por que não subiu. */
-  garantir(): Promise<string | null>;
+export type Familia = EstadoDoKernel['familia'];
+
+export function familiaDe(linguagem: Kernel): Familia {
+  return linguagem === 'javascript' || linguagem === 'typescript' ? 'node' : linguagem;
+}
+
+export interface ControleDosKernels {
+  /** O estado de cada família que está de pé. */
+  readonly estados: Readonly<Partial<Record<Familia, EstadoDoKernel>>>;
+  /** As famílias subindo agora. */
+  readonly subindo: ReadonlySet<Familia>;
+  /** Por que um kernel não subiu, da última vez que se tentou. */
+  readonly erros: Readonly<Partial<Record<Familia, string>>>;
+  /** Sobe o kernel da linguagem se preciso. `null` = de pé; texto = por que não subiu. */
+  garantir(linguagem: Kernel): Promise<string | null>;
   executar(
+    linguagem: Kernel,
     codigo: string,
-    aoParcial: (saidas: readonly Saida[]) => void
+    aoParcial: (saidas: readonly Saida[]) => void,
+    /** A conexão do notebook: a do sql() de dentro da célula. */
+    conexao?: Vinculo | null
   ): Promise<{ readonly saidas: readonly Saida[]; readonly ok: boolean }>;
-  interromper(): Promise<void>;
-  reiniciar(): Promise<void>;
+  interromper(linguagem: Kernel): Promise<void>;
+  /** Um kernel, ou (sem linguagem) todos — e a cascata com eles. */
+  reiniciar(linguagem?: Kernel): Promise<void>;
   /** O que dá para escolher — do kernel de pé, ou perguntado sem subir nenhum. */
-  ambiente(): Promise<AmbienteDoKernel>;
+  ambiente(linguagem: Kernel): Promise<AmbienteDoKernel>;
   /** Sobe (ou troca) o kernel com o interpretador e/ou a pasta de pacotes escolhidos. */
-  trocarAmbiente(escolha: { readonly interpretador?: string; readonly pacotes?: string }): Promise<void>;
+  trocarAmbiente(linguagem: Kernel, escolha: { readonly interpretador?: string; readonly pacotes?: string }): Promise<void>;
   /** PHP: liga ou desliga o Laravel — sobe OUTRO kernel, as variáveis se perdem. */
   trocarLaravel(ligado: boolean): Promise<void>;
+  /** Relê os kernels vivos do motor (o SQL pode ter subido um). */
+  atualizar(): Promise<void>;
 }
 
 const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const mensagemDe = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function useKernelDoNotebook(
+function porFamilia(lista: readonly EstadoDoKernel[]): Partial<Record<Familia, EstadoDoKernel>> {
+  return Object.fromEntries(lista.map((e) => [e.familia, e]));
+}
+
+export function useKernelsDoNotebook(
   caminho: string | null,
-  linguagem: Kernel,
   raiz: string | null,
   laravel: boolean
-): ControleDoKernel {
-  const [estado, setEstado] = useState<EstadoDoKernel | null>(null);
-  const [subindo, setSubindo] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const vivo = useRef<EstadoDoKernel | null>(null);
-  vivo.current = estado;
+): ControleDosKernels {
+  const [estados, setEstados] = useState<Partial<Record<Familia, EstadoDoKernel>>>({});
+  const [subindo, setSubindo] = useState<ReadonlySet<Familia>>(new Set());
+  const [erros, setErros] = useState<Partial<Record<Familia, string>>>({});
+  const vivos = useRef(estados);
+  vivos.current = estados;
 
-  // Reencontra o kernel que já roda no motor (F5 não perde as variáveis).
-  useEffect(() => {
+  const comEstado = (familia: Familia, e: EstadoDoKernel | null): void =>
+    setEstados((x) => {
+      const { [familia]: _antigo, ...resto } = x;
+      return e === null ? resto : { ...resto, [familia]: e };
+    });
+  const marcarSubindo = (familia: Familia, sim: boolean): void =>
+    setSubindo((x) => {
+      const n = new Set(x);
+      if (sim) n.add(familia);
+      else n.delete(familia);
+      return n;
+    });
+  const comErro = (familia: Familia, erro: string | null): void =>
+    setErros((x) => {
+      const { [familia]: _antigo, ...resto } = x;
+      return erro === null ? resto : { ...resto, [familia]: erro };
+    });
+
+  const atualizar = useCallback(async () => {
     if (caminho === null) return;
-    let valendo = true;
-    void ApiDoNotebook.kernel(caminho)
-      .then((e) => {
-        if (valendo) setEstado(e);
-      })
-      .catch(() => undefined);
-    return () => {
-      valendo = false;
-    };
+    try {
+      setEstados(porFamilia(await ApiDoNotebook.kernels(caminho)));
+    } catch {
+      // Motor fora do ar: a próxima execução avisa.
+    }
   }, [caminho]);
 
-  // Fechar a aba encerra o kernel. A aba escondida continua MONTADA (ver o
+  // Reencontra os kernels que já rodam no motor (F5 não perde as variáveis).
+  useEffect(() => {
+    void atualizar();
+  }, [atualizar]);
+
+  // Fechar a aba encerra os kernels. A aba escondida continua MONTADA (ver o
   // `EditorGroup`), então desmontar aqui é fechar — não trocar de aba.
   useEffect(() => {
     if (caminho === null) return;
@@ -75,104 +115,126 @@ export function useKernelDoNotebook(
     };
   }, [caminho]);
 
-  /** Devolve o MOTIVO quando falha — o estado `erro` só chega no próximo render. */
+  /** Devolve o MOTIVO quando falha — o estado `erros` só chega no próximo render. */
   const subir = useCallback(
-    async (interpretador?: string, comLaravel: boolean = laravel, pacotes?: string): Promise<string | null> => {
+    async (
+      linguagem: Kernel,
+      opcoes: { interpretador?: string; pacotes?: string; laravel?: boolean } = {}
+    ): Promise<string | null> => {
+      const familia = familiaDe(linguagem);
       if (caminho === null) {
         const motivo = 'Salve o notebook antes de rodar: o kernel é dele, pelo caminho.';
-        setErro(motivo);
+        comErro(familia, motivo);
         return motivo;
       }
-      setSubindo(true);
+      marcarSubindo(familia, true);
       try {
-        const e = await ApiDoNotebook.iniciar({ caminho, linguagem, raiz, interpretador, laravel: comLaravel, pacotes });
-        setEstado(e);
-        setErro(null);
+        const e = await ApiDoNotebook.iniciar({
+          caminho, linguagem, raiz, interpretador: opcoes.interpretador, pacotes: opcoes.pacotes,
+          laravel: familia === 'php' ? (opcoes.laravel ?? laravel) : undefined,
+        });
+        comEstado(familia, e);
+        comErro(familia, null);
         return null;
       } catch (e) {
-        setErro(mensagemDe(e));
+        comErro(familia, mensagemDe(e));
         return mensagemDe(e);
       } finally {
-        setSubindo(false);
+        marcarSubindo(familia, false);
       }
     },
-    [caminho, linguagem, raiz, laravel]
+    [caminho, raiz, laravel]
   );
 
   const garantir = useCallback(
-    async (): Promise<string | null> => (vivo.current !== null ? null : subir()),
+    async (linguagem: Kernel): Promise<string | null> =>
+      (vivos.current[familiaDe(linguagem)] !== undefined ? null : subir(linguagem)),
     [subir]
   );
 
   const executar = useCallback(
-    async (codigo: string, aoParcial: (saidas: readonly Saida[]) => void) => {
-      const motivo = caminho === null ? 'O notebook não tem caminho.' : await garantir();
+    async (linguagem: Kernel, codigo: string, aoParcial: (saidas: readonly Saida[]) => void, conexao: Vinculo | null = null) => {
+      const motivo = caminho === null ? 'O notebook não tem caminho.' : await garantir(linguagem);
       if (caminho === null || motivo !== null) {
         return { saidas: [{ tipo: 'erro' as const, mensagem: `O kernel não subiu: ${motivo}` }], ok: false };
       }
       let exec: number;
       try {
-        exec = (await ApiDoNotebook.executar(caminho, codigo)).exec;
+        exec = (await ApiDoNotebook.executar(caminho, linguagem, codigo, conexao)).exec;
       } catch (e) {
-        // O kernel pode ter morrido desde a última vez: esquece e avisa.
-        setEstado(null);
+        // O kernel pode ter morrido desde a última vez: relê e avisa.
+        void atualizar();
         return { saidas: [{ tipo: 'erro' as const, mensagem: mensagemDe(e) }], ok: false };
       }
       let saidas: Saida[] = [];
       for (;;) {
-        const q = await ApiDoNotebook.execucao(caminho, exec, saidas.length);
+        const q = await ApiDoNotebook.execucao(caminho, linguagem, exec, saidas.length);
         saidas = [...saidas.slice(0, q.inicio), ...q.saidas];
         aoParcial(saidas);
         if (q.terminou) return { saidas, ok: q.ok };
         await esperar(INTERVALO_MS);
       }
     },
-    [caminho, garantir]
+    [caminho, garantir, atualizar]
   );
 
-  const interromper = useCallback(async () => {
-    if (caminho !== null) await ApiDoNotebook.interromper(caminho);
-  }, [caminho]);
+  const interromper = useCallback(
+    async (linguagem: Kernel) => {
+      if (caminho !== null) await ApiDoNotebook.interromper(caminho, linguagem);
+    },
+    [caminho]
+  );
 
-  const reiniciar = useCallback(async () => {
-    if (caminho === null || vivo.current === null) return;
-    setSubindo(true);
-    try {
-      setEstado(await ApiDoNotebook.reiniciar(caminho));
-    } finally {
-      setSubindo(false);
-    }
-  }, [caminho]);
+  const reiniciar = useCallback(
+    async (linguagem?: Kernel) => {
+      if (caminho === null) return;
+      if (linguagem === undefined) {
+        setEstados(porFamilia(await ApiDoNotebook.reiniciarTodos(caminho)));
+        return;
+      }
+      const familia = familiaDe(linguagem);
+      marcarSubindo(familia, true);
+      try {
+        comEstado(familia, await ApiDoNotebook.reiniciar(caminho, linguagem));
+      } finally {
+        marcarSubindo(familia, false);
+      }
+    },
+    [caminho]
+  );
 
-  const ambiente = useCallback(async (): Promise<AmbienteDoKernel> => {
-    const e = vivo.current;
-    if (e !== null) return { candidatos: e.candidatos, candidatosDePacotes: e.candidatosDePacotes ?? [] };
-    if (caminho === null) throw new Error('Salve o notebook antes: o kernel é dele, pelo caminho.');
-    return ApiDoNotebook.ambiente(caminho, linguagem, raiz);
-  }, [caminho, linguagem, raiz]);
+  const ambiente = useCallback(
+    async (linguagem: Kernel): Promise<AmbienteDoKernel> => {
+      const e = vivos.current[familiaDe(linguagem)];
+      if (e !== undefined) return { candidatos: e.candidatos, candidatosDePacotes: e.candidatosDePacotes ?? [] };
+      if (caminho === null) throw new Error('Salve o notebook antes: o kernel é dele, pelo caminho.');
+      return ApiDoNotebook.ambiente(caminho, linguagem, raiz);
+    },
+    [caminho, raiz]
+  );
 
   const trocarAmbiente = useCallback(
-    async (escolha: { readonly interpretador?: string; readonly pacotes?: string }) => {
+    async (linguagem: Kernel, escolha: { readonly interpretador?: string; readonly pacotes?: string }) => {
       // O que ele não trocou fica como está: trocar a pasta mantém o Node.
-      const e = vivo.current;
-      await subir(
-        escolha.interpretador ?? e?.interpretador.caminho,
-        laravel,
-        escolha.pacotes ?? e?.pacotes?.caminho
-      );
+      const e = vivos.current[familiaDe(linguagem)];
+      await subir(linguagem, {
+        interpretador: escolha.interpretador ?? e?.interpretador.caminho,
+        pacotes: escolha.pacotes ?? e?.pacotes?.caminho,
+      });
     },
-    [subir, laravel]
+    [subir]
   );
 
   const trocarLaravel = useCallback(
     async (ligado: boolean) => {
       // Só religa se já está de pé: parado, a próxima execução já sobe certo.
-      if (vivo.current !== null) await subir(undefined, ligado);
+      if (vivos.current.php !== undefined) await subir('php', { laravel: ligado });
     },
     [subir]
   );
 
   return {
-    estado, subindo, erro, garantir, executar, interromper, reiniciar, ambiente, trocarAmbiente, trocarLaravel,
+    estados, subindo, erros, garantir, executar, interromper, reiniciar, ambiente, trocarAmbiente, trocarLaravel,
+    atualizar,
   };
 }

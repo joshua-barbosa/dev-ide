@@ -212,6 +212,44 @@ function importar(p) {
   enviar({ tipo: 'importado', pedido: p.pedido });
 }
 
+// ---- sql() dentro do kernel (spec 114, C) ----
+// O motor executa pela conexão do notebook e responde pelo canal. Cada sql()
+// vale sozinho; tudo-ou-nada só com sql.transacao(async () => { ... }).
+const esperandoSql = new Map();
+let proximoSql = 1;
+let transacaoAtual = null;
+
+function pedirAoMotor(dados) {
+  const pedido = proximoSql++;
+  return new Promise((resolver, recusar) => {
+    esperandoSql.set(pedido, (r) => (r.erro ? recusar(new Error(r.erro)) : resolver(r)));
+    enviar(Object.assign({}, dados, { pedido }));
+  });
+}
+
+globalThis.sql = async function sql(texto, params) {
+  const r = await pedirAoMotor({ tipo: 'sql', texto: String(texto), params: params || [], transacao: transacaoAtual });
+  if (r.colunas.length === 0) return { linhasAfetadas: r.linhasAfetadas };
+  return r.linhas.map((l) => Object.fromEntries(r.colunas.map((c, i) => [c, l[i]])));
+};
+
+globalThis.sql.transacao = async function transacao(bloco) {
+  // Dentro de outra: faz parte da mesma (não existe meia transação).
+  if (transacaoAtual !== null) return await bloco();
+  const { transacao: id } = await pedirAoMotor({ tipo: 'sql-transacao', acao: 'comecar' });
+  transacaoAtual = id;
+  try {
+    const valor = await bloco();
+    transacaoAtual = null;
+    await pedirAoMotor({ tipo: 'sql-transacao', acao: 'confirmar', transacao: id });
+    return valor;
+  } catch (e) {
+    transacaoAtual = null;
+    await pedirAoMotor({ tipo: 'sql-transacao', acao: 'desfazer', transacao: id }).catch(() => undefined);
+    throw e;
+  }
+};
+
 let definindo = null;
 function definir(p) {
   if (p.tipo === 'definir-inicio') definindo = { nome: p.nome, colunas: p.colunas, linhas: [] };
@@ -265,6 +303,14 @@ readline.createInterface({ input: process.stdin }).on('line', (linha) => {
   let p;
   try { p = JSON.parse(linha); } catch { return; }
   if (p.tipo === 'interromper') { interromper(); return; }
+  // A resposta de um sql(): a célula está ESPERANDO por ela, então não entra
+  // na fila (que só anda quando a célula termina).
+  if (p.tipo === 'sql-resposta') {
+    const resolver = esperandoSql.get(p.pedido);
+    esperandoSql.delete(p.pedido);
+    if (resolver) resolver(p);
+    return;
+  }
   fila.push(p);
   void drenar();
 }).on('close', () => process.exit(0));

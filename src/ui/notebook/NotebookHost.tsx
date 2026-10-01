@@ -16,7 +16,8 @@ import Box from '@mui/material/Box';
 import { Icon } from '../Icon';
 import { Api } from '../api';
 import { CelulaDoNotebook } from './CelulaDoNotebook';
-import { useKernelDoNotebook } from './useKernelDoNotebook';
+import { useKernelsDoNotebook, familiaDe } from './useKernelDoNotebook';
+import { IndicadoresDosKernels, ROTULOS } from './IndicadoresDosKernels';
 import { useExecucaoDoNotebook } from './useExecucaoDoNotebook';
 import { useCodebase } from '../sql/useCodebase';
 import { escolherAmbiente } from './escolherAmbiente';
@@ -56,9 +57,6 @@ export interface NotebookHostProps {
 
 const copiarPeloNavegador = (texto: string): Promise<void> => navigator.clipboard.writeText(texto);
 
-const ROTULOS: Record<Kernel, string> = {
-  python: 'Python', javascript: 'JavaScript', typescript: 'TypeScript', php: 'PHP',
-};
 
 const novoId = (): string => crypto.randomUUID().slice(0, 8);
 
@@ -148,8 +146,11 @@ export function NotebookHost({
   };
 
   const caminho = (aba.meta as { path?: string | null }).path ?? null;
-  const kernel = useKernelDoNotebook(caminho, nb?.kernel ?? 'python', raiz, nb?.laravel ?? false);
-  const execucao = useExecucaoDoNotebook({ atual, atualizar, kernel, caminho });
+  const kernel = useKernelsDoNotebook(caminho, raiz, nb?.laravel ?? false);
+  const execucao = useExecucaoDoNotebook({ atual, atualizar, kernel, caminho, raiz });
+  /** A linguagem da célula rodando (a bolinha dela fica amarela). */
+  const celulaRodando = nb?.celulas.find((c) => c.id === execucao.rodando);
+  const linguagemRodando = celulaRodando?.tipo === 'codigo' ? (celulaRodando.linguagem ?? nb?.kernel ?? null) : null;
 
   /** Exporta para `.ipynb` (só Python), ao lado do `.brnb` por padrão. */
   const exportar = async (): Promise<void> => {
@@ -169,20 +170,36 @@ export function NotebookHost({
     }
   };
 
-  const escolherInterpretador = async (): Promise<void> => {
+  const escolherInterpretador = async (linguagem: Kernel): Promise<void> => {
     if (nb === null) return;
+    const estado = kernel.estados[familiaDe(linguagem)];
     try {
       const escolha = await escolherAmbiente(
-        nb.kernel,
-        await kernel.ambiente(),
-        { interpretador: kernel.estado?.interpretador.caminho, pacotes: kernel.estado?.pacotes?.caminho },
+        linguagem,
+        await kernel.ambiente(linguagem),
+        { interpretador: estado?.interpretador.caminho, pacotes: estado?.pacotes?.caminho },
         escolherOpcao,
         pedirTexto
       );
-      if (escolha !== null) await kernel.trocarAmbiente(escolha);
+      if (escolha !== null) await kernel.trocarAmbiente(linguagem, escolha);
     } catch (e) {
       setAvisoDeExportacao(`Não deu para escolher: ${e instanceof Error ? e.message : String(e)}`);
     }
+  };
+
+  /** Com mais de um kernel de pé, pergunta qual; com um, reinicia ele. */
+  const reiniciar = async (): Promise<void> => {
+    const vivos = Object.values(kernel.estados).filter((e) => e !== undefined);
+    if (vivos.length <= 1) {
+      if (vivos[0] !== undefined) await kernel.reiniciar(vivos[0].linguagem as Kernel);
+      return;
+    }
+    const qual = await escolherOpcao('Reiniciar qual kernel? As variáveis dele se perdem.', [
+      { valor: 'todos', rotulo: 'Todos', detalhe: 'zera todas as linguagens' },
+      ...vivos.map((e) => ({ valor: e.linguagem, rotulo: ROTULOS[e.linguagem as Kernel] ?? e.linguagem, detalhe: e.versao })),
+    ]);
+    if (qual === null) return;
+    await kernel.reiniciar(qual === 'todos' ? undefined : (qual as Kernel));
   };
 
   const trocarConexao = async (celulaId: string | null): Promise<void> => {
@@ -222,8 +239,8 @@ export function NotebookHost({
     );
   }
 
-  const adicionar = (tipo: TipoDeCelula, posicao: number): void =>
-    atualizar((x) => inserirCelula(x, tipo, posicao, novoId()));
+  const adicionar = (tipo: TipoDeCelula, posicao: number, linguagem?: Kernel): void =>
+    atualizar((x) => inserirCelula(x, tipo, posicao, novoId(), linguagem));
 
   // Função, e não componente: um componente declarado dentro do render seria
   // outro a cada render, e o React desmontaria a linha a cada tecla.
@@ -241,10 +258,32 @@ export function NotebookHost({
           : {}),
       }}
     >
-      {/* Herda a linguagem da célula de código acima (spec 113). */}
+      {/* A linguagem da célula de código acima é a mais provável (spec 113);
+          as outras ficam no "+ outra linguagem". Relato: o adicionar "ainda
+          está mostrando somente Javascript + SQL + Markdown". */}
       <Acao icone="lucide:plus" rotulo={ROTULOS[linguagemParaInserir(nb, posicao)]} onClick={() => adicionar('codigo', posicao)} />
       <Acao icone="lucide:plus" rotulo="SQL" onClick={() => adicionar('sql', posicao)} />
       <Acao icone="lucide:plus" rotulo="Markdown" onClick={() => adicionar('markdown', posicao)} />
+      <Box
+        component="select"
+        aria-label="Adicionar célula de outra linguagem"
+        value=""
+        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+          if (e.target.value !== '') adicionar('codigo', posicao, e.target.value as Kernel);
+        }}
+        sx={{
+          border: 1, borderColor: 'divider', borderRadius: 0.5, fontSize: 11, px: 0.5,
+          bgcolor: 'transparent', color: 'text.secondary', cursor: 'pointer',
+          // As opções são desenhadas pelo sistema, com fundo claro: herdando a
+          // cor clara do tema escuro, ficavam em branco (relato da 0.1.16).
+          '& option': { bgcolor: 'background.paper', color: 'text.primary' },
+        }}
+      >
+        <option value="">+ outra linguagem…</option>
+        {KERNELS.filter((k) => k !== linguagemParaInserir(nb, posicao)).map((k) => (
+          <option key={k} value={k}>{ROTULOS[k]}</option>
+        ))}
+      </Box>
     </Box>
   );
 
@@ -256,41 +295,13 @@ export function NotebookHost({
           borderBottom: 1, borderColor: 'divider', fontSize: 12,
         }}
       >
-        <Box data-kernel={nb.kernel} sx={{ fontWeight: 600 }}>{ROTULOS[nb.kernel]}</Box>
-        {/* O ambiente: de onde vêm os pacotes. Clicar troca — antes de subir,
-            clicar sobe o kernel para descobrir os candidatos. */}
-        <Box
-          component="button"
-          type="button"
-          aria-label="Interpretador do kernel"
-          data-estado-do-kernel={
-            kernel.subindo ? 'subindo' : kernel.estado === null ? 'parado' : execucao.rodando !== null ? 'ocupado' : 'ocioso'
-          }
-          onClick={() => void escolherInterpretador()}
-          title={
-            kernel.estado === null
-              ? 'O kernel sobe na primeira célula que rodar. Clique para escolher com o quê ele roda.'
-              : `${kernel.estado.executavel}${kernel.estado.pacotes === null ? '' : `\nPacotes: ${kernel.estado.pacotes.caminho}`}\nClique para trocar.`
-          }
-          sx={{
-            display: 'inline-flex', alignItems: 'center', gap: 0.5, border: 0,
-            bgcolor: 'transparent', cursor: 'pointer', fontSize: 12, color: 'text.secondary',
-          }}
-        >
-          <Box
-            component="span"
-            sx={{
-              width: 7, height: 7, borderRadius: '50%',
-              bgcolor: kernel.estado === null ? 'text.disabled' : execucao.rodando !== null ? 'warning.main' : 'success.main',
-            }}
-          />
-          {kernel.subindo
-            ? 'subindo…'
-            : kernel.estado === null
-              ? 'kernel parado'
-              : `${kernel.estado.interpretador.rotulo} · ${kernel.estado.versao}${kernel.estado.pandas ? ' · pandas' : ''}` +
-                (kernel.estado.pacotes === null ? '' : ` · pacotes: ${kernel.estado.pacotes.rotulo}`)}
-        </Box>
+        <IndicadoresDosKernels
+          linguagens={linguagensDoNotebook(nb)}
+          padrao={nb.kernel}
+          kernels={kernel}
+          linguagemRodando={linguagemRodando}
+          onEscolher={(l) => void escolherInterpretador(l)}
+        />
         <Box
           component="button"
           type="button"
@@ -302,7 +313,7 @@ export function NotebookHost({
         </Box>
         {/* O Laravel: interruptor DESLIGADO por padrão, e o aviso ao lado quando
             ligado — é a única parte que sai da trava de somente-leitura. */}
-        {nb.kernel === 'php' && kernel.estado?.laravelDisponivel === true && (
+        {kernel.estados.php?.laravelDisponivel === true && (
           <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
             <Box
               component="button"
@@ -334,9 +345,13 @@ export function NotebookHost({
         {avisoDeExportacao !== null && (
           <Box data-aviso-exportacao sx={{ fontSize: 11, color: 'text.secondary' }}>{avisoDeExportacao}</Box>
         )}
-        {kernel.erro !== null && (
-          <Box data-erro-do-kernel sx={{ color: 'error.main', fontSize: 11, maxWidth: 420 }} title={kernel.erro}>
-            {kernel.erro}
+        {Object.values(kernel.erros).length > 0 && (
+          <Box
+            data-erro-do-kernel
+            sx={{ color: 'error.main', fontSize: 11, maxWidth: 420 }}
+            title={Object.values(kernel.erros).join('\n')}
+          >
+            {Object.values(kernel.erros).join(' · ')}
           </Box>
         )}
         <Box sx={{ flex: 1 }} />
@@ -344,8 +359,8 @@ export function NotebookHost({
         {execucao.rodando !== null && (
           <Acao icone="lucide:square" rotulo="Parar" onClick={() => void execucao.parar()} />
         )}
-        {kernel.estado !== null && (
-          <Acao icone="lucide:refresh-cw" rotulo="Reiniciar kernel" onClick={() => void kernel.reiniciar()} />
+        {Object.keys(kernel.estados).length > 0 && (
+          <Acao icone="lucide:refresh-cw" rotulo="Reiniciar kernel" onClick={() => void reiniciar()} />
         )}
         {(nb.kernel === 'python' || linguagensDoNotebook(nb).includes('python')) && (
           <Acao icone="lucide:file-output" rotulo="Exportar .ipynb" onClick={() => void exportar()} />
