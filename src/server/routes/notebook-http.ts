@@ -153,7 +153,7 @@ export function registrarRotasDeHttp(router: Router, { gerente, linguagemDe, seg
     // Pedidos "como registros": o Python entregaria um dict como TEXTO JSON (o
     // jeito do parâmetro de SQL), e `{{login.body.token}}` precisa da estrutura.
     const referencias = referenciasDaRequisicao(comSegredos);
-    const valores = await lerValoresDoKernel(gerente, p.caminho, referencias, referencias);
+    const valores = await lerValoresDoKernel(gerente, p.caminho, referencias, referencias, p);
     if (p.sinal.aborted) throw new Error('Requisição cancelada.');
     const resposta = await enviarUma(p.caminho, resolverRequisicao(comSegredos, valores), p.sinal);
     guardar(p.k, resposta);
@@ -170,7 +170,7 @@ export function registrarRotasDeHttp(router: Router, { gerente, linguagemDe, seg
   async function atenderParaCada(p: Atendimento, comSegredos: RequisicaoHttp, lista: string) {
     // O `item` é do laço; os outros `{{ }}` vêm do kernel, uma vez só.
     const outras = referenciasDaRequisicao(comSegredos).filter((n) => n !== 'item' && n !== lista);
-    const valores = await lerValoresDoKernel(gerente, p.caminho, [lista, ...outras], [lista, ...outras]);
+    const valores = await lerValoresDoKernel(gerente, p.caminho, [lista, ...outras], [lista, ...outras], p);
     const itens = valores[lista];
     if (!Array.isArray(itens)) throw new Error(`"Para cada ${lista}": ${lista} não é uma lista.`);
     const estado = { feitos: 0, total: itens.length };

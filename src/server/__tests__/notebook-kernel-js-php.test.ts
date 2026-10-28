@@ -8,11 +8,12 @@ import { after, test } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { iniciarKernelJs, iniciarKernelPhp } from '../notebook/kernel-python';
+import { comDriver, iniciarKernelJs, iniciarKernelPhp } from '../notebook/kernel-python';
+import { DRIVER_PHP } from '../notebook/driver-php';
 import { GerenteDeKernels } from '../notebook/gerente';
 import { execFileSync } from 'node:child_process';
 import { prepararCelulaJs } from '../notebook/celula-js';
-import type { Execucao, Kernel } from '../notebook/kernel';
+import { Kernel, type Execucao } from '../notebook/kernel';
 import { plataformaAtual } from '../../shared/plataforma';
 
 const kernels: Kernel[] = [];
@@ -206,6 +207,23 @@ test('PHP: Parar interrompe (com pcntl), e as variáveis ficam', { skip: process
   await ate(lenta, 5_000);
   assert.ok(textoDe(lenta).includes('Interrompido'), textoDe(lenta));
   assert.equal(textoDe(await ate(k.executar('$guardado'))), "'ainda aqui'\n");
+});
+
+// O relato de 28/10: parado um minuto, o kernel PHP morria sozinho. O Node dá
+// ao filho um SOCKET (socketpair) como stdin, e o PHP aplica nele o
+// `default_socket_timeout` (60 s): o `fgets` voltava `false` e o laço acabava.
+// Aqui o prazo é de 1 s, para o teste não esperar um minuto.
+test('PHP: parado mais que o default_socket_timeout, o kernel continua vivo', async () => {
+  const k = await comDriver('braytech_kernel.php', DRIVER_PHP, (driver) =>
+    Kernel.iniciar({
+      comando: 'php', args: ['-d', 'default_socket_timeout=1', driver, '', ''], cwd: os.tmpdir(),
+      plataforma: plataformaAtual(), interromperPor: 'sinal',
+    }));
+  kernels.push(k);
+  await ate(k.executar('$guardado = 42;'));
+  await new Promise((r) => setTimeout(r, 2500));
+  assert.equal(k.vivo, true);
+  assert.equal(textoDe(await ate(k.executar('$guardado'))), '42\n');
 });
 
 test('JS e PHP devolvem valores para o {{nome}} do SQL', async () => {

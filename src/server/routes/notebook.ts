@@ -16,6 +16,7 @@ import { KERNELS, type Kernel as LinguagemDoKernel } from '../../shared/notebook
 import type { Session } from '../connections/types';
 import type { Vinculo } from '../../shared/sql/vinculo';
 import { SqlDoKernel } from '../notebook/sql-do-kernel';
+import { lerGuardados } from '../../shared/notebook/guardados';
 import { registrarRotasDeSql } from './notebook-sql';
 import { registrarRotasDeHttp, type CofreDeSegredos } from './notebook-http';
 
@@ -171,10 +172,26 @@ export function createNotebookRouter(
     res.json(ok(estadoDe(await gerente.reiniciar(caminho, linguagemDe(req.body.linguagem)))));
   }));
 
+  /** Sem `linguagem` é o notebook fechando: os kernels E o que ele guardou saem do motor. */
   router.post('/kernel/encerrar', wrap((req, res) => {
     const caminho = requireString(req.body?.caminho, 'caminho');
-    gerente.encerrar(caminho, req.body?.linguagem === undefined ? undefined : linguagemDe(req.body.linguagem));
+    if (req.body?.linguagem === undefined) gerente.esquecer(caminho);
+    else gerente.encerrar(caminho, linguagemDe(req.body.linguagem));
     res.json(ok(null));
+  }));
+
+  /**
+   * O que o arquivo guardou (respostas HTTP, resultados SQL), como está na
+   * tela: cada kernel que nascer o recebe como variáveis (relato de 28/10).
+   */
+  router.post('/kernel/guardados', wrap((req, res) => {
+    gerente.definirGuardados(requireString(req.body?.caminho, 'caminho'), lerGuardados(req.body?.guardados));
+    res.json(ok(null));
+  }));
+
+  /** O que não voltou no último kernel que nasceu — o aviso embaixo de cada célula. */
+  router.get('/kernel/nao-restaurados', wrap((req, res) => {
+    res.json(ok(gerente.naoRestaurados(requireString(req.query.caminho, 'caminho'))));
   }));
 
   registrarRotasDeSql(router, { gerente, pool, tipoDaConexao, linguagemDe });

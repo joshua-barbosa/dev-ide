@@ -106,6 +106,9 @@ const UI_DIR = path.join(ROOT, 'dist', 'ui');
 
 const app = express();
 app.use(localhostOnly);
+// O que o notebook guardou vai INTEIRO ao motor (respostas HTTP de até 1 MB
+// cada, SQL de até 500 linhas): um notebook com várias passaria dos 4 MB.
+app.use('/api/notebook/kernel/guardados', express.json({ limit: '64mb' }));
 app.use(express.json({ limit: '4mb' }));
 app.use(express.static(UI_DIR));
 app.use('/api/connections', createConnectionsRouter({ registry, vault, pool, remember, prefs }));

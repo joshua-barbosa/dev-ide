@@ -4,6 +4,11 @@
 // kernel, com as variáveis. Fechar o notebook o encerra; o motor, ao sair,
 // encerra todos — um Python órfão segurando um DataFrame de 2 GB não é algo que
 // se deixa para trás.
+//
+// Um kernel que NASCE recebe o que o arquivo guardou (relato de 28/10): a tela
+// conta ao motor as respostas HTTP e os resultados SQL das células
+// (`definirGuardados`), e cada kernel novo os recebe como variáveis antes da
+// primeira célula — o PHP que morreu parado, o Reiniciar, o notebook reaberto.
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -15,6 +20,7 @@ import { Cascata, familiaDe, type Familia } from './cascata';
 import { iniciarKernelJs, iniciarKernelPhp, iniciarKernelPython } from './kernel-python';
 import { prepararCelulaJs } from './celula-js';
 import type { Kernel } from './kernel';
+import type { Guardado } from '../../shared/notebook/guardados';
 import type { Kernel as LinguagemDoKernel } from '../../shared/notebook/modelo';
 import type { Plataforma } from '../../shared/plataforma';
 
@@ -97,6 +103,13 @@ export interface IniciadoresDeKernel {
   readonly php: typeof iniciarKernelPhp;
 }
 
+/** Uma variável que não voltou com o kernel novo, e por quê — o aviso embaixo da célula. */
+export interface NaoRestaurado {
+  readonly celula: string;
+  readonly nome: string;
+  readonly motivo: string;
+}
+
 /** A chave de um kernel: o notebook E a família — um notebook tem vários (spec 113). */
 const chave = (caminho: string, familia: Familia): string => `${caminho}\u0000${familia}`;
 
@@ -106,6 +119,10 @@ export class GerenteDeKernels {
   private readonly subindo = new Map<string, Promise<SessaoDeKernel>>();
   /** A cascata de cada notebook: o que passa de uma linguagem para outra. */
   private readonly cascatas = new Map<string, Cascata>();
+  /** O que a tela diz que o arquivo de cada notebook guardou. */
+  private readonly guardados = new Map<string, readonly Guardado[]>();
+  /** O que não voltou no último kernel que nasceu, por nome. */
+  private readonly naoVoltaram = new Map<string, ReadonlyMap<string, NaoRestaurado>>();
 
   constructor(
     private readonly plataforma: Plataforma,
@@ -154,6 +171,37 @@ export class GerenteDeKernels {
       this.cascatas.set(caminho, c);
     }
     return c;
+  }
+
+  definirGuardados(caminho: string, guardados: readonly Guardado[]): void {
+    this.guardados.set(caminho, guardados);
+  }
+
+  /** Algum destes nomes voltaria num kernel novo? */
+  temGuardado(caminho: string, nomes: readonly string[]): boolean {
+    return (this.guardados.get(caminho) ?? []).some((g) => g.tipo !== 'faltando' && nomes.includes(g.nome));
+  }
+
+  naoRestaurados(caminho: string): NaoRestaurado[] {
+    return [...(this.naoVoltaram.get(caminho)?.values() ?? [])];
+  }
+
+  /**
+   * `nome` acabou de ser entregue a todas as linguagens (SQL, HTTP): é o valor
+   * mais novo — a versão velha da cascata não passa por cima dele, e o aviso
+   * de que ele não voltou do arquivo já não vale.
+   */
+  definido(caminho: string, nome: string): void {
+    this.cascata(caminho).aoDefinir(nome);
+    const faltando = this.naoVoltaram.get(caminho);
+    if (faltando?.has(nome)) this.naoVoltaram.set(caminho, new Map([...faltando].filter(([n]) => n !== nome)));
+  }
+
+  /** O notebook fechou: nada dele fica no motor. */
+  esquecer(caminho: string): void {
+    this.encerrar(caminho);
+    this.guardados.delete(caminho);
+    this.naoVoltaram.delete(caminho);
   }
 
   /** O kernel de cada família, para a cascata. */
@@ -326,7 +374,52 @@ export class GerenteDeKernels {
           prepararCelulaJs(c, daCelula === 'typescript' || daCelula === 'javascript' ? daCelula : linguagem),
       };
     }
+    // Antes de aparecer: a primeira célula já encontra as variáveis.
+    await this.restaurar(pedido.caminho, sessao.familia, sessao.kernel);
     this.sessoes.set(chave(pedido.caminho, familiaDe(pedido.linguagem)), sessao);
     return sessao;
+  }
+
+  /**
+   * O que o arquivo guardou vira variável no kernel que acabou de nascer.
+   * Nunca derruba a subida.
+   *
+   * Se outra linguagem viva MUDOU o nome depois (uma célula Node mexeu na
+   * resposta), vale o valor dela, o mais novo — não o do arquivo.
+   */
+  private async restaurar(caminho: string, familia: Familia, kernel: Kernel): Promise<void> {
+    const guardados = this.guardados.get(caminho) ?? [];
+    const cascata = this.cascata(caminho);
+    await cascata.sincronizar(this.kernelsDe(caminho), familia).catch(() => undefined);
+    const faltando = new Map<string, NaoRestaurado>();
+    const falhou = (g: Guardado, e: unknown): void => {
+      faltando.set(g.nome, { celula: g.celula, nome: g.nome, motivo: `o kernel não aceitou o valor (${e instanceof Error ? e.message : String(e)})` });
+    };
+    const valores = new Map<string, unknown>();
+    const doArquivo: Guardado[] = [];
+    for (const g of guardados) {
+      const maisNovo = cascata.origemDe(g.nome) === familia ? undefined : cascata.valorDe(g.nome);
+      if (maisNovo !== undefined) valores.set(g.nome, maisNovo.valor);
+      else if (g.tipo === 'faltando') faltando.set(g.nome, { celula: g.celula, nome: g.nome, motivo: g.motivo });
+      else if (g.tipo === 'valor') valores.set(g.nome, g.valor);
+      else doArquivo.push(g);
+    }
+    if (valores.size > 0) {
+      try {
+        await kernel.importar(Object.fromEntries(valores));
+      } catch (e) {
+        guardados.filter((g) => valores.has(g.nome)).forEach((g) => falhou(g, e));
+      }
+    }
+    // Uma tabela por vez: o kernel recebe a definição em lotes, numa conversa só.
+    for (const g of doArquivo) {
+      if (g.tipo !== 'tabela') continue;
+      try {
+        await kernel.definir(g.nome, g.colunas, g.linhas);
+      } catch (e) {
+        falhou(g, e);
+      }
+    }
+    this.naoVoltaram.set(caminho, faltando);
   }
 }

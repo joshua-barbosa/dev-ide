@@ -31,6 +31,8 @@ export interface CelulaDoNotebookProps {
   readonly caminho: string | null;
   /** O "Copiar cURL" da célula HTTP. */
   copiarTexto(texto: string): Promise<void>;
+  /** A variável desta célula não voltou com o kernel novo — e por quê. */
+  readonly avisoDeRestauro?: string | null;
   onMudar(mudanca: MudancaDeCelula): void;
   onRodar(): void;
   /** A cascata: esta célula e todas abaixo, parando no primeiro erro. */
@@ -305,6 +307,11 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
       )}
 
       <SaidasDaCelula saidas={celula.saidas} tema={p.tema} caminho={p.caminho} celula={celula.id} />
+      {p.avisoDeRestauro != null && (
+        <Box data-aviso-de-restauro sx={{ px: 1.5, py: 0.5, fontSize: 11, color: 'warning.main' }}>
+          {p.avisoDeRestauro}
+        </Box>
+      )}
     </Box>
   );
 }

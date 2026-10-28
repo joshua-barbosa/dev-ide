@@ -9,7 +9,7 @@ import { requireString, wrap } from '../http/handlers';
 import type { SessionPool } from '../connections/pool';
 import type { GerenteDeKernels } from '../notebook/gerente';
 import { rodarParaCada } from '../notebook/para-cada';
-import { entregarAosKernels, lerValoresDoKernel } from '../notebook/valores-do-kernel';
+import { entregarAosKernels, lerValoresDoKernel, type SubidaDosKernels } from '../notebook/valores-do-kernel';
 import { nomeValido, saidaDeTabela, type Kernel as LinguagemDoKernel } from '../../shared/notebook/modelo';
 import {
   colunasPedidas, montarSqlComParametros, nomesComCampos, referenciasDoSql, tabelasPedidas, type EstiloDeParametro,
@@ -37,8 +37,9 @@ export function registrarRotasDeSql(router: Router, { gerente, pool, tipoDaConex
   /** O "para cada" em andamento de cada notebook: progresso e pedido de parar. */
   const emAndamento = new Map<string, { feitos: number; total: number; parar: boolean }>();
 
-  const lerValores = (caminho: string, nomes: readonly string[], comoTabela: readonly string[]) =>
-    lerValoresDoKernel(gerente, caminho, nomes, comoTabela);
+  const lerValores = (
+    caminho: string, nomes: readonly string[], comoTabela: readonly string[], subida: SubidaDosKernels
+  ) => lerValoresDoKernel(gerente, caminho, nomes, comoTabela, subida);
 
   /** O resultado vira variável em CADA linguagem do notebook. */
   const entregar = (
@@ -87,7 +88,7 @@ export function registrarRotasDeSql(router: Router, { gerente, pool, tipoDaConex
     if (paraCada !== null) {
       // O `item` é do laço; os outros `{{ }}` vêm do kernel, uma vez só.
       const outros = referenciasDoSql(texto).filter((n) => n !== 'item' && n !== paraCada);
-      const valores = await lerValores(caminho, [paraCada, ...outros], [paraCada, ...comoTabela]);
+      const valores = await lerValores(caminho, [paraCada, ...outros], [paraCada, ...comoTabela], { linguagens, raiz });
       const itens = valores[paraCada];
       if (!Array.isArray(itens)) throw new Error(`"Para cada ${paraCada}": ${paraCada} não é uma lista.`);
       const estado = { feitos: 0, total: itens.length, parar: false };
@@ -124,7 +125,7 @@ export function registrarRotasDeSql(router: Router, { gerente, pool, tipoDaConex
     let statement = texto;
     let params: ParametroDeConsulta[] | undefined;
     if (referencias.length > 0) {
-      const valores = await lerValores(caminho, referencias, comoTabela);
+      const valores = await lerValores(caminho, referencias, comoTabela, { linguagens, raiz });
       const montado = montarSqlComParametros(texto, valores, estilo, dialeto);
       statement = montado.sql;
       params = montado.params;

@@ -56,6 +56,12 @@ export class Cascata {
     return this.ultimas.get(nome)?.origem;
   }
 
+  /** O valor mais novo de um nome, se alguma linguagem o mudou (depois de `sincronizar`). */
+  valorDe(nome: string): { readonly valor: unknown } | undefined {
+    const v = this.ultimas.get(nome);
+    return v === undefined ? undefined : { valor: v.valor };
+  }
+
   /** Recolhe o que as famílias sujas mudaram (menos `exceto`). */
   async sincronizar(kernels: Kernels, exceto: Familia | null = null): Promise<void> {
     for (const familia of [...this.sujas]) {

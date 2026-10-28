@@ -5,12 +5,27 @@ import type { GerenteDeKernels } from './gerente';
 import type { Kernel } from './kernel';
 import type { Kernel as LinguagemDoKernel } from '../../shared/notebook/modelo';
 
-/** Os valores dos `{{ }}`, de quem mudou cada nome por último. */
+/** Para subir os kernels do notebook quando um `{{ }}` só existe no arquivo. */
+export interface SubidaDosKernels {
+  readonly linguagens: readonly LinguagemDoKernel[];
+  readonly raiz: string | null;
+}
+
+/**
+ * Os valores dos `{{ }}`, de quem mudou cada nome por último.
+ *
+ * Sem kernel de pé, mas com o valor guardado no arquivo (o kernel morreu, o
+ * notebook foi reaberto), os kernels do notebook SOBEM — e nascem com ele.
+ */
 export async function lerValoresDoKernel(
-  gerente: GerenteDeKernels, caminho: string, nomes: readonly string[], comoTabela: readonly string[] = []
+  gerente: GerenteDeKernels, caminho: string, nomes: readonly string[], comoTabela: readonly string[] = [],
+  subida: SubidaDosKernels | null = null
 ): Promise<Record<string, unknown>> {
   const valores: Record<string, unknown> = {};
   if (nomes.length === 0) return valores;
+  if (subida !== null && gerente.sessoesDe(caminho).length === 0 && gerente.temGuardado(caminho, nomes)) {
+    for (const linguagem of subida.linguagens) await gerente.garantir({ caminho, linguagem, raiz: subida.raiz });
+  }
   const vivos = gerente.sessoesDe(caminho);
   if (vivos.length === 0) {
     throw new Error(`{{${nomes[0]}}} precisa do kernel rodando: rode antes a célula que cria a variável.`);
@@ -75,6 +90,6 @@ export async function entregarAosKernels(
     }
   }
   // Chegou a todas: é o valor mais novo, e a versão velha da cascata não volta por cima.
-  gerente.cascata(p.caminho).aoDefinir(p.nome);
+  gerente.definido(p.caminho, p.nome);
   return { variavel: primeira === null ? null : { nome: p.nome, ...primeira, linguagens: entregues }, avisos };
 }

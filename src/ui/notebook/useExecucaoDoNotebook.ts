@@ -16,6 +16,7 @@ import { ApiDoNotebook } from '../api-notebook';
 import { aguardarSegredos } from './http/segredosPendentes';
 import { referenciasDoCofre } from '../../shared/notebook/http';
 import type { ControleDosKernels } from './useKernelDoNotebook';
+import type { GuardadosDoNotebook } from './useGuardadosDoNotebook';
 import { instrucoesDoBloco } from '../../shared/sql/instrucoes-do-bloco';
 import {
   linguagensDoNotebook, registrarExecucao, type Celula, type Kernel, type Notebook, type Saida,
@@ -28,6 +29,8 @@ export interface DepsDaExecucao {
   readonly caminho: string | null;
   /** A pasta do projeto: os kernels que o SQL sobe procuram o ambiente até ela. */
   readonly raiz: string | null;
+  /** Antes de rodar, o motor precisa saber o que o arquivo guardou (um kernel pode nascer). */
+  readonly guardados: Pick<GuardadosDoNotebook, 'sincronizado'>;
 }
 
 export interface ControleDaExecucao {
@@ -49,7 +52,7 @@ function linguagensDoSql(n: Notebook): Kernel[] {
   return usadas.length > 0 ? usadas : [n.kernel];
 }
 
-export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho, raiz }: DepsDaExecucao): ControleDaExecucao {
+export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho, raiz, guardados }: DepsDaExecucao): ControleDaExecucao {
   const [rodando, setRodando] = useState<string | null>(null);
   const desistir = useRef(false);
   /** A linguagem da célula que roda agora: é o kernel dela que o Parar interrompe. */
@@ -238,6 +241,7 @@ export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho, raiz 
     if (vazia) return true;
     setRodando(id);
     try {
+      await guardados.sincronizado();
       const contador = proximoContador(n);
       if (celula.tipo === 'sql') return await rodarSql(celula, n, contador);
       if (celula.tipo === 'http') return await rodarHttp(celula, n, contador);

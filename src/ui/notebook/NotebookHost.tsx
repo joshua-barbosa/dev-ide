@@ -20,6 +20,7 @@ import { ApiDoNotebook } from '../api-notebook';
 import { useKernelsDoNotebook, familiaDe } from './useKernelDoNotebook';
 import { IndicadoresDosKernels, ROTULOS } from './IndicadoresDosKernels';
 import { useExecucaoDoNotebook } from './useExecucaoDoNotebook';
+import { useGuardadosDoNotebook } from './useGuardadosDoNotebook';
 import { useCodebase } from '../sql/useCodebase';
 import { escolherAmbiente } from './escolherAmbiente';
 import { AjudaDoNotebook } from './AjudaDoNotebook';
@@ -195,7 +196,8 @@ export function NotebookHost({
 
   const caminho = (aba.meta as { path?: string | null }).path ?? null;
   const kernel = useKernelsDoNotebook(caminho, raiz, nb?.laravel ?? false);
-  const execucao = useExecucaoDoNotebook({ atual, atualizar, kernel, caminho, raiz });
+  const guardados = useGuardadosDoNotebook(caminho, nb, kernel.estados);
+  const execucao = useExecucaoDoNotebook({ atual, atualizar, kernel, caminho, raiz, guardados });
   /** A linguagem da célula rodando (a bolinha dela fica amarela). */
   const celulaRodando = nb?.celulas.find((c) => c.id === execucao.rodando);
   const linguagemRodando = celulaRodando?.tipo === 'codigo' ? (celulaRodando.linguagem ?? nb?.kernel ?? null) : null;
@@ -456,6 +458,7 @@ export function NotebookHost({
                 tema={tema}
                 caminho={caminho}
                 copiarTexto={copiarTexto}
+                avisoDeRestauro={guardados.avisos.get(celula.id) ?? null}
                 onMudar={(m) => atualizar((x) => alterarCelula(x, celula.id, m))}
                 onRodar={() => void execucao.rodarCelula(celula.id)}
                 onRodarDesde={() => void execucao.rodarDesde(i)}

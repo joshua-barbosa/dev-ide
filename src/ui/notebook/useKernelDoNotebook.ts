@@ -57,6 +57,7 @@ export interface ControleDosKernels {
 }
 
 const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const ROTULO: Record<Familia, string> = { python: 'Python', node: 'Node', php: 'PHP' };
 const mensagemDe = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 function porFamilia(lista: readonly EstadoDoKernel[]): Partial<Record<Familia, EstadoDoKernel>> {
@@ -159,23 +160,40 @@ export function useKernelsDoNotebook(
         return { saidas: [{ tipo: 'erro' as const, mensagem: `O kernel não subiu: ${motivo}` }], ok: false };
       }
       let exec: number;
+      /** O kernel tinha parado e outro subiu: a célula diz, antes do que ela mesma escrever. */
+      let antes: Saida[] = [];
       try {
         exec = (await ApiDoNotebook.executar(caminho, linguagem, codigo, conexao)).exec;
       } catch (e) {
-        // O kernel pode ter morrido desde a última vez: relê e avisa.
-        void atualizar();
-        return { saidas: [{ tipo: 'erro' as const, mensagem: mensagemDe(e) }], ok: false };
+        // O kernel pode ter morrido desde a última vez. Se é isso, a célula NÃO
+        // rodou: sobe outro (ele nasce com o que o arquivo guardou) e roda nele.
+        const familia = familiaDe(linguagem);
+        const vivosAgora = await ApiDoNotebook.kernels(caminho).catch(() => null);
+        if (vivosAgora !== null) setEstados(porFamilia(vivosAgora));
+        const morreu = vivosAgora !== null && !vivosAgora.some((k) => k.familia === familia);
+        const motivo = morreu ? await subir(linguagem) : mensagemDe(e);
+        if (motivo !== null) return { saidas: [{ tipo: 'erro' as const, mensagem: morreu ? `O kernel não subiu: ${motivo}` : motivo }], ok: false };
+        antes = [{
+          tipo: 'texto', fluxo: 'erro',
+          texto: `O kernel ${ROTULO[familia]} tinha parado; subiu outro, com as respostas HTTP e os resultados SQL ` +
+            'guardados no arquivo. O que as células de código criaram se perdeu.\n',
+        }];
+        try {
+          exec = (await ApiDoNotebook.executar(caminho, linguagem, codigo, conexao)).exec;
+        } catch (e2) {
+          return { saidas: [...antes, { tipo: 'erro' as const, mensagem: mensagemDe(e2) }], ok: false };
+        }
       }
       let saidas: Saida[] = [];
       for (;;) {
         const q = await ApiDoNotebook.execucao(caminho, linguagem, exec, saidas.length);
         saidas = [...saidas.slice(0, q.inicio), ...q.saidas];
-        aoParcial(saidas);
-        if (q.terminou) return { saidas, ok: q.ok };
+        aoParcial([...antes, ...saidas]);
+        if (q.terminou) return { saidas: [...antes, ...saidas], ok: q.ok };
         await esperar(INTERVALO_MS);
       }
     },
-    [caminho, garantir, atualizar]
+    [caminho, garantir, subir]
   );
 
   const interromper = useCallback(

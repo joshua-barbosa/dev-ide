@@ -7,6 +7,7 @@
 import { request } from './api-http';
 import type { Saida } from '../shared/notebook/modelo';
 import type { RequisicaoHttp, SaidaHttp } from '../shared/notebook/http';
+import type { Guardado } from '../shared/notebook/guardados';
 
 /** O kernel de um notebook, como a rota o descreve (spec 112). */
 export interface EstadoDoKernel {
@@ -85,6 +86,14 @@ export const ApiDoNotebook = {
     request<EstadoDoKernel[]>('POST', '/api/notebook/kernel/reiniciar', { caminho }),
   encerrar: (caminho: string) =>
     request<null>('POST', '/api/notebook/kernel/encerrar', { caminho }),
+  /** O que o arquivo guardou: cada kernel que nascer o recebe como variáveis. */
+  guardados: (caminho: string, guardados: readonly Guardado[]) =>
+    request<null>('POST', '/api/notebook/kernel/guardados', { caminho, guardados }),
+  /** O que não voltou no último kernel que nasceu, e por quê. */
+  naoRestaurados: (caminho: string) =>
+    request<{ celula: string; nome: string; motivo: string }[]>(
+      'GET', `/api/notebook/kernel/nao-restaurados?caminho=${q(caminho)}`
+    ),
   sql: (p: {
     caminho: string; connectionId: string; database: string; statement: string; nome: string | null;
     /** As linguagens do notebook: o resultado vai para cada uma (spec 113). */

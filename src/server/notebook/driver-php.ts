@@ -18,6 +18,11 @@
 // variáveis ficam. Sem `pcntl` (Windows), não há como interromper um `eval` no
 // meio, e a rede de segurança do motor encerra o kernel.
 //
+// Esperar o motor: o Node dá ao PHP um SOCKET como stdin (socketpair), e o
+// PHP aplica nele o `default_socket_timeout` (60 s). Parado um minuto, o
+// `fgets` voltava `false` e o kernel saía sozinho (relato de 28/10). Tempo
+// esgotado não é fim: `__ler_linha` só desiste quando o canal FECHA.
+//
 // Nada de dólar-chave neste texto: o `String.raw` o trataria como interpolação.
 export const DRIVER_PHP = String.raw`<?php
 $__marca = "\x1eBRNB\x1f";
@@ -130,6 +135,21 @@ function __mostrar($exec, $valor) {
         $saida = ['tipo' => 'texto', 'fluxo' => 'saida', 'texto' => rtrim($texto) . "\n"];
     }
     __enviar(['tipo' => 'resultado', 'exec' => $exec, 'saida' => $saida]);
+}
+
+/** A próxima linha do motor, ou false quando o canal fechou. */
+function __ler_linha() {
+    while (true) {
+        $linha = fgets(STDIN);
+        if ($linha !== false) {
+            return $linha;
+        }
+        if (feof(STDIN)) {
+            return false;
+        }
+        // Tempo esgotado (ou um canal que não bloqueia): respira, não gira.
+        usleep(100000);
+    }
 }
 
 // ---- A cascata entre linguagens (spec 113) ----
@@ -266,7 +286,7 @@ function __pedir_ao_motor($dados) {
     $pedido = $GLOBALS['__sql_proximo']++;
     $dados['pedido'] = $pedido;
     __enviar($dados);
-    while (($linha = fgets(STDIN)) !== false) {
+    while (($linha = __ler_linha()) !== false) {
         $m = json_decode($linha, true);
         if (is_array($m) && ($m['tipo'] ?? null) === 'sql-resposta' && ($m['pedido'] ?? null) === $pedido) {
             if (!empty($m['erro'])) {
@@ -317,7 +337,7 @@ $__iniciais[] = '__iniciais';
 __enviar(['tipo' => 'pronto', 'versao' => PHP_VERSION, 'executavel' => PHP_BINARY, 'pandas' => false]);
 
 $__definindo = null;
-while (($__linha = (count($__pendentes) > 0 ? array_shift($__pendentes) : fgets(STDIN))) !== false) {
+while (($__linha = (count($__pendentes) > 0 ? array_shift($__pendentes) : __ler_linha())) !== false) {
     $__p = json_decode($__linha, true);
     if (!is_array($__p) || !isset($__p['tipo'])) {
         continue;

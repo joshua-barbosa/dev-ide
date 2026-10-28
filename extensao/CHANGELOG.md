@@ -1,5 +1,23 @@
 # Mudanças
 
+## 0.1.32
+
+- **O kernel PHP não para mais sozinho.** Parado um minuto, ele saía: o PHP
+  aplicava o `default_socket_timeout` (60 s) ao canal com a Braytech Code. O
+  mesmo prazo derrubava um `sql()` demorado dentro de uma célula PHP.
+- **O que o `.brnb` guardou volta como variável.** Todo kernel que sobe — o
+  primeiro, o que voltou depois de parar, o do Reiniciar — já recebe a resposta
+  de cada célula HTTP e o resultado de cada SQL com nome, como estão na tela.
+  Nada vai de novo ao servidor nem ao banco.
+  - Só volta o que o arquivo tem inteiro. A resposta HTTP de mais de 1 MB, o
+    SQL de mais de 500 linhas e o resumo de um "para cada" HTTP não voltam:
+    a célula avisa embaixo, e o aviso some quando ela roda de novo.
+  - Uma célula HTTP ou SQL com `{{nome}}` de um valor guardado sobe o kernel
+    se nenhum estiver de pé.
+- **Kernel que parou: um clique só.** A célula percebe, sobe outro e roda
+  nele, dizendo que o kernel tinha parado — antes era preciso rodar duas
+  vezes.
+
 ## 0.1.31
 
 - **Célula HTTP: OAuth 2.0** na aba Authorization — Client Credentials,
