@@ -6,6 +6,7 @@
 // precisar saber.
 import { request } from './api-http';
 import type { Saida } from '../shared/notebook/modelo';
+import type { RequisicaoHttp, SaidaHttp } from '../shared/notebook/http';
 
 /** O kernel de um notebook, como a rota o descreve (spec 112). */
 export interface EstadoDoKernel {
@@ -41,6 +42,13 @@ export interface Interpretador {
 export interface AmbienteDoKernel {
   readonly candidatos: readonly Interpretador[];
   readonly candidatosDePacotes: readonly PastaDePacotes[];
+}
+
+/** O token do OAuth 2.0 visto pela tela: nunca o token em si. */
+export interface EstadoDoOAuth {
+  readonly tem: boolean;
+  readonly expiraEm: number | null;
+  readonly temRefresh: boolean;
 }
 
 const q = encodeURIComponent;
@@ -98,4 +106,53 @@ export const ApiDoNotebook = {
   progressoDoSql: (caminho: string) =>
     request<{ feitos: number; total: number } | null>('GET', `/api/notebook/kernel/sql/progresso?caminho=${q(caminho)}`),
   pararSql: (caminho: string) => request<null>('POST', '/api/notebook/kernel/sql/parar', { caminho }),
+  /** A célula HTTP (spec 120): sai do motor; a resposta vira variável pelo `nome`. */
+  http: (p: {
+    caminho: string; celula: string; nome: string | null; linguagens: readonly string[]; raiz: string | null;
+    http: RequisicaoHttp;
+    /** Etapa 4: o nome de uma lista — uma requisição por item. */
+    paraCada?: string | null;
+  }) =>
+    request<{
+      /** Uma requisição: a resposta. Com "para cada": ausente, e vem a tabela. */
+      saida?: SaidaHttp;
+      tabela?: Saida | null;
+      variavel: { nome: string; linhas?: number; linguagens?: string[] } | null;
+      aviso: string | null;
+      paraCada?: {
+        total: number; feitos: number; comErroDeStatus: number;
+        falha: { item: number; mensagem: string } | null; parado: boolean;
+      };
+    }>('POST', '/api/notebook/kernel/http', p),
+  progressoHttp: (caminho: string, celula: string) =>
+    request<{ feitos: number; total: number } | null>(
+      'GET', `/api/notebook/kernel/http/progresso?caminho=${q(caminho)}&celula=${q(celula)}`
+    ),
+  /** O corpo INTEIRO da última resposta da célula — o arquivo guarda só até o teto. */
+  corpoHttp: (caminho: string, celula: string) =>
+    request<{ base64: string; mime: string }>(
+      'GET', `/api/notebook/kernel/http/corpo?caminho=${q(caminho)}&celula=${q(celula)}`
+    ),
+  pararHttp: (caminho: string) => request<null>('POST', '/api/notebook/kernel/http/parar', { caminho }),
+  /** OAuth 2.0 (etapa 5): "Pegar token novo". Authorization Code devolve o login a abrir. */
+  oauthToken: (http: RequisicaoHttp, caminho: string | null) =>
+    request<{ login?: { id: string; url: string }; estado?: EstadoDoOAuth }>('POST', '/api/notebook/oauth/token', { http, caminho }),
+  oauthLogin: (id: string) =>
+    request<{ estado: 'esperando' | 'trocando' | 'pronto' | 'erro'; erro?: string }>('GET', `/api/notebook/oauth/login?id=${q(id)}`),
+  oauthEstado: (ref: string) => request<EstadoDoOAuth>('GET', `/api/notebook/oauth/estado?ref=${q(ref)}`),
+  oauthLimpar: (ref: string) => request<null>('POST', '/api/notebook/oauth/limpar', { ref }),
+  /** Os cookies que o notebook guardou (etapa 3). */
+  cookies: (caminho: string) =>
+    request<{ nome: string; valor: string; dominio: string; caminho: string; expira: number | null }[]>(
+      'GET', `/api/notebook/kernel/http/cookies?caminho=${q(caminho)}`
+    ),
+  limparCookies: (caminho: string) => request<null>('POST', '/api/notebook/kernel/http/cookies/limpar', { caminho }),
+  /** "Copiar como cURL": o motor põe o segredo do cofre no comando. */
+  curl: (http: RequisicaoHttp, estilo: 'bash' | 'cmd') =>
+    request<string>('POST', '/api/notebook/kernel/http/curl', { http, estilo }),
+  /** Um segredo da aba Authorization no cofre (spec 120, etapa 2): a tela escolhe a referência. */
+  guardarSegredo: (ref: string, valor: string) => request<null>('POST', '/api/notebook/segredo', { ref, valor }),
+  /** Existe neste cofre? O valor só com `revelar`. */
+  segredo: (ref: string, revelar = false) =>
+    request<{ existe: boolean; valor?: string }>('GET', `/api/notebook/segredo?ref=${q(ref)}${revelar ? '&revelar=1' : ''}`),
 };

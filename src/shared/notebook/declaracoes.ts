@@ -191,6 +191,9 @@ export function codigoDasOutrasCelulas(nb: Notebook, idEmFoco: string | null): s
   return `${pedacos.join('\n;\n')}\n`;
 }
 
+const TIPO_DA_RESPOSTA_HTTP =
+  '{ status: number; statusTexto: string; headers: Record<string, string>; body: any; tempo: number; tamanho: number; url: string }';
+
 export function declaracoesDoNotebook(nb: Notebook, idEmFoco: string | null): string {
   const emFoco = nb.celulas.find((c) => c.id === idEmFoco);
   const { soNomes, declaradosNoCodigo } = divisao(nb, idEmFoco);
@@ -208,6 +211,11 @@ export function declaracoesDoNotebook(nb: Notebook, idEmFoco: string | null): st
   };
   for (const c of nb.celulas) {
     if (c.tipo === 'sql' && c.nome !== null) declarar(c.nome, tipoDoResultado(c.saidas));
+    // HTTP (spec 120): a resposta tem sempre a mesma forma; o body é o que a API quiser.
+    if (c.tipo === 'http' && c.nome !== null) {
+      // "Para cada" (etapa 4): uma resposta por item, cada uma com o item.
+      declarar(c.nome, c.paraCada === null ? TIPO_DA_RESPOSTA_HTTP : `Array<${TIPO_DA_RESPOSTA_HTTP} & { item: any }>`);
+    }
   }
   // As células que não entram como código (conflito de nome): só os nomes.
   for (const nome of soNomes) declarar(nome, 'any');

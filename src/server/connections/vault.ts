@@ -82,6 +82,20 @@ interface VaultFile {
   readonly semTranca?: SemTranca;
   readonly verifier: EncryptedValue;
   readonly connections: readonly StoredConnection[];
+  /**
+   * Segredos que não são de conexão: o token da célula HTTP do notebook (spec
+   * 120). O `.brnb` guarda só a REFERÊNCIA; o valor fica aqui, cifrado.
+   * Ausente nos cofres de antes — e uma versão velha que regrava o arquivo o
+   * preserva, porque grava o objeto lido inteiro.
+   */
+  readonly segredos?: Readonly<Record<string, EncryptedValue>>;
+}
+
+/** `http-` + letras, números e hífen: a referência vai num arquivo que pode ir para um git. */
+const REFERENCIA_DE_SEGREDO = /^[a-z]+-[A-Za-z0-9-]{8,64}$/;
+
+function segredoAad(referencia: string): string {
+  return `dev-ide-vault:segredo:${referencia}`;
 }
 
 function deriveKey(password: string, salt: Buffer, kdf: Pick<KdfParams, 'N' | 'r' | 'p' | 'keyLength'>): Buffer {
@@ -123,6 +137,18 @@ function decrypt(value: EncryptedValue, key: Buffer, aad: string): string {
   return Buffer.concat([decipher.update(Buffer.from(value.data, 'base64')), decipher.final()]).toString('utf8');
 }
 
+/** Os segredos soltos, recifrados de uma chave para outra (troca de senha). */
+function recifrarSoltos(
+  segredos: Readonly<Record<string, EncryptedValue>> | undefined, velha: Buffer, nova: Buffer
+): Record<string, EncryptedValue> | undefined {
+  if (segredos === undefined) return undefined;
+  const saida: Record<string, EncryptedValue> = {};
+  for (const [ref, cifrado] of Object.entries(segredos)) {
+    saida[ref] = encrypt(decrypt(cifrado, velha, segredoAad(ref)), nova, segredoAad(ref));
+  }
+  return saida;
+}
+
 /** AAD de um segredo: amarra o texto cifrado à conexão e ao campo. */
 function secretAad(connectionId: string, field: string): string {
   return `dev-ide-vault:${connectionId}:${field}`;
@@ -156,6 +182,11 @@ function splitFields(
     }
   }
   return { plain, secret };
+}
+
+function conferirReferencia(referencia: string): string {
+  if (!REFERENCIA_DE_SEGREDO.test(referencia)) throw new Error(`Referência de segredo inválida: ${referencia}`);
+  return referencia;
 }
 
 export class Vault {
@@ -358,6 +389,7 @@ export class Vault {
       kdf,
       verifier: encrypt(VERIFIER_PLAINTEXT, chaveNova, VERIFIER_AAD),
       connections: conexoes,
+      segredos: recifrarSoltos(file.segredos, chaveVelha, chaveNova),
     };
     this.key = chaveNova;
     this.persist();
@@ -503,6 +535,37 @@ export class Vault {
     }
   }
 
+  /** Guarda (ou troca) um segredo solto — o token de uma célula HTTP (spec 120). */
+  guardarSegredo(referencia: string, valor: string): void {
+    const ref = conferirReferencia(referencia);
+    const key = this.requireKey();
+    const file = this.load();
+    this.file = { ...file, segredos: { ...(file.segredos ?? {}), [ref]: encrypt(valor, key, segredoAad(ref)) } };
+    this.persist();
+  }
+
+  /** O segredo solto, decifrado; `null` quando ele não está NESTE cofre (o `.brnb` veio de outra máquina). */
+  lerSegredo(referencia: string): string | null {
+    const ref = conferirReferencia(referencia);
+    const key = this.requireKey();
+    const cifrado = this.load().segredos?.[ref];
+    if (cifrado === undefined) return null;
+    try {
+      return decrypt(cifrado, key, segredoAad(ref));
+    } catch {
+      throw new Error(`O segredo "${ref}" está adulterado ou foi cifrado com outra senha.`);
+    }
+  }
+
+  apagarSegredo(referencia: string): void {
+    const ref = conferirReferencia(referencia);
+    const file = this.load();
+    if (file.segredos?.[ref] === undefined) return;
+    const { [ref]: _apagado, ...resto } = file.segredos;
+    this.file = { ...file, segredos: resto };
+    this.persist();
+  }
+
   /** Quais campos desta conexão são segredo — para a tela saber onde pôr o olho. */
   camposSecretos(id: string): readonly string[] {
     return Object.keys(this.find(id).secrets).sort();
@@ -628,6 +691,7 @@ export class Vault {
       kdf,
       verifier: encrypt(VERIFIER_PLAINTEXT, chaveNova, VERIFIER_AAD),
       connections,
+      segredos: recifrarSoltos(file.segredos, chaveVelha, chaveNova),
     };
     this.key = chaveNova;
     this.persist();

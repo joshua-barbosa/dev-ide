@@ -94,6 +94,21 @@ export function exportarIpynb(nb: Notebook, rotuloDaConexao: (v: Vinculo) => str
         execution_count: c.contador, source: linhas(comentario), outputs: saidasIpynb(c.saidas),
       };
     }
+    if (c.tipo === 'http' && c.http !== null) {
+      // O Jupyter não tem célula HTTP: vai como Markdown, a requisição legível.
+      const r = c.http;
+      const headers = r.headers.filter((h) => h.ligado).map((h) => `${h.chave}: ${h.valor}`);
+      // O tipo, nunca o valor: o segredo (e a referência dele) não sai do cofre.
+      const auth = { nenhuma: null, bearer: 'Bearer Token', basic: 'Basic Auth', apikey: 'API Key', oauth2: 'OAuth 2.0' }[r.autorizacao.tipo];
+      if (auth !== null) headers.push(`Authorization: ${auth} (segredo no cofre)`);
+      const corpo = r.corpo.tipo === 'raw' ? r.corpo.texto
+        : r.corpo.tipo === 'binario' ? `(arquivo) ${r.corpo.arquivo}`
+          : r.corpo.tipo === 'form-data' || r.corpo.tipo === 'urlencoded'
+            ? r.corpo.campos.filter((l) => l.ligado).map((l) => `${l.chave}=${l.valor}`).join('\n') : '';
+      const bloco = `**HTTP** (Braytech Code) → variável \`${c.nome ?? ''}\`\n\n\`\`\`http\n` +
+        `${[`${r.metodo} ${r.url}`, ...headers].join('\n')}${corpo === '' ? '' : `\n\n${corpo}`}\n\`\`\``;
+      return { cell_type: 'markdown', id: c.id, metadata: { braytech: { tipo: 'http', nome: c.nome } }, source: linhas(bloco) };
+    }
     if (c.linguagem !== null && c.linguagem !== 'python') {
       // A saída guardada vai junto, como texto: tabela e imagem não cabem num bloco.
       const saida = c.saidas

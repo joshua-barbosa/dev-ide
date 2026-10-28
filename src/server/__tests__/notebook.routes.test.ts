@@ -574,3 +574,39 @@ test('{{filters.ano}}: o campo de um (object)[…] do PHP vira parâmetro (pergu
     await fechar();
   }
 });
+
+test('{{pedido.cliente}}: o campo de um dict do Python vira parâmetro (achado de 28/10)', async () => {
+  // Era NULL calado: o kernel entregava o dict como TEXTO JSON, e o campo não existia nele.
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'dict-python.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'python', raiz: pasta });
+    await rodar(pedir, "pedido = {'cliente': 'Bia', 'minimo': 1000}", 'python', nb);
+    const r = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: null,
+      statement: 'SELECT cliente FROM pedidos WHERE cliente = {{pedido.cliente}} AND total > {{pedido.minimo}}',
+    });
+    assert.equal(r.success, true, r.error ?? '');
+    assert.deepEqual(r.data.tabela.linhas, [['Bia']]);
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});
+
+test('{{pedido}} inteiro, sem campo, continua indo como JSON (Python)', async () => {
+  const { pedir, fechar } = await servidor();
+  const nb = path.join(pasta, 'dict-inteiro.brnb');
+  try {
+    await pedir('POST', '/kernel', { caminho: nb, linguagem: 'python', raiz: pasta });
+    await rodar(pedir, "pedido = {'a': 1}", 'python', nb);
+    const r = await pedir('POST', '/kernel/sql', {
+      caminho: nb, connectionId: 'c1', database: 'main', nome: null, statement: "SELECT json_extract({{pedido}}, '$.a') AS a",
+    });
+    assert.equal(r.success, true, r.error ?? '');
+    assert.deepEqual(r.data.tabela.linhas, [[1]]);
+  } finally {
+    gerente.encerrar(nb);
+    await fechar();
+  }
+});

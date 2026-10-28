@@ -17,6 +17,7 @@ import type { Session } from '../connections/types';
 import type { Vinculo } from '../../shared/sql/vinculo';
 import { SqlDoKernel } from '../notebook/sql-do-kernel';
 import { registrarRotasDeSql } from './notebook-sql';
+import { registrarRotasDeHttp, type CofreDeSegredos } from './notebook-http';
 
 const ok = (data: unknown) => ({ success: true, data, error: null });
 
@@ -53,7 +54,9 @@ export function createNotebookRouter(
   tipoDaConexao: (connectionId: string) => string,
   /** Uma sessão NOVA, só de uma transação do sql() do kernel (spec 114, C). */
   abrirSessao: (connectionId: string) => Promise<Session> = () =>
-    Promise.reject(new Error('Transação indisponível aqui.'))
+    Promise.reject(new Error('Transação indisponível aqui.')),
+  /** Os segredos da aba Authorization da célula HTTP (spec 120, etapa 2). */
+  segredos: CofreDeSegredos | null = null
 ): Router {
   const router = Router();
   /** A conexão do notebook, como a tela mandou na última célula. */
@@ -175,6 +178,7 @@ export function createNotebookRouter(
   }));
 
   registrarRotasDeSql(router, { gerente, pool, tipoDaConexao, linguagemDe });
+  registrarRotasDeHttp(router, { gerente, linguagemDe, segredos });
 
   return router;
 }

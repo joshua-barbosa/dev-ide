@@ -291,6 +291,15 @@ export class PonteDoHost {
         await vscode.env.clipboard.writeText(String(a.texto ?? ''));
         return null;
 
+      // O login do OAuth 2.0 da célula HTTP (spec 120, etapa 5): a webview não
+      // abre janela; o editor abre no navegador do sistema. Só http(s).
+      case 'abrirNoNavegador': {
+        const uri = vscode.Uri.parse(String(a.url ?? ''));
+        if (uri.scheme !== 'http' && uri.scheme !== 'https') throw new Error(`Endereço não abre no navegador: ${uri.scheme}`);
+        await vscode.env.openExternal(uri);
+        return null;
+      }
+
       case 'pedirTexto':
         return (
           (await vscode.window.showInputBox({

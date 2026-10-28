@@ -11,6 +11,8 @@ import { tokens } from '../theme';
 import { ResultGrid } from '../grid/ResultGrid';
 import type { QueryResult } from '../../shared/contracts';
 import type { Saida } from '../../shared/notebook/modelo';
+import type { NomeDoTema } from '../../shared/temas';
+import { RespostaHttp } from './http/RespostaHttp';
 
 /**
  * Altura da grade dentro da célula: a das linhas, até um teto.
@@ -32,8 +34,17 @@ function comoResultado(s: Extract<Saida, { tipo: 'tabela' }>): QueryResult {
   };
 }
 
-function UmaSaida({ saida }: { readonly saida: Saida }) {
+/** O que a resposta HTTP precisa além dela mesma (spec 120). */
+interface Contexto {
+  readonly tema: NomeDoTema;
+  readonly caminho: string | null;
+  readonly celula: string;
+}
+
+function UmaSaida({ saida, contexto }: { readonly saida: Saida; readonly contexto: Contexto }) {
   switch (saida.tipo) {
+    case 'http':
+      return <RespostaHttp saida={saida} tema={contexto.tema} caminho={contexto.caminho} celula={contexto.celula} />;
     case 'tabela':
       return (
         <Box
@@ -107,12 +118,14 @@ function UmaSaida({ saida }: { readonly saida: Saida }) {
  * de 500 linhas, 1,5 s por tecla (relato de 01/10: "fica lento de editar").
  * O modelo é imutável: editar outra célula preserva este array.
  */
-export const SaidasDaCelula = memo(function SaidasDaCelula({ saidas }: { readonly saidas: readonly Saida[] }) {
+export const SaidasDaCelula = memo(function SaidasDaCelula({
+  saidas, tema, caminho, celula,
+}: { readonly saidas: readonly Saida[] } & Contexto) {
   if (saidas.length === 0) return null;
   return (
     <Box data-saidas sx={{ borderTop: 1, borderColor: 'divider' }}>
       {saidas.map((s, i) => (
-        <UmaSaida key={i} saida={s} />
+        <UmaSaida key={i} saida={s} contexto={{ tema, caminho, celula }} />
       ))}
     </Box>
   );

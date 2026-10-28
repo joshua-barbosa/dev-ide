@@ -12,6 +12,7 @@ import { tokens } from '../theme';
 import { BlocoDeCodigo } from '../caderno/BlocoDeCodigo';
 import { MarkdownPreview } from '../editor/MarkdownPreview';
 import { SaidasDaCelula } from './SaidasDaCelula';
+import { FormularioHttp } from './http/FormularioHttp';
 import type { NomeDoTema } from '../../shared/temas';
 import {
   KERNELS, nomeValido, type Celula, type Kernel, type MudancaDeCelula, type TipoDeCelula,
@@ -26,6 +27,10 @@ export interface CelulaDoNotebookProps {
   readonly fontSize: number;
   readonly tabSize: number;
   readonly tema: NomeDoTema;
+  /** O `.brnb` — a resposta HTTP busca nele o corpo inteiro para salvar. */
+  readonly caminho: string | null;
+  /** O "Copiar cURL" da célula HTTP. */
+  copiarTexto(texto: string): Promise<void>;
   onMudar(mudanca: MudancaDeCelula): void;
   onRodar(): void;
   /** A cascata: esta célula e todas abaixo, parando no primeiro erro. */
@@ -77,7 +82,8 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
   const [editandoMarkdown, setEditandoMarkdown] = useState(celula.conteudo === '');
   const [nome, setNome] = useState(celula.nome ?? '');
   const [paraCada, setParaCada] = useState(celula.paraCada ?? '');
-  const nomeRuim = celula.tipo === 'sql' && !nomeValido(nome);
+  const temNome = celula.tipo === 'sql' || celula.tipo === 'http';
+  const nomeRuim = temNome && !nomeValido(nome);
 
   // A linguagem é da CÉLULA (spec 113); a do notebook é só o padrão.
   const linguagemDeCodigo = celula.linguagem ?? p.kernel;
@@ -85,7 +91,7 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
   // "Código", e a linguagem no seletor ao lado: o nome duas vezes na mesma
   // barra (TypeScript | TypeScript ▾) parecia duas coisas diferentes.
   const tipos: readonly (readonly [TipoDeCelula, string])[] = [
-    ['codigo', 'Código'], ['sql', 'SQL'], ['markdown', 'Markdown'],
+    ['codigo', 'Código'], ['sql', 'SQL'], ['http', 'HTTP'], ['markdown', 'Markdown'],
   ];
 
   return (
@@ -151,13 +157,15 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
           </Box>
         )}
 
-        {celula.tipo === 'sql' && (
+        {temNome && (
           <>
             <Box sx={{ color: 'text.secondary', ml: 1 }}>→</Box>
             <Box
               component="input"
               aria-label="Nome do resultado"
-              title="O resultado vira uma variável com este nome no kernel"
+              title={celula.tipo === 'http'
+                ? 'A resposta vira uma variável com este nome no kernel: { status, headers, body, tempo }'
+                : 'O resultado vira uma variável com este nome no kernel'}
               value={nome}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                 setNome(e.target.value);
@@ -169,12 +177,14 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
                 borderColor: nomeRuim ? 'error.main' : 'divider',
               }}
             />
-            {/* "Para cada" (spec 114, B): o comando roda uma vez por item da
-                lista, com {{item}}. Vazio = roda uma vez, como sempre. */}
+            {/* "Para cada" (spec 114, B; na HTTP, spec 120, etapa 4): roda uma
+                vez por item da lista, com {{item}}. Vazio = roda uma vez. */}
             <Box
               component="input"
               aria-label="Para cada item da lista"
-              title="Opcional: o nome de uma lista. O comando roda uma vez por item, com {{item}} (e {{item.campo}})."
+              title={celula.tipo === 'http'
+                ? 'Opcional: o nome de uma lista. Uma requisição por item, com {{item}} (e {{item.campo}}).'
+                : 'Opcional: o nome de uma lista. O comando roda uma vez por item, com {{item}} (e {{item.campo}}).'}
               placeholder="para cada…"
               value={paraCada}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -189,6 +199,11 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
                 borderColor: paraCada.trim() !== '' && !nomeValido(paraCada.trim()) ? 'error.main' : 'divider',
               }}
             />
+          </>
+        )}
+
+        {celula.tipo === 'sql' && (
+          <>
             <Box
               component="button"
               type="button"
@@ -260,6 +275,20 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
             fontFamily: tokens.fontMono, fontSize: p.fontSize,
           }}
         />
+      ) : celula.tipo === 'http' && celula.http !== null ? (
+        <FormularioHttp
+          id={celula.id}
+          requisicao={celula.http}
+          fontSize={p.fontSize}
+          tabSize={p.tabSize}
+          tema={p.tema}
+          onMudar={(http) => p.onMudar({ http })}
+          onRodar={p.onRodar}
+          onFocar={p.onFocar}
+          copiarTexto={p.copiarTexto}
+          caminho={p.caminho}
+          contador={celula.contador}
+        />
       ) : (
         <BlocoDeCodigo
           id={celula.id}
@@ -275,7 +304,7 @@ export function CelulaDoNotebook(p: CelulaDoNotebookProps) {
         />
       )}
 
-      <SaidasDaCelula saidas={celula.saidas} />
+      <SaidasDaCelula saidas={celula.saidas} tema={p.tema} caminho={p.caminho} celula={celula.id} />
     </Box>
   );
 }

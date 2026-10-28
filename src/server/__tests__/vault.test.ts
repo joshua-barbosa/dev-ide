@@ -380,3 +380,73 @@ test('o SAL muda junto com a senha', () => {
   // de derivação — que é exatamente o que o sal existe para evitar.
   assert.notEqual(antes.kdf.salt, depois.kdf.salt);
 });
+
+// ---- segredos soltos: os da célula HTTP do notebook (spec 120, etapa 2) ----
+
+test('segredo solto: guarda, lê, sobrescreve e diz quando não existe', () => {
+  const vault = novoVault();
+  assert.equal(vault.lerSegredo('http-abc12345'), null);
+  vault.guardarSegredo('http-abc12345', 'token-1');
+  assert.equal(vault.lerSegredo('http-abc12345'), 'token-1');
+  vault.guardarSegredo('http-abc12345', 'token-2');
+  assert.equal(vault.lerSegredo('http-abc12345'), 'token-2');
+});
+
+test('segredo solto vai CIFRADO para o arquivo', () => {
+  const caminho = tempVaultPath();
+  const vault = new Vault(caminho);
+  vault.create(SENHA);
+  vault.guardarSegredo('http-abc12345', 'token-muito-secreto');
+  assert.equal(fs.readFileSync(caminho, 'utf8').includes('token-muito-secreto'), false);
+  const outro = new Vault(caminho);
+  outro.unlock(SENHA);
+  assert.equal(outro.lerSegredo('http-abc12345'), 'token-muito-secreto');
+});
+
+test('segredo solto: mover o cifrado para outra referência não abre (AAD)', () => {
+  const caminho = tempVaultPath();
+  const vault = new Vault(caminho);
+  vault.create(SENHA);
+  vault.guardarSegredo('http-aaaaaaaa', 'do a');
+  const bruto = JSON.parse(fs.readFileSync(caminho, 'utf8'));
+  bruto.segredos['http-bbbbbbbb'] = bruto.segredos['http-aaaaaaaa'];
+  fs.writeFileSync(caminho, JSON.stringify(bruto));
+  const relido = new Vault(caminho);
+  relido.unlock(SENHA);
+  assert.throws(() => relido.lerSegredo('http-bbbbbbbb'), /adulterado/);
+});
+
+test('segredo solto com o cofre trancado: erro, não vazio calado', () => {
+  const vault = novoVault();
+  vault.guardarSegredo('http-abc12345', 'x');
+  vault.lock();
+  assert.throws(() => vault.lerSegredo('http-abc12345'), /trancado/);
+  assert.throws(() => vault.guardarSegredo('http-abc12345', 'y'), /trancado/);
+});
+
+test('referência fora do formato é recusada', () => {
+  const vault = novoVault();
+  assert.throws(() => vault.guardarSegredo('../x', 'y'), /referência/i);
+});
+
+test('trocar a senha mestra mantém os segredos soltos legíveis', () => {
+  const vault = novoVault();
+  vault.guardarSegredo('http-abc12345', 'token');
+  vault.trocarSenhaMestra(SENHA, 'nova-senha');
+  assert.equal(vault.lerSegredo('http-abc12345'), 'token');
+});
+
+test('pôr a tranca num cofre sem tranca mantém os segredos soltos', () => {
+  const vault = new Vault(tempVaultPath(), () => 'maquina-de-teste');
+  vault.criarSemTranca();
+  vault.guardarSegredo('http-abc12345', 'token');
+  vault.porTranca('senha-nova');
+  assert.equal(vault.lerSegredo('http-abc12345'), 'token');
+});
+
+test('apagar um segredo solto', () => {
+  const vault = novoVault();
+  vault.guardarSegredo('http-abc12345', 'token');
+  vault.apagarSegredo('http-abc12345');
+  assert.equal(vault.lerSegredo('http-abc12345'), null);
+});

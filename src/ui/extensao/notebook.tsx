@@ -17,6 +17,7 @@ import { ComTemaDoEditor } from './ComTemaDoEditor';
 import { escolherVinculo, pedirTexto } from './acoes';
 import { chamarHost, ligarPonte, pedirAoHost, quandoOHostMandarDados } from './ponte';
 import { achatarConexoes } from '../../shared/connections/achatar';
+import { definirAbridor } from '../abrirNoNavegador';
 import type { Vinculo } from '../../shared/sql/vinculo';
 
 declare const BRAYTECH: {
@@ -86,6 +87,8 @@ function Notebook() {
 }
 
 ligarPonte();
+// O login do OAuth 2.0 abre pelo editor: a webview não abre janela (spec 120, etapa 5).
+definirAbridor((url) => chamarHost<void>('abrirNoNavegador', { url }));
 definirBaseDaApi(BRAYTECH.base);
 
 const raiz = document.getElementById('raiz');

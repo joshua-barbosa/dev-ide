@@ -14,19 +14,21 @@
 // identidade para saber o que repintar.
 import type { CellValue } from '../contracts';
 import type { Vinculo } from '../sql/vinculo';
+import { lerRequisicao, lerSaidaHttp, requisicaoVazia, type RequisicaoHttp, type SaidaHttp } from './http';
 
 export const FORMATO = 'braytech-notebook';
 /**
  * A versão mais nova que esta Braytech Code LÊ. Um notebook de uma linguagem só
  * continua gravando 1 (a 0.1.12 abre); um MISTO grava 2, e uma versão velha o
  * recusa com recado — em vez de rodar a célula JavaScript no kernel Python.
+ * Com célula HTTP grava 3 (spec 120): a 0.1.26 a leria como código.
  */
-export const VERSAO_DO_NOTEBOOK = 2;
+export const VERSAO_DO_NOTEBOOK = 3;
 
 export const KERNELS = ['python', 'javascript', 'typescript', 'php'] as const;
 export type Kernel = (typeof KERNELS)[number];
 
-export type TipoDeCelula = 'codigo' | 'sql' | 'markdown';
+export type TipoDeCelula = 'codigo' | 'sql' | 'markdown' | 'http';
 
 /**
  * Quantas linhas de uma tabela ficam GUARDADAS no arquivo.
@@ -47,7 +49,8 @@ export type Saida =
       readonly total: number;
     }
   | { readonly tipo: 'erro'; readonly mensagem: string }
-  | { readonly tipo: 'imagem'; readonly mime: string; readonly dados: string };
+  | { readonly tipo: 'imagem'; readonly mime: string; readonly dados: string }
+  | SaidaHttp;
 
 export interface Celula {
   readonly id: string;
@@ -58,15 +61,18 @@ export interface Celula {
    */
   readonly linguagem: Kernel | null;
   readonly conteudo: string;
-  /** Só SQL: a variável que o resultado vira no kernel. */
+  /** SQL e HTTP: a variável que o resultado (a resposta) vira no kernel. */
   readonly nome: string | null;
   /** Só SQL: outra conexão que a do notebook, quando a célula escolhe. */
   readonly conexao: Vinculo | null;
   /**
-   * Só SQL: o nome de uma lista do kernel — o comando roda uma vez por item,
-   * com `{{item}}` (spec 114, B). `null` = roda uma vez, como sempre.
+   * SQL e HTTP: o nome de uma lista do kernel — o comando (a requisição) roda
+   * uma vez por item, com `{{item}}` (spec 114, B; spec 120, etapa 4).
+   * `null` = roda uma vez, como sempre.
    */
   readonly paraCada: string | null;
+  /** Só HTTP (spec 120): a requisição montada no formulário. */
+  readonly http: RequisicaoHttp | null;
   /** O `[3]` do Jupyter: em que ordem a célula rodou. `null` = nunca. */
   readonly contador: number | null;
   readonly saidas: readonly Saida[];
@@ -110,13 +116,17 @@ export function nomeValido(nome: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(nome) && !RESERVADAS.has(nome);
 }
 
-/** O menor `resultadoN` que nenhuma célula usa. */
-export function nomeDeResultadoLivre(nb: Pick<Notebook, 'celulas'>): string {
+/** O menor `resultadoN` (ou `respostaN`, na HTTP) que nenhuma célula usa. */
+export function nomeDeResultadoLivre(nb: Pick<Notebook, 'celulas'>, prefixo = 'resultado'): string {
   const usados = new Set(nb.celulas.map((c) => c.nome));
   for (let n = 1; ; n += 1) {
-    if (!usados.has(`resultado${n}`)) return `resultado${n}`;
+    if (!usados.has(`${prefixo}${n}`)) return `${prefixo}${n}`;
   }
 }
+
+/** SQL e HTTP dão nome ao que produzem. */
+const temNome = (tipo: TipoDeCelula): boolean => tipo === 'sql' || tipo === 'http';
+const prefixoDoNome = (tipo: TipoDeCelula): string => (tipo === 'http' ? 'resposta' : 'resultado');
 
 // ---------------------------------------------------------------------------
 // Criar e mexer
@@ -125,7 +135,7 @@ export function nomeDeResultadoLivre(nb: Pick<Notebook, 'celulas'>): string {
 function celulaVazia(id: string, tipo: TipoDeCelula, nome: string | null, linguagem: Kernel | null): Celula {
   return {
     id, tipo, linguagem: tipo === 'codigo' ? linguagem : null, conteudo: '', nome, conexao: null, paraCada: null,
-    contador: null, saidas: [],
+    http: tipo === 'http' ? requisicaoVazia() : null, contador: null, saidas: [],
   };
 }
 
@@ -163,14 +173,17 @@ export function inserirCelula(
   linguagem?: Kernel
 ): Notebook {
   const nova = celulaVazia(
-    id, tipo, tipo === 'sql' ? nomeDeResultadoLivre(nb) : null, linguagem ?? linguagemParaInserir(nb, posicao)
+    id, tipo, temNome(tipo) ? nomeDeResultadoLivre(nb, prefixoDoNome(tipo)) : null,
+    linguagem ?? linguagemParaInserir(nb, posicao)
   );
   const onde = Math.max(0, Math.min(posicao, nb.celulas.length));
   return { ...nb, celulas: [...nb.celulas.slice(0, onde), nova, ...nb.celulas.slice(onde)] };
 }
 
 /** O que a tela pode mudar numa célula. Trocar o tipo ajusta o nome junto. */
-export type MudancaDeCelula = Partial<Pick<Celula, 'conteudo' | 'nome' | 'conexao' | 'tipo' | 'linguagem' | 'paraCada'>>;
+export type MudancaDeCelula = Partial<
+  Pick<Celula, 'conteudo' | 'nome' | 'conexao' | 'tipo' | 'linguagem' | 'paraCada' | 'http'>
+>;
 
 export function alterarCelula(nb: Notebook, id: string, mudanca: MudancaDeCelula): Notebook {
   return {
@@ -178,13 +191,14 @@ export function alterarCelula(nb: Notebook, id: string, mudanca: MudancaDeCelula
     celulas: nb.celulas.map((c) => {
       if (c.id !== id) return c;
       const tipo = mudanca.tipo ?? c.tipo;
-      // Virou SQL sem nome: ganha um. Deixou de ser SQL: nome e conexão somem.
-      const nome = tipo !== 'sql' ? null : (mudanca.nome ?? c.nome ?? nomeDeResultadoLivre(nb));
+      // Virou SQL (ou HTTP) sem nome: ganha um. Deixou de ser: o nome some.
+      const nome = !temNome(tipo) ? null : (mudanca.nome ?? c.nome ?? nomeDeResultadoLivre(nb, prefixoDoNome(tipo)));
       const conexao = tipo !== 'sql' ? null : (mudanca.conexao !== undefined ? mudanca.conexao : c.conexao);
       // Só código tem linguagem; voltar a ser código sem dizer qual: a do notebook.
       const linguagem = tipo !== 'codigo' ? null : (mudanca.linguagem ?? c.linguagem ?? nb.kernel);
-      const paraCada = tipo !== 'sql' ? null : (mudanca.paraCada !== undefined ? mudanca.paraCada : c.paraCada);
-      return { ...c, ...mudanca, tipo, nome, conexao, linguagem, paraCada };
+      const paraCada = !temNome(tipo) ? null : (mudanca.paraCada !== undefined ? mudanca.paraCada : c.paraCada);
+      const http = tipo !== 'http' ? null : (mudanca.http ?? c.http ?? requisicaoVazia());
+      return { ...c, ...mudanca, tipo, nome, conexao, linguagem, paraCada, http };
     }),
   };
 }
@@ -233,9 +247,10 @@ export function saidaDeTabela(
 
 export function escreverNotebook(nb: Notebook): string {
   const misto = nb.celulas.some((c) => c.tipo === 'codigo' && c.linguagem !== null && c.linguagem !== nb.kernel);
+  const comHttp = nb.celulas.some((c) => c.tipo === 'http');
   const dados = {
     formato: FORMATO,
-    versao: misto ? VERSAO_DO_NOTEBOOK : 1,
+    versao: comHttp ? 3 : misto ? 2 : 1,
     kernel: nb.kernel,
     conexao: nb.conexao,
     laravel: nb.laravel,
@@ -277,6 +292,8 @@ function lerSaida(v: unknown): Saida | null {
         total: typeof v.total === 'number' ? v.total : linhas.length,
       };
     }
+    case 'http':
+      return lerSaidaHttp(v);
     default:
       // Tipo que esta versão não conhece: descartado, não quebra a leitura.
       return null;
@@ -317,8 +334,8 @@ export function lerNotebook(conteudo: string): Notebook | null {
   const celulas: Celula[] = [];
   for (const [i, c] of (Array.isArray(bruto.celulas) ? bruto.celulas : []).entries()) {
     if (!ehObjeto(c)) continue;
-    const tipo: TipoDeCelula = c.tipo === 'sql' || c.tipo === 'markdown' ? c.tipo : 'codigo';
-    const nomeLido = tipo === 'sql' && typeof c.nome === 'string' && nomeValido(c.nome) ? c.nome : null;
+    const tipo: TipoDeCelula = c.tipo === 'sql' || c.tipo === 'markdown' || c.tipo === 'http' ? c.tipo : 'codigo';
+    const nomeLido = temNome(tipo) && typeof c.nome === 'string' && nomeValido(c.nome) ? c.nome : null;
     celulas.push({
       id: typeof c.id === 'string' && c.id !== '' ? c.id : `c${i + 1}`,
       tipo,
@@ -326,9 +343,10 @@ export function lerNotebook(conteudo: string): Notebook | null {
       linguagem: tipo !== 'codigo' ? null
         : KERNELS.includes(c.linguagem as Kernel) ? (c.linguagem as Kernel) : (bruto.kernel as Kernel),
       conteudo: texto(c.conteudo),
-      nome: tipo === 'sql' ? (nomeLido ?? nomeDeResultadoLivre({ celulas })) : null,
+      nome: temNome(tipo) ? (nomeLido ?? nomeDeResultadoLivre({ celulas }, prefixoDoNome(tipo))) : null,
       conexao: tipo === 'sql' ? lerVinculo(c.conexao) : null,
-      paraCada: tipo === 'sql' && typeof c.paraCada === 'string' && nomeValido(c.paraCada) ? c.paraCada : null,
+      paraCada: temNome(tipo) && typeof c.paraCada === 'string' && nomeValido(c.paraCada) ? c.paraCada : null,
+      http: tipo === 'http' ? lerRequisicao(c.http) : null,
       contador: typeof c.contador === 'number' ? c.contador : null,
       saidas: (Array.isArray(c.saidas) ? c.saidas : [])
         .map(lerSaida)

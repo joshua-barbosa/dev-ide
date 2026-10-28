@@ -8,6 +8,7 @@
 //   npm run build:extensao && npm run conferir:notebook-extensao
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -52,6 +53,101 @@ const NOTEBOOK_GRANDE = (() => {
   return JSON.stringify({ formato: 'braytech-notebook', versao: 1, kernel: 'typescript', conexao: null, laravel: false, celulas }, null, 2);
 })();
 
+// A API de mentira da célula HTTP (spec 120): imagem, HTML com script e um corpo grande.
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'
+);
+const GRANDE = 'x'.repeat(2 * 1024 * 1024);
+const tokensOAuth = new Set();
+const apiHttp = createServer((req, res) => {
+  const pedacos = [];
+  req.on('data', (p) => pedacos.push(p));
+  req.on('end', () => {
+    const u = new URL(req.url ?? '/', 'http://x');
+    if (u.pathname === '/oauth/authorize') {
+      const volta = new URL(u.searchParams.get('redirect_uri') ?? '');
+      volta.searchParams.set('code', 'cod-ext');
+      volta.searchParams.set('state', u.searchParams.get('state') ?? '');
+      res.writeHead(302, { location: volta.toString() });
+      res.end();
+      return;
+    }
+    if (u.pathname === '/oauth/token') {
+      const f = Object.fromEntries(new URLSearchParams(Buffer.concat(pedacos).toString()));
+      const ok = f.grant_type === 'authorization_code' && f.code === 'cod-ext' && (f.code_verifier ?? '').length > 40;
+      if (!ok) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'invalid_grant' }));
+        return;
+      }
+      tokensOAuth.add('tk-ext-oauth');
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ access_token: 'tk-ext-oauth', token_type: 'Bearer', expires_in: 3600 }));
+      return;
+    }
+    if (u.pathname === '/protegida') {
+      const t = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+      res.writeHead(tokensOAuth.has(t) ? 200 : 401, { 'content-type': 'text/plain' });
+      res.end(tokensOAuth.has(t) ? 'ok oauth' : 'sem token');
+      return;
+    }
+    if (req.url === '/foto.png') { res.writeHead(200, { 'content-type': 'image/png' }); res.end(PNG); }
+    else if (req.url?.startsWith('/item/')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ eco: req.url.split('/')[2] }));
+    } else if (req.url === '/entrar') {
+      res.writeHead(200, { 'set-cookie': 'sessao=ext1; Path=/', 'content-type': 'text/plain' });
+      res.end('entrou');
+    } else if (req.url === '/quem') {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end(`cookie: ${req.headers.cookie ?? '(nenhum)'}`);
+    } else if (req.url === '/eu') {
+      res.writeHead(req.headers.authorization === 'Bearer tk-ext' ? 200 : 401, { 'content-type': 'text/plain' });
+      res.end('ok');
+    }
+    else if (req.url === '/pagina') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<h1>Página da API</h1><script>document.body.dataset.rodou = "sim"</script>');
+    } else { res.writeHead(200, { 'content-type': 'text/plain' }); res.end(GRANDE); }
+  });
+});
+await new Promise((r) => apiHttp.listen(0, '127.0.0.1', r));
+const API = `http://127.0.0.1:${apiHttp.address().port}`;
+const PORTA_DE_RETORNO = await new Promise((resolver) => {
+  const livre = createServer();
+  livre.listen(0, '127.0.0.1', () => {
+    const porta = livre.address().port;
+    livre.close(() => resolver(porta));
+  });
+});
+const NOTEBOOK_HTTP = (() => {
+  const celula = (id, url) => ({
+    id, tipo: 'http', linguagem: null, conteudo: '', nome: id, conexao: null, paraCada: null, contador: null, saidas: [],
+    http: { metodo: 'GET', url, params: [], headers: [], corpo: { tipo: 'nenhum' } },
+  });
+  return JSON.stringify({
+    formato: 'braytech-notebook', versao: 3, kernel: 'javascript', conexao: null, laravel: false,
+    celulas: [
+      celula('foto', `${API}/foto.png`), celula('pagina', `${API}/pagina`), celula('grande', `${API}/grande`),
+      celula('auth', `${API}/eu`), celula('entrar', `${API}/entrar`), celula('quem', `${API}/quem`),
+      { id: 'lista', tipo: 'codigo', linguagem: 'javascript', conteudo: "letras = ['a', 'b', 'c']", nome: null, conexao: null, paraCada: null, contador: null, saidas: [] },
+      { ...celula('cada', `${API}/item/{{item}}`), paraCada: 'letras' },
+      {
+        ...celula('oauth', `${API}/protegida`),
+        http: {
+          metodo: 'GET', url: `${API}/protegida`, params: [], headers: [], corpo: { tipo: 'nenhum' },
+          autorizacao: {
+            tipo: 'oauth2', fluxo: 'authorization_code', urlDoToken: `${API}/oauth/token`,
+            urlDeAutorizacao: `${API}/oauth/authorize`, urlDeRetorno: `http://127.0.0.1:${PORTA_DE_RETORNO}/callback`,
+            clientId: 'app', clientSecret: { texto: '' }, escopo: '', usuario: '', senha: { texto: '' }, pkce: true,
+            credenciaisNo: 'corpo', tokens: 'http-tokensdaextensao01',
+          },
+        },
+      },
+    ],
+  });
+})();
+
 /** O editor, visto pela webview: API, perguntas, e o documento. */
 const EDITOR = `
   window.__documento = [];
@@ -70,6 +166,14 @@ const EDITOR = `
           responder(m.id, true, alvo?.valor ?? null);
         }
         else if (m.acao === 'pedirTexto') responder(m.id, true, m.args.valorInicial ?? null);
+        else if (m.acao === 'salvarArquivo') { (window.__salvos ??= []).push(m.args); responder(m.id, true, null); }
+        else if (m.acao === 'escreverNaAreaDeTransferencia') { window.__copiado = m.args.texto; responder(m.id, true, null); }
+        // O "navegador do sistema" é o próprio script da guarda: aqui só se anota o
+        // endereço (de dentro da webview a CSP não deixa sair, e é assim que deve ser).
+        else if (m.acao === 'abrirNoNavegador') {
+          window.__abertos = [...(window.__abertos ?? []), m.args.url];
+          responder(m.id, true, null);
+        }
         else responder(m.id, false, null, 'ação não simulada: ' + m.acao);
         return;
       }
@@ -109,7 +213,10 @@ try {
   await api('/api/connections', { type: 'sqlite', label: 'exemplo', group: 'Exemplos', readOnly: false, fields: { file: banco } });
 
   navegador = await chromium.launch({ channel: 'chrome' }).catch(() => chromium.launch());
-  const pagina = await (await navegador.newContext({ viewport: { width: 1200, height: 900 } })).newPage();
+  const contexto = await navegador.newContext({ viewport: { width: 1200, height: 900 } });
+  // Ler o que o "Copiar cURL" pôs na área de transferência (spec 120, etapa 3).
+  await contexto.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE });
+  const pagina = await contexto.newPage();
   const errosDaPagina = [];
   pagina.on('pageerror', (e) => errosDaPagina.push(process.env.PILHA ? String(e.stack).split('\n').slice(0, 4).join(' ~ ') : e.message));
   await pagina.route(`${BASE}/nb/**`, async (rota) => {
@@ -119,7 +226,7 @@ try {
       const arquivo = new URL(rota.request().url()).searchParams.get('arquivo');
       const config = {
         base: BASE, caminho: arquivo === null ? caminho : path.join(pasta, arquivo),
-        titulo: arquivo ?? 'analise.brnb', conteudo: arquivo === 'grande.brnb' ? NOTEBOOK_GRANDE : '', tema: 'escuro',
+        titulo: arquivo ?? 'analise.brnb', conteudo: arquivo === 'grande.brnb' ? NOTEBOOK_GRANDE : arquivo === 'http.brnb' ? NOTEBOOK_HTTP : '', tema: 'escuro',
         fontSize: 13, tabSize: 2, raiz: pasta, recursos: `${BASE}/nb/assets/`,
       };
       return rota.fulfill({
@@ -426,6 +533,108 @@ ${existsSync(path.join(WEB, 'notebook.css')) ? '<link rel="stylesheet" href="not
 
   marcar('nenhum erro de JavaScript na página do kernel JS', errosDaPagina.length === 0, errosDaPagina.slice(0, 2).join(' | '));
 
+  // ---- A célula HTTP na webview: CSP do editor e "Salvar" pela ponte (spec 120) ----
+  await pagina.goto(`${BASE}/nb/pagina.html?arquivo=http.brnb`);
+  const rodarHttp = async (id) => {
+    const c = pagina.locator(`[data-celula="${id}"]`);
+    await c.waitFor({ timeout: 30000 });
+    await c.getByRole('button', { name: /Rodar célula/ }).click();
+    await c.locator('[data-status-http]').waitFor({ timeout: 20000 });
+    return c;
+  };
+  const foto = await rodarHttp('foto');
+  const img = foto.locator('img[data-corpo-http]');
+  marcar('extensão: resposta PNG aparece como imagem (a CSP da webview deixa)',
+    await img.waitFor({ timeout: 5000 }).then(() => img.evaluate((i) => i.complete && i.naturalWidth === 1), () => false));
+  await foto.getByRole('button', { name: 'Salvar a resposta em disco' }).click();
+  await pagina.waitForTimeout(300);
+  const salvoFoto = await pagina.evaluate(() => window.__salvos?.[0] ?? null);
+  marcar('extensão: "Salvar" vai ao editor pela ponte, com o PNG byte a byte',
+    salvoFoto?.nome === 'foto.png' && salvoFoto.carga === PNG.toString('base64'), JSON.stringify(salvoFoto?.nome));
+
+  const html = await rodarHttp('pagina');
+  await html.getByRole('tab', { name: 'Preview' }).click();
+  const quadro = html.locator('[data-preview-http]').contentFrame();
+  marcar('extensão: o Preview desenha o HTML, sem rodar o script dele',
+    (await quadro.locator('h1').textContent({ timeout: 5000 }).catch(() => '')) === 'Página da API'
+      && (await quadro.locator('body').getAttribute('data-rodou').catch(() => 'erro')) === null);
+
+  const grandeHttp = await rodarHttp('grande');
+  await grandeHttp.getByRole('button', { name: 'Salvar a resposta em disco' }).click();
+  await pagina.waitForTimeout(800);
+  const salvoGrande = await pagina.evaluate(() => {
+    const s = window.__salvos?.[1];
+    return s === undefined ? null : { nome: s.nome, bytes: atob(s.carga).length };
+  });
+  marcar('extensão: corpo de 2 MB cortado na tela, mas "Salvar" grava ele INTEIRO (vem do motor)',
+    /\(cortado\)/.test(await grandeHttp.innerText()) && salvoGrande?.bytes === GRANDE.length, JSON.stringify(salvoGrande));
+  // Etapa 2: o token vai ao cofre do motor empacotado, e a requisição sai com ele.
+  const auth = pagina.locator('[data-celula="auth"]');
+  await auth.getByRole('tab', { name: /Authorization/ }).click();
+  await auth.getByRole('combobox', { name: 'Tipo de autorização' }).selectOption('bearer');
+  await auth.getByLabel('Token', { exact: true }).pressSequentially('tk-ext');
+  await auth.getByRole('button', { name: /Rodar célula/ }).click();
+  const statusAuth = await auth.locator('[data-status-http]').textContent({ timeout: 20000 }).catch(() => '');
+  // O texto vai ao editor em lotes de 200 ms (spec 119): espera o último.
+  await pagina.waitForTimeout(600);
+  const noDocumento = JSON.parse((await documento()) ?? '{}').celulas?.find((c) => c.id === 'auth')?.http?.autorizacao;
+  marcar('extensão: Bearer pelo cofre do motor empacotado — 200, e o documento só com a referência',
+    statusAuth === '200 OK' && /^http-/.test(noDocumento?.token?.cofre ?? '') && !JSON.stringify(noDocumento).includes('tk-ext'),
+    JSON.stringify({ statusAuth, noDocumento }));
+
+  // Etapa 3: copiar cURL (pela ponte, quando o navegador nega) e cookies entre células.
+  await auth.getByRole('button', { name: 'Copiar cURL (bash)' }).click();
+  await pagina.waitForTimeout(400);
+  const copiadoExt = await pagina.evaluate(async () => window.__copiado ?? await navigator.clipboard.readText().catch(() => ''));
+  marcar('extensão: "Copiar cURL" chega à área de transferência, com o token do cofre',
+    copiadoExt.includes("-H 'Authorization: Bearer tk-ext'"),
+    JSON.stringify(copiadoExt.slice(0, 60) || await auth.locator('[data-recado-curl]').textContent().catch(() => '(sem recado)')));
+  await rodarHttp('entrar');
+  const quem = await rodarHttp('quem');
+  await pagina.waitForTimeout(200);
+  marcar('extensão: o cookie de uma célula vai na seguinte', (await quem.textContent()).replace(/\u00a0/g, ' ').includes('cookie: sessao=ext1'));
+  await pagina.evaluate(() => { window.__perguntas = []; });
+  await pagina.locator('[data-notebook]').getByRole('button', { name: 'Cookies' }).click();
+  await pagina.waitForTimeout(400);
+  marcar('extensão: o botão Cookies pergunta pelo editor, com a contagem',
+    (await pagina.evaluate(() => window.__perguntas ?? [])).some((t) => t === 'Cookies deste notebook (1)'));
+
+  // Etapa 4: "para cada" pela ponte, com o kernel JS do motor empacotado.
+  const celLista = pagina.locator('[data-celula="lista"]');
+  await celLista.getByRole('button', { name: /Rodar célula/ }).click();
+  await pagina.waitForTimeout(2500);
+  const cada = pagina.locator('[data-celula="cada"]');
+  await cada.getByRole('button', { name: /Rodar célula/ }).click();
+  const textoCada = await (async () => {
+    for (let i = 0; i < 100; i++) {
+      const t = (await cada.locator('[data-saidas]').textContent().catch(() => '')) ?? '';
+      if (/para cada letras: 3 de 3/.test(t)) return t;
+      await pagina.waitForTimeout(150);
+    }
+    return '';
+  })();
+  marcar('extensão: "para cada" na célula HTTP — 3 requisições numa tabela, e a lista no kernel',
+    textoCada.includes('{"eco":"c"}') && /→ cada: lista com 3 resposta/.test(textoCada), JSON.stringify(textoCada.slice(-120)));
+
+  // Etapa 5: o login do OAuth abre PELO EDITOR (a webview não abre janela).
+  const celOAuth = pagina.locator('[data-celula="oauth"]');
+  await celOAuth.getByRole('tab', { name: /Authorization/ }).click();
+  await celOAuth.getByRole('button', { name: 'Pegar token novo' }).click();
+  await pagina.waitForFunction(() => (window.__abertos ?? []).length > 0, null, { timeout: 10000 }).catch(() => undefined);
+  // O navegador: abre o login e segue o redirecionamento até a porta local do motor.
+  const paraAbrir = await pagina.evaluate(() => window.__abertos?.[0] ?? null);
+  if (paraAbrir !== null) await fetch(paraAbrir, { redirect: 'follow' }).then((r) => r.text()).catch(() => '');
+  await pagina.waitForFunction(() => /Login concluído/.test(document.querySelector('[data-celula="oauth"] [data-recado-oauth]')?.textContent ?? ''), null, { timeout: 15000 }).catch(() => undefined);
+  const abertos = await pagina.evaluate(() => window.__abertos ?? []);
+  marcar('extensão: "Pegar token novo" abre o login pelo editor, e o token chega',
+    abertos.length === 1 && abertos[0].startsWith(`${API}/oauth/authorize?`)
+      && /Login concluído/.test(await celOAuth.locator('[data-recado-oauth]').textContent().catch(() => '')),
+    JSON.stringify({ abertos: abertos.length, recado: await celOAuth.locator('[data-recado-oauth]').textContent().catch(() => '') }));
+  const oauthRodou = await rodarHttp('oauth');
+  marcar('extensão: com o token do login, a API aceita', (await oauthRodou.locator('[data-status-http]').textContent()) === '200 OK');
+
+  marcar('nenhum erro de JavaScript na página da célula HTTP', errosDaPagina.length === 0, errosDaPagina.slice(0, 2).join(' | '));
+
   // ---- Digitar num notebook com muitos resultados guardados ----
   await pagina.goto(`${BASE}/nb/pagina.html?arquivo=grande.brnb`);
   const grande = pagina.locator('[data-celula="c1"]');
@@ -457,6 +666,8 @@ ${existsSync(path.join(WEB, 'notebook.css')) ? '<link rel="stylesheet" href="not
 } finally {
   await navegador?.close();
   motor.kill();
+  apiHttp.closeAllConnections();
+  apiHttp.close();
   rmSync(casa, { recursive: true, force: true });
   console.log(linhas.join('\n'));
   const falhas = linhas.filter((l) => l.startsWith('FALHA')).length;

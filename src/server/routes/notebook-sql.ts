@@ -9,9 +9,10 @@ import { requireString, wrap } from '../http/handlers';
 import type { SessionPool } from '../connections/pool';
 import type { GerenteDeKernels } from '../notebook/gerente';
 import { rodarParaCada } from '../notebook/para-cada';
+import { entregarAosKernels, lerValoresDoKernel } from '../notebook/valores-do-kernel';
 import { nomeValido, saidaDeTabela, type Kernel as LinguagemDoKernel } from '../../shared/notebook/modelo';
 import {
-  colunasPedidas, montarSqlComParametros, referenciasDoSql, tabelasPedidas, type EstiloDeParametro,
+  colunasPedidas, montarSqlComParametros, nomesComCampos, referenciasDoSql, tabelasPedidas, type EstiloDeParametro,
 } from '../../shared/notebook/parametros';
 import type { CellValue, ParametroDeConsulta } from '../../shared/contracts';
 
@@ -36,65 +37,17 @@ export function registrarRotasDeSql(router: Router, { gerente, pool, tipoDaConex
   /** O "para cada" em andamento de cada notebook: progresso e pedido de parar. */
   const emAndamento = new Map<string, { feitos: number; total: number; parar: boolean }>();
 
-  /** Os valores dos `{{ }}`, de quem mudou cada nome por último. */
-  async function lerValores(
-    caminho: string, nomes: readonly string[], comoTabela: readonly string[]
-  ): Promise<Record<string, unknown>> {
-    const valores: Record<string, unknown> = {};
-    if (nomes.length === 0) return valores;
-    const vivos = gerente.sessoesDe(caminho);
-    if (vivos.length === 0) {
-      throw new Error(`{{${nomes[0]}}} precisa do kernel rodando: rode antes a célula que cria a variável.`);
-    }
-    const cascata = gerente.cascata(caminho);
-    await cascata.sincronizar(gerente.kernelsDe(caminho));
-    for (const nome of nomes) {
-      const origem = cascata.origemDe(nome) ?? cascata.ultima;
-      const ordem = [...vivos].sort((a, b) => Number(b.familia === origem) - Number(a.familia === origem));
-      let achou = false;
-      for (const s of ordem) {
-        const r = await s.kernel.obter([nome], comoTabela.includes(nome) ? [nome] : []);
-        const erro = r.erros[nome];
-        if (erro !== undefined) throw new Error(`{{${nome}}} ${erro}.`);
-        if (!r.faltando.includes(nome)) {
-          valores[nome] = r.valores[nome];
-          achou = true;
-          break;
-        }
-      }
-      if (!achou) throw new Error(`{{${nome}}}: a variável "${nome}" não existe no kernel. Rode antes a célula que a cria.`);
-    }
-    return valores;
-  }
+  const lerValores = (caminho: string, nomes: readonly string[], comoTabela: readonly string[]) =>
+    lerValoresDoKernel(gerente, caminho, nomes, comoTabela);
 
   /** O resultado vira variável em CADA linguagem do notebook. */
-  async function entregar(
+  const entregar = (
     caminho: string, nome: string, colunas: readonly string[], linhas: readonly (readonly CellValue[])[],
     linguagens: readonly LinguagemDoKernel[], raiz: string | null
-  ): Promise<{ variavel: unknown; avisos: string[] }> {
-    const avisos: string[] = [];
-    if (linguagens.length === 0) {
-      return { variavel: null, avisos: [`O kernel não está rodando: a variável ${nome} não foi criada.`] };
-    }
-    const entregues: string[] = [];
-    let primeira: { linhas: number; forma: string } | null = null;
-    const familias = new Set<string>();
-    for (const linguagem of linguagens) {
-      const s = gerente.sessao(caminho, linguagem);
-      if (s !== undefined && familias.has(s.familia)) continue;
-      try {
-        const alvo = s ?? (await gerente.garantir({ caminho, linguagem, raiz }));
-        familias.add(alvo.familia);
-        const d = await alvo.kernel.definir(nome, colunas, linhas);
-        primeira ??= d;
-        entregues.push(alvo.familia === 'node' ? 'Node' : alvo.familia === 'python' ? 'Python' : 'PHP');
-      } catch (e) {
-        avisos.push(`${linguagem}: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
-    gerente.cascata(caminho).aoDefinir(nome);
-    return { variavel: primeira === null ? null : { nome, ...primeira, linguagens: entregues }, avisos };
-  }
+  ) => entregarAosKernels(gerente, {
+    caminho, nome, linguagens, raiz,
+    entregar: async (kernel) => ({ ...(await kernel.definir(nome, colunas, linhas)) }),
+  });
 
   /**
    * Uma instrução SQL: roda SEM TETO e, se pedido, vira variável. Com
@@ -114,7 +67,8 @@ export function registrarRotasDeSql(router: Router, { gerente, pool, tipoDaConex
     const dialeto = tipoDaConexao(connectionId);
     const estilo = estiloDe(dialeto);
     // Os nomes que o kernel entrega como REGISTROS: pares (A) e tabelas (D).
-    const comoTabela = [...colunasPedidas(texto), ...tabelasPedidas(texto)];
+    // E os pedidos com campo ({{pedido.id}}): precisam do objeto, não do texto dele.
+    const comoTabela = [...colunasPedidas(texto), ...tabelasPedidas(texto), ...nomesComCampos(texto)];
     const paraCada = textoOuNada(req.body?.paraCada) ?? null;
     if (paraCada !== null && !nomeValido(paraCada)) throw new Error(`"Para cada": nome de lista inválido: ${paraCada}.`);
 

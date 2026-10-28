@@ -115,6 +115,17 @@ app.use('/api/notebook', createNotebookRouter(kernels, pool, (id) => vault.get(i
   // O sql.transacao do kernel: uma sessão PRÓPRIA, fora do pool.
   const config = vault.resolve(id);
   return registry.get(config.type).connect(config);
+}, {
+  // A aba Authorization da célula HTTP: o valor no cofre, a referência no `.brnb`.
+  // Sem cofre ainda nesta máquina: nasce sem tranca, como pelo formulário (spec 109).
+  guardar: (ref, valor) => {
+    if (!vault.exists()) vault.criarSemTranca();
+    vault.guardarSegredo(ref, valor);
+  },
+  ler: (ref) => (vault.exists() ? vault.lerSegredo(ref) : null),
+  apagar: (ref) => {
+    if (vault.exists()) vault.apagarSegredo(ref);
+  },
 }));
 app.use('/api/prefs', createPrefsRouter(prefs));
 app.use('/api', createWorkspaceRouter(estado, ROOT));

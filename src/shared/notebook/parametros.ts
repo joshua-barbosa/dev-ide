@@ -100,6 +100,19 @@ export function colunasPedidas(sql: string): string[] {
   return nomes;
 }
 
+/**
+ * Os nomes pedidos com campo (`{{pedido.id}}`): o kernel os entrega como
+ * ESTRUTURA. Sem isto, o Python mandava o dict como texto JSON — e o campo,
+ * que não existe num texto, virava NULL calado (achado de 28/10).
+ */
+export function nomesComCampos(sql: string): string[] {
+  const nomes: string[] = [];
+  for (const p of partes(sql)) {
+    if ('nome' in p && p.campos.length > 0 && !nomes.includes(p.nome)) nomes.push(p.nome);
+  }
+  return nomes;
+}
+
 const ehRegistro = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 

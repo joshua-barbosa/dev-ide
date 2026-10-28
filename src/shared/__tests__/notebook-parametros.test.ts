@@ -2,6 +2,7 @@
 // (spec 112, etapa 4). Colado no texto, uma variável com aspas viraria injeção
 // de SQL — por isso aqui não há concatenação de valor em lugar nenhum.
 import assert from 'node:assert/strict';
+import { nomesComCampos } from '../notebook/parametros';
 import { test } from 'node:test';
 import { montarSqlComParametros, referenciasDoSql } from '../notebook/parametros';
 
@@ -220,4 +221,8 @@ test('SQL Server: objeto dentro do item — o AS JSON vem DEPOIS do caminho', ()
   // caminho era "Incorrect syntax near '$.\"extra\"'".
   const r = montarSqlComParametros('SELECT * FROM {{x}} t', { x: [{ extra: { a: 1 } }] }, 'arroba', 'sqlserver');
   assert.match(r.sql, /\[extra\] nvarchar\(max\) '\$\."extra"' AS JSON\)/);
+});
+
+test('nomesComCampos: só os pedidos com .campo — o kernel os entrega como estrutura', () => {
+  assert.deepEqual(nomesComCampos('SELECT {{a}}, {{b.x}}, {{c(id)}}, {{b.y}}, {{d.z}}'), ['b', 'd']);
 });

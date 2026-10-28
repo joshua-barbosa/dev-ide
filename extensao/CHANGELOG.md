@@ -1,5 +1,74 @@
 # Mudanças
 
+## 0.1.31
+
+- **Célula HTTP: OAuth 2.0** na aba Authorization — Client Credentials,
+  Password e Authorization Code com PKCE.
+  - Client Credentials e Password pedem o token sozinhos na primeira
+    requisição.
+  - No Authorization Code, "Pegar token novo" abre o login do provedor no
+    navegador, e a Braytech Code espera a volta na URL de retorno (padrão
+    `http://localhost:8765/callback` — registre-a no provedor).
+  - Os tokens e o client secret ficam no cofre; o `.brnb` guarda só
+    referências. Vencido, o token renova pelo refresh token; se a API recusar
+    o guardado (401), pega outro e tenta uma vez de novo.
+  - A aba mostra até quando o token vale e se renova sozinho (nunca o token);
+    "Limpar token" esquece. "Copiar cURL" leva o token guardado como Bearer.
+
+## 0.1.30
+
+- **Célula HTTP: "para cada item".** O mesmo "para cada…" da célula SQL: uma
+  requisição por item da lista, em ordem, com `{{item}}` e `{{item.campo}}`
+  em qualquer campo; progresso e Parar entre um item e outro. Erro de rede
+  para ali (os anteriores valeram); status 4xx/5xx não para, e o resumo conta
+  quantos. Embaixo, uma tabela (item, status, tempo, tamanho, body); a
+  variável vira a lista das respostas, cada uma com o item que a gerou.
+
+## 0.1.29
+
+- **Célula HTTP: cURL.** Cole um comando `curl` na URL (ou use "Importar
+  cURL") e a célula se monta — inclusive o "Copy as cURL" do navegador, em
+  bash ou cmd. Um `Authorization` do cURL vai para a aba Authorization, e o
+  segredo para o cofre. "Copiar cURL (bash)" e "(cmd)" geram o comando, com o
+  segredo dentro; o de cmd escapa tudo com `^`, como o Chrome.
+- **Célula HTTP: aba Settings.** Timeout (0 = sem limite), seguir
+  redirecionamentos, ignorar certificado inválido (servidor interno com
+  certificado próprio) e proxy — vazio usa o do sistema (`HTTP_PROXY`,
+  `HTTPS_PROXY`, `NO_PROXY`); https passa pelo túnel CONNECT.
+- **Célula HTTP: cookies entre células.** O que uma célula recebe, as
+  seguintes mandam para o mesmo host (o login numa, a sessão nas outras). O
+  botão "Cookies" da barra mostra e limpa.
+
+## 0.1.28
+
+- **Célula HTTP: aba Authorization.** No Auth, Bearer Token, Basic Auth e API
+  Key (no header ou na query). O segredo digitado vai para o cofre deste
+  computador, cifrado; o `.brnb` guarda só uma referência — pode ir para um
+  git. Noutra máquina o campo avisa que o segredo não está ali e pede de novo.
+  Um `{{variavel}}` no campo fica no arquivo como texto. O olho mostra o valor
+  guardado. Um header de mesmo nome na aba Headers vale mais.
+  - A API Key na query não volta na URL mostrada nem na variável: sai
+    mascarada. Num redirecionamento para outro servidor, o header da API Key
+    não vai junto.
+- **Notebook: `{{pedido.id}}` com dicionário do Python na célula SQL.** Dava
+  NULL sem aviso (o dicionário ia como texto); agora o campo é lido.
+
+## 0.1.27
+
+- **Notebook: célula HTTP, estilo Postman.** "+ HTTP" cria uma requisição com
+  método, URL e as abas Params (a mesma query da URL, nos dois sentidos),
+  Headers e Body — none, form-data (texto e arquivo), x-www-form-urlencoded,
+  raw (Text, JSON, HTML, XML) e binary. A requisição sai do motor, não do
+  navegador: sem CORS, e endereço da rede interna funciona.
+  - `{{nome}}` vale em todos os campos, com `{{login.body.token}}` e
+    `{{lista[0].id}}`.
+  - A resposta vira variável pelo nome da célula, em todas as linguagens:
+    `{ status, statusTexto, headers, body, tempo, tamanho, url }`, com o body
+    já lido quando é JSON.
+  - Embaixo da célula: Pretty, Raw, Preview do HTML (sem scripts), Headers,
+    status, tempo e tamanho, e "Salvar" grava a resposta em disco. Imagem
+    aparece; PDF, só pelo "Salvar" na extensão.
+
 ## 0.1.26
 
 - **Notebook: editar ficava lento com resultados guardados.** Com seis

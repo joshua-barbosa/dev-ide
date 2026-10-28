@@ -35,6 +35,8 @@ interface PorKernel {
   readonly json: string;
   /** O nome dessa variável JSON, no estilo da linguagem. */
   readonly nomeJson: string;
+  /** Ler a resposta de uma célula HTTP chamada `login` (spec 120). */
+  readonly resposta: string;
 }
 
 const POR_KERNEL: Record<Kernel, PorKernel> = {
@@ -46,6 +48,7 @@ const POR_KERNEL: Record<Kernel, PorKernel> = {
     transacao: "with sql.transacao():\n    for p in pedidos:\n        sql('UPDATE pedidos SET status = ? WHERE id = ?', ['pago', p['id']])",
     json: 'import json\nmessages_json = json.dumps(messages)',
     nomeJson: 'messages_json',
+    resposta: "token = login['body']['token']\nlogin['status'], login['headers']['content-type']",
     ambiente:
       'Python: o .venv (ou venv) da pasta do notebook, subindo até a raiz do projeto; senão, o python3 do sistema. ' +
       '"Outro Python…" aceita um caminho a partir da pasta do notebook (.venv/bin/python, ../api/.venv/bin/python), ' +
@@ -59,6 +62,7 @@ const POR_KERNEL: Record<Kernel, PorKernel> = {
     transacao: "await sql.transacao(async () => {\n  for (const p of pedidos) {\n    await sql('UPDATE pedidos SET status = ? WHERE id = ?', ['pago', p.id])\n  }\n})",
     json: 'const messagesJson = JSON.stringify(messages)',
     nomeJson: 'messagesJson',
+    resposta: "const token = login.body.token\nlogin.status, login.headers['content-type']",
     ambiente:
       'Node: escolha de qual projeto do workspace vêm os node_modules (um frontend e um backend lado a lado, por ' +
       'exemplo) e qual Node usar — o do editor, os do nvm ou o do PATH. A barra mostra os dois.',
@@ -71,6 +75,7 @@ const POR_KERNEL: Record<Kernel, PorKernel> = {
     transacao: "await sql.transacao(async () => {\n  for (const p of pedidos) {\n    await sql('UPDATE pedidos SET status = ? WHERE id = ?', ['pago', p.id])\n  }\n})",
     json: 'const messagesJson = JSON.stringify(messages)',
     nomeJson: 'messagesJson',
+    resposta: "const token: string = login.body.token\nlogin.status, login.headers['content-type']",
     ambiente:
       'Node: escolha de qual projeto do workspace vêm os node_modules e qual Node usar — o do editor, os do nvm ' +
       'ou o do PATH. Os tipos são tirados antes de rodar.',
@@ -85,6 +90,7 @@ const POR_KERNEL: Record<Kernel, PorKernel> = {
     transacao: "sql_transacao(function () use ($pedidos) {\n    foreach ($pedidos as $p) {\n        sql('UPDATE pedidos SET status = ? WHERE id = ?', ['pago', $p['id']]);\n    }\n});",
     json: '$messagesJson = json_encode($messages);',
     nomeJson: 'messagesJson',
+    resposta: "$token = $login['body']['token'];\n$login['status'];",
     ambiente:
       'PHP: são duas escolhas separadas. O VENDOR ("Vendor: backend" na lista, ou "Outra pasta de vendor…" — a pasta ' +
       'do projeto ou a própria vendor/) diz quais classes e pacotes carregar; o kernel roda nessa pasta, e é nela ' +
@@ -257,6 +263,48 @@ export function secoesDeAjuda(kernel: Kernel): readonly SecaoDeAjuda[] {
           linguagem: 'sql',
           codigo: `-- SQLite, manual\nselect json_extract(value, '$.id') as id, json_extract(value, '$.message') as message\nfrom json_each({{${k.nomeJson}}})`,
         },
+      ],
+    },
+    {
+      titulo: 'Célula HTTP (estilo Postman)',
+      paragrafos: [
+        '"+ HTTP" cria uma requisição: método, URL e as abas Params, Headers e Body (none, form-data, ' +
+          'x-www-form-urlencoded, raw Text/JSON/HTML/XML, binary). A URL e a aba Params são a mesma query: escrever ' +
+          'numa muda a outra. A linha com a caixa desmarcada não é mandada. Enter na URL (ou ▷) roda.',
+        'A requisição sai do motor da Braytech Code, não do navegador: não há CORS, e endereço da rede interna ' +
+          'funciona. Arquivo do form-data (tipo File) e do binary: o caminho absoluto dele.',
+        '{{nome}} vale em TODOS os campos — URL, params, headers e corpo —, com {{obj.campo}} e {{lista[0].id}}. ' +
+          'Texto entra como está; número, lista e objeto entram como JSON. Um header Authorization com Bearer ' +
+          '{{login.body.token}} usa o token que a célula "login" recebeu. No raw JSON, escreva "{{nome}}" com aspas ' +
+          'para texto e {{pedido}} sem aspas para um objeto inteiro.',
+        'Authorization: Bearer Token, Basic Auth ou API Key (no header ou na query). O segredo digitado vai para o ' +
+          'cofre deste computador e o .brnb guarda só uma referência — pode ir para um git; noutra máquina o campo ' +
+          'pede de novo. Um {{variavel}} no campo fica no arquivo como texto. Um header de mesmo nome na aba Headers ' +
+          'vale mais que o da aba Authorization.',
+        'OAuth 2.0 (aba Authorization): Client Credentials, Password ou Authorization Code com PKCE. Client ' +
+          'Credentials e Password pedem o token sozinhos na primeira requisição; no Authorization Code, "Pegar ' +
+          'token novo" abre o login do provedor no navegador, e o motor espera a volta na URL de retorno (padrão ' +
+          'http://localhost:8765/callback — registre-a no provedor). Os tokens ficam no cofre; vencido, renova pelo ' +
+          'refresh token; se a API recusar o guardado (401), pega outro e tenta uma vez de novo.',
+        'cURL: cole um comando curl na URL (ou em "Importar cURL") e a célula se monta — inclusive o "Copy as cURL" ' +
+          'do navegador, em bash ou cmd. Um Authorization do cURL vai para a aba Authorization (e o segredo, para o ' +
+          'cofre). "Copiar cURL" gera o comando em bash ou cmd (Windows), com o segredo do cofre dentro.',
+        'Para cada item: o mesmo "para cada…" da célula SQL. Uma requisição por item da lista, em ordem, com ' +
+          '{{item}} e {{item.campo}} em qualquer campo; progresso e Parar entre um item e outro. Erro de rede para ali ' +
+          '(os anteriores valeram); status 4xx/5xx não para — é resposta, e o resumo conta. Embaixo, uma tabela ' +
+          '(item, status, tempo, tamanho, body); a variável vira a lista das respostas, cada uma com o item.',
+        'Settings: timeout (0 = sem limite), seguir redirecionamentos, ignorar certificado inválido (servidor interno ' +
+          'com certificado próprio) e proxy — vazio usa o do sistema (HTTP_PROXY, HTTPS_PROXY, NO_PROXY).',
+        'Cookies: o que uma célula recebe (Set-Cookie), as seguintes mandam para o mesmo host — o login numa célula, ' +
+          'a sessão nas outras. O botão "Cookies" da barra mostra e limpa; um header Cookie escrito à mão vale mais.',
+        'A resposta vira variável pelo nome da célula (→ login), em todas as linguagens: { status, statusTexto, ' +
+          'headers, body, tempo, tamanho, url }. O body já vem lido quando é JSON; binário vem em base64. Status 4xx ' +
+          'e 5xx não param a cascata: são resposta.',
+        'Embaixo: Pretty (JSON e XML formatados), Raw, Preview (HTML, sem scripts), Headers, status, tempo e ' +
+          'tamanho, e "Salvar" grava o corpo em disco. O arquivo guarda até 1 MB do corpo; a variável tem tudo.',
+      ],
+      exemplos: [
+        { linguagem: kernel, codigo: k.resposta },
       ],
     },
     {

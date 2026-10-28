@@ -16,6 +16,7 @@ import Box from '@mui/material/Box';
 import { Icon } from '../Icon';
 import { Api } from '../api';
 import { CelulaDoNotebook } from './CelulaDoNotebook';
+import { ApiDoNotebook } from '../api-notebook';
 import { useKernelsDoNotebook, familiaDe } from './useKernelDoNotebook';
 import { IndicadoresDosKernels, ROTULOS } from './IndicadoresDosKernels';
 import { useExecucaoDoNotebook } from './useExecucaoDoNotebook';
@@ -286,6 +287,22 @@ export function NotebookHost({
     );
   }
 
+  /**
+   * Os cookies que as células HTTP guardaram (spec 120, etapa 3): ver, e
+   * limpar — para testar o login de novo, por exemplo.
+   */
+  const verCookies = async (onde: string): Promise<void> => {
+    const lista = await ApiDoNotebook.cookies(onde).catch(() => []);
+    const opcoes = lista.length === 0
+      ? [{ valor: '', rotulo: 'Nenhum cookie guardado ainda' }]
+      : [
+        ...lista.map((c, i) => ({ valor: `ver:${i}`, rotulo: `${c.nome}=${c.valor}`, detalhe: `${c.dominio}${c.caminho}` })),
+        { valor: 'limpar', rotulo: 'Limpar todos os cookies deste notebook' },
+      ];
+    const escolhido = await escolherOpcao(`Cookies deste notebook (${lista.length})`, opcoes);
+    if (escolhido === 'limpar') await ApiDoNotebook.limparCookies(onde);
+  };
+
   const adicionar = (tipo: TipoDeCelula, posicao: number, linguagem?: Kernel): void =>
     atualizar((x) => inserirCelula(x, tipo, posicao, novoId(), linguagem));
 
@@ -310,6 +327,7 @@ export function NotebookHost({
           está mostrando somente Javascript + SQL + Markdown". */}
       <Acao icone="lucide:plus" rotulo={ROTULOS[linguagemParaInserir(nb, posicao)]} onClick={() => adicionar('codigo', posicao)} />
       <Acao icone="lucide:plus" rotulo="SQL" onClick={() => adicionar('sql', posicao)} />
+      <Acao icone="lucide:plus" rotulo="HTTP" onClick={() => adicionar('http', posicao)} />
       <Acao icone="lucide:plus" rotulo="Markdown" onClick={() => adicionar('markdown', posicao)} />
       <Box
         component="select"
@@ -412,6 +430,9 @@ export function NotebookHost({
         {(nb.kernel === 'python' || linguagensDoNotebook(nb).includes('python')) && (
           <Acao icone="lucide:file-output" rotulo="Exportar .ipynb" onClick={() => void exportar()} />
         )}
+        {caminho !== null && nb.celulas.some((c) => c.tipo === 'http') && (
+          <Acao icone="lucide:cookie" rotulo="Cookies" onClick={() => void verCookies(caminho)} />
+        )}
         <Acao icone="lucide:eraser" rotulo="Limpar saídas" onClick={() => atualizar((x) => limparSaidas(x))} />
         <Acao icone="lucide:circle-help" rotulo="Ajuda" onClick={() => setAjudaAberta((a) => !a)} />
       </Box>
@@ -433,6 +454,8 @@ export function NotebookHost({
                 fontSize={fontSize}
                 tabSize={tabSize}
                 tema={tema}
+                caminho={caminho}
+                copiarTexto={copiarTexto}
                 onMudar={(m) => atualizar((x) => alterarCelula(x, celula.id, m))}
                 onRodar={() => void execucao.rodarCelula(celula.id)}
                 onRodarDesde={() => void execucao.rodarDesde(i)}

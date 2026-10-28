@@ -13,6 +13,8 @@
 // mudaram chega antes, pela cascata do motor.
 import { useRef, useState, type MutableRefObject } from 'react';
 import { ApiDoNotebook } from '../api-notebook';
+import { aguardarSegredos } from './http/segredosPendentes';
+import { referenciasDoCofre } from '../../shared/notebook/http';
 import type { ControleDosKernels } from './useKernelDoNotebook';
 import { instrucoesDoBloco } from '../../shared/sql/instrucoes-do-bloco';
 import {
@@ -146,6 +148,73 @@ export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho, raiz 
     return true;
   };
 
+  /**
+   * HTTP (spec 120): a requisição sai do MOTOR, e a resposta vira variável pelo
+   * nome da célula em cada linguagem do notebook — como o resultado do SQL.
+   * Status 4xx/5xx não é falha: é resposta, e a cascata segue.
+   */
+  const rodarHttp = async (celula: Celula, n: Notebook, contador: number): Promise<boolean> => {
+    if (celula.http === null) return true;
+    if (caminho === null) {
+      atualizar((x) => registrarExecucao(x, celula.id, contador, [{ tipo: 'erro', mensagem: 'Salve o notebook antes de rodar.' }]));
+      return false;
+    }
+    // "Para cada" (etapa 4): enquanto o laço roda, a célula mostra o progresso.
+    const paraCada = celula.paraCada;
+    const acompanhar = paraCada === null ? null : setInterval(() => {
+      void ApiDoNotebook.progressoHttp(caminho, celula.id).then((pr) => {
+        if (pr === null) return;
+        atualizar((x) => registrarExecucao(x, celula.id, contador, [
+          { tipo: 'texto', fluxo: 'saida', texto: `para cada ${paraCada}: ${pr.feitos} de ${pr.total}…\n` },
+        ]));
+      }).catch(() => undefined);
+    }, 400);
+    try {
+      // O token digitado agora há pouco pode ainda estar a caminho do cofre.
+      const falhas = await aguardarSegredos(referenciasDoCofre(celula.http));
+      if (falhas.length > 0) throw new Error(`não deu para guardar no cofre: ${falhas[0]}`);
+      const r = await ApiDoNotebook.http({
+        caminho, celula: celula.id, nome: celula.nome, linguagens: linguagensDoSql(n), raiz, http: celula.http, paraCada,
+      });
+      const saidas: Saida[] = [];
+      let ok = true;
+      if (r.saida !== undefined) saidas.push(r.saida);
+      if (r.paraCada !== undefined) {
+        const pc = r.paraCada;
+        if (r.tabela !== undefined && r.tabela !== null) saidas.push(r.tabela);
+        const comErro = pc.comErroDeStatus === 0 ? '' : ` · ${pc.comErroDeStatus} com status de erro (4xx/5xx)`;
+        saidas.push({ tipo: 'texto', fluxo: 'saida', texto: `para cada ${paraCada}: ${pc.feitos} de ${pc.total} requisição(ões)${comErro}\n` });
+        if (pc.parado) {
+          saidas.push({ tipo: 'texto', fluxo: 'erro', texto: `Parado depois de ${pc.feitos} item(ns); os que rodaram já valeram.\n` });
+          ok = false;
+        }
+        if (pc.falha !== null) {
+          saidas.push({
+            tipo: 'erro',
+            mensagem: `Item ${pc.falha.item} de ${pc.total} falhou: ${pc.falha.mensagem}\n` +
+              `Os ${pc.feitos} anterior(es) já valeram; os seguintes não rodaram.`,
+          });
+          ok = false;
+        }
+      }
+      if (r.variavel !== null) {
+        const onde = (r.variavel.linguagens ?? []).length > 1 ? ` (${(r.variavel.linguagens ?? []).join(', ')})` : '';
+        const forma = r.paraCada === undefined ? '{ status, headers, body, tempo }'
+          : `lista com ${r.variavel.linhas ?? 0} resposta(s), cada uma com o item`;
+        saidas.push({ tipo: 'texto', fluxo: 'saida', texto: `→ ${r.variavel.nome}: ${forma}${onde}\n` });
+      }
+      if (r.aviso !== null) saidas.push({ tipo: 'texto', fluxo: 'erro', texto: `${r.aviso}\n` });
+      atualizar((x) => registrarExecucao(x, celula.id, contador, saidas));
+      void kernel.atualizar();
+      return ok;
+    } catch (e) {
+      atualizar((x) => registrarExecucao(x, celula.id, contador, [{ tipo: 'erro', mensagem: `A requisição falhou: ${mensagemDe(e)}` }]));
+      return false;
+    } finally {
+      if (acompanhar !== null) clearInterval(acompanhar);
+    }
+  };
+
   const rodarCodigo = async (celula: Celula, n: Notebook, contador: number): Promise<boolean> => {
     const linguagem = celula.linguagem ?? n.kernel;
     linguagemRodando.current = linguagem;
@@ -164,12 +233,15 @@ export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho, raiz 
     const celula = n?.celulas.find((c) => c.id === id);
     if (n === null || n === undefined || celula === undefined) return false;
     if (celula.tipo === 'markdown') return true;
-    // Célula vazia não é falha: a cascata passa por ela.
-    if (celula.conteudo.trim() === '') return true;
+    // Célula vazia não é falha: a cascata passa por ela. A HTTP está vazia sem URL.
+    const vazia = celula.tipo === 'http' ? (celula.http?.url ?? '').trim() === '' : celula.conteudo.trim() === '';
+    if (vazia) return true;
     setRodando(id);
     try {
       const contador = proximoContador(n);
-      return celula.tipo === 'sql' ? await rodarSql(celula, n, contador) : await rodarCodigo(celula, n, contador);
+      if (celula.tipo === 'sql') return await rodarSql(celula, n, contador);
+      if (celula.tipo === 'http') return await rodarHttp(celula, n, contador);
+      return await rodarCodigo(celula, n, contador);
     } finally {
       linguagemRodando.current = null;
       setRodando(null);
@@ -189,8 +261,13 @@ export function useExecucaoDoNotebook({ atual, atualizar, kernel, caminho, raiz 
     desistir.current = true;
     const linguagem = linguagemRodando.current;
     if (linguagem !== null) await kernel.interromper(linguagem);
-    // Uma célula SQL "para cada" para entre um item e outro.
-    else if (caminho !== null) await ApiDoNotebook.pararSql(caminho).catch(() => undefined);
+    // Uma célula SQL "para cada" para entre um item e outro; a HTTP cancela a requisição.
+    else if (caminho !== null) {
+      await Promise.all([
+        ApiDoNotebook.pararSql(caminho).catch(() => undefined),
+        ApiDoNotebook.pararHttp(caminho).catch(() => undefined),
+      ]);
+    }
   };
 
   return { rodando, rodarCelula, rodarDesde, parar };

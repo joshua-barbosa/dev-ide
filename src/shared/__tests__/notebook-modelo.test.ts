@@ -160,3 +160,50 @@ test('o Laravel nasce desligado, e ligado fica gravado', () => {
   const antigo = lerNotebook('{"formato":"braytech-notebook","versao":1,"kernel":"php","celulas":[]}');
   assert.equal(antigo?.laravel, false);
 });
+
+// ---- A célula HTTP (spec 120) ----
+import { requisicaoVazia } from '../notebook/http';
+
+test('HTTP: nasce com requisição vazia e um nome respostaN livre', () => {
+  const nb = inserirCelula(inserirCelula(com(), 'http', 0, 'h1'), 'http', 1, 'h2');
+  assert.deepEqual(nb.celulas[0].http, requisicaoVazia());
+  assert.deepEqual(nb.celulas.map((c) => c.nome), ['resposta1', 'resposta2']);
+});
+
+test('HTTP: grava (versão 3) e lê de volta — requisição e resposta', () => {
+  const base = inserirCelula(com('codigo'), 'http', 1, 'h');
+  const comReq = alterarCelula(base, 'h', {
+    http: { ...requisicaoVazia(), metodo: 'POST', url: 'http://h/x', corpo: { tipo: 'raw', formato: 'json', texto: '{}' } },
+  });
+  const rodado = registrarExecucao(comReq, 'h', 1, [{
+    tipo: 'http', status: 201, statusTexto: 'Created', tempoMs: 5, tamanho: 2, url: 'http://h/x',
+    headers: [['content-type', 'application/json']], tipoDeConteudo: 'application/json', corpo: '{}',
+    codificacao: 'texto', truncado: false,
+  }]);
+  const texto = escreverNotebook(rodado);
+  assert.equal(JSON.parse(texto).versao, 3);
+  assert.deepEqual(lerNotebook(texto), rodado);
+});
+
+test('HTTP: trocar o tipo — virar HTTP ganha requisição; deixar de ser perde', () => {
+  const nb = com('codigo');
+  const virou = alterarCelula(nb, 'id0', { tipo: 'http' });
+  assert.deepEqual(virou.celulas[0].http, requisicaoVazia());
+  assert.equal(virou.celulas[0].nome, 'resposta1');
+  const voltou = alterarCelula(virou, 'id0', { tipo: 'codigo' });
+  assert.equal(voltou.celulas[0].http, null);
+  assert.equal(voltou.celulas[0].nome, null);
+});
+
+test('HTTP: célula SQL e código continuam sem o campo http', () => {
+  const nb = com('sql', 'codigo');
+  assert.deepEqual(nb.celulas.map((c) => c.http), [null, null]);
+  assert.equal(JSON.parse(escreverNotebook(nb)).versao, 1);
+});
+
+test('HTTP: "para cada" fica na célula HTTP, grava e lê de volta (etapa 4)', () => {
+  const nb = alterarCelula(inserirCelula(com(), 'http', 0, 'h'), 'h', { paraCada: 'pedidos' });
+  assert.equal(nb.celulas[0].paraCada, 'pedidos');
+  assert.equal(lerNotebook(escreverNotebook(nb))?.celulas[0].paraCada, 'pedidos');
+  assert.equal(alterarCelula(nb, 'h', { tipo: 'codigo' }).celulas[0].paraCada, null);
+});

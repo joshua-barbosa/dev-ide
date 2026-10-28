@@ -175,6 +175,8 @@ const ICONES_DA_INTERFACE = [
   'lucide:square',
   // O olho que revela a senha guardada (N001), e o que a esconde de volta.
   'lucide:eye-off',
+  // O pote de cookies das células HTTP do notebook (spec 120, etapa 3).
+  'lucide:cookie',
   // `testar` no formulário de conexão (T103).
   'lucide:plug-zap',
   // Exportar as conexões COM as senhas (N001).
